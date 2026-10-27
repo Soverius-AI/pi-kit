@@ -1,0 +1,237 @@
+/* pi-kit design tokens: daisyUI themes, app tokens and base element styles.
+   Loaded after daisyUI. */
+
+/* ── daisyUI themes ─────────────────────────────────────────────────────── */
+[data-theme='pi-dark'] {
+  color-scheme: dark;
+  --color-base-100: #1f1f1f;
+  --color-base-200: #141414;
+  --color-base-300: #3f3f3f;
+  --color-base-content: #ededed;
+  --color-primary: #e9b44c;
+  --color-primary-content: #141414;
+  --color-secondary: #4daafc;
+  --color-secondary-content: #141414;
+  --color-accent: #e9b44c;
+  --color-accent-content: #141414;
+  --color-neutral: #0f0f0f;
+  --color-neutral-content: #dcdcdc;
+  --color-info: #4daafc;
+  --color-info-content: #141414;
+  --color-success: #73c991;
+  --color-success-content: #141414;
+  --color-warning: #e2a93b;
+  --color-warning-content: #141414;
+  --color-error: #f85149;
+  --color-error-content: #141414;
+  --radius-selector: 9999px;
+  --radius-field: 0.5rem;
+  --radius-box: 0.625rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+  --pk-muted: #a3a3a3;
+  --pk-sunken: #0f0f0f;
+  --pk-shadow: 0 12px 32px rgb(0 0 0 / 0.6);
+}
+[data-theme='pi-light'] {
+  color-scheme: light;
+  --color-base-100: #ffffff;
+  --color-base-200: #f2f3f5;
+  --color-base-300: #e1e3e8;
+  --color-base-content: #1d2026;
+  --color-primary: #8e6512;
+  --color-primary-content: #ffffff;
+  --color-secondary: #2e63b8;
+  --color-secondary-content: #ffffff;
+  --color-accent: #8e6512;
+  --color-accent-content: #ffffff;
+  --color-neutral: #1d2026;
+  --color-neutral-content: #e4e6ea;
+  --color-info: #2e63b8;
+  --color-info-content: #ffffff;
+  --color-success: #2f7d4b;
+  --color-success-content: #ffffff;
+  --color-warning: #a3610d;
+  --color-warning-content: #ffffff;
+  --color-error: #b5362e;
+  --color-error-content: #ffffff;
+  --radius-selector: 9999px;
+  --radius-field: 0.5rem;
+  --radius-box: 0.625rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+  --pk-muted: #6b707a;
+  --pk-sunken: #1d2026;
+  --pk-shadow: 0 8px 24px rgb(20 24 32 / 0.12);
+}
+
+/* Brand-inspired themes change colors and font families only. Geometry stays identical. */
+[data-theme='pi-soverius'],
+[data-theme='pi-copilotkit'] {
+  --radius-selector: 9999px;
+  --radius-field: 0.5rem;
+  --radius-box: 0.625rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+:root[data-theme='pi-soverius'] {
+  color-scheme: dark;
+  --color-base-100: lab(5.26812% -2.83603 -8.58097);
+  --color-base-200: lab(2.4768% -1.38628 -4.57487);
+  --color-base-300: #243649;
+  --color-base-content: #e1e6ec;
+  --color-primary: lab(62.6785% -17.6429 -51.6939);
+  --color-primary-content: #06121c;
+  --color-secondary: lab(66.3876% 45.8614 67.3561);
+  --color-secondary-content: #180e05;
+  --color-accent: lab(66.3876% 45.8614 67.3561);
+  --color-accent-content: #180e05;
+  --color-neutral: #08111c;
+  --color-neutral-content: #e1e6ec;
+  --color-info: #51b4f5;
+  --color-info-content: #06121c;
+  --color-success: #73c991;
+  --color-success-content: #06121c;
+  --color-warning: #efb55b;
+  --color-warning-content: #180e05;
+  --color-error: #ff817c;
+  --color-error-content: #180e05;
+  --pk-muted: #9aafc4;
+  --pk-sunken: #08111c;
+  --pk-shadow: 0 12px 32px rgb(0 0 0 / 0.6);
+  --pk-font-sans: ui-sans-serif, system-ui, sans-serif;
+  --pk-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+:root[data-theme='pi-copilotkit'] {
+  color-scheme: light;
+  --color-base-100: #f7f7fb;
+  --color-base-200: #ededf5;
+  --color-base-300: #d6d5e5;
+  --color-base-content: #120635;
+  --color-primary: #5b62d4;
+  --color-primary-content: #ffffff;
+  --color-secondary: #5b62d4;
+  --color-secondary-content: #ffffff;
+  --color-accent: #5b62d4;
+  --color-accent-content: #ffffff;
+  --color-neutral: #e0e0ee;
+  --color-neutral-content: #120635;
+  --color-info: #4b57ba;
+  --color-info-content: #ffffff;
+  --color-success: #18765c;
+  --color-success-content: #ffffff;
+  --color-warning: #976018;
+  --color-warning-content: #ffffff;
+  --color-error: #bb344d;
+  --color-error-content: #ffffff;
+  --pk-muted: #6b657d;
+  /* Terminal output stays dark, as in the standard light theme. */
+  --pk-sunken: #120635;
+  --pk-shadow: 0 8px 24px rgb(20 24 32 / 0.12);
+  --pk-font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --pk-font-mono: 'Spline Sans Mono', ui-monospace, monospace;
+}
+
+/* Background paint only: no extra elements, dimensions, or component shape changes. */
+[data-theme='pi-copilotkit'] .pk-transcript {
+  background-image:
+    radial-gradient(620px 520px at 88% 5%, rgb(216 239 189 / 0.333), transparent 75%),
+    radial-gradient(760px 720px at 5% 39%, rgb(223 243 193 / 0.36), transparent 76%),
+    radial-gradient(950px 720px at 82% 53%, rgb(172 229 236 / 0.28), transparent 76%);
+}
+[data-theme='pi-copilotkit'] .pk-header {
+  background-image: linear-gradient(102.36deg, rgb(215 216 255 / 0.38) 29%, rgb(190 194 255 / 0.3) 110%);
+}
+
+/* ── App tokens ─────────────────────────────────────────────────────────── */
+:root {
+  --pk-font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --pk-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Chat fills its column; --pk-gutter supplies the fixed horizontal inset. */
+  --pk-measure: none;
+  --pk-threads: 280px;
+  --pk-rail: 48px;
+  --pk-panel: 400px;
+  --pk-header: 48px;
+  --pk-status: 28px;
+  --pk-gutter: 24px;
+  /* The control column of a settings row: labels and hints are in the left column, never inside the control. */
+  --pk-ctl-w: 320px;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font-family: var(--pk-font-sans);
+  font-size: 14px;
+  line-height: 22px;
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+  -webkit-font-smoothing: antialiased;
+}
+code,
+pre,
+kbd,
+.mono {
+  font-family: var(--pk-font-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+.muted {
+  color: var(--pk-muted);
+}
+.prose {
+  font-size: 15px;
+  line-height: 24px;
+}
+.prose p + p {
+  margin-top: 12px;
+}
+.prose code {
+  background: color-mix(in srgb, var(--color-base-content) 8%, transparent);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.t-xs {
+  font-size: 12px;
+  line-height: 16px;
+}
+.t-sm {
+  font-size: 13px;
+  line-height: 18px;
+}
+.t-lg {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 500;
+}
+.t-xl {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 500;
+}
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,1209 @@
+<!-- The rail: what a collapsed sidebar is on a wide window. layout.css shows it under html[data-sidebar="collapsed"] and hides the full sidebar. -->
+<nav class="pk-rail" data-testid="rail" [attr.aria-label]="'threads.threadSidebar.projects' | transloco">
+  <button
+    class="btn btn-ghost btn-sm btn-square rounded-lg text-primary"
+    type="button"
+    data-testid="rail-new"
+    [attr.aria-label]="'threads.threadSidebar.newThread' | transloco"
+    [pkTip]="('threads.threadSidebar.newThread' | transloco) + key('new-thread') + ')'"
+    [disabled]="!store.workspace()"
+    (click)="create()"
+  >
+    <pk-icon name="plus" size="18" />
+  </button>
+  @if (needs().total > 0) {
+    <button
+      class="pk-rail-needs"
+      type="button"
+      data-testid="rail-needs"
+      [pkTip]="
+        needs().total +
+        (needs().total === 1
+          ? ('threads.threadSidebar.threadNeedsYou' | transloco)
+          : ('threads.threadSidebar.threadsNeedYou' | transloco))
+      "
+      [attr.aria-label]="
+        needs().total +
+        (needs().total === 1
+          ? ('threads.threadSidebar.threadNeedsYou' | transloco)
+          : ('threads.threadSidebar.threadsNeedYou' | transloco))
+      "
+      (click)="expandTo({ needs: true })"
+    >
+      {{ needs().total }}
+    </button>
+  }
+  @for (tile of rail(); track tile.cwd) {
+    <button
+      class="pk-rail-tile"
+      type="button"
+      data-testid="rail-project"
+      [attr.data-project]="tile.name"
+      [attr.aria-current]="tile.current ? 'true' : null"
+      [pkTip]="tile.tip"
+      [attr.aria-label]="tile.tip"
+      (click)="expandTo({ project: tile.cwd })"
+    >
+      <span class="pk-ptile" [attr.data-hue]="tile.hue" aria-hidden="true">{{ tile.letter }}</span>
+      @if (tile.dot) {
+        <span class="dot" [attr.data-kind]="tile.dot" data-testid="rail-dot"></span>
+      }
+    </button>
+  }
+  <span class="grow"></span>
+  <button
+    class="btn btn-ghost btn-sm btn-square"
+    type="button"
+    data-testid="rail-expand"
+    [pkTip]="('threads.threadSidebar.showSidebar62223' | transloco) + key('toggle-sidebar') + ')'"
+    [attr.aria-label]="'threads.threadSidebar.showSidebar' | transloco"
+    (click)="prefs.toggleSidebar()"
+  >
+    <pk-icon name="sidebar" size="16" />
+  </button>
+</nav>
+
+<div class="pk-side-full">
+  <!-- The top: the search takes the width, the amber "+" with its chevron menu stays. -->
+  <div class="pk-side-top">
+    <label class="pk-search">
+      <pk-icon name="search" size="14" />
+      <input
+        #search
+        type="search"
+        [placeholder]="'threads.threadSidebar.searchThreads' | transloco"
+        [attr.aria-label]="'threads.threadSidebar.searchThreads' | transloco"
+        [pkTip]="('threads.threadSidebar.searchThreads54fa9' | transloco) + key('search-threads') + ')'"
+        [value]="query()"
+        (input)="query.set($any($event.target).value)"
+      />
+      <details pkViewportMenu class="dropdown dropdown-end">
+        <summary
+          class="btn btn-ghost btn-xs btn-square list-none"
+          [attr.data-on]="store.showArchived() || store.hiddenProjects().length > 0"
+          [pkTip]="'threads.threadSidebar.filter' | transloco"
+          [attr.aria-label]="'threads.threadSidebar.filter' | transloco"
+          data-testid="filter-menu"
+        >
+          <pk-icon name="filter" size="14" />
+        </summary>
+        <ul
+          class="dropdown-content menu menu-sm bg-base-100 rounded-box border border-base-300 shadow-lg w-64 p-1 z-40"
+        >
+          <li>
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              [attr.aria-checked]="store.showArchived()"
+              (click)="toggleArchived($event)"
+            >
+              <span class="flex-1 text-left">{{ 'threads.threadSidebar.showArchivedThreads' | transloco }}</span>
+              @if (store.showArchived()) {
+                <pk-icon name="check" size="14" />
+              }
+            </button>
+          </li>
+          @if (store.hiddenProjects().length > 0) {
+            <li class="menu-title">{{ 'threads.threadSidebar.hiddenProjects' | transloco }}</li>
+            @for (hidden of store.hiddenProjects(); track hidden.workspace.cwd) {
+              <li>
+                <button type="button" [title]="hidden.workspace.cwd" (click)="showHidden($event, hidden.workspace.cwd)">
+                  <span class="flex-1 text-left truncate">{{ hidden.workspace.name }}</span>
+                  <span class="text-xs text-muted">{{ 'threads.threadSidebar.show' | transloco }}</span>
+                </button>
+              </li>
+            }
+          }
+          <li class="mt-1 border-t border-base-300 pt-1">
+            <button type="button" (click)="openAttendantActivity($event)">
+              {{ 'threads.threadSidebar.attendantActivity' | transloco }}
+            </button>
+          </li>
+        </ul>
+      </details>
+    </label>
+    <div class="inline-flex shrink-0 items-center rounded-lg bg-primary text-primary-content">
+      <button
+        class="btn btn-sm btn-primary btn-square rounded-l-lg rounded-r-none border-0 shadow-none"
+        type="button"
+        data-testid="new-thread"
+        [attr.aria-label]="'threads.threadSidebar.newThread' | transloco"
+        [pkTip]="('threads.threadSidebar.newThread' | transloco) + key('new-thread') + ')'"
+        [disabled]="!store.workspace()"
+        (click)="create()"
+      >
+        <pk-icon name="plus" size="16" />
+      </button>
+      <details pkViewportMenu class="dropdown dropdown-end border-l border-primary-content/20">
+        <summary
+          class="btn btn-sm btn-primary min-h-8 w-7 rounded-l-none rounded-r-lg border-0 px-0 shadow-none list-none"
+          [pkTip]="'threads.threadSidebar.newThreadOptions' | transloco"
+          [attr.aria-label]="'threads.threadSidebar.newThreadOptions' | transloco"
+          data-testid="new-thread-menu"
+          [attr.aria-disabled]="!store.workspace()"
+        >
+          <pk-icon name="chevron-down" size="14" />
+        </summary>
+        <ul
+          class="dropdown-content menu menu-sm bg-base-100 rounded-box border border-base-300 shadow-lg w-60 p-1 z-40"
+        >
+          <li>
+            <button type="button" data-testid="new-in-folder" (click)="menuNewLocal($event, store.workspace()!)">
+              <span class="flex-1 text-left"
+                >{{ 'threads.threadSidebar.inThisFolder' | transloco
+                }}<span class="block text-xs text-muted">{{
+                  'threads.threadSidebar.worksInItselfN'
+                    | transloco: { value1: store.workspaceName() ?? ('threads.threadSidebar.theProject' | transloco) }
+                }}</span></span
+              >
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              data-testid="new-in-worktree"
+              [disabled]="!canWorktree()"
+              [title]="canWorktree() ? '' : ('threads.threadSidebar.aWorktreeNeedsAGitRepository' | transloco)"
+              (click)="menuNewWorktree($event, store.workspace()!)"
+            >
+              <span class="flex-1 text-left"
+                >{{ 'threads.threadSidebar.inANewWorktree' | transloco
+                }}<span class="block text-xs text-muted">{{
+                  canWorktree()
+                    ? ('threads.threadSidebar.itsOwnBranchAndFolderCutFrom' | transloco) +
+                      worktreeBase() +
+                      ('threads.threadSidebar.mergedBackWhenDoneNa7c41' | transloco)
+                    : ('threads.threadSidebar.thisProjectIsNotAGitRepository' | transloco)
+                }}</span></span
+              >
+            </button>
+          </li>
+        </ul>
+      </details>
+    </div>
+  </div>
+
+  <!-- Quick actions for the current project: always visible, never behind a hover. -->
+  @if (current(); as project) {
+    <div class="pk-quick" data-testid="quick-actions" [attr.data-project]="project.workspace.name">
+      <details pkViewportMenu class="dropdown">
+        <summary
+          class="who list-none"
+          data-testid="quick-switch"
+          [pkTip]="'threads.threadSidebar.switchProject' | transloco"
+          [attr.aria-label]="('threads.threadSidebar.switchProjectNow' | transloco) + project.workspace.name"
+        >
+          <span class="pk-ptile" [attr.data-hue]="hue(project.workspace.name)" aria-hidden="true">{{
+            letter(project.workspace.name)
+          }}</span>
+          <span class="nm">{{ project.workspace.name }}</span>
+          @if (project.workspace.branch; as branch) {
+            <span class="br">{{ branch }}</span>
+          }
+          <pk-icon name="chevron-down" class="chev" />
+        </summary>
+        <ul
+          class="dropdown-content menu menu-sm bg-base-100 rounded-box border border-base-300 shadow-lg w-64 p-1 z-40"
+          data-testid="quick-switch-menu"
+        >
+          <li class="menu-title">{{ 'threads.threadSidebar.projects' | transloco }}</li>
+          @for (option of store.visibleProjects(); track option.workspace.cwd; let i = $index) {
+            <li>
+              <button
+                type="button"
+                [attr.aria-current]="option.workspace.cwd === project.workspace.cwd ? 'true' : null"
+                [attr.data-project]="option.workspace.name"
+                (click)="switchProject($event, i)"
+              >
+                <span class="pk-ptile" [attr.data-hue]="hue(option.workspace.name)" aria-hidden="true">{{
+                  letter(option.workspace.name)
+                }}</span>
+                <span class="flex-1 text-left truncate">{{ option.workspace.name }}</span>
+                @if (option.workspace.branch) {
+                  <span class="text-xs text-muted truncate max-w-24">{{ option.workspace.branch }}</span>
+                }
+              </button>
+            </li>
+          }
+        </ul>
+      </details>
+      <div class="qa">
+        <button
+          class="pk-ic"
+          type="button"
+          data-testid="quick-worktree"
+          [pkTip]="('threads.threadSidebar.newWorktreeThread30260' | transloco) + key('new-worktree-thread') + ')'"
+          [attr.aria-label]="'threads.threadSidebar.newWorktreeThread' | transloco"
+          [attr.aria-disabled]="!projectCanWorktree()"
+          (click)="quickWorktree()"
+        >
+          <pk-icon name="worktree" />
+        </button>
+        <button
+          class="pk-ic pk-hide-sm"
+          type="button"
+          data-testid="quick-terminal"
+          [pkTip]="'threads.threadSidebar.terminalInThisProject' | transloco"
+          [attr.aria-label]="'threads.threadSidebar.terminalInThisProject' | transloco"
+          (click)="quickTerminal()"
+        >
+          <pk-icon name="prompt" />
+        </button>
+        <button
+          class="pk-ic"
+          type="button"
+          data-testid="quick-editor"
+          [pkTip]="
+            desktop
+              ? ('threads.threadSidebar.openInEditor' | transloco)
+              : ('threads.threadSidebar.desktopOnly' | transloco)
+          "
+          [attr.aria-label]="'threads.threadSidebar.openInEditor' | transloco"
+          [attr.aria-disabled]="!desktop"
+          (click)="quickEditor()"
+        >
+          <pk-icon name="brackets" />
+        </button>
+        <button
+          class="pk-ic"
+          type="button"
+          data-testid="quick-changes"
+          [pkTip]="
+            changed.count() > 0
+              ? ('threads.threadSidebar.workingTreeChanges7acb4' | transloco) +
+                changed.count() +
+                (changed.count() === 1
+                  ? ('threads.threadSidebar.file' | transloco)
+                  : ('threads.threadSidebar.files' | transloco))
+              : ('threads.threadSidebar.workingTreeChanges' | transloco)
+          "
+          [attr.aria-label]="'threads.threadSidebar.workingTreeChanges' | transloco"
+          (click)="quickChanges()"
+        >
+          <pk-icon name="file" />
+          @if (changed.count() > 0) {
+            <span class="n" data-testid="quick-changes-count">{{ changed.count() }}</span>
+          }
+        </button>
+        <button
+          class="pk-ic"
+          type="button"
+          data-testid="quick-settings"
+          [pkTip]="'threads.threadSidebar.projectSettings' | transloco"
+          [attr.aria-label]="'threads.threadSidebar.projectSettings' | transloco"
+          (click)="quickSettings()"
+        >
+          <pk-icon name="brightness" />
+        </button>
+      </div>
+    </div>
+  }
+
+  <div class="pk-projects" data-testid="projects">
+    <!-- Needs you: every thread waiting on the person, across the projects, with the answer as a chip. Absent when nothing waits. -->
+    @if (needs().total > 0) {
+      <section
+        class="pk-needs"
+        data-testid="needs-you"
+        [attr.aria-label]="'threads.threadSidebar.needsYou' | transloco"
+      >
+        <header>
+          <pk-icon name="alert-circle" size="14" />
+          {{ 'threads.threadSidebar.needsYou' | transloco }}
+          <span class="n" data-testid="needs-count"
+            >{{ needs().total }}
+            {{
+              needs().total === 1
+                ? ('threads.threadSidebar.thread' | transloco)
+                : ('threads.threadSidebar.threads' | transloco)
+            }}</span
+          >
+        </header>
+        @for (item of needs().items; track item.thread.id) {
+          <div
+            class="item"
+            data-testid="needs-item"
+            animate.enter="pk-needs-in"
+            animate.leave="pk-needs-out"
+            [attr.data-thread]="item.thread.id"
+            [attr.data-project]="item.project.name"
+          >
+            <button
+              type="button"
+              class="t"
+              data-testid="needs-open"
+              [title]="label(item.thread)"
+              (click)="openThread($event, item.thread)"
+            >
+              {{ label(item.thread) }}
+            </button>
+            <span class="p">{{ item.project.name }}</span>
+            <span class="q">
+              <span class="qt" data-testid="needs-question">{{ item.question }}</span>
+              @for (chip of item.chips; track chip.key) {
+                <button
+                  type="button"
+                  class="ans"
+                  data-testid="needs-answer"
+                  [class.ghost]="!chip.suggested && chip.key !== 'Allow' && chip.key !== 'open'"
+                  [class.open]="chip.key === 'open'"
+                  [attr.data-suggested]="chip.suggested"
+                  [disabled]="answering().has(item.thread.id)"
+                  [attr.aria-label]="
+                    chip.key === 'open'
+                      ? ('threads.threadSidebar.open' | transloco) + label(item.thread)
+                      : chip.label + ('threads.threadSidebar.for' | transloco) + label(item.thread)
+                  "
+                  (click)="answer($event, item, chip)"
+                >
+                  {{ chip.label }}
+                </button>
+              }
+            </span>
+          </div>
+        }
+      </section>
+    }
+    @for (view of views(); track view.project.workspace.cwd) {
+      @let project = view.project; @let cwd = project.workspace.cwd;
+      <div
+        class="pk-project"
+        [attr.data-collapsed]="!view.expanded"
+        [attr.data-dragging]="dragging() === cwd"
+        [attr.data-over]="over()?.cwd === cwd ? over()?.where : null"
+        [attr.data-project]="project.workspace.name"
+        [attr.data-cwd]="cwd"
+        (dragover)="dragOver($event, cwd)"
+        (drop)="drop($event, cwd)"
+      >
+        <div
+          class="pk-project-head"
+          role="button"
+          tabindex="0"
+          draggable="true"
+          [attr.aria-expanded]="view.expanded"
+          [attr.aria-label]="project.workspace.name"
+          [title]="cwd"
+          (click)="toggleProject($event, view)"
+          (keydown.enter)="toggleProject($event, view)"
+          (keydown.space)="$event.preventDefault(); toggleProject($event, view)"
+          (dragstart)="dragStart($event, cwd)"
+          (dragend)="dragEnd()"
+        >
+          <pk-icon name="chevron-down" class="chev" />
+          <span class="pk-ptile" [attr.data-hue]="hue(project.workspace.name)" aria-hidden="true">{{
+            letter(project.workspace.name)
+          }}</span>
+          <span class="name">{{ project.workspace.name }}</span>
+          @if (view.expanded && project.workspace.branch; as branch) {
+            <span
+              class="branch"
+              [title]="('threads.threadSidebar.branch' | transloco) + branch"
+              data-testid="project-branch"
+            >
+              <pk-icon name="git-branch" />
+              <span>{{ branch }}</span>
+            </span>
+          }
+          <span class="tail">
+            @if (view.expanded) {
+              @if (project.counts.running > 0) {
+                <span
+                  class="pk-count running"
+                  data-testid="count-running"
+                  [title]="project.counts.running + ('threads.threadSidebar.running' | transloco)"
+                  [attr.aria-label]="project.counts.running + ('threads.threadSidebar.running' | transloco)"
+                  >{{ project.counts.running }}</span
+                >
+              }
+              @if (project.counts.waiting > 0) {
+                <button
+                  type="button"
+                  class="pk-count waiting"
+                  data-testid="count-waiting"
+                  [title]="
+                    project.counts.waiting + ('threads.threadSidebar.waitingForAnAnswerOpenTheFirst' | transloco)
+                  "
+                  [attr.aria-label]="project.counts.waiting + ('threads.threadSidebar.waitingForAnAnswer' | transloco)"
+                  (click)="openWaiting($event, firstWaiting(view)!)"
+                >
+                  {{ project.counts.waiting }}
+                </button>
+              }
+            } @else {
+              <!-- Folded: mini tags with the counts, and nothing else beside the name and the menu. -->
+              @for (tag of view.tags; track tag.kind) {
+                @if (tag.kind === 'running') {
+                  <span class="pk-count running mini" data-testid="count-running" [attr.aria-label]="tag.text">{{
+                    tag.text
+                  }}</span>
+                } @else {
+                  <button
+                    type="button"
+                    class="pk-count waiting mini"
+                    data-testid="count-waiting"
+                    [title]="tag.text + ('threads.threadSidebar.forAnAnswerOpenTheFirstQuestion' | transloco)"
+                    [attr.aria-label]="tag.text + ('threads.threadSidebar.forAnAnswer' | transloco)"
+                    (click)="openWaiting($event, firstWaiting(view)!)"
+                  >
+                    {{ tag.text }}
+                  </button>
+                }
+              }
+            }
+            @if (view.collapsedBadge; as badge) {
+              @if (badge === 'context-high' || badge === 'context') {
+                <span
+                  class="pk-gauge"
+                  [attr.data-level]="level(project.context ?? null)"
+                  data-testid="collapsed-state"
+                  [attr.data-kind]="badge"
+                  [title]="
+                    ('threads.threadSidebar.context' | transloco) +
+                    project.context +
+                    ('threads.threadSidebar.fullInTheFullestThread' | transloco)
+                  "
+                >
+                  <pk-run-ring [percent]="project.context ?? 0" [size]="13" />{{ project.context }}%
+                </span>
+              } @else {
+                <span
+                  class="pk-glyph"
+                  [class]="badge"
+                  data-testid="collapsed-state"
+                  [attr.data-kind]="badge"
+                  [title]="glyphLabel(badge)"
+                  role="img"
+                  [attr.aria-label]="glyphLabel(badge)"
+                >
+                  @switch (badge) {
+                    @case ('error') {
+                      <pk-icon name="alert-circle" />
+                    }
+                    @case ('aborted') {
+                      <pk-icon name="stop" />
+                    }
+                    @case ('cli') {
+                      <span class="pk-tag">{{ 'threads.threadSidebar.cli' | transloco }}</span>
+                    }
+                  }
+                </span>
+              }
+            }
+            <button
+              class="pk-ic acts-new"
+              type="button"
+              [pkTip]="('threads.threadSidebar.newThreadIn' | transloco) + project.workspace.name"
+              [attr.aria-label]="('threads.threadSidebar.newThreadIn' | transloco) + project.workspace.name"
+              (click)="newThreadIn($event, cwd)"
+            >
+              <pk-icon name="plus" />
+            </button>
+            <details pkViewportMenu class="dropdown dropdown-end" [attr.data-project-menu]="cwd">
+              <summary
+                class="pk-ic list-none"
+                [pkTip]="'threads.threadSidebar.projectMenu' | transloco"
+                [attr.aria-label]="('threads.threadSidebar.projectMenuFor' | transloco) + project.workspace.name"
+                data-testid="project-menu"
+              >
+                <pk-icon name="more" />
+              </summary>
+              <ul
+                class="dropdown-content menu menu-sm bg-base-100 rounded-box border border-base-300 shadow-lg w-60 p-1 z-40"
+              >
+                <li>
+                  <button type="button" (click)="menuNewThread($event, cwd)">
+                    {{ 'threads.threadSidebar.newThread02057' | transloco }}
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    data-testid="project-new-worktree"
+                    [disabled]="!project.workspace.worktree?.git"
+                    (click)="menuNewWorktree($event, cwd)"
+                  >
+                    {{ 'threads.threadSidebar.newThreadInAWorktree' | transloco }}
+                  </button>
+                </li>
+                <li>
+                  <button type="button" (click)="menuFold($event, view)">
+                    {{
+                      view.expanded
+                        ? ('threads.threadSidebar.collapse' | transloco)
+                        : ('threads.threadSidebar.expand' | transloco)
+                    }}
+                  </button>
+                </li>
+                <li>
+                  <button type="button" (click)="menuMove($event, cwd, -1)">
+                    {{ 'threads.threadSidebar.moveUp' | transloco }}
+                  </button>
+                </li>
+                <li>
+                  <button type="button" (click)="menuMove($event, cwd, 1)">
+                    {{ 'threads.threadSidebar.moveDown' | transloco }}
+                  </button>
+                </li>
+                <li>
+                  <button type="button" (click)="menuAttendant($event, cwd, !project.workspace.attendant)">
+                    {{
+                      project.workspace.attendant
+                        ? ('threads.threadSidebar.turnTheAttendantOffHere' | transloco)
+                        : ('threads.threadSidebar.letTheAttendantWorkHere' | transloco)
+                    }}
+                  </button>
+                </li>
+                <li class="mt-1 border-t border-base-300 pt-1">
+                  <button type="button" (click)="menuHide($event, cwd)">
+                    {{ 'threads.threadSidebar.hideProject' | transloco }}
+                  </button>
+                </li>
+              </ul>
+            </details>
+          </span>
+        </div>
+
+        @if (view.expanded) {
+          <div class="pk-rows">
+            @for (section of view.sections; track section.label) {
+              @if (section.label) {
+                <div class="pk-section">{{ section.label }}</div>
+              }
+              @for (thread of section.threads; track thread.id) {
+                @let status = statusOf(thread); @let ring = thread.state.context;
+                @let beside = gaugeBeside(thread, status);
+                <div
+                  class="pk-thread group cursor-pointer"
+                  role="button"
+                  tabindex="0"
+                  [class.opacity-60]="thread.archived"
+                  [attr.aria-current]="thread.id === store.selectedId() ? 'true' : null"
+                  [attr.data-thread]="thread.id"
+                  [attr.data-state]="thread.state.activity"
+                  [attr.data-unread]="status.kind === 'unread' ? 'true' : null"
+                  (click)="rowClick($event, thread)"
+                  (keydown.enter)="rowClick($event, thread)"
+                >
+                  @if (renaming() === thread.id) {
+                    <input
+                      #rename
+                      pkFocusSelect
+                      class="input input-xs w-full"
+                      [value]="thread.title ?? label(thread)"
+                      [attr.aria-label]="'threads.threadSidebar.threadName' | transloco"
+                      (keydown.enter)="commitRename(thread, rename)"
+                      (keydown.escape)="renaming.set(undefined)"
+                      (blur)="commitRename(thread, rename)"
+                    />
+                  } @else {
+                    <span class="title" [title]="label(thread)">{{ label(thread) }}</span>
+                  }
+
+                  <!-- The summary line: the attendant's summary, else the question a waiting thread asks (and the suggested answer), else the last answer's first line, else the count. -->
+                  @let summary = summaryOf(thread);
+                  <span class="sum">
+                    @if (summary.kind === 'question') {
+                      <button
+                        type="button"
+                        class="pk-schip warn"
+                        data-testid="waiting-badge"
+                        [title]="('threads.threadSidebar.openTheQuestion' | transloco) + summary.question"
+                        (click)="openWaiting($event, thread)"
+                      >
+                        {{ summary.question }}
+                      </button>
+                      @if (summary.answer; as suggestion) {
+                        <button
+                          type="button"
+                          class="pk-schip info"
+                          data-testid="suggestion-chip"
+                          [title]="
+                            ('threads.threadSidebar.theAttendantSuggests' | transloco) +
+                            suggestion.text +
+                            '. ' +
+                            (suggestion.reason ?? '') +
+                            ('threads.threadSidebar.clickToAnswerWithIt' | transloco)
+                          "
+                          (click)="accept($event, thread, suggestion)"
+                        >
+                          {{ 'threads.threadSidebar.suggested' | transloco: { value1: suggestion.text } }}
+                        </button>
+                      }
+                    } @else {
+                      <span class="txt" data-testid="thread-meta">{{ summary.text }}</span>
+                    }
+                  </span>
+
+                  <!-- The status line: the state in words and colour, the small marks, the chips, the time, and the actions. -->
+                  <span class="f" data-testid="thread-status" [attr.data-kind]="status.kind">
+                    <span
+                      class="st"
+                      [attr.data-tone]="status.tone"
+                      [attr.data-testid]="
+                        status.kind === 'context' || status.kind === 'context-high' ? 'thread-gauge' : null
+                      "
+                      [attr.data-level]="
+                        status.kind === 'context' ? 'warn' : status.kind === 'context-high' ? 'err' : null
+                      "
+                      [pkTip]="compact() ? status.label : ''"
+                    >
+                      @switch (status.kind) {
+                        @case ('running') {
+                          <pk-run-ring
+                            class="run-ring"
+                            data-testid="thread-state"
+                            data-kind="running"
+                            [percent]="ring"
+                            [running]="true"
+                            [title]="
+                              ring === null
+                                ? ('threads.threadSidebar.running73989' | transloco)
+                                : ('threads.threadSidebar.runningContextTitle' | transloco: { percent: ring })
+                            "
+                            [label]="
+                              ring === null
+                                ? ('threads.threadSidebar.running73989' | transloco)
+                                : ('threads.threadSidebar.runningContextAria' | transloco: { percent: ring })
+                            "
+                          />
+                        }
+                        @case ('waiting') {
+                          <pk-icon
+                            name="help-circle"
+                            data-testid="thread-state"
+                            data-kind="waiting"
+                            [label]="'threads.threadSidebar.waitingForYourAnswer' | transloco"
+                          />
+                        }
+                        @case ('error') {
+                          <pk-icon
+                            name="alert-circle"
+                            data-testid="thread-state"
+                            data-kind="error"
+                            [label]="'threads.threadSidebar.theLastRunFailed' | transloco"
+                          />
+                        }
+                        @case ('aborted') {
+                          <pk-icon
+                            name="stop"
+                            data-testid="thread-state"
+                            data-kind="aborted"
+                            [label]="'threads.threadSidebar.theLastRunWasAborted' | transloco"
+                          />
+                        }
+                        @case ('unread') {
+                          <span
+                            class="dot"
+                            data-testid="thread-state"
+                            data-kind="unread"
+                            role="img"
+                            [attr.aria-label]="'threads.threadSidebar.finishedSinceYouLastLooked' | transloco"
+                          ></span>
+                        }
+                        @case ('context') {
+                          <pk-run-ring [percent]="ring" />
+                        }
+                        @case ('context-high') {
+                          <pk-run-ring [percent]="ring" />
+                        }
+                      }
+                      <span class="lbl"
+                        >{{ status.label }}
+                        @if (status.kind === 'running' && ring !== null) {
+                          · {{ ring }}%
+                        }
+                      </span>
+                    </span>
+                    @if (beside; as lvl) {
+                      <span
+                        class="pk-gauge"
+                        [attr.data-level]="lvl"
+                        data-testid="thread-gauge"
+                        [pkTip]="
+                          ('threads.threadSidebar.context' | transloco) +
+                          ring +
+                          ('threads.threadSidebar.full' | transloco)
+                        "
+                        [attr.aria-label]="
+                          ('threads.threadSidebar.context' | transloco) +
+                          ring +
+                          ('threads.threadSidebar.full' | transloco)
+                        "
+                      >
+                        <pk-run-ring [percent]="ring" [size]="13" />{{ ring }}%
+                      </span>
+                    }
+                    @if (thread.worktree?.exists) {
+                      <span
+                        class="ic"
+                        data-testid="worktree-badge"
+                        role="img"
+                        [pkTip]="worktreeTitle(thread)"
+                        [attr.aria-label]="worktreeTitle(thread)"
+                      >
+                        <pk-icon name="git-branch" />
+                      </span>
+                    }
+                    @if (thread.state.outcome; as outcome) {
+                      <pk-outcome-badge
+                        [kind]="outcome.kind"
+                        [title]="outcomeLabel(thread)"
+                        (pressed)="openOutcomeMenu($event, thread)"
+                      />
+                    }
+                    @if (cliMark(thread)) {
+                      <span
+                        class="ic cli"
+                        data-testid="thread-state"
+                        data-kind="cli"
+                        role="img"
+                        [pkTip]="glyphLabel('cli')"
+                        [attr.aria-label]="glyphLabel('cli')"
+                        >{{ 'threads.threadSidebar.cli' | transloco }}</span
+                      >
+                    }
+                    @if (labelOf(thread); as suggestion) {
+                      <button
+                        type="button"
+                        class="pk-schip info"
+                        data-testid="suggestion-chip"
+                        [title]="
+                          ('threads.threadSidebar.theAttendantSuggestsLabellingAForkPoint' | transloco) +
+                          suggestion.text +
+                          '”. ' +
+                          (suggestion.reason ?? '') +
+                          ('threads.threadSidebar.clickToApplyIt' | transloco)
+                        "
+                        (click)="accept($event, thread, suggestion)"
+                      >
+                        {{ 'threads.threadSidebar.label' | transloco: { value1: suggestion.text } }}
+                      </button>
+                    }
+                    @if (learnOf(thread); as suggestion) {
+                      <button
+                        type="button"
+                        class="pk-schip info"
+                        data-testid="learn-chip"
+                        [title]="
+                          (suggestion.reason ?? ('threads.threadSidebar.aSkillWasDraftedFromThisThread' | transloco)) +
+                          ('threads.threadSidebar.clickToReadIt' | transloco)
+                        "
+                        (click)="accept($event, thread, suggestion)"
+                      >
+                        {{ learnChipText(suggestion.text) }}
+                      </button>
+                    }
+                    <span class="acts">
+                      <span class="when">{{ when(thread) }}</span>
+                      <button
+                        class="pk-ic opt"
+                        type="button"
+                        data-testid="thread-pin"
+                        [class.on]="thread.pinned"
+                        [pkTip]="
+                          thread.pinned
+                            ? ('threads.threadSidebar.unpin' | transloco)
+                            : ('threads.threadSidebar.pin' | transloco)
+                        "
+                        [attr.aria-label]="
+                          thread.pinned
+                            ? ('threads.threadSidebar.unpin' | transloco)
+                            : ('threads.threadSidebar.pin' | transloco)
+                        "
+                        [attr.aria-pressed]="thread.pinned"
+                        (click)="togglePinned($event, thread)"
+                      >
+                        <pk-icon name="pin" />
+                      </button>
+                      <button
+                        class="pk-ic opt"
+                        type="button"
+                        data-testid="thread-archive"
+                        [pkTip]="
+                          thread.archived
+                            ? ('threads.threadSidebar.unarchive' | transloco)
+                            : ('threads.threadSidebar.archive' | transloco)
+                        "
+                        [attr.aria-label]="
+                          thread.archived
+                            ? ('threads.threadSidebar.unarchive' | transloco)
+                            : ('threads.threadSidebar.archive' | transloco)
+                        "
+                        (click)="toggleThreadArchived($event, thread)"
+                      >
+                        <pk-icon name="archive" />
+                      </button>
+                      <details pkViewportMenu class="dropdown dropdown-end">
+                        <summary
+                          class="pk-ic more list-none"
+                          [attr.aria-label]="'threads.threadSidebar.threadActions' | transloco"
+                          [pkTip]="'threads.threadSidebar.more' | transloco"
+                        >
+                          <pk-icon name="more" />
+                        </summary>
+                        <ul
+                          class="dropdown-content menu menu-sm bg-base-100 rounded-box border border-base-300 shadow-lg w-52 p-1 z-40"
+                        >
+                          <li>
+                            <button type="button" (click)="togglePinned($event, thread)">
+                              {{
+                                thread.pinned
+                                  ? ('threads.threadSidebar.unpin' | transloco)
+                                  : ('threads.threadSidebar.pin' | transloco)
+                              }}
+                            </button>
+                          </li>
+                          <li>
+                            <button type="button" (click)="startRename($event, thread)">
+                              {{ 'threads.threadSidebar.rename' | transloco }}
+                            </button>
+                          </li>
+                          <li>
+                            <button type="button" (click)="fork($event, thread)" [disabled]="thread.messageCount === 0">
+                              {{ 'threads.threadSidebar.fork' | transloco }}
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              type="button"
+                              (click)="clone($event, thread)"
+                              [disabled]="thread.messageCount === 0"
+                            >
+                              {{ 'threads.threadSidebar.clone' | transloco }}
+                            </button>
+                          </li>
+                          @if (thread.worktree?.exists) {
+                            <li>
+                              <button
+                                type="button"
+                                data-testid="menu-sync"
+                                (click)="openWorktree($event, thread, 'sync')"
+                              >
+                                {{
+                                  'threads.threadSidebar.syncWith'
+                                    | transloco
+                                      : { value1: thread.worktree.base ?? ('threads.threadSidebar.base' | transloco) }
+                                }}
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                type="button"
+                                data-testid="menu-merge-back"
+                                (click)="openWorktree($event, thread, 'merge')"
+                              >
+                                {{ 'threads.threadSidebar.mergeBack' | transloco }}
+                              </button>
+                            </li>
+                          }
+                          <li>
+                            <button
+                              type="button"
+                              data-testid="menu-handoff"
+                              [disabled]="!!handoffReason(thread)"
+                              [title]="
+                                handoffReason(thread) ??
+                                ('threads.threadSidebar.moveTheThreadAndItsChangesInto' | transloco)
+                              "
+                              (click)="openHandoff($event, thread, 'handoff')"
+                            >
+                              {{ 'threads.threadSidebar.handOffToLocal' | transloco }}
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              type="button"
+                              data-testid="menu-move"
+                              [disabled]="!!moveReason(thread)"
+                              [title]="
+                                moveReason(thread) ?? ('threads.threadSidebar.moveTheThreadAndTheFolderS' | transloco)
+                              "
+                              (click)="openHandoff($event, thread, 'move')"
+                            >
+                              {{ 'threads.threadSidebar.moveIntoAWorktree' | transloco }}
+                            </button>
+                          </li>
+                          <li>
+                            <button
+                              type="button"
+                              data-testid="menu-branch"
+                              [disabled]="!!branchReason(thread)"
+                              [title]="
+                                branchReason(thread) ?? ('threads.threadSidebar.giveThisWorktreeABranch' | transloco)
+                              "
+                              (click)="createBranch($event, thread)"
+                            >
+                              {{ 'threads.threadSidebar.createBranchHere' | transloco }}
+                            </button>
+                          </li>
+                          <li>
+                            <button type="button" (click)="toggleThreadArchived($event, thread)">
+                              {{
+                                thread.archived
+                                  ? ('threads.threadSidebar.unarchive' | transloco)
+                                  : ('threads.threadSidebar.archive' | transloco)
+                              }}
+                            </button>
+                          </li>
+                          @let learning = learnEntry(thread);
+                          @if (learning.action !== 'learned') {
+                            <li>
+                              <button
+                                type="button"
+                                data-testid="menu-learn"
+                                [disabled]="learning.disabled"
+                                [title]="learning.reason ?? ''"
+                                (click)="learnFrom($event, thread)"
+                              >
+                                {{ learning.label }}
+                              </button>
+                            </li>
+                          }
+                          @for (suggestion of thread.state.suggestions; track suggestion.id) {
+                            <li>
+                              <button type="button" (click)="dismissSuggestion($event, suggestion)">
+                                {{ 'threads.threadSidebar.dismiss' | transloco: { value1: suggestion.text } }}
+                              </button>
+                            </li>
+                          }
+                          <li>
+                            <button
+                              type="button"
+                              class="text-error"
+                              [disabled]="thread.running"
+                              (click)="askDelete($event, thread)"
+                            >
+                              {{ 'threads.threadSidebar.delete' | transloco }}
+                            </button>
+                          </li>
+                        </ul>
+                      </details>
+                    </span>
+                  </span>
+                </div>
+              }
+            }
+            @if (view.threads.length === 0 && !query()) {
+              <p class="text-xs text-muted px-2 py-2">
+                {{ 'threads.threadSidebar.noThreadsYetStartOneWith' | transloco }}
+              </p>
+            }
+          </div>
+        }
+      </div>
+    } @empty {
+      <p class="text-sm text-muted pt-3 px-2">
+        @if (store.workspaces().length === 0) {
+          {{ 'threads.threadSidebar.noProjectYetStartTheBackendIn' | transloco }} <code>pi</code>
+          {{ 'threads.threadSidebar.there' | transloco }}
+        } @else if (query()) {
+          {{ 'threads.threadSidebar.noThreadMatches' | transloco: { value1: query() } }}
+        } @else {
+          {{ 'threads.threadSidebar.everyProjectIsHiddenShowOneFrom' | transloco }}
+        }
+      </p>
+    }
+
+    <!-- Add a project: a ghost row at the bottom of the list (the same folder picker). -->
+    <button type="button" class="pk-add" data-testid="add-project" (click)="openFolder($event)">
+      <pk-icon name="folder-plus" />
+      {{ 'threads.threadSidebar.addAProject' | transloco }}
+    </button>
+  </div>
+
+  <div class="pk-side-foot">
+    <span class="w-2 h-2 rounded-full shrink-0" [class]="dotClass()"></span>
+    <span class="truncate" [title]="backendLabel()">{{ backendLabel() }}</span>
+    <button
+      type="button"
+      class="link link-hover shrink-0 whitespace-nowrap"
+      [class.text-warning]="mcp.needsAttention()"
+      [title]="mcp.attention() ?? ('threads.threadSidebar.connectorsAndMCPServers' | transloco)"
+      data-testid="mcp-count"
+      (click)="bus.openMcpPanel()"
+    >
+      {{ mcp.label() }}
+    </button>
+    <button
+      type="button"
+      class="btn btn-ghost btn-xs btn-square ml-auto"
+      [pkTip]="
+        theme.isDark()
+          ? ('threads.threadSidebar.switchToTheLightTheme' | transloco)
+          : ('threads.threadSidebar.switchToTheDarkTheme' | transloco)
+      "
+      [attr.aria-label]="
+        theme.isDark()
+          ? ('threads.threadSidebar.switchToTheLightTheme' | transloco)
+          : ('threads.threadSidebar.switchToTheDarkTheme' | transloco)
+      "
+      data-testid="theme-toggle"
+      (click)="theme.toggle()"
+    >
+      @if (theme.isDark()) {
+        <!-- the sun: what a click brings -->
+        <pk-icon name="sun" size="16" />
+      } @else {
+        <!-- the moon -->
+        <pk-icon name="moon" size="16" />
+      }
+    </button>
+    <button
+      class="btn btn-ghost btn-xs btn-square"
+      [class.pk-update-dot]="updates.attention()"
+      type="button"
+      [pkTip]="
+        updates.attention()
+          ? ('threads.threadSidebar.settingsUpdatesAvailable' | transloco)
+          : ('threads.threadSidebar.settings' | transloco)
+      "
+      [attr.aria-label]="'threads.threadSidebar.settings' | transloco"
+      [attr.aria-description]="updates.attention() ? 'Updates are available' : null"
+      [attr.data-update]="updates.attention() ? 'outdated' : null"
+      data-testid="settings-button"
+      (click)="bus.openSettings()"
+    >
+      <!-- a gear, not a sun: the theme switch is the button before this one -->
+      <pk-icon name="settings" size="16" />
+    </button>
+    <button
+      type="button"
+      class="btn btn-ghost btn-xs btn-square pk-only-wide"
+      data-testid="sidebar-collapse"
+      [pkTip]="('threads.threadSidebar.hideSidebar9578c' | transloco) + key('toggle-sidebar') + ')'"
+      [attr.aria-label]="'threads.threadSidebar.hideSidebar' | transloco"
+      (click)="prefs.toggleSidebar()"
+    >
+      <pk-icon name="sidebar" size="16" />
+    </button>
+  </div>
+</div>
+
+<!-- The right edge: drag to resize, double-click for the default width, arrow keys in 16px steps (layout.css hides it on the rail and where the sidebar is a drawer). -->
+<div
+  class="pk-resize"
+  role="separator"
+  tabindex="0"
+  aria-orientation="vertical"
+  [attr.aria-label]="'threads.threadSidebar.resizeSidebar' | transloco"
+  [title]="'threads.threadSidebar.dragToResizeDoubleClickToReset' | transloco"
+  data-testid="sidebar-resize"
+  [attr.aria-valuemin]="widthRange.min"
+  [attr.aria-valuemax]="widthRange.max"
+  [attr.aria-valuenow]="prefs.sidebarWidth()"
+  [attr.data-dragging]="resizing() ? 'true' : null"
+  (pointerdown)="startResize($event)"
+  (pointermove)="moveResize($event)"
+  (pointerup)="endResize($event)"
+  (pointercancel)="endResize($event)"
+  (dblclick)="prefs.setSidebarWidth(widthRange.default)"
+  (keydown)="resizeByKey($event)"
+></div>
+
+@if (deleting(); as thread) {
+  <dialog class="modal modal-open" aria-labelledby="delete-title">
+    <div class="modal-box">
+      <h3 id="delete-title" class="font-medium text-lg">{{ 'threads.threadSidebar.deleteThisThread' | transloco }}</h3>
+      <p class="py-3 text-sm">
+        {{ 'threads.threadSidebar.andItsPiSessionFileAreMoved' | transloco: { value1: label(thread) } }}
+        <code>pi --resume</code>.
+      </p>
+      @if (thread.worktree?.exists) {
+        <ng-container *ngTemplateOutlet="worktreeChoice; context: { $implicit: thread }" />
+      }
+      <div class="modal-action">
+        <button class="btn btn-ghost btn-sm" type="button" (click)="deleting.set(undefined)">
+          {{ 'threads.threadSidebar.cancel' | transloco }}
+        </button>
+        <button
+          class="btn btn-error btn-sm"
+          type="button"
+          data-testid="confirm-delete"
+          [disabled]="thread.worktree?.exists && leaving().dirty === undefined"
+          (click)="confirmDelete()"
+        >
+          {{ 'threads.threadSidebar.delete' | transloco }}
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button type="button" (click)="deleting.set(undefined)">{{ 'threads.threadSidebar.close' | transloco }}</button>
+    </form>
+  </dialog>
+}
+@if (archiving(); as thread) {
+  <dialog class="modal modal-open" aria-labelledby="archive-title" data-testid="archive-dialog">
+    <div class="modal-box">
+      <h3 id="archive-title" class="font-medium text-lg">
+        {{ 'threads.threadSidebar.archiveThisThread' | transloco }}
+      </h3>
+      <p class="py-3 text-sm">
+        {{ 'threads.threadSidebar.leavesTheListItStaysIn' | transloco: { value1: label(thread) } }}
+        <code>pi --resume</code> {{ 'threads.threadSidebar.andComesBackWithShowArchivedThreads' | transloco }}
+      </p>
+      <ng-container *ngTemplateOutlet="worktreeChoice; context: { $implicit: thread }" />
+      <div class="modal-action">
+        <button class="btn btn-ghost btn-sm" type="button" (click)="archiving.set(undefined)">
+          {{ 'threads.threadSidebar.cancel' | transloco }}
+        </button>
+        <button
+          class="btn btn-primary btn-sm"
+          type="button"
+          data-testid="confirm-archive"
+          [disabled]="leaving().dirty === undefined"
+          (click)="confirmArchive()"
+        >
+          {{ 'threads.threadSidebar.archive' | transloco }}
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button type="button" (click)="archiving.set(undefined)">{{ 'threads.threadSidebar.close' | transloco }}</button>
+    </form>
+  </dialog>
+}
+
+<ng-template #worktreeChoice let-thread>
+  <fieldset class="flex flex-col gap-2 pb-1" data-testid="worktree-choice">
+    <legend class="text-sm font-medium mb-1">
+      {{ 'threads.threadSidebar.itsWorktree' | transloco }} <code class="text-xs">{{ thread.worktree?.branch }}</code>
+    </legend>
+    <button
+      type="button"
+      class="pk-choice"
+      [attr.aria-pressed]="leaving().choice === 'keep'"
+      data-testid="keep-worktree"
+      (click)="chooseWorktree('keep')"
+    >
+      <span class="lbl">{{ 'threads.threadSidebar.keepTheWorktree' | transloco }}</span>
+      <span class="hint">{{ 'threads.threadSidebar.theFolderAndTheBranchStayWhere' | transloco }}</span>
+    </button>
+    <button
+      type="button"
+      class="pk-choice"
+      [attr.aria-pressed]="leaving().choice === 'remove'"
+      [disabled]="leaving().dirty === undefined"
+      data-testid="remove-worktree"
+      (click)="chooseWorktree('remove')"
+    >
+      <span class="lbl">{{ 'threads.threadSidebar.removeTheWorktree' | transloco }}</span>
+      <span class="hint"
+        >{{ 'threads.threadSidebar.deletesTheFolderTheBranchStays' | transloco }}
+        @if ((leaving().dirty ?? 0) > 0) {
+          <b class="text-warning">{{
+            'threads.threadSidebar.itHasUncommittedThatWouldBeLost'
+              | transloco
+                : {
+                    value1: leaving().dirty,
+                    value2:
+                      leaving().dirty === 1
+                        ? ('threads.threadSidebar.change' | transloco)
+                        : ('threads.threadSidebar.changes' | transloco),
+                  }
+          }}</b>
+        }
+      </span>
+    </button>
+  </fieldset>
+</ng-template>

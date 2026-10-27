@@ -1,0 +1,10 @@
+# The documentation site is a pnpm project of its own (its React and webpack never land in the app's hoisted
+# node_modules), so this file keeps `pnpm install` here from attaching to the root workspace.
+packages: []
+# core-js only prints a funding banner from its install script.
+allowBuilds:
+  core-js: false
+overrides:
+  # @docusaurus/theme-mermaid 3.10.2 accepts Mermaid >=11.6, but with Mermaid 12.2.0 only the first diagram of a page
+  # renders (the later ones come back as an empty svg); its layout plugin @mermaid-js/layout-elk is built against 11.
+  mermaid: 11.17.2

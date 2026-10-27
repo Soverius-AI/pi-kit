@@ -1,0 +1,83 @@
+{
+  "name": "desktop",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/desktop/src",
+  "tags": [
+    "scope:app"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/apps/desktop",
+        "main": "apps/desktop/src/main.ts",
+        "additionalEntryPoints": [
+          "apps/desktop/src/preload.ts",
+          "apps/desktop/src/screenshot-encoder-preload.ts"
+        ],
+        "tsConfig": "apps/desktop/tsconfig.app.json",
+        "platform": "node",
+        "format": [
+          "cjs"
+        ],
+        "bundle": true,
+        "thirdParty": true,
+        "external": [
+          "electron"
+        ],
+        "assets": [
+          {
+            "glob": "splash.html",
+            "input": "apps/desktop/src",
+            "output": "."
+          },
+          {
+            "glob": "icon.png",
+            "input": "apps/desktop/build",
+            "output": "."
+          }
+        ],
+        "target": "node24",
+        "sourcemap": true,
+        "generatePackageJson": false,
+        "deleteOutputPath": true
+      },
+      "configurations": {
+        "development": {
+          "minify": false
+        },
+        "production": {
+          "minify": true,
+          "sourcemap": false
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "start": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        "build"
+      ],
+      "continuous": true,
+      "options": {
+        "command": "electron dist/apps/desktop/main.cjs"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "options": {
+        "command": "vitest run",
+        "cwd": "apps/desktop"
+      }
+    }
+  }
+}

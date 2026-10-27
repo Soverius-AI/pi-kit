@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/schema",
+  "$id": "PiKitDomainLib",
+  "title": "A library inside a pi-kit domain",
+  "type": "object",
+  "properties": {
+    "domain": {
+      "type": "string",
+      "description": "The domain (the folder under libs/ and the scope:<domain> tag), e.g. threads, chat, settings.",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+      "$default": { "$source": "argv", "index": 0 },
+      "x-prompt": "Which domain?"
+    },
+    "type": {
+      "type": "string",
+      "description": "The library type (type:<type> tag): api, feature, ui, data or util.",
+      "enum": ["api", "feature", "ui", "data", "util"],
+      "x-prompt": "Which type of library?"
+    },
+    "name": {
+      "type": "string",
+      "description": "Required for a feature library (libs/<domain>/feature-<name>); the other types are one per domain and take none.",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+    },
+    "testing": {
+      "type": "string",
+      "description": "angular: the Angular unit-test builder with jsdom (stores, components, TestBed); node: plain vitest (pure functions). Defaults to node for util and angular for the rest.",
+      "enum": ["angular", "node"]
+    }
+  },
+  "required": ["domain", "type"]
+}

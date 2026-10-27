@@ -1,0 +1,15 @@
+{
+  "name": "@pi-kit/data-access",
+  "version": "0.0.1",
+  "sideEffects": false,
+  "private": true,
+  "peerDependencies": {
+    "@angular/core": "22.2.3",
+    "@ngrx/signals": "22.0.1",
+    "@pi-kit/protocol": "0.0.1",
+    "@pi-kit/ui": "0.0.1",
+    "rxjs": "7.8.1",
+    "@pi-kit/api": "0.0.1",
+    "@pi-kit/i18n": "0.0.1"
+  }
+}

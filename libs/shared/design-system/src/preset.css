@@ -1,0 +1,32 @@
+/* pi-kit Tailwind v4 preset: maps the design tokens to utilities and registers daisyUI.
+   `themes: false` keeps daisyUI's stock themes out; pi-dark and pi-light come from tokens.css.
+   Apps add their own `@source` paths after importing this file. */
+@import 'tailwindcss' source(none);
+@plugin "daisyui" {
+  themes: false;
+}
+
+@theme inline {
+  --font-sans: var(--pk-font-sans);
+  --font-mono: var(--pk-font-mono);
+
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 18px;
+  --text-base: 14px;
+  --text-base--line-height: 22px;
+  --text-prose: 15px;
+  --text-prose--line-height: 24px;
+  --text-lg: 17px;
+  --text-lg--line-height: 24px;
+  --text-xl: 22px;
+  --text-xl--line-height: 28px;
+
+  --container-measure: var(--pk-measure);
+  --radius-card: 10px;
+  --shadow-float: var(--pk-shadow);
+
+  --color-muted: var(--pk-muted);
+  --color-sunken: var(--pk-sunken);
+}

@@ -1,0 +1,31 @@
+{
+  "name": "review-data",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/review/data/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:review",
+    "type:data"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/review/data/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/review/data/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/review/data/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

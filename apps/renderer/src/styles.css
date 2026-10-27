@@ -1,0 +1,22 @@
+/* Design system (libs/shared/design-system). Tailwind v4 + daisyUI, then tokens, shell and components. */
+@import '../../../libs/shared/design-system/src/fonts.css';
+@import '../../../libs/shared/design-system/src/preset.css';
+@import '../../../libs/shared/design-system/src/tokens.css';
+@import '../../../libs/shared/design-system/src/icons.css';
+@import '../../../libs/shared/design-system/src/layout.css';
+@import '../../../libs/shared/design-system/src/components.css';
+@import '../../../node_modules/@xterm/xterm/css/xterm.css';
+@import '../../../node_modules/@angular/cdk/overlay-prebuilt.css';
+@source "./";
+@source "../../../libs/shared/ui/src";
+@source "../../../libs/threads";
+@source "../../../libs/settings";
+@source "../../../libs/onboarding";
+@source "../../../libs/update";
+@source "../../../libs/chat";
+@source "../../../libs/review";
+@source "../../../libs/files";
+@source "../../../libs/session-tree";
+@source "../../../libs/terminal";
+@source "../../../libs/artifacts";
+@source "../../../libs/shared/design-system/src";

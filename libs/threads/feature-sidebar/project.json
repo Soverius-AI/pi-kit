@@ -1,0 +1,31 @@
+{
+  "name": "threads-feature-sidebar",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/threads/feature-sidebar/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:threads",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/threads/feature-sidebar/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/threads/feature-sidebar/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/threads/feature-sidebar/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

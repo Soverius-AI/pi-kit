@@ -1,0 +1,1251 @@
+/* pi-kit app shell: the grid, header/crumbs/transcript/composer frames and the sidebar,
+   with the breakpoint behaviour from doc/docs/design-system.md.  */
+
+/* ── Shell layout: one sidebar, the main column, an optional side panel ── */
+.pk-shell {
+  display: grid;
+  overflow: hidden;
+  height: 100dvh;
+  /* The sidebar's column: `--pk-threads` (the width the user dragged, ViewPrefs), or 0 while it is collapsed (⌘B). */
+  --pk-threads-col: var(--pk-threads);
+  --pk-panel: clamp(320px, var(--pk-panel-width, 400px), calc(100vw - var(--pk-threads-col) - 480px));
+  grid-template-columns: var(--pk-threads-col) minmax(0, 1fr) 0;
+  grid-template-rows: minmax(0, 1fr) var(--pk-status);
+  grid-template-areas:
+    'threads main panel'
+    'status status status';
+}
+.pk-shell[data-panel='open'] {
+  grid-template-columns: var(--pk-threads-col) minmax(0, 1fr) var(--pk-panel);
+}
+.pk-threads {
+  grid-area: threads;
+  position: relative;
+  background: var(--color-base-100);
+  border-right: 1px solid var(--color-base-300);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pk-main {
+  grid-area: main;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--pk-header) auto minmax(0, 1fr) auto;
+  min-width: 0;
+}
+.pk-main > * {
+  min-width: 0;
+}
+.pk-panel {
+  grid-area: panel;
+  background: var(--color-base-100);
+  border-left: 1px solid var(--color-base-300);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.pk-status {
+  grid-area: status;
+  background: var(--color-base-100);
+  border-top: 1px solid var(--color-base-300);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-shell:not([data-panel='open']) .pk-panel {
+  display: none;
+}
+.pk-panel-resize {
+  position: fixed;
+  top: 0;
+  bottom: var(--pk-status);
+  right: var(--pk-panel);
+  width: 6px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 36;
+}
+.pk-panel-resize:hover,
+.pk-panel-resize:focus-visible {
+  background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+.pk-shell:has(.pk-panel.expanded) .pk-panel-resize {
+  display: none;
+}
+
+.pk-bar {
+  height: var(--pk-header);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-base-300);
+  flex-shrink: 0;
+}
+.pk-header {
+  container: chat-header / inline-size;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 var(--pk-gutter);
+  background: var(--color-base-100);
+  border-bottom: 1px solid var(--color-base-300);
+  min-width: 0;
+}
+.pk-header-actions {
+  min-width: 0;
+}
+.pk-crumbs {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 var(--pk-gutter);
+  font-size: 12px;
+  color: var(--pk-muted);
+  background: var(--color-base-100);
+  border-bottom: 1px solid var(--color-base-300);
+}
+.pk-transcript {
+  overflow-y: auto;
+  padding: 24px var(--pk-gutter) 32px;
+}
+/* A virtualized transcript keeps the reading position itself when spacer heights change; the browser's own anchoring would fight it. */
+.pk-transcript.pk-virtual {
+  overflow-anchor: none;
+}
+.pk-composer {
+  padding: 12px var(--pk-gutter) 16px;
+  background: var(--color-base-200);
+}
+.pk-measure {
+  max-width: var(--pk-measure);
+  margin: 0 auto;
+}
+
+/* Sidebar v2 . Projects are the visible structure: a 40px full-width band (sticky while its threads scroll) with a colour-keyed
+   letter tile, the name at 600, the branch and the live counts; the threads are filled rows inset 12px under it, three lines each (title, what pi is doing, a status line in
+   words and colour). Flat: no bars and no separators. A "Needs you" strip gathers the threads that wait on the person, a strip of quick actions works on the current
+   project, and a collapsed sidebar on a wide window is a 48px rail of project tiles. */
+.pk-threads {
+  padding: 0;
+  overflow: hidden;
+}
+.pk-side-full {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.pk-side-top {
+  height: var(--pk-header);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--color-base-300);
+  flex-shrink: 0;
+}
+.pk-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 3px 0 10px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+  background: var(--color-base-200);
+  color: var(--pk-muted);
+  font-size: 13px;
+}
+.pk-search:focus-within {
+  border-color: var(--color-primary);
+}
+.pk-search > .pk-icon {
+  flex: none;
+}
+.pk-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-base-content);
+  font-size: 13px;
+}
+.pk-search input::placeholder {
+  color: var(--pk-muted);
+}
+.pk-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.pk-search .btn {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  color: var(--pk-muted);
+}
+.pk-search .btn[data-on='true'] {
+  background: var(--color-base-300);
+  color: var(--color-base-content);
+}
+.pk-side-top .join {
+  flex: none;
+}
+/* The menus of the top bar and of the quick actions open over the list, whose sticky bands (z-index 2) would otherwise cover them (a daisyUI join isolates its dropdown). */
+.pk-side-top {
+  position: relative;
+  z-index: 6;
+}
+.pk-quick {
+  position: relative;
+  z-index: 5;
+}
+
+/* Quick actions: always visible, for the current project. */
+.pk-quick {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-base-300);
+  flex-shrink: 0;
+}
+.pk-quick > details {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.pk-quick .who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 6px 0 4px;
+  border-radius: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+.pk-quick .who:hover,
+.pk-quick details[open] > .who {
+  background: var(--color-base-200);
+}
+.pk-quick .who .nm {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pk-quick .who .br {
+  font-family: var(--pk-font-mono);
+  font-size: 11px;
+  color: var(--pk-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex: 0 10 auto;
+}
+.pk-quick .who .chev {
+  width: 12px;
+  height: 12px;
+  color: var(--pk-muted);
+  flex: none;
+}
+.pk-quick .dropdown-content li > button[aria-current='true'] {
+  background: var(--color-base-200);
+}
+.pk-quick .dropdown-content li > button {
+  gap: 8px;
+}
+.pk-quick .qa {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex: none;
+}
+.pk-quick .qa .pk-ic {
+  position: relative;
+  width: 26px;
+  height: 26px;
+}
+.pk-quick .qa .pk-ic[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pk-quick .qa .pk-ic .n {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+}
+
+/* The icon button of the sidebar: 26px, muted, a round base-300 hover. */
+.pk-ic {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--pk-muted);
+  cursor: pointer;
+}
+.pk-ic:hover,
+.pk-ic:focus-visible,
+details[open] > .pk-ic {
+  background: var(--color-base-300);
+  color: var(--color-base-content);
+}
+.pk-ic:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.pk-ic .pk-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.pk-projects {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.pk-projects > * {
+  flex: none;
+}
+
+/* Needs you: a warning-tinted strip across the projects; an item is the title, the project, the question and the answers as chips. Absent when nothing waits. */
+.pk-needs {
+  background: color-mix(in srgb, var(--color-warning) 9%, var(--color-base-100));
+  border-radius: 10px;
+  overflow: hidden;
+}
+.pk-needs > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-warning);
+}
+.pk-needs > header .n {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--pk-muted);
+}
+.pk-needs .item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 8px 10px;
+}
+.pk-needs .item + .item {
+  margin-top: 2px;
+}
+.pk-needs .item:hover {
+  background: color-mix(in srgb, var(--color-warning) 6%, transparent);
+}
+.pk-needs .item .t {
+  font-size: 13px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+}
+.pk-needs .item .t:hover {
+  text-decoration: underline;
+}
+.pk-needs .item .p {
+  font-size: 11px;
+  color: var(--pk-muted);
+  white-space: nowrap;
+}
+.pk-needs .item .q {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pk-needs .item .q .qt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.pk-needs .ans {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.pk-needs .ans:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary) 85%, var(--color-base-content));
+}
+.pk-needs .ans.ghost,
+.pk-needs .ans.open {
+  background: transparent;
+  border: 1px solid var(--color-base-300);
+  color: var(--color-base-content);
+  font-weight: 400;
+}
+.pk-needs .ans.ghost:hover:not(:disabled),
+.pk-needs .ans.open:hover:not(:disabled) {
+  background: var(--color-base-200);
+}
+.pk-needs .ans:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+.pk-needs .ans:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+.pk-needs-in {
+  animation: pk-needs-in 160ms ease-out;
+}
+.pk-needs-out {
+  animation: pk-needs-out 160ms ease-in forwards;
+}
+@keyframes pk-needs-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pk-needs-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+
+/* A project: its band, then its rows. */
+.pk-project {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pk-project[data-over='above']::before,
+.pk-project[data-over='below']::after {
+  content: '';
+  display: block;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-info);
+}
+.pk-project[data-dragging='true'] {
+  opacity: 0.5;
+}
+.pk-project-head {
+  position: sticky;
+  top: -8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  margin: 0 -8px;
+  padding: 0 10px 0 12px;
+  background: color-mix(in srgb, var(--color-base-300) 45%, var(--color-base-100));
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 20px;
+}
+.pk-project-head:hover,
+.pk-project-head:focus-within {
+  background: var(--color-base-300);
+}
+.pk-project-head:has(details[open]) {
+  z-index: 6;
+}
+.pk-project-head:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.pk-project-head .chev {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--pk-muted);
+  transition: transform 120ms ease-out;
+}
+.pk-project[data-collapsed='true'] .pk-project-head .chev {
+  transform: rotate(-90deg);
+}
+.pk-project-head .name {
+  font-weight: 600;
+  min-width: 4ch;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-project[data-collapsed='true'] .pk-project-head .name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pk-project-head .branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 10 auto;
+  font-family: var(--pk-font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--pk-muted);
+}
+.pk-project-head .branch .pk-icon {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+.pk-project-head .branch span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-project-head .tail {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.pk-project-head .acts-new {
+  display: none;
+}
+.pk-project[data-collapsed='false'] .pk-project-head:hover .acts-new,
+.pk-project[data-collapsed='false'] .pk-project-head:focus-within .acts-new {
+  display: inline-grid;
+}
+.pk-ptile {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  background: var(--pk-muted);
+  color: var(--color-base-100);
+}
+.pk-ptile[data-hue='primary'] {
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+}
+.pk-ptile[data-hue='info'] {
+  background: var(--color-info);
+  color: var(--color-info-content);
+}
+.pk-ptile[data-hue='success'] {
+  background: var(--color-success);
+  color: var(--color-success-content);
+}
+.pk-ptile[data-hue='secondary'] {
+  background: var(--color-secondary);
+  color: var(--color-secondary-content);
+}
+.pk-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.pk-count.mini {
+  height: 18px;
+  padding: 0 5px;
+  gap: 3px;
+  font-size: 10px;
+}
+.pk-count.mini::before {
+  width: 5px;
+  height: 5px;
+}
+.pk-count.running {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+}
+.pk-count.running::before,
+.pk-rail-tile .dot[data-kind='run'] {
+  animation: pk-sb-run-pulse 1.4s ease-in-out infinite;
+}
+@keyframes pk-sb-run-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.72);
+  }
+}
+.pk-count.waiting {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+}
+.pk-count::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: currentColor;
+}
+button.pk-count {
+  cursor: pointer;
+}
+button.pk-count:hover {
+  background: color-mix(in srgb, var(--color-warning) 26%, transparent);
+}
+
+.pk-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.pk-section {
+  padding: 16px 12px 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+}
+.pk-rows .pk-section {
+  padding: 8px 8px 1px;
+  font-size: 11px;
+}
+.pk-rows .pk-section:first-child {
+  padding-top: 4px;
+}
+
+/* A thread row: a filled card on the sidebar; the selected one is tinted with primary. Three lines: title, summary, status. */
+.pk-thread {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 6px 8px 6px 10px;
+  border-radius: 8px;
+  background: var(--color-base-200);
+  color: inherit;
+  transition: background 120ms ease-out;
+}
+.pk-thread:hover,
+.pk-thread:focus-within {
+  background: var(--color-base-300);
+}
+.pk-thread:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.pk-thread[aria-current='true'] {
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-base-200));
+}
+.pk-thread[data-reveal] {
+  animation: pk-thread-reveal 1.6s ease-out;
+}
+@keyframes pk-thread-reveal {
+  0%,
+  35% {
+    background: color-mix(in srgb, var(--color-warning) 26%, var(--color-base-200));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-warning) 55%, transparent);
+  }
+}
+.pk-thread[aria-current='true'] .title,
+.pk-thread[data-unread='true'] .title {
+  font-weight: 500;
+}
+.pk-thread .title {
+  font-size: 13px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-thread .sum {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 16px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  overflow: hidden;
+}
+.pk-thread .sum .txt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pk-schip {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  flex: 0 1 auto;
+}
+.pk-schip.warn {
+  border-color: color-mix(in srgb, var(--color-warning) 50%, transparent);
+  color: var(--color-warning);
+}
+.pk-schip.warn:hover {
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+}
+.pk-schip.info {
+  border-color: color-mix(in srgb, var(--color-info) 50%, transparent);
+  color: var(--color-info);
+  flex: none;
+}
+.pk-schip.info:hover {
+  background: color-mix(in srgb, var(--color-info) 14%, transparent);
+}
+.pk-thread .f {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--pk-muted);
+}
+.pk-thread .f .st {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pk-thread .f .st .pk-icon {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+.pk-thread .f .st[data-tone='run'] {
+  color: var(--color-primary);
+}
+.pk-thread .f .st[data-tone='wait'],
+.pk-thread .f .st[data-tone='warn'] {
+  color: var(--color-warning);
+}
+.pk-thread .f .st[data-tone='err'] {
+  color: var(--color-error);
+}
+.pk-thread .f .st .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  flex: none;
+}
+.pk-thread .f .st .run-ring {
+  display: inline-flex;
+  flex: none;
+  animation: pk-sb-context-pulse 1.6s ease-in-out infinite;
+}
+.pk-thread .f .st .run-ring svg {
+  width: 16px;
+  height: 16px;
+}
+.pk-thread .run-ring .track {
+  stroke: currentColor;
+  opacity: 0.2;
+}
+.pk-thread .run-ring .context {
+  stroke: currentColor;
+}
+.pk-thread .run-ring .runner {
+  transform-origin: 8px 8px;
+  animation: pk-sb-spin 1.2s linear infinite;
+}
+@keyframes pk-sb-context-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+@keyframes pk-sb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.pk-thread .f .ic {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+.pk-thread .f .ic .pk-icon {
+  width: 13px;
+  height: 13px;
+}
+.pk-thread .f .ic.cli {
+  font-size: 11px;
+}
+.pk-thread .f .pk-schip {
+  height: 18px;
+}
+.pk-thread .f .when {
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.pk-thread .f .acts {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  margin-right: -4px;
+  flex: none;
+}
+.pk-thread .f .acts .pk-ic {
+  width: 22px;
+  height: 22px;
+}
+.pk-thread .f .acts .pk-ic .pk-icon {
+  width: 14px;
+  height: 14px;
+}
+.pk-thread .f .acts .opt {
+  display: none;
+}
+.pk-thread .f .acts .opt.on {
+  color: var(--color-primary);
+}
+.pk-thread .f .acts .more {
+  opacity: 0.55;
+}
+.pk-thread:hover .f .acts .opt,
+.pk-thread:focus-within .f .acts .opt,
+.pk-thread .f .acts:has([open]) .opt {
+  display: inline-grid;
+}
+.pk-thread:hover .f .acts .more,
+.pk-thread:focus-within .f .acts .more,
+.pk-thread .f .acts .more:hover {
+  opacity: 1;
+}
+.pk-thread:hover .f .when,
+.pk-thread:focus-within .f .when,
+.pk-thread .f:has([open]) .when {
+  display: none;
+}
+/* The state glyphs, computed in the backend and pushed; the collapsed band shows one for a folded project. */
+.pk-glyph {
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+.pk-glyph .pk-icon {
+  width: 14px;
+  height: 14px;
+}
+.pk-glyph.waiting {
+  color: var(--color-warning);
+}
+.pk-glyph.error {
+  color: var(--color-error);
+}
+.pk-glyph.aborted {
+  color: var(--pk-muted);
+}
+.pk-glyph.unread::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--color-primary);
+}
+.pk-glyph.running .loading {
+  width: 14px;
+  height: 14px;
+  color: var(--color-primary);
+}
+.pk-tag {
+  display: inline-block;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  font-size: 12px;
+  line-height: 16px;
+  background: var(--color-base-200);
+  color: var(--pk-muted);
+}
+.pk-gauge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--color-warning);
+}
+.pk-gauge .pk-run-ring {
+  --pk-run-ring-size: 13px;
+}
+.pk-gauge[data-level='err'] {
+  color: var(--color-error);
+}
+.pk-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--pk-muted);
+  font-size: 13px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+.pk-add:hover {
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+.pk-add:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.pk-add .pk-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.pk-side-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 36px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--color-base-300);
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+
+/* Compact density ("Thread list: Compact"): the title and the time on one line, the state a small glyph before the time; the summary line, the words and the marks go. */
+html[data-density='compact'] .pk-rows {
+  gap: 2px;
+}
+html[data-density='compact'] .pk-thread {
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+  min-height: 28px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+html[data-density='compact'] .pk-thread .title {
+  flex: 1;
+  min-width: 0;
+}
+html[data-density='compact'] .pk-thread .sum,
+html[data-density='compact'] .pk-thread .f .st .lbl,
+html[data-density='compact'] .pk-thread .f .ic:not(.cli),
+html[data-density='compact'] .pk-thread .f .pk-schip,
+html[data-density='compact'] .pk-thread .f .pk-gauge,
+html[data-density='compact'] .pk-thread .f pk-outcome-badge {
+  display: none;
+}
+html[data-density='compact'] .pk-thread .f {
+  flex-wrap: nowrap;
+  flex: none;
+  margin-left: 8px;
+  gap: 6px;
+}
+html[data-density='compact'] .pk-project-head {
+  height: 34px;
+}
+
+/* Sidebar collapse and resize (layout, ViewPrefs keeps both). The edge is a 6px separator over the border; its line shows on hover, focus and while dragged.
+   Collapsed on a wide window the sidebar is the rail: a 48px column of project tiles; the edge is gone there. Below 1024px the sidebar is a drawer: neither exists. */
+.pk-rail {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  height: 100%;
+  overflow-y: auto;
+}
+.pk-rail > * {
+  flex: none;
+}
+.pk-rail .grow {
+  flex: 1;
+}
+.pk-rail .btn {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+}
+.pk-rail-tile {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.pk-rail-tile:hover {
+  background: var(--color-base-200);
+}
+.pk-rail-tile[aria-current='true'] {
+  background: var(--color-base-300);
+}
+.pk-rail-tile:focus-visible,
+.pk-rail-needs:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+.pk-rail-tile .pk-ptile {
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+}
+.pk-rail-tile .dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  border: 2px solid var(--color-base-100);
+  box-sizing: content-box;
+}
+.pk-rail-tile .dot[data-kind='run'] {
+  background: var(--color-primary);
+}
+.pk-rail-tile .dot[data-kind='wait'] {
+  background: var(--color-warning);
+}
+.pk-rail-needs {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pk-rail-needs:hover {
+  background: color-mix(in srgb, var(--color-warning) 22%, transparent);
+}
+html[data-sidebar='collapsed'] .pk-shell {
+  --pk-threads-col: var(--pk-rail);
+}
+html[data-sidebar='collapsed'] .pk-side-full {
+  display: none;
+}
+html[data-sidebar='collapsed'] .pk-rail {
+  display: flex;
+}
+html[data-sidebar='collapsed'] .pk-resize {
+  display: none;
+}
+.pk-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -3px;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 10;
+}
+.pk-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 2px;
+  background: transparent;
+  transition: background-color 120ms ease-out;
+}
+.pk-resize:hover::after,
+.pk-resize:focus-visible::after,
+.pk-resize[data-dragging='true']::after {
+  background: var(--color-primary);
+}
+.pk-resize:focus-visible {
+  outline: none;
+}
+html[data-sidebar-drag] {
+  cursor: col-resize;
+  user-select: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-needs-in,
+  .pk-needs-out,
+  .pk-thread .f .st .run-ring,
+  .pk-thread .run-ring .runner,
+  .pk-count.running::before,
+  .pk-rail-tile .dot[data-kind='run'],
+  .pk-thread[data-reveal] {
+    animation: none;
+  }
+  .pk-thread,
+  .pk-project-head .chev {
+    transition: none;
+  }
+}
+
+/* ── Responsive shell ───────────────────────────────────────────────────── */
+.pk-toggle {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.pk-only-sm {
+  display: none;
+}
+@media (max-width: 1439px) {
+  .pk-shell {
+    --pk-panel: min(var(--pk-panel-width, 400px), calc(100vw - 32px));
+  }
+  .pk-shell[data-panel='open'] {
+    grid-template-columns: var(--pk-threads-col) minmax(0, 1fr) 0;
+  }
+  .pk-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: var(--pk-status);
+    width: var(--pk-panel);
+    box-shadow: var(--pk-shadow);
+    z-index: 30;
+  }
+}
+@media (max-width: 1023px) {
+  .pk-shell,
+  .pk-shell[data-panel='open'] {
+    grid-template-columns: 0 minmax(0, 1fr) 0;
+  }
+  .pk-threads {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: var(--pk-status);
+    width: var(--pk-threads);
+    z-index: 30;
+    transform: translateX(-110%);
+    transition: transform 120ms ease-out;
+    box-shadow: var(--pk-shadow);
+  }
+  #t-threads:checked ~ .pk-shell .pk-threads {
+    transform: none;
+  }
+  /* A drawer is opened by ☰ whatever the wide window's choice was; the column's controls go. */
+  html[data-sidebar='collapsed'] .pk-side-full {
+    display: flex;
+  }
+  html[data-sidebar='collapsed'] .pk-rail {
+    display: none;
+  }
+  .pk-resize,
+  .pk-only-wide {
+    display: none !important;
+  }
+  .pk-only-sm {
+    display: inline-flex;
+  }
+}
+@media (max-width: 767px) {
+  .pk-panel-resize {
+    display: none;
+  }
+  :root {
+    --pk-gutter: 16px;
+  }
+  .pk-threads {
+    width: min(320px, 88vw);
+    bottom: 0;
+  }
+  .pk-panel {
+    width: 100vw;
+    bottom: 0;
+  }
+  .pk-status {
+    display: none;
+  }
+  .pk-hide-sm {
+    display: none !important;
+  }
+}

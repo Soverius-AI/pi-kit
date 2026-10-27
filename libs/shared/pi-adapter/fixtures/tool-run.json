@@ -1,0 +1,1509 @@
+[
+ {
+  "type": "agent_start"
+ },
+ {
+  "type": "turn_start"
+ },
+ {
+  "type": "message_start",
+  "message": {
+   "role": "system",
+   "content": "",
+   "sections": {
+    "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+    "tools": "<tools>\n- read: Read file contents\n- bash: Execute bash commands (ls, grep, find, etc.)\n- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call\n- write: Create or overwrite files\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+    "rules": "<rules>\n- Use bash for file operations like ls, rg, find\n- Use read to examine files instead of cat or sed.\n- You can inspect PI_* environment variables for current model and session details.\n- Use edit for precise changes (edits[].oldText must match exactly)\n- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls\n- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.\n- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.\n- Use write only for new files or complete rewrites.\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+    "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /Users/wolfmanfx/Development/pi-kit/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /Users/wolfmanfx/Development/pi-kit/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /Users/wolfmanfx/Development/pi-kit/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+    "skills": "<skills>\nThe following skills provide specialized instructions for specific tasks.\nUse the read tool to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>airunway-aks-setup</name>\n    <description>Set up AI Runway on AKS — from bare cluster to running model. Covers cluster verification, controller install, GPU assessment, provider setup, and first deployment. WHEN: &quot;setup AI Runway&quot;, &quot;onboard AKS cluster&quot;, &quot;install AI Runway&quot;, &quot;airunway setup&quot;, &quot;deploy model to AKS&quot;, &quot;GPU inference on AKS&quot;, &quot;KAITO setup on AKS&quot;, &quot;run LLM on AKS&quot;, &quot;vLLM on AKS&quot;, &quot;set up model serving on AKS&quot;, &quot;AI Runway controller&quot;.</description>\n    <location>/Users/wolfmanfx/.agents/skills/airunway-aks-setup/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>angular-developer</name>\n    <description>Generates Angular code and provides architectural guidance. Trigger when creating projects, components, or services, or for best practices on reactivity (signals, linkedSignal, resource), forms, dependency injection, routing, SSR, accessibility (ARIA), animations, styling (component styles, Tailwind CSS), testing, or CLI tooling.</description>\n    <location>/Users/wolfmanfx/.agents/skills/angular-developer/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>angular-new-app</name>\n    <description>Creates a new Angular app using the Angular CLI. This skill should be used whenever a user wants to create a new Angular application and contains important guidelines for how to effectively create a modern Angular application.</description>\n    <location>/Users/wolfmanfx/.agents/skills/angular-new-app/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>appinsights-instrumentation</name>\n    <description>Guidance for instrumenting webapps with Azure Application Insights. Provides telemetry patterns, SDK setup, and configuration references. WHEN: how to instrument app, App Insights SDK, telemetry patterns, what is App Insights, Application Insights guidance, instrumentation examples, APM best practices.</description>\n    <location>/Users/wolfmanfx/.agents/skills/appinsights-instrumentation/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-ai</name>\n    <description>Use for Azure AI: Search, Speech, OpenAI, Document Intelligence. Helps with search, vector/hybrid search, speech-to-text, text-to-speech, transcription, OCR. WHEN: AI Search, query search, vector search, hybrid search, semantic search, speech-to-text, text-to-speech, transcribe, OCR, convert text to speech.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-ai/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-aigateway</name>\n    <description>Configure Azure API Management as an AI Gateway for AI models, MCP tools, and agents. WHEN: semantic caching, token limit, content safety, load balancing, AI model governance, MCP rate limiting, jailbreak detection, add Azure OpenAI backend, add AI Foundry model, test AI gateway, LLM policies, configure AI backend, token metrics, AI cost control, convert API to MCP, import OpenAPI to gateway.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-aigateway/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-cloud-migrate</name>\n    <description>Assess and migrate cross-cloud workloads to Azure with reports and code conversion. Supports Lambda→Functions, Beanstalk/Heroku/App Engine→App Service, Fargate/Kubernetes/Cloud Run/Spring Boot→Container Apps. WHEN: migrate Lambda to Functions, AWS to Azure, migrate Beanstalk, migrate Heroku, migrate App Engine, Cloud Run migration, Fargate to ACA, ECS/Kubernetes/GKE/EKS to Container Apps, Spring Boot to Container Apps, cross-cloud migration.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-cloud-migrate/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-compliance</name>\n    <description>Run Azure compliance and security audits with azqr plus Key Vault expiration checks. Covers best-practice assessment, resource review, policy/compliance validation, and security posture checks. WHEN: compliance scan, security audit, BEFORE running azqr (compliance cli tool), Azure best practices, Key Vault expiration check, expired certificates, expiring secrets, orphaned resources, compliance assessment.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-compliance/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-compute</name>\n    <description>Azure VM and VMSS router for recommendations, pricing, autoscale, orchestration, connectivity troubleshooting, capacity reservations, and Essential Machine Management. WHEN: Azure VM, VMSS, scale set, recommend, compare, server, website, burstable, lightweight, VM family, workload, GPU, learning, simulation, dev/test, backend, autoscale, load balancer, Flexible orchestration, Uniform orchestration, cost estimate, connect, refused, Linux, black screen, reset password, reach VM, port 3389, NSG, troubleshoot, capacity reservation, CRG, reserve VMs, guarantee capacity, pre-provision capacity, CRG association, CRG disassociation, essential machine management, EMM, machine enrollment.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-compute/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-cost</name>\n    <description>Unified Azure cost management: query historical costs, forecast future spending, and optimize to reduce waste. WHEN: &quot;Azure costs&quot;, &quot;Azure spending&quot;, &quot;Azure bill&quot;, &quot;cost breakdown&quot;, &quot;cost by service&quot;, &quot;cost by resource&quot;, &quot;how much am I spending&quot;, &quot;show my bill&quot;, &quot;monthly cost summary&quot;, &quot;cost trends&quot;, &quot;top cost drivers&quot;, &quot;actual cost&quot;, &quot;amortized cost&quot;, &quot;forecast spending&quot;, &quot;projected costs&quot;, &quot;estimate bill&quot;, &quot;future costs&quot;, &quot;budget forecast&quot;, &quot;end of month costs&quot;, &quot;how much will I spend&quot;, &quot;optimize costs&quot;, &quot;reduce spending&quot;, &quot;find cost savings&quot;, &quot;orphaned resources&quot;, &quot;rightsize VMs&quot;, &quot;cost analysis&quot;, &quot;reduce waste&quot;, &quot;unused resources&quot;, &quot;optimize Redis costs&quot;, &quot;cost by tag&quot;, &quot;cost by resource group&quot;, &quot;AKS cost analysis add-on&quot;, &quot;namespace cost&quot;, &quot;cost spike&quot;, &quot;anomaly&quot;, &quot;budget alert&quot;, &quot;AKS cost visibility&quot;. DO NOT USE FOR: deploying resources, provisioning infrastructure, diagnostics, security audits, or estimating costs for new resources not yet deployed.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-cost/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-deploy</name>\n    <description>Execute Azure deployments for ALREADY-PREPARED applications that have existing .azure/deployment-plan.md and infrastructure files. DO NOT use this skill when the user asks to CREATE a new application — use azure-prepare instead. This skill runs azd up, azd deploy, terraform apply, and az deployment commands with built-in error recovery. Requires .azure/deployment-plan.md from azure-prepare and validated status from azure-validate. WHEN: &quot;run azd up&quot;, &quot;run azd deploy&quot;, &quot;execute deployment&quot;, &quot;push to production&quot;, &quot;push to cloud&quot;, &quot;go live&quot;, &quot;ship it&quot;, &quot;bicep deploy&quot;, &quot;terraform apply&quot;, &quot;publish to Azure&quot;, &quot;launch on Azure&quot;. DO NOT USE WHEN: &quot;create and deploy&quot;, &quot;build and deploy&quot;, &quot;create a new app&quot;, &quot;set up infrastructure&quot;, &quot;create and deploy to Azure using Terraform&quot; — use azure-prepare for these.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-deploy/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-diagnostics</name>\n    <description>Debug Azure production issues on Azure using AppLens, Azure Monitor, resource health, and safe triage. WHEN: debug production issues, troubleshoot app service, app service high CPU, app service deployment failure, troubleshoot container apps, troubleshoot functions, troubleshoot AKS, kubectl cannot connect, kube-system/CoreDNS failures, pod pending, crashloop, node not ready, upgrade failures, analyze logs, KQL, insights, image pull failures, cold start issues, health probe failures, resource health, root cause of errors, troubleshoot event hubs, troubleshoot service bus, messaging SDK error, AMQP connection failure, message lock lost, service bus dead letter.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-diagnostics/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-enterprise-infra-planner</name>\n    <description>Architect and provision enterprise Azure infrastructure from workload descriptions. For cloud architects and platform engineers planning networking, identity, security, compliance, and multi-resource topologies with WAF alignment. Generates Bicep or Terraform directly (no azd). WHEN: &apos;plan Azure infrastructure&apos;, &apos;architect Azure landing zone&apos;, &apos;design hub-spoke network&apos;, &apos;plan multi-region DR topology&apos;, &apos;set up VNets firewalls and private endpoints&apos;, &apos;subscription-scope Bicep deployment&apos;, &apos;Azure Backup for VM workloads&apos;. PREFER azure-prepare FOR app-centric workflows.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-enterprise-infra-planner/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-hosted-copilot-sdk</name>\n    <description>Build, deploy, and modify GitHub Copilot SDK apps on Azure. MANDATORY when codebase contains @github/copilot-sdk or CopilotClient in package.json. PREFER OVER azure-prepare when copilot-sdk markers detected. WHEN: copilot SDK, @github/copilot-sdk, copilot-powered app, build copilot app, prepare copilot app, add feature to copilot app, modify copilot app, BYOM, bring your own model, CopilotClient, createSession, sendAndWait, azd init copilot. DO NOT USE FOR: deploying already-prepared copilot-sdk apps (use azure-deploy), general web apps without copilot SDK (use azure-prepare), Copilot Extensions, Foundry agents (use microsoft-foundry).</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-hosted-copilot-sdk/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-kubernetes</name>\n    <description>Plan, create, and configure production-ready Azure Kubernetes Service (AKS) clusters. Covers Day-0 checklist, SKU selection (Automatic vs Standard), networking options (private API server, Azure CNI Overlay, egress configuration), security, and operations (autoscaling, upgrade strategy, cost analysis). WHEN: create AKS environment, provision AKS environment, enable AKS observability, design AKS networking, choose AKS SKU, secure AKS, optimize AKS, rightsize AKS pod, AKS spot nodes, AKS cluster-autoscaler.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-kubernetes/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-kusto</name>\n    <description>Query and analyze data in Azure Data Explorer (Kusto/ADX) using KQL for log analytics, telemetry, and time series analysis. WHEN: KQL queries, Kusto database queries, Azure Data Explorer, ADX clusters, log analytics, time series data, IoT telemetry, anomaly detection.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-kusto/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-messaging</name>\n    <description>Troubleshoot and resolve issues with Azure Messaging SDKs for Event Hubs and Service Bus. Covers connection failures, authentication errors, message processing issues, and SDK configuration problems. WHEN: event hub SDK error, service bus SDK issue, messaging connection failure, AMQP error, event processor host issue, message lock lost, message lock expired, lock renewal, lock renewal batch, send timeout, receiver disconnected, SDK troubleshooting, azure messaging SDK, event hub consumer, service bus queue issue, topic subscription error, enable logging event hub, service bus logging, eventhub python, servicebus java, eventhub javascript, servicebus dotnet, event hub checkpoint, event hub not receiving messages, service bus dead letter, batch processing lock, session lock expired, idle timeout, connection inactive, link detach, slow reconnect, session error, duplicate events, offset reset, receive batch.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-messaging/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-prepare</name>\n    <description>Prepare Azure apps for deployment (infra Bicep/Terraform, azure.yaml, Dockerfiles). Use for create/modernize or create+deploy; not cross-cloud migration (use azure-cloud-migrate). DO NOT USE FOR: copilot-sdk apps (use azure-hosted-copilot-sdk). WHEN: &quot;create app&quot;, &quot;build web app&quot;, &quot;create API&quot;, &quot;create serverless HTTP API&quot;, &quot;create frontend&quot;, &quot;create back end&quot;, &quot;build a service&quot;, &quot;modernize application&quot;, &quot;update application&quot;, &quot;add authentication&quot;, &quot;add caching&quot;, &quot;host on Azure&quot;, &quot;create and deploy&quot;, &quot;deploy to Azure&quot;, &quot;deploy to Azure using Terraform&quot;, &quot;deploy to Azure App Service&quot;, &quot;deploy to Azure App Service using Terraform&quot;, &quot;deploy to Azure Container Apps&quot;, &quot;deploy to Azure Container Apps using Terraform&quot;, &quot;generate Terraform&quot;, &quot;generate Bicep&quot;, &quot;function app&quot;, &quot;timer trigger&quot;, &quot;service bus trigger&quot;, &quot;event-driven function&quot;, &quot;containerized Node.js app&quot;, &quot;social media app&quot;, &quot;static portfolio website&quot;, &quot;todo list with frontend and API&quot;, &quot;prepare my Azure application to use Key Vault&quot;, &quot;managed identity&quot;.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-prepare/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-quotas</name>\n    <description>Check/manage Azure quotas and usage across providers. For deployment planning, capacity validation, region selection. WHEN: &quot;check quotas&quot;, &quot;service limits&quot;, &quot;current usage&quot;, &quot;request quota increase&quot;, &quot;quota exceeded&quot;, &quot;validate capacity&quot;, &quot;regional availability&quot;, &quot;provisioning limits&quot;, &quot;vCPU limit&quot;, &quot;how many vCPUs available in my subscription&quot;.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-quotas/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-rbac</name>\n    <description>Helps users find the right Azure RBAC role for an identity with least privilege access, then generate CLI commands and Bicep code to assign it. Also provides guidance on permissions required to grant roles. WHEN: bicep for role assignment, what role should I assign, least privilege role, RBAC role for, role to read blobs, role for managed identity, custom role definition, assign role to identity, what role do I need to grant access, permissions to assign roles.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-rbac/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-resource-lookup</name>\n    <description>List, find, and show Azure resources across subscriptions or resource groups. Handles prompts like &quot;list the websites in my subscription&quot;, &quot;list my web apps&quot;, &quot;show my app services&quot;, &quot;list virtual machines&quot;, &quot;list my VMs&quot;, &quot;show storage accounts&quot;, &quot;find container apps&quot;, and &quot;what resources do I have&quot;. USE FOR: list websites, list web apps, list app services, show websites in subscription, resource inventory, find resources by tag, tag analysis, orphaned resource discovery (not for cost analysis), unattached disks, count resources by type, cross-subscription lookup, and Azure Resource Graph queries. DO NOT USE FOR: deploying/changing resources (use azure-deploy), cost optimization (use azure-cost), or non-Azure clouds.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-resource-lookup/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-resource-visualizer</name>\n    <description>Analyze Azure resource groups and generate detailed Mermaid architecture diagrams showing the relationships between individual resources. WHEN: create architecture diagram, visualize Azure resources, show resource relationships, generate Mermaid diagram, analyze resource group, diagram my resources, architecture visualization, resource topology, map Azure infrastructure.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-resource-visualizer/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-storage</name>\n    <description>Azure Storage Services including Blob Storage, File Shares, Queue Storage, Table Storage, and Data Lake. Answers questions about storage access tiers (hot, cool, cold, archive), when to use each tier, and tier comparison. Provides object storage, SMB file shares, async messaging, NoSQL key-value, and big data analytics. Includes lifecycle management. USE FOR: blob storage, file shares, queue storage, table storage, data lake, upload files, download blobs, storage accounts, access tiers, storage tiers, hot cool cold archive, storage tier comparison, when to use storage tiers, lifecycle management, Azure Storage concepts. DO NOT USE FOR: SQL databases, Cosmos DB (use azure-prepare), messaging with Event Hubs or Service Bus (use azure-messaging).</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-storage/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-upgrade</name>\n    <description>Assess and upgrade Azure workloads between plans, tiers, or SKUs, or modernize Azure SDK dependencies in source code. WHEN: upgrade Consumption to Flex Consumption, upgrade Azure Functions plan, change hosting plan, function app SKU, migrate App Service to Container Apps, modernize legacy Azure Java SDKs (com.microsoft.azure to com.azure), migrate Azure Cache for Redis (ACR/ACRE) to Azure Managed Redis (AMR).</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-upgrade/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-validate</name>\n    <description>Pre-deployment validation for Azure readiness. Run deep checks on configuration, infrastructure (Bicep or Terraform), RBAC role assignments, managed identity permissions, and prerequisites before deploying. WHEN: validate my app, check deployment readiness, run preflight checks, verify configuration, check if ready to deploy, validate azure.yaml, validate Bicep, test before deploying, troubleshoot deployment errors, validate Azure Functions, validate function app, validate serverless deployment, verify RBAC roles, check role assignments, review managed identity permissions, what-if analysis, validate Container Apps deployment.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-validate/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>entra-agent-id</name>\n    <description>Provision Microsoft Entra Agent Identity Blueprints, BlueprintPrincipals, and per-instance Agent Identities via Microsoft Graph, and configure OAuth 2.0 token exchange (fmi_path, OBO, cross-tenant) including the Microsoft Entra SDK for AgentID sidecar. USE FOR: Agent Identity Blueprint, BlueprintPrincipal, agent OAuth, fmi_path token exchange, agent OBO, Workload Identity Federation for agents, polyglot agent auth, Microsoft.Identity.Web.AgentIdentities. DO NOT USE FOR: standard Entra app registration (use entra-app-registration), Azure RBAC (use azure-rbac), Microsoft Foundry agent authoring (use microsoft-foundry).</description>\n    <location>/Users/wolfmanfx/.agents/skills/entra-agent-id/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>entra-app-registration</name>\n    <description>Guides Microsoft Entra ID app registration, OAuth 2.0 authentication, and MSAL integration. USE FOR: create app registration, register Azure AD app, configure OAuth, set up authentication, add API permissions, generate service principal, MSAL example, console app auth, Entra ID setup, Azure AD authentication. DO NOT USE FOR: Azure RBAC or role assignments (use azure-rbac), Key Vault secrets (use azure-keyvault-expiration-audit), general Azure resource security guidance.</description>\n    <location>/Users/wolfmanfx/.agents/skills/entra-app-registration/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>find-skills</name>\n    <description>Helps users discover and install agent skills when they ask questions like &quot;how do I do X&quot;, &quot;find a skill for X&quot;, &quot;is there a skill that can...&quot;, or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.</description>\n    <location>/Users/wolfmanfx/.agents/skills/find-skills/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>microsoft-foundry</name>\n    <description>Build, deploy, evaluate, optimize, fine-tune, and manage Microsoft Foundry agents, models, and resources end to end. USE FOR: foundry, azd ai agent, azd provision/deploy, hosted agent scaffold/develop/run/deploy/troubleshoot, prompt agent create, create agent, update agent, add tool to agent, invoke agent, agent.yaml, agent insights, pull agent insights, evaluate agent, batch eval, continuous eval, continuous monitoring, agent CI/CD, optimize prompt, improve prompt, prompt optimizer, optimize agent instructions, Agent Optimizer scaffold, dataset curation from traces, deploy model, model fine-tuning (SFT/DPO/RFT), Foundry project, RBAC, role assignment, permissions, quota, capacity, region, deployment failure, AI Services, create Foundry resource, knowledge index, customize deployment, onboard, availability, training-data, grader, distillation, large file upload. DO NOT USE FOR: Azure Functions, App Service, general Azure deploy (use azure-deploy), general Azure prep (use azure-prepare).</description>\n    <location>/Users/wolfmanfx/.agents/skills/microsoft-foundry/SKILL.md</location>\n  </skill>\n</available_skills>\n</skills>",
+    "cwd": "<cwd>\n/var/folders/7z/bw32tbfd2fgcs7gswbhn6bkh0000gn/T/pi-kit-fixture-5lxuIP\n</cwd>"
+   },
+   "timestamp": 1792079408804,
+   "toolsAdded": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "edit",
+     "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path",
+       "edits"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to edit (relative or absolute)"
+       },
+       "edits": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "oldText",
+          "newText"
+         ],
+         "properties": {
+          "oldText": {
+           "type": "string",
+           "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+          },
+          "newText": {
+           "type": "string",
+           "description": "Replacement text for this targeted edit."
+          }
+         }
+        },
+        "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "write",
+     "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path",
+       "content"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to write (relative or absolute)"
+       },
+       "content": {
+        "type": "string",
+        "description": "Content to write to the file"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  }
+ },
+ {
+  "type": "message_end",
+  "message": {
+   "role": "system",
+   "content": "",
+   "sections": {
+    "preamble": "You are an expert coding assistant operating inside pi, a coding agent harness. You help users by reading files, executing commands, editing code, and writing new files.",
+    "tools": "<tools>\n- read: Read file contents\n- bash: Execute bash commands (ls, grep, find, etc.)\n- edit: Make precise file edits with exact text replacement, including multiple disjoint edits in one call\n- write: Create or overwrite files\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n</tools>",
+    "rules": "<rules>\n- Use bash for file operations like ls, rg, find\n- Use read to examine files instead of cat or sed.\n- You can inspect PI_* environment variables for current model and session details.\n- Use edit for precise changes (edits[].oldText must match exactly)\n- When changing multiple separate locations in one file, use one edit call with multiple entries in edits[] instead of multiple edit calls\n- Each edits[].oldText is matched against the original file, not after earlier edits are applied. Do not emit overlapping or nested edits. Merge nearby changes into one edit.\n- Keep edits[].oldText as small as possible while still being unique in the file. Do not pad with large unchanged regions.\n- Use write only for new files or complete rewrites.\n- Be concise in your responses\n- Show file paths clearly when working with files\n</rules>",
+    "docs": "<docs>\nPi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):\n- Main documentation: /Users/wolfmanfx/Development/pi-kit/node_modules/@earendil-works/pi-coding-agent/README.md\n- Additional docs: /Users/wolfmanfx/Development/pi-kit/node_modules/@earendil-works/pi-coding-agent/docs\n- Examples: /Users/wolfmanfx/Development/pi-kit/node_modules/@earendil-works/pi-coding-agent/examples (extensions, custom tools, SDK)\n- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory\n- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md), MCP servers (docs/mcp.md), codemode scripts and non-LLM models such as classifiers and image models (docs/codemode.md)\n- When working on pi topics, read the docs and examples, and follow .md cross-references before implementing\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)\n</docs>",
+    "skills": "<skills>\nThe following skills provide specialized instructions for specific tasks.\nUse the read tool to load a skill's file when the task matches its description.\nWhen a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\n<available_skills>\n  <skill>\n    <name>airunway-aks-setup</name>\n    <description>Set up AI Runway on AKS — from bare cluster to running model. Covers cluster verification, controller install, GPU assessment, provider setup, and first deployment. WHEN: &quot;setup AI Runway&quot;, &quot;onboard AKS cluster&quot;, &quot;install AI Runway&quot;, &quot;airunway setup&quot;, &quot;deploy model to AKS&quot;, &quot;GPU inference on AKS&quot;, &quot;KAITO setup on AKS&quot;, &quot;run LLM on AKS&quot;, &quot;vLLM on AKS&quot;, &quot;set up model serving on AKS&quot;, &quot;AI Runway controller&quot;.</description>\n    <location>/Users/wolfmanfx/.agents/skills/airunway-aks-setup/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>angular-developer</name>\n    <description>Generates Angular code and provides architectural guidance. Trigger when creating projects, components, or services, or for best practices on reactivity (signals, linkedSignal, resource), forms, dependency injection, routing, SSR, accessibility (ARIA), animations, styling (component styles, Tailwind CSS), testing, or CLI tooling.</description>\n    <location>/Users/wolfmanfx/.agents/skills/angular-developer/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>angular-new-app</name>\n    <description>Creates a new Angular app using the Angular CLI. This skill should be used whenever a user wants to create a new Angular application and contains important guidelines for how to effectively create a modern Angular application.</description>\n    <location>/Users/wolfmanfx/.agents/skills/angular-new-app/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>appinsights-instrumentation</name>\n    <description>Guidance for instrumenting webapps with Azure Application Insights. Provides telemetry patterns, SDK setup, and configuration references. WHEN: how to instrument app, App Insights SDK, telemetry patterns, what is App Insights, Application Insights guidance, instrumentation examples, APM best practices.</description>\n    <location>/Users/wolfmanfx/.agents/skills/appinsights-instrumentation/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-ai</name>\n    <description>Use for Azure AI: Search, Speech, OpenAI, Document Intelligence. Helps with search, vector/hybrid search, speech-to-text, text-to-speech, transcription, OCR. WHEN: AI Search, query search, vector search, hybrid search, semantic search, speech-to-text, text-to-speech, transcribe, OCR, convert text to speech.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-ai/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-aigateway</name>\n    <description>Configure Azure API Management as an AI Gateway for AI models, MCP tools, and agents. WHEN: semantic caching, token limit, content safety, load balancing, AI model governance, MCP rate limiting, jailbreak detection, add Azure OpenAI backend, add AI Foundry model, test AI gateway, LLM policies, configure AI backend, token metrics, AI cost control, convert API to MCP, import OpenAPI to gateway.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-aigateway/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-cloud-migrate</name>\n    <description>Assess and migrate cross-cloud workloads to Azure with reports and code conversion. Supports Lambda→Functions, Beanstalk/Heroku/App Engine→App Service, Fargate/Kubernetes/Cloud Run/Spring Boot→Container Apps. WHEN: migrate Lambda to Functions, AWS to Azure, migrate Beanstalk, migrate Heroku, migrate App Engine, Cloud Run migration, Fargate to ACA, ECS/Kubernetes/GKE/EKS to Container Apps, Spring Boot to Container Apps, cross-cloud migration.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-cloud-migrate/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-compliance</name>\n    <description>Run Azure compliance and security audits with azqr plus Key Vault expiration checks. Covers best-practice assessment, resource review, policy/compliance validation, and security posture checks. WHEN: compliance scan, security audit, BEFORE running azqr (compliance cli tool), Azure best practices, Key Vault expiration check, expired certificates, expiring secrets, orphaned resources, compliance assessment.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-compliance/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-compute</name>\n    <description>Azure VM and VMSS router for recommendations, pricing, autoscale, orchestration, connectivity troubleshooting, capacity reservations, and Essential Machine Management. WHEN: Azure VM, VMSS, scale set, recommend, compare, server, website, burstable, lightweight, VM family, workload, GPU, learning, simulation, dev/test, backend, autoscale, load balancer, Flexible orchestration, Uniform orchestration, cost estimate, connect, refused, Linux, black screen, reset password, reach VM, port 3389, NSG, troubleshoot, capacity reservation, CRG, reserve VMs, guarantee capacity, pre-provision capacity, CRG association, CRG disassociation, essential machine management, EMM, machine enrollment.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-compute/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-cost</name>\n    <description>Unified Azure cost management: query historical costs, forecast future spending, and optimize to reduce waste. WHEN: &quot;Azure costs&quot;, &quot;Azure spending&quot;, &quot;Azure bill&quot;, &quot;cost breakdown&quot;, &quot;cost by service&quot;, &quot;cost by resource&quot;, &quot;how much am I spending&quot;, &quot;show my bill&quot;, &quot;monthly cost summary&quot;, &quot;cost trends&quot;, &quot;top cost drivers&quot;, &quot;actual cost&quot;, &quot;amortized cost&quot;, &quot;forecast spending&quot;, &quot;projected costs&quot;, &quot;estimate bill&quot;, &quot;future costs&quot;, &quot;budget forecast&quot;, &quot;end of month costs&quot;, &quot;how much will I spend&quot;, &quot;optimize costs&quot;, &quot;reduce spending&quot;, &quot;find cost savings&quot;, &quot;orphaned resources&quot;, &quot;rightsize VMs&quot;, &quot;cost analysis&quot;, &quot;reduce waste&quot;, &quot;unused resources&quot;, &quot;optimize Redis costs&quot;, &quot;cost by tag&quot;, &quot;cost by resource group&quot;, &quot;AKS cost analysis add-on&quot;, &quot;namespace cost&quot;, &quot;cost spike&quot;, &quot;anomaly&quot;, &quot;budget alert&quot;, &quot;AKS cost visibility&quot;. DO NOT USE FOR: deploying resources, provisioning infrastructure, diagnostics, security audits, or estimating costs for new resources not yet deployed.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-cost/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-deploy</name>\n    <description>Execute Azure deployments for ALREADY-PREPARED applications that have existing .azure/deployment-plan.md and infrastructure files. DO NOT use this skill when the user asks to CREATE a new application — use azure-prepare instead. This skill runs azd up, azd deploy, terraform apply, and az deployment commands with built-in error recovery. Requires .azure/deployment-plan.md from azure-prepare and validated status from azure-validate. WHEN: &quot;run azd up&quot;, &quot;run azd deploy&quot;, &quot;execute deployment&quot;, &quot;push to production&quot;, &quot;push to cloud&quot;, &quot;go live&quot;, &quot;ship it&quot;, &quot;bicep deploy&quot;, &quot;terraform apply&quot;, &quot;publish to Azure&quot;, &quot;launch on Azure&quot;. DO NOT USE WHEN: &quot;create and deploy&quot;, &quot;build and deploy&quot;, &quot;create a new app&quot;, &quot;set up infrastructure&quot;, &quot;create and deploy to Azure using Terraform&quot; — use azure-prepare for these.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-deploy/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-diagnostics</name>\n    <description>Debug Azure production issues on Azure using AppLens, Azure Monitor, resource health, and safe triage. WHEN: debug production issues, troubleshoot app service, app service high CPU, app service deployment failure, troubleshoot container apps, troubleshoot functions, troubleshoot AKS, kubectl cannot connect, kube-system/CoreDNS failures, pod pending, crashloop, node not ready, upgrade failures, analyze logs, KQL, insights, image pull failures, cold start issues, health probe failures, resource health, root cause of errors, troubleshoot event hubs, troubleshoot service bus, messaging SDK error, AMQP connection failure, message lock lost, service bus dead letter.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-diagnostics/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-enterprise-infra-planner</name>\n    <description>Architect and provision enterprise Azure infrastructure from workload descriptions. For cloud architects and platform engineers planning networking, identity, security, compliance, and multi-resource topologies with WAF alignment. Generates Bicep or Terraform directly (no azd). WHEN: &apos;plan Azure infrastructure&apos;, &apos;architect Azure landing zone&apos;, &apos;design hub-spoke network&apos;, &apos;plan multi-region DR topology&apos;, &apos;set up VNets firewalls and private endpoints&apos;, &apos;subscription-scope Bicep deployment&apos;, &apos;Azure Backup for VM workloads&apos;. PREFER azure-prepare FOR app-centric workflows.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-enterprise-infra-planner/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-hosted-copilot-sdk</name>\n    <description>Build, deploy, and modify GitHub Copilot SDK apps on Azure. MANDATORY when codebase contains @github/copilot-sdk or CopilotClient in package.json. PREFER OVER azure-prepare when copilot-sdk markers detected. WHEN: copilot SDK, @github/copilot-sdk, copilot-powered app, build copilot app, prepare copilot app, add feature to copilot app, modify copilot app, BYOM, bring your own model, CopilotClient, createSession, sendAndWait, azd init copilot. DO NOT USE FOR: deploying already-prepared copilot-sdk apps (use azure-deploy), general web apps without copilot SDK (use azure-prepare), Copilot Extensions, Foundry agents (use microsoft-foundry).</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-hosted-copilot-sdk/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-kubernetes</name>\n    <description>Plan, create, and configure production-ready Azure Kubernetes Service (AKS) clusters. Covers Day-0 checklist, SKU selection (Automatic vs Standard), networking options (private API server, Azure CNI Overlay, egress configuration), security, and operations (autoscaling, upgrade strategy, cost analysis). WHEN: create AKS environment, provision AKS environment, enable AKS observability, design AKS networking, choose AKS SKU, secure AKS, optimize AKS, rightsize AKS pod, AKS spot nodes, AKS cluster-autoscaler.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-kubernetes/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-kusto</name>\n    <description>Query and analyze data in Azure Data Explorer (Kusto/ADX) using KQL for log analytics, telemetry, and time series analysis. WHEN: KQL queries, Kusto database queries, Azure Data Explorer, ADX clusters, log analytics, time series data, IoT telemetry, anomaly detection.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-kusto/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-messaging</name>\n    <description>Troubleshoot and resolve issues with Azure Messaging SDKs for Event Hubs and Service Bus. Covers connection failures, authentication errors, message processing issues, and SDK configuration problems. WHEN: event hub SDK error, service bus SDK issue, messaging connection failure, AMQP error, event processor host issue, message lock lost, message lock expired, lock renewal, lock renewal batch, send timeout, receiver disconnected, SDK troubleshooting, azure messaging SDK, event hub consumer, service bus queue issue, topic subscription error, enable logging event hub, service bus logging, eventhub python, servicebus java, eventhub javascript, servicebus dotnet, event hub checkpoint, event hub not receiving messages, service bus dead letter, batch processing lock, session lock expired, idle timeout, connection inactive, link detach, slow reconnect, session error, duplicate events, offset reset, receive batch.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-messaging/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-prepare</name>\n    <description>Prepare Azure apps for deployment (infra Bicep/Terraform, azure.yaml, Dockerfiles). Use for create/modernize or create+deploy; not cross-cloud migration (use azure-cloud-migrate). DO NOT USE FOR: copilot-sdk apps (use azure-hosted-copilot-sdk). WHEN: &quot;create app&quot;, &quot;build web app&quot;, &quot;create API&quot;, &quot;create serverless HTTP API&quot;, &quot;create frontend&quot;, &quot;create back end&quot;, &quot;build a service&quot;, &quot;modernize application&quot;, &quot;update application&quot;, &quot;add authentication&quot;, &quot;add caching&quot;, &quot;host on Azure&quot;, &quot;create and deploy&quot;, &quot;deploy to Azure&quot;, &quot;deploy to Azure using Terraform&quot;, &quot;deploy to Azure App Service&quot;, &quot;deploy to Azure App Service using Terraform&quot;, &quot;deploy to Azure Container Apps&quot;, &quot;deploy to Azure Container Apps using Terraform&quot;, &quot;generate Terraform&quot;, &quot;generate Bicep&quot;, &quot;function app&quot;, &quot;timer trigger&quot;, &quot;service bus trigger&quot;, &quot;event-driven function&quot;, &quot;containerized Node.js app&quot;, &quot;social media app&quot;, &quot;static portfolio website&quot;, &quot;todo list with frontend and API&quot;, &quot;prepare my Azure application to use Key Vault&quot;, &quot;managed identity&quot;.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-prepare/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-quotas</name>\n    <description>Check/manage Azure quotas and usage across providers. For deployment planning, capacity validation, region selection. WHEN: &quot;check quotas&quot;, &quot;service limits&quot;, &quot;current usage&quot;, &quot;request quota increase&quot;, &quot;quota exceeded&quot;, &quot;validate capacity&quot;, &quot;regional availability&quot;, &quot;provisioning limits&quot;, &quot;vCPU limit&quot;, &quot;how many vCPUs available in my subscription&quot;.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-quotas/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-rbac</name>\n    <description>Helps users find the right Azure RBAC role for an identity with least privilege access, then generate CLI commands and Bicep code to assign it. Also provides guidance on permissions required to grant roles. WHEN: bicep for role assignment, what role should I assign, least privilege role, RBAC role for, role to read blobs, role for managed identity, custom role definition, assign role to identity, what role do I need to grant access, permissions to assign roles.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-rbac/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-resource-lookup</name>\n    <description>List, find, and show Azure resources across subscriptions or resource groups. Handles prompts like &quot;list the websites in my subscription&quot;, &quot;list my web apps&quot;, &quot;show my app services&quot;, &quot;list virtual machines&quot;, &quot;list my VMs&quot;, &quot;show storage accounts&quot;, &quot;find container apps&quot;, and &quot;what resources do I have&quot;. USE FOR: list websites, list web apps, list app services, show websites in subscription, resource inventory, find resources by tag, tag analysis, orphaned resource discovery (not for cost analysis), unattached disks, count resources by type, cross-subscription lookup, and Azure Resource Graph queries. DO NOT USE FOR: deploying/changing resources (use azure-deploy), cost optimization (use azure-cost), or non-Azure clouds.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-resource-lookup/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-resource-visualizer</name>\n    <description>Analyze Azure resource groups and generate detailed Mermaid architecture diagrams showing the relationships between individual resources. WHEN: create architecture diagram, visualize Azure resources, show resource relationships, generate Mermaid diagram, analyze resource group, diagram my resources, architecture visualization, resource topology, map Azure infrastructure.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-resource-visualizer/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-storage</name>\n    <description>Azure Storage Services including Blob Storage, File Shares, Queue Storage, Table Storage, and Data Lake. Answers questions about storage access tiers (hot, cool, cold, archive), when to use each tier, and tier comparison. Provides object storage, SMB file shares, async messaging, NoSQL key-value, and big data analytics. Includes lifecycle management. USE FOR: blob storage, file shares, queue storage, table storage, data lake, upload files, download blobs, storage accounts, access tiers, storage tiers, hot cool cold archive, storage tier comparison, when to use storage tiers, lifecycle management, Azure Storage concepts. DO NOT USE FOR: SQL databases, Cosmos DB (use azure-prepare), messaging with Event Hubs or Service Bus (use azure-messaging).</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-storage/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-upgrade</name>\n    <description>Assess and upgrade Azure workloads between plans, tiers, or SKUs, or modernize Azure SDK dependencies in source code. WHEN: upgrade Consumption to Flex Consumption, upgrade Azure Functions plan, change hosting plan, function app SKU, migrate App Service to Container Apps, modernize legacy Azure Java SDKs (com.microsoft.azure to com.azure), migrate Azure Cache for Redis (ACR/ACRE) to Azure Managed Redis (AMR).</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-upgrade/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>azure-validate</name>\n    <description>Pre-deployment validation for Azure readiness. Run deep checks on configuration, infrastructure (Bicep or Terraform), RBAC role assignments, managed identity permissions, and prerequisites before deploying. WHEN: validate my app, check deployment readiness, run preflight checks, verify configuration, check if ready to deploy, validate azure.yaml, validate Bicep, test before deploying, troubleshoot deployment errors, validate Azure Functions, validate function app, validate serverless deployment, verify RBAC roles, check role assignments, review managed identity permissions, what-if analysis, validate Container Apps deployment.</description>\n    <location>/Users/wolfmanfx/.agents/skills/azure-validate/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>entra-agent-id</name>\n    <description>Provision Microsoft Entra Agent Identity Blueprints, BlueprintPrincipals, and per-instance Agent Identities via Microsoft Graph, and configure OAuth 2.0 token exchange (fmi_path, OBO, cross-tenant) including the Microsoft Entra SDK for AgentID sidecar. USE FOR: Agent Identity Blueprint, BlueprintPrincipal, agent OAuth, fmi_path token exchange, agent OBO, Workload Identity Federation for agents, polyglot agent auth, Microsoft.Identity.Web.AgentIdentities. DO NOT USE FOR: standard Entra app registration (use entra-app-registration), Azure RBAC (use azure-rbac), Microsoft Foundry agent authoring (use microsoft-foundry).</description>\n    <location>/Users/wolfmanfx/.agents/skills/entra-agent-id/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>entra-app-registration</name>\n    <description>Guides Microsoft Entra ID app registration, OAuth 2.0 authentication, and MSAL integration. USE FOR: create app registration, register Azure AD app, configure OAuth, set up authentication, add API permissions, generate service principal, MSAL example, console app auth, Entra ID setup, Azure AD authentication. DO NOT USE FOR: Azure RBAC or role assignments (use azure-rbac), Key Vault secrets (use azure-keyvault-expiration-audit), general Azure resource security guidance.</description>\n    <location>/Users/wolfmanfx/.agents/skills/entra-app-registration/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>find-skills</name>\n    <description>Helps users discover and install agent skills when they ask questions like &quot;how do I do X&quot;, &quot;find a skill for X&quot;, &quot;is there a skill that can...&quot;, or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable skill.</description>\n    <location>/Users/wolfmanfx/.agents/skills/find-skills/SKILL.md</location>\n  </skill>\n  <skill>\n    <name>microsoft-foundry</name>\n    <description>Build, deploy, evaluate, optimize, fine-tune, and manage Microsoft Foundry agents, models, and resources end to end. USE FOR: foundry, azd ai agent, azd provision/deploy, hosted agent scaffold/develop/run/deploy/troubleshoot, prompt agent create, create agent, update agent, add tool to agent, invoke agent, agent.yaml, agent insights, pull agent insights, evaluate agent, batch eval, continuous eval, continuous monitoring, agent CI/CD, optimize prompt, improve prompt, prompt optimizer, optimize agent instructions, Agent Optimizer scaffold, dataset curation from traces, deploy model, model fine-tuning (SFT/DPO/RFT), Foundry project, RBAC, role assignment, permissions, quota, capacity, region, deployment failure, AI Services, create Foundry resource, knowledge index, customize deployment, onboard, availability, training-data, grader, distillation, large file upload. DO NOT USE FOR: Azure Functions, App Service, general Azure deploy (use azure-deploy), general Azure prep (use azure-prepare).</description>\n    <location>/Users/wolfmanfx/.agents/skills/microsoft-foundry/SKILL.md</location>\n  </skill>\n</available_skills>\n</skills>",
+    "cwd": "<cwd>\n/var/folders/7z/bw32tbfd2fgcs7gswbhn6bkh0000gn/T/pi-kit-fixture-5lxuIP\n</cwd>"
+   },
+   "timestamp": 1792079408804,
+   "toolsAdded": [
+    {
+     "name": "read",
+     "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to read (relative or absolute)"
+       },
+       "offset": {
+        "type": "number",
+        "description": "Line number to start reading from (1-indexed)"
+       },
+       "limit": {
+        "type": "number",
+        "description": "Maximum number of lines to read"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "bash",
+     "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "command"
+      ],
+      "properties": {
+       "command": {
+        "type": "string",
+        "description": "Shell command to execute"
+       },
+       "timeout": {
+        "type": "number",
+        "description": "Timeout in seconds (optional, no default timeout)"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "edit",
+     "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path",
+       "edits"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to edit (relative or absolute)"
+       },
+       "edits": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "required": [
+          "oldText",
+          "newText"
+         ],
+         "properties": {
+          "oldText": {
+           "type": "string",
+           "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+          },
+          "newText": {
+           "type": "string",
+           "description": "Replacement text for this targeted edit."
+          }
+         }
+        },
+        "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    },
+    {
+     "name": "write",
+     "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+     "parameters": {
+      "type": "object",
+      "required": [
+       "path",
+       "content"
+      ],
+      "properties": {
+       "path": {
+        "type": "string",
+        "description": "Path to the file to write (relative or absolute)"
+       },
+       "content": {
+        "type": "string",
+        "description": "Content to write to the file"
+       }
+      }
+     },
+     "constrainedSampling": {
+      "type": "json_schema",
+      "strict": "prefer"
+     }
+    }
+   ]
+  }
+ },
+ {
+  "type": "message_start",
+  "message": {
+   "role": "user",
+   "content": [
+    {
+     "type": "text",
+     "text": "Use the bash tool to run 'cat note.txt' and then tell me in one short sentence what it contains."
+    }
+   ],
+   "timestamp": 1792079408804
+  }
+ },
+ {
+  "type": "message_end",
+  "message": {
+   "role": "user",
+   "content": [
+    {
+     "type": "text",
+     "text": "Use the bash tool to run 'cat note.txt' and then tell me in one short sentence what it contains."
+    }
+   ],
+   "timestamp": 1792079408804
+  }
+ },
+ {
+  "type": "message_start",
+  "message": {
+   "role": "assistant",
+   "content": [
+    {
+     "type": "thinking",
+     "thinking": "The user is explicitly asking to use cat via bash. The rules say to use read instead of cat, but the user is explicitly requesting bash. I'll follow the user's instructions.\n",
+     "thinkingSignature": "reasoning_content"
+    },
+    {
+     "type": "toolCall",
+     "id": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+     "name": "bash",
+     "arguments": {
+      "command": "cat note.txt"
+     }
+    }
+   ],
+   "api": "openai-completions",
+   "provider": "llama-swap",
+   "model": "qwen3.8-27b",
+   "usage": {
+    "input": 0,
+    "output": 0,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "totalTokens": 0,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "pending",
+   "timestamp": 1792079408866
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_start",
+   "contentIndex": 0
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "The"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " user"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " is"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " explicitly"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " asking"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " to"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " use"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " cat"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " via"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " bash"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "."
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " The"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " rules"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " say"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " to"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " use"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " read"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " instead"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " of"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " cat"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": ","
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " but"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " the"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " user"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " is"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " explicitly"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " requesting"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " bash"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "."
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " I"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "'ll"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " follow"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " the"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " user"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "'s"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " instructions"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "."
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "\n"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "toolcall_start",
+   "contentIndex": 1,
+   "partial": {
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "The user is explicitly asking to use cat via bash. The rules say to use read instead of cat, but the user is explicitly requesting bash. I'll follow the user's instructions.\n",
+      "thinkingSignature": "reasoning_content"
+     },
+     {
+      "type": "toolCall",
+      "id": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+      "name": "bash",
+      "arguments": {
+       "command": "cat note.txt"
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "toolcall_delta",
+   "contentIndex": 1,
+   "delta": "{"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "toolcall_delta",
+   "contentIndex": 1,
+   "delta": "\"command\":\""
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "toolcall_delta",
+   "contentIndex": 1,
+   "delta": "cat"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "toolcall_delta",
+   "contentIndex": 1,
+   "delta": " note"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "toolcall_delta",
+   "contentIndex": 1,
+   "delta": ".txt"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "toolcall_delta",
+   "contentIndex": 1,
+   "delta": "\""
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "toolcall_delta",
+   "contentIndex": 1,
+   "delta": "}"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_end",
+   "contentIndex": 0,
+   "content": "The user is explicitly asking to use cat via bash. The rules say to use read instead of cat, but the user is explicitly requesting bash. I'll follow the user's instructions.\n"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "toolcall_end",
+   "contentIndex": 1,
+   "toolCall": {
+    "type": "toolCall",
+    "id": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+    "name": "bash",
+    "arguments": {
+     "command": "cat note.txt"
+    }
+   }
+  }
+ },
+ {
+  "type": "message_end",
+  "message": {
+   "role": "assistant",
+   "content": [
+    {
+     "type": "thinking",
+     "thinking": "The user is explicitly asking to use cat via bash. The rules say to use read instead of cat, but the user is explicitly requesting bash. I'll follow the user's instructions.\n",
+     "thinkingSignature": "reasoning_content"
+    },
+    {
+     "type": "toolCall",
+     "id": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+     "name": "bash",
+     "arguments": {
+      "command": "cat note.txt"
+     }
+    }
+   ],
+   "api": "openai-completions",
+   "provider": "llama-swap",
+   "model": "qwen3.8-27b",
+   "usage": {
+    "input": 7072,
+    "output": 68,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "reasoning": 0,
+    "totalTokens": 7140,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "toolUse",
+   "timestamp": 1792079408866,
+   "responseId": "chatcmpl-90ZIBNLwjgc25O09MFSuSB2i02eZQpg0",
+   "responseModel": "/Users/wolfmanfx/Models/Qwen3.8-27B/Qwen3.8-27B-UD-Q4_K_XL.gguf",
+   "rawStopReason": "tool_calls",
+   "durationMs": 62514,
+   "thinkingLevel": "medium"
+  }
+ },
+ {
+  "type": "tool_execution_start",
+  "toolCallId": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+  "toolName": "bash",
+  "args": {
+   "command": "cat note.txt"
+  }
+ },
+ {
+  "type": "tool_execution_update",
+  "toolCallId": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+  "toolName": "bash",
+  "args": {
+   "command": "cat note.txt"
+  },
+  "partialResult": {
+   "content": []
+  }
+ },
+ {
+  "type": "tool_execution_update",
+  "toolCallId": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+  "toolName": "bash",
+  "args": {
+   "command": "cat note.txt"
+  },
+  "partialResult": {
+   "content": [
+    {
+     "type": "text",
+     "text": "hello pi-kit\n"
+    }
+   ],
+   "details": {}
+  }
+ },
+ {
+  "type": "tool_execution_end",
+  "toolCallId": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+  "toolName": "bash",
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "hello pi-kit\n"
+    }
+   ],
+   "structuredContent": {
+    "output": "hello pi-kit\n",
+    "truncated": false,
+    "exit_code": 0,
+    "wall_time_seconds": 0
+   }
+  },
+  "isError": false,
+  "durationMs": 12
+ },
+ {
+  "type": "message_start",
+  "message": {
+   "role": "toolResult",
+   "toolCallId": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+   "toolName": "bash",
+   "content": [
+    {
+     "type": "text",
+     "text": "hello pi-kit\n"
+    }
+   ],
+   "isError": false,
+   "durationMs": 12,
+   "timestamp": 1792079471396
+  }
+ },
+ {
+  "type": "message_end",
+  "message": {
+   "role": "toolResult",
+   "toolCallId": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+   "toolName": "bash",
+   "content": [
+    {
+     "type": "text",
+     "text": "hello pi-kit\n"
+    }
+   ],
+   "isError": false,
+   "durationMs": 12,
+   "timestamp": 1792079471396
+  }
+ },
+ {
+  "type": "turn_end",
+  "message": {
+   "role": "assistant",
+   "content": [
+    {
+     "type": "thinking",
+     "thinking": "The user is explicitly asking to use cat via bash. The rules say to use read instead of cat, but the user is explicitly requesting bash. I'll follow the user's instructions.\n",
+     "thinkingSignature": "reasoning_content"
+    },
+    {
+     "type": "toolCall",
+     "id": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+     "name": "bash",
+     "arguments": {
+      "command": "cat note.txt"
+     }
+    }
+   ],
+   "api": "openai-completions",
+   "provider": "llama-swap",
+   "model": "qwen3.8-27b",
+   "usage": {
+    "input": 7072,
+    "output": 68,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "reasoning": 0,
+    "totalTokens": 7140,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "toolUse",
+   "timestamp": 1792079408866,
+   "responseId": "chatcmpl-90ZIBNLwjgc25O09MFSuSB2i02eZQpg0",
+   "responseModel": "/Users/wolfmanfx/Models/Qwen3.8-27B/Qwen3.8-27B-UD-Q4_K_XL.gguf",
+   "rawStopReason": "tool_calls",
+   "durationMs": 62514,
+   "thinkingLevel": "medium"
+  },
+  "toolResults": [
+   {
+    "role": "toolResult",
+    "toolCallId": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+    "toolName": "bash",
+    "content": [
+     {
+      "type": "text",
+      "text": "hello pi-kit\n"
+     }
+    ],
+    "isError": false,
+    "durationMs": 12,
+    "timestamp": 1792079471396
+   }
+  ]
+ },
+ {
+  "type": "turn_start"
+ },
+ {
+  "type": "message_start",
+  "message": {
+   "role": "assistant",
+   "content": [
+    {
+     "type": "thinking",
+     "thinking": "The file contains \"hello pi-kit\".\n",
+     "thinkingSignature": "reasoning_content"
+    },
+    {
+     "type": "text",
+     "text": "It contains the single line \"hello pi-kit\"."
+    }
+   ],
+   "api": "openai-completions",
+   "provider": "llama-swap",
+   "model": "qwen3.8-27b",
+   "usage": {
+    "input": 0,
+    "output": 0,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "totalTokens": 0,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "pending",
+   "timestamp": 1792079471398
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_start",
+   "contentIndex": 0
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "The"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " file"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " contains"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " \""
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "hello"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": " pi"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "-kit"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "\"."
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_delta",
+   "contentIndex": 0,
+   "delta": "\n"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_start",
+   "contentIndex": 1
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": "It"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": " contains"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": " the"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": " single"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": " line"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": " \""
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": "hello"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": " pi"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": "-kit"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_delta",
+   "contentIndex": 1,
+   "delta": "\"."
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "thinking_end",
+   "contentIndex": 0,
+   "content": "The file contains \"hello pi-kit\".\n"
+  }
+ },
+ {
+  "type": "message_update",
+  "assistantMessageEvent": {
+   "type": "text_end",
+   "contentIndex": 1,
+   "content": "It contains the single line \"hello pi-kit\"."
+  }
+ },
+ {
+  "type": "message_end",
+  "message": {
+   "role": "assistant",
+   "content": [
+    {
+     "type": "thinking",
+     "thinking": "The file contains \"hello pi-kit\".\n",
+     "thinkingSignature": "reasoning_content"
+    },
+    {
+     "type": "text",
+     "text": "It contains the single line \"hello pi-kit\"."
+    }
+   ],
+   "api": "openai-completions",
+   "provider": "llama-swap",
+   "model": "qwen3.8-27b",
+   "usage": {
+    "input": 19,
+    "output": 22,
+    "cacheRead": 7139,
+    "cacheWrite": 0,
+    "reasoning": 0,
+    "totalTokens": 7180,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "stop",
+   "timestamp": 1792079471398,
+   "responseId": "chatcmpl-MzCgf2uE84iPn3JwHp6UbnxUfhv8Anxx",
+   "responseModel": "/Users/wolfmanfx/Models/Qwen3.8-27B/Qwen3.8-27B-UD-Q4_K_XL.gguf",
+   "rawStopReason": "stop",
+   "durationMs": 2368,
+   "thinkingLevel": "medium"
+  }
+ },
+ {
+  "type": "turn_end",
+  "message": {
+   "role": "assistant",
+   "content": [
+    {
+     "type": "thinking",
+     "thinking": "The file contains \"hello pi-kit\".\n",
+     "thinkingSignature": "reasoning_content"
+    },
+    {
+     "type": "text",
+     "text": "It contains the single line \"hello pi-kit\"."
+    }
+   ],
+   "api": "openai-completions",
+   "provider": "llama-swap",
+   "model": "qwen3.8-27b",
+   "usage": {
+    "input": 19,
+    "output": 22,
+    "cacheRead": 7139,
+    "cacheWrite": 0,
+    "reasoning": 0,
+    "totalTokens": 7180,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "stop",
+   "timestamp": 1792079471398,
+   "responseId": "chatcmpl-MzCgf2uE84iPn3JwHp6UbnxUfhv8Anxx",
+   "responseModel": "/Users/wolfmanfx/Models/Qwen3.8-27B/Qwen3.8-27B-UD-Q4_K_XL.gguf",
+   "rawStopReason": "stop",
+   "durationMs": 2368,
+   "thinkingLevel": "medium"
+  },
+  "toolResults": []
+ },
+ {
+  "type": "agent_end",
+  "messages": [
+   {
+    "role": "system",
+    "content": "",
+    "timestamp": 1792079408804,
+    "toolsAdded": [
+     {
+      "name": "read",
+      "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp, bmp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+      "parameters": {
+       "type": "object",
+       "required": [
+        "path"
+       ],
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path to the file to read (relative or absolute)"
+        },
+        "offset": {
+         "type": "number",
+         "description": "Line number to start reading from (1-indexed)"
+        },
+        "limit": {
+         "type": "number",
+         "description": "Maximum number of lines to read"
+        }
+       }
+      },
+      "constrainedSampling": {
+       "type": "json_schema",
+       "strict": "prefer"
+      }
+     },
+     {
+      "name": "bash",
+      "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+      "parameters": {
+       "type": "object",
+       "required": [
+        "command"
+       ],
+       "properties": {
+        "command": {
+         "type": "string",
+         "description": "Shell command to execute"
+        },
+        "timeout": {
+         "type": "number",
+         "description": "Timeout in seconds (optional, no default timeout)"
+        }
+       }
+      },
+      "constrainedSampling": {
+       "type": "json_schema",
+       "strict": "prefer"
+      }
+     },
+     {
+      "name": "edit",
+      "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+      "parameters": {
+       "type": "object",
+       "required": [
+        "path",
+        "edits"
+       ],
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path to the file to edit (relative or absolute)"
+        },
+        "edits": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "required": [
+           "oldText",
+           "newText"
+          ],
+          "properties": {
+           "oldText": {
+            "type": "string",
+            "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."
+           },
+           "newText": {
+            "type": "string",
+            "description": "Replacement text for this targeted edit."
+           }
+          }
+         },
+         "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."
+        }
+       }
+      },
+      "constrainedSampling": {
+       "type": "json_schema",
+       "strict": "prefer"
+      }
+     },
+     {
+      "name": "write",
+      "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+      "parameters": {
+       "type": "object",
+       "required": [
+        "path",
+        "content"
+       ],
+       "properties": {
+        "path": {
+         "type": "string",
+         "description": "Path to the file to write (relative or absolute)"
+        },
+        "content": {
+         "type": "string",
+         "description": "Content to write to the file"
+        }
+       }
+      },
+      "constrainedSampling": {
+       "type": "json_schema",
+       "strict": "prefer"
+      }
+     }
+    ]
+   },
+   {
+    "role": "user",
+    "content": [
+     {
+      "type": "text",
+      "text": "Use the bash tool to run 'cat note.txt' and then tell me in one short sentence what it contains."
+     }
+    ],
+    "timestamp": 1792079408804
+   },
+   {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "The user is explicitly asking to use cat via bash. The rules say to use read instead of cat, but the user is explicitly requesting bash. I'll follow the user's instructions.\n",
+      "thinkingSignature": "reasoning_content"
+     },
+     {
+      "type": "toolCall",
+      "id": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+      "name": "bash",
+      "arguments": {
+       "command": "cat note.txt"
+      }
+     }
+    ],
+    "api": "openai-completions",
+    "provider": "llama-swap",
+    "model": "qwen3.8-27b",
+    "usage": {
+     "input": 7072,
+     "output": 68,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "reasoning": 0,
+     "totalTokens": 7140,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "stopReason": "toolUse",
+    "timestamp": 1792079408866,
+    "responseId": "chatcmpl-90ZIBNLwjgc25O09MFSuSB2i02eZQpg0",
+    "responseModel": "/Users/wolfmanfx/Models/Qwen3.8-27B/Qwen3.8-27B-UD-Q4_K_XL.gguf",
+    "rawStopReason": "tool_calls",
+    "durationMs": 62514,
+    "thinkingLevel": "medium"
+   },
+   {
+    "role": "toolResult",
+    "toolCallId": "5biy3bVMopnLeBdw77iOsq4Gfqnd9a40",
+    "toolName": "bash",
+    "content": [
+     {
+      "type": "text",
+      "text": "hello pi-kit\n"
+     }
+    ],
+    "isError": false,
+    "durationMs": 12,
+    "timestamp": 1792079471396
+   },
+   {
+    "role": "assistant",
+    "content": [
+     {
+      "type": "thinking",
+      "thinking": "The file contains \"hello pi-kit\".\n",
+      "thinkingSignature": "reasoning_content"
+     },
+     {
+      "type": "text",
+      "text": "It contains the single line \"hello pi-kit\"."
+     }
+    ],
+    "api": "openai-completions",
+    "provider": "llama-swap",
+    "model": "qwen3.8-27b",
+    "usage": {
+     "input": 19,
+     "output": 22,
+     "cacheRead": 7139,
+     "cacheWrite": 0,
+     "reasoning": 0,
+     "totalTokens": 7180,
+     "cost": {
+      "input": 0,
+      "output": 0,
+      "cacheRead": 0,
+      "cacheWrite": 0,
+      "total": 0
+     }
+    },
+    "stopReason": "stop",
+    "timestamp": 1792079471398,
+    "responseId": "chatcmpl-MzCgf2uE84iPn3JwHp6UbnxUfhv8Anxx",
+    "responseModel": "/Users/wolfmanfx/Models/Qwen3.8-27B/Qwen3.8-27B-UD-Q4_K_XL.gguf",
+    "rawStopReason": "stop",
+    "durationMs": 2368,
+    "thinkingLevel": "medium"
+   }
+  ],
+  "willRetry": false
+ },
+ {
+  "type": "agent_settled",
+  "aborted": false
+ }
+]

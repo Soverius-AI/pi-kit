@@ -1,0 +1,31 @@
+{
+  "name": "threads-data",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/threads/data/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:threads",
+    "type:data"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/threads/data/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/threads/data/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/threads/data/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

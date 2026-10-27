@@ -1,0 +1,100 @@
+diff --git a/src/v0_9/processing/message-processor.js b/src/v0_9/processing/message-processor.js
+index fb88a03e71a3b31cadfeac8d2a13b936c219a901..edbd46c076c50ee4ce2198b1d3d8d4bcd59d8787 100644
+--- a/src/v0_9/processing/message-processor.js
++++ b/src/v0_9/processing/message-processor.js
+@@ -16,7 +16,8 @@
+ import { SurfaceModel } from '../state/surface-model.js';
+ import { SurfaceGroupModel } from '../state/surface-group-model.js';
+ import { ComponentModel } from '../state/component-model.js';
+-import { zodToJsonSchema } from 'zod-to-json-schema';
++import { toJSONSchema } from 'zod';
++const zodToJsonSchema = (schema, options = {}) => toJSONSchema(schema, { target: options.target === 'openApi3' ? 'openapi-3.0' : 'draft-07', unrepresentable: 'any', io: 'input' });
+ import { A2uiStateError, A2uiValidationError } from '../errors.js';
+ /**
+  * The central processor for A2UI messages.
+diff --git a/src/v0_9/rendering/generic-binder.js b/src/v0_9/rendering/generic-binder.js
+index 0afdbc74118454c396ef41bc9a970e64921384c5..b3a11b56347a91fe51fa6e82f9571ac4b975b3ac 100644
+--- a/src/v0_9/rendering/generic-binder.js
++++ b/src/v0_9/rendering/generic-binder.js
+@@ -27,44 +27,44 @@ export function scrapeSchemaBehavior(schema) {
+ function getFieldBehavior(type, propertyName) {
+     let current = type;
+     // Unwrap optionals/nullables/defaults
+-    while (current._def.typeName === 'ZodOptional' ||
+-        current._def.typeName === 'ZodNullable' ||
+-        current._def.typeName === 'ZodDefault') {
+-        current = current._def.innerType;
++    while (current._zod.def.type === 'optional' ||
++        current._zod.def.type === 'nullable' ||
++        current._zod.def.type === 'default') {
++        current = current._zod.def.innerType;
+     }
+     if (propertyName === 'checks') {
+         return { type: 'CHECKABLE' };
+     }
+-    // Structural matching for A2UI primitives using typeName to avoid dual-module instanceof issues
+-    if (current._def.typeName === 'ZodUnion') {
+-        const options = current._def.options;
++    // Structural matching for A2UI primitives using Zod 4 type tags to avoid dual-module instanceof issues
++    if (current._zod.def.type === 'union') {
++        const options = current._zod.def.options;
+         // ActionSchema is a union containing { event: ... }
+-        const isAction = options.some(o => o._def.typeName === 'ZodObject' && o._def.shape().event);
++        const isAction = options.some(o => o._zod.def.type === 'object' && o.shape.event);
+         if (isAction)
+             return { type: 'ACTION' };
+         // Dynamic strings/values are unions containing DataBindingSchema { path: ... } but NOT { componentId: ... }
+-        const isDynamic = options.some(o => o._def.typeName === 'ZodObject' && o._def.shape().path && !o._def.shape().componentId);
++        const isDynamic = options.some(o => o._zod.def.type === 'object' && o.shape.path && !o.shape.componentId);
+         if (isDynamic)
+             return { type: 'DYNAMIC' };
+         // ChildList is a union containing an array and an object with { componentId, path }
+-        const isChildList = options.some(o => o._def.typeName === 'ZodObject' && o._def.shape().componentId && o._def.shape().path);
++        const isChildList = options.some(o => o._zod.def.type === 'object' && o.shape.componentId && o.shape.path);
+         if (isChildList)
+             return { type: 'STRUCTURAL' };
+     }
+-    else if (current._def.typeName === 'ZodString') {
++    else if (current._zod.def.type === 'string') {
+         // ComponentId falls back to STATIC since we can't perfectly identify it, which is fine because STATIC returns strings as-is.
+     }
+     // Recursive array scraping
+-    if (current._def.typeName === 'ZodArray') {
++    if (current._zod.def.type === 'array') {
+         return {
+             type: 'ARRAY',
+-            element: getFieldBehavior(current._def.type),
++            element: getFieldBehavior(current.element),
+         };
+     }
+     // Recursive object scraping
+-    if (current._def.typeName === 'ZodObject') {
++    if (current._zod.def.type === 'object') {
+         const shape = {};
+-        const objShape = current._def.shape();
++        const objShape = current.shape;
+         for (const [key, value] of Object.entries(objShape)) {
+             shape[key] = getFieldBehavior(value, key);
+         }
+diff --git a/src/v0_9/schema/common-types.js b/src/v0_9/schema/common-types.js
+index 91f6f988ebed82e8d329fe75ba19cb5f6b4168b8..9276ab2c31fc9a19c4fc936bb50b7298df958a00 100644
+--- a/src/v0_9/schema/common-types.js
++++ b/src/v0_9/schema/common-types.js
+@@ -22,7 +22,7 @@ export const DataBindingSchema = z
+ export const FunctionCallSchema = z
+     .object({
+     call: z.string().describe('The name of the function to call.'),
+-    args: z.record(z.any()).describe('Arguments passed to the function.'),
++    args: z.record(z.string(), z.any()).describe('Arguments passed to the function.'),
+     returnType: z
+         .enum(['string', 'number', 'boolean', 'array', 'object', 'any', 'void'])
+         .default('boolean'),
+@@ -77,7 +77,7 @@ export const ActionSchema = z
+         .object({
+         event: z.object({
+             name: z.string(),
+-            context: z.record(DynamicValueSchema).optional(),
++            context: z.record(z.string(), DynamicValueSchema).optional(),
+         }),
+     })
+         .describe('Triggers a server-side event.'),

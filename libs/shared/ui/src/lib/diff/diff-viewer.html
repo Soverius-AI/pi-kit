@@ -1,0 +1,414 @@
+@if (!compact()) {
+  <div class="hd">
+    <code class="truncate">{{ model().path }}</code>
+    @if (subtitle()) {
+      <span class="muted t-xs pk-hide-sm">{{ subtitle() }}</span>
+    }
+    <span class="ml-auto flex gap-2 t-xs">
+      <span class="text-success">+{{ model().added }}</span>
+      <span class="text-error">−{{ model().removed }}</span>
+    </span>
+    <button
+      type="button"
+      class="btn btn-ghost btn-xs btn-square"
+      [attr.aria-label]="'shared.diffViewer.findInDiff' | transloco"
+      [title]="'shared.diffViewer.findInDiff' | transloco"
+      [attr.aria-expanded]="findOpen()"
+      [disabled]="!rows().length"
+      (click)="openFind()"
+    >
+      <pk-icon name="search" size="14" />
+    </button>
+    <ng-content select="[diffActions]" />
+  </div>
+} @else if (!findOpen() && rows().length) {
+  <div class="pk-diff-compact-tools">
+    <button
+      type="button"
+      class="btn btn-ghost btn-xs btn-square"
+      [attr.aria-label]="'shared.diffViewer.findInDiff' | transloco"
+      [title]="'shared.diffViewer.findInDiff' | transloco"
+      (click)="openFind()"
+    >
+      <pk-icon name="search" size="14" />
+    </button>
+  </div>
+}
+@if (findOpen()) {
+  <div
+    class="pk-diff-find"
+    role="search"
+    [attr.aria-label]="'shared.diffViewer.findInDiff' | transloco"
+    (keydown.escape)="$event.preventDefault(); $event.stopPropagation(); closeFind()"
+  >
+    <pk-icon name="search" size="14" />
+    <input
+      #findField
+      type="text"
+      class="input input-sm"
+      autocomplete="off"
+      spellcheck="false"
+      [attr.aria-label]="'shared.diffViewer.findInDiff' | transloco"
+      [placeholder]="'shared.diffViewer.findInDiff' | transloco"
+      [value]="findQuery()"
+      (input)="search(findField.value)"
+      (keydown)="findKey($event)"
+    />
+    <span class="pk-diff-find-count" role="status" aria-live="polite">
+      @if (findQuery()) {
+        {{
+          findIndex().matches.length
+            ? ('shared.diffViewer.matchCount'
+              | transloco: { current: activeNumber(), total: findIndex().matches.length })
+            : ('shared.diffViewer.noMatches' | transloco)
+        }}
+      }
+    </span>
+    <button
+      type="button"
+      class="btn btn-ghost btn-xs btn-square"
+      [class.btn-active]="matchCase()"
+      [attr.aria-label]="'shared.diffViewer.matchCase' | transloco"
+      [title]="'shared.diffViewer.matchCase' | transloco"
+      [attr.aria-pressed]="matchCase()"
+      (click)="toggleMatchCase()"
+    >
+      {{ 'shared.diffViewer.matchCaseShort' | transloco }}
+    </button>
+    <button
+      type="button"
+      class="btn btn-ghost btn-xs btn-square"
+      [disabled]="!findIndex().matches.length"
+      [attr.aria-label]="'shared.diffViewer.previousMatch' | transloco"
+      [title]="'shared.diffViewer.previousMatch' | transloco"
+      (click)="nextMatch(-1)"
+    >
+      <pk-icon name="chevron-left" size="14" />
+    </button>
+    <button
+      type="button"
+      class="btn btn-ghost btn-xs btn-square"
+      [disabled]="!findIndex().matches.length"
+      [attr.aria-label]="'shared.diffViewer.nextMatch' | transloco"
+      [title]="'shared.diffViewer.nextMatch' | transloco"
+      (click)="nextMatch(1)"
+    >
+      <pk-icon name="chevron-right" size="14" />
+    </button>
+    <button
+      type="button"
+      class="btn btn-ghost btn-xs btn-square"
+      [attr.aria-label]="'shared.diffViewer.closeFind' | transloco"
+      [title]="'shared.diffViewer.closeFind' | transloco"
+      (click)="closeFind()"
+    >
+      <pk-icon name="close" size="14" />
+    </button>
+  </div>
+}
+@if (model().note) {
+  <div class="note t-sm">{{ model().note }}</div>
+}
+@if (model().binary) {
+  <div class="note t-sm muted">{{ 'shared.diffViewer.thisIsABinaryFileThereIs' | transloco }}</div>
+} @else if (model().tooLarge) {
+  <div class="note t-sm muted">{{ 'shared.diffViewer.thisFileIsTooLargeToCompare' | transloco }}</div>
+} @else if (rows().length === 0) {
+  <div class="note t-sm muted">
+    {{
+      model().status === 'A'
+        ? ('shared.diffViewer.theFileIsEmpty' | transloco)
+        : ('shared.diffViewer.theFileHasNoChanges' | transloco)
+    }}
+  </div>
+} @else {
+  @if (mode() === 'split') {
+    <div class="split-head" aria-hidden="true">
+      <span>{{ 'shared.diffViewer.before' | transloco }}</span
+      ><span>{{ 'shared.diffViewer.after' | transloco }}</span>
+    </div>
+    <div
+      #splitBody
+      data-diff-content
+      class="body split-body"
+      [style.grid-template-rows]="
+        viewport.before() + 'px repeat(' + viewport.items().length * 2 + ', auto) ' + viewport.after() + 'px'
+      "
+    >
+      <div class="split-shared pk-diff-spacer" style="grid-row: 1" aria-hidden="true"></div>
+      <div
+        class="split-shared pk-diff-spacer"
+        [style.grid-row]="viewport.items().length * 2 + 2"
+        aria-hidden="true"
+      ></div>
+      @for (side of ['old', 'new']; track side) {
+        <div
+          class="split-pane"
+          [style.grid-column]="side === 'old' ? 1 : 2"
+          [style.grid-row]="'1 / span ' + (viewport.items().length * 2 + 2)"
+          role="region"
+          [attr.aria-label]="(side === 'old' ? 'shared.diffViewer.before' : 'shared.diffViewer.after') | transloco"
+          tabindex="0"
+        >
+          @for (entry of viewport.items(); track entry.row.key; let i = $index) {
+            @let item = entry.row;
+            @if (item.kind === 'split') {
+              <ng-container
+                *ngTemplateOutlet="
+                  half;
+                  context: {
+                    cell: side === 'old' ? item.left : item.right,
+                    old: side === 'old',
+                    commented: side === 'old' ? item.markedOld : item.markedNew,
+                    pressed: hasOn(item, side === 'old' ? 'old' : 'new'),
+                    row: i * 2 + 2,
+                    index: entry.index,
+                  }
+                "
+              />
+            }
+          }
+        </div>
+      }
+      @for (entry of viewport.items(); track entry.row.key; let i = $index) {
+        @let item = entry.row;
+        @if (item.kind === 'hunk') {
+          <div class="split-shared" [style.grid-row]="i * 2 + 2" [attr.data-diff-measure]="entry.index">
+            <ng-container *ngTemplateOutlet="hunk; context: { $implicit: item }" />
+          </div>
+        } @else if (item.comments.length || item.draft) {
+          <div
+            class="split-shared pk-diff-cards"
+            [style.grid-row]="i * 2 + 3"
+            [attr.data-diff-measure]="entry.index"
+            data-diff-extra
+          >
+            <ng-container *ngTemplateOutlet="cards; context: { $implicit: item }" />
+          </div>
+        }
+      }
+    </div>
+  } @else {
+    <div class="body">
+      <div class="rows" data-diff-content>
+        <div class="pk-diff-spacer" [style.height.px]="viewport.before()" aria-hidden="true"></div>
+        @for (entry of viewport.items(); track entry.row.key) {
+          @let item = entry.row;
+          <div class="pk-diff-row" [attr.data-diff-measure]="entry.index">
+            @switch (item.kind) {
+              @case ('hunk') {
+                <ng-container *ngTemplateOutlet="hunk; context: { $implicit: item }" />
+              }
+              @case ('unified') {
+                <div
+                  class="ln"
+                  [class.add]="item.row.kind === 'add'"
+                  [class.del]="item.row.kind === 'del'"
+                  [class.commented]="item.marked"
+                  [attr.data-diff-row]="entry.index"
+                >
+                  @if (!compact()) {
+                    <span class="g">
+                      @if (commentable()) {
+                        <button
+                          type="button"
+                          [attr.aria-pressed]="item.comments.length > 0 || !!item.draft"
+                          [title]="gutterTitle(item.comments.length, !!item.draft)"
+                          [attr.aria-label]="gutterTitle(item.comments.length, !!item.draft)"
+                          (pointerdown)="startDrag(item.anchor, $event)"
+                          (click)="open(item.anchor, $event)"
+                        >
+                          {{ item.comments.length > 0 ? item.comments.length : '+' }}
+                        </button>
+                      }
+                    </span>
+                  }
+                  <span class="no old">{{ item.row.oldNo }}</span>
+                  <span class="no">{{ item.row.newNo }}</span>
+                  <span class="c"
+                    ><ng-container
+                      *ngTemplateOutlet="code; context: { text: item.row.text, index: entry.index, side: 'unified' }"
+                  /></span>
+                </div>
+                <ng-container *ngTemplateOutlet="cards; context: { $implicit: item }" />
+              }
+            }
+          </div>
+        }
+        <div class="pk-diff-spacer" [style.height.px]="viewport.after()" aria-hidden="true"></div>
+      </div>
+    </div>
+  }
+}
+
+<ng-template #hunk let-item>
+  <div class="ln hunk">
+    <span class="g"></span><span class="no old"></span><span class="no"></span>
+    @if (marks()[item.id]; as mark) {
+      <span class="c marked">
+        <span>{{ item.header }}</span>
+        <span
+          class="pk-hunk-mark"
+          data-testid="hunk-label"
+          [attr.data-label]="mark.label"
+          [attr.data-by]="mark.by"
+          [title]="markTitle(mark)"
+          >{{ mark.label }}</span
+        >
+        <span class="pk-hunk-trace" data-testid="hunk-trace">{{ mark.trace }}</span>
+        <select
+          class="select select-xs pk-hunk-rel"
+          [attr.aria-label]="'shared.diffViewer.relabelThisHunk' | transloco"
+          data-testid="hunk-relabel"
+          (change)="relabelTo(item.id, mark, $event)"
+        >
+          <option value="" selected disabled>{{ 'shared.diffViewer.relabel' | transloco }}</option>
+          @for (option of labelOptions; track option) {
+            <option [value]="option" [disabled]="option === mark.label">{{ labelText(option) }}</option>
+          }
+          @if (mark.by === 'person') {
+            <option value="reset">{{ 'shared.diffViewer.backToTheModelSLabel' | transloco }}</option>
+          }
+        </select>
+      </span>
+    } @else {
+      <span class="c">{{ item.header }}</span>
+    }
+  </div>
+</ng-template>
+
+<ng-template
+  #half
+  let-cell="cell"
+  let-old="old"
+  let-commented="commented"
+  let-pressed="pressed"
+  let-row="row"
+  let-index="index"
+>
+  <div
+    class="h"
+    [style.grid-row]="row"
+    [class.add]="cell?.row.kind === 'add'"
+    [class.del]="cell?.row.kind === 'del'"
+    [class.empty]="!cell"
+    [class.commented]="commented"
+    [attr.data-diff-row]="index"
+    [attr.data-diff-measure]="index"
+    [attr.data-diff-side]="old ? 'old' : 'new'"
+  >
+    <span class="g">
+      @if (commentable() && cell) {
+        <button
+          type="button"
+          [attr.aria-pressed]="pressed"
+          [title]="
+            old
+              ? ('shared.diffViewer.commentOnTheOldLine' | transloco)
+              : ('shared.diffViewer.commentOnTheNewLine' | transloco)
+          "
+          [attr.aria-label]="
+            old
+              ? ('shared.diffViewer.commentOnTheOldLine' | transloco)
+              : ('shared.diffViewer.commentOnTheNewLine' | transloco)
+          "
+          (pointerdown)="startDrag(cell.anchor, $event)"
+          (click)="open(cell.anchor, $event)"
+        >
+          +
+        </button>
+      }
+    </span>
+    <span class="no">{{ old ? cell?.row.oldNo : cell?.row.newNo }}</span>
+    <span class="c"
+      ><ng-container
+        *ngTemplateOutlet="code; context: { text: cell?.row.text ?? '', index: index, side: old ? 'old' : 'new' }"
+    /></span>
+  </div>
+</ng-template>
+
+<ng-template #code let-text="text" let-index="index" let-side="side">
+  @for (part of codeParts(text, index, side); track $index) {
+    @if (part.match) {
+      <mark
+        class="pk-diff-match"
+        [class.current]="part.match === activeMatch()"
+        [attr.data-find-current]="part.match === activeMatch() ? 'true' : null"
+        >{{ part.text }}</mark
+      >
+    } @else {
+      <ng-container>{{ part.text }}</ng-container>
+    }
+  }
+</ng-template>
+
+<ng-template #cards let-item>
+  @for (comment of item.comments; track comment.id) {
+    <div class="pk-cmt">
+      <div class="by">
+        <span class="w-4 h-4 rounded-full grid place-items-center text-[10px] bg-base-300" aria-hidden="true">{{
+          'shared.diffViewer.y' | transloco
+        }}</span>
+        <span>{{
+          'shared.diffViewer.youPending'
+            | transloco
+              : {
+                  value1:
+                    comment.endLine !== undefined && comment.endLine > comment.line
+                      ? ('shared.diffViewer.lines' | transloco) + comment.line + '–' + comment.endLine
+                      : '',
+                  value2:
+                    comment.side === 'old'
+                      ? comment.endLine !== undefined && comment.endLine > comment.line
+                        ? ('shared.diffViewer.ofTheOldFile' | transloco)
+                        : ('shared.diffViewer.onTheOldLine' | transloco) + comment.line
+                      : '',
+                }
+        }}</span>
+        <span class="act">
+          <button type="button" class="link link-hover" (click)="edit(comment)">
+            {{ 'shared.diffViewer.edit' | transloco }}
+          </button>
+          <button type="button" class="link link-hover" (click)="deleteComment.emit(comment.id)">
+            {{ 'shared.diffViewer.delete' | transloco }}
+          </button>
+        </span>
+      </div>
+      <div class="whitespace-pre-wrap break-words">{{ comment.text }}</div>
+    </div>
+  }
+  @if (item.draft; as draft) {
+    <div class="pk-cmt">
+      <div class="by">
+        <span
+          >{{
+            draft.id ? ('shared.diffViewer.editCommentOn' | transloco) : ('shared.diffViewer.commentOn' | transloco)
+          }}
+          {{ draft.side === 'old' ? ('shared.diffViewer.old' | transloco) : '' }}{{ rangeLabel(draft) }}</span
+        >
+        @if (!draft.id) {
+          <span class="act muted">{{ 'shared.diffViewer.dragOrShiftClickAnotherToCover' | transloco }}</span>
+        }
+      </div>
+      <textarea
+        #field
+        [pkDiffFocus]="focusRequest"
+        [attr.aria-label]="'shared.diffViewer.comment' | transloco"
+        [placeholder]="'shared.diffViewer.whatShouldChangeHere' | transloco"
+        [value]="editorText(draft)"
+        (input)="rememberText(field.value)"
+        (keydown.escape)="$event.preventDefault(); $event.stopPropagation(); cancel()"
+        (keydown.control.enter)="save(field.value)"
+        (keydown.meta.enter)="save(field.value)"
+      ></textarea>
+      <div class="flex justify-end gap-2 mt-2">
+        <button type="button" class="btn btn-sm btn-ghost" (click)="cancel()">
+          {{ 'shared.diffViewer.cancel' | transloco }}
+        </button>
+        <button type="button" class="btn btn-sm" (click)="save(field.value)">
+          {{ draft.id ? ('shared.diffViewer.save' | transloco) : ('shared.diffViewer.addToBatch' | transloco) }}
+        </button>
+      </div>
+    </div>
+  }
+</ng-template>

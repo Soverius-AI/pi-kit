@@ -1,0 +1,31 @@
+{
+  "name": "@pi-kit/computer-use",
+  "version": "0.1.0",
+  "description": "Opt-in computer use for pi: drive native macOS, Windows and Linux apps through Cua Driver, in-process, with approvals and macOS permission handling.",
+  "keywords": [
+    "pi-package",
+    "pi-kit",
+    "computer-use",
+    "cua"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./extensions/computer-use.ts"
+    ]
+  },
+  "dependencies": {
+    "@trycua/cua-driver": "0.36.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=1.3.0",
+    "typebox": "*"
+  },
+  "files": [
+    "extensions",
+    "lib",
+    "!lib/**/*.spec.mjs",
+    "README.md"
+  ]
+}

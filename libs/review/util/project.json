@@ -1,0 +1,28 @@
+{
+  "name": "review-util",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/review/util/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:review",
+    "type:util"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "options": {
+        "command": "vitest run",
+        "cwd": "libs/review/util"
+      }
+    }
+  }
+}

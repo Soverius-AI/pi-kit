@@ -1,0 +1,31 @@
+{
+  "name": "chat-util",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/chat/util/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:chat",
+    "type:util"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/chat/util/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/chat/util/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/chat/util/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

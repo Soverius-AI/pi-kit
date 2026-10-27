@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline'" />
+<title>pi-kit</title>
+<style>
+  /* The splash window (apps/desktop/src/main.ts): shown while the backend and pi start, closed when the main window is ready.
+     Self-contained on purpose: no fonts or stylesheets to load, so it is on screen within the first frame. */
+  html, body { margin: 0; height: 100%; background: #141414; color: #ededed; font: 13px/18px "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; user-select: none; overflow: hidden; }
+  body { display: grid; place-items: center; align-content: center; gap: 12px; position: relative;
+         background: radial-gradient(120% 80% at 50% 0%, #262626 0%, #141414 55%, #0a0a0a 100%); -webkit-app-region: drag; }
+  body::before { content: ""; position: absolute; width: 280px; height: 280px; border-radius: 50%; top: -50px; left: 50%; transform: translateX(-50%);
+                 background: radial-gradient(circle, rgb(227 180 87 / .22) 0%, rgb(227 180 87 / 0) 65%); pointer-events: none; }
+  .mark { width: 88px; height: 88px; position: relative; }
+  .name { font-size: 17px; line-height: 24px; font-weight: 600; letter-spacing: .01em; position: relative; }
+  .status { color: #9aa0ab; margin-top: -6px; position: relative; min-height: 18px; }
+  .credit { position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; font-size: 11px; line-height: 16px; color: #6f7581; letter-spacing: .02em; }
+  .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #2a2d35; overflow: hidden; }
+  .bar i { position: absolute; top: 0; bottom: 0; width: 26%; background: linear-gradient(90deg, rgb(227 180 87 / 0), #f0cf84, rgb(227 180 87 / 0)); animation: sweep 1.6s ease-in-out infinite; }
+  @keyframes sweep { from { left: -26%; } to { left: 100%; } }
+  @media (prefers-reduced-motion: reduce) { .bar i { animation: none; left: 37%; } }
+</style>
+</head>
+<body>
+  <svg class="mark" viewBox="0 0 100 100" aria-hidden="true">
+    <defs>
+      <filter id="emboss" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="1.2" stdDeviation=".7" flood-color="#000" flood-opacity=".45"/><feDropShadow dx="0" dy="0" stdDeviation="3.5" flood-color="#e3b457" flood-opacity=".32"/></filter>
+    </defs>
+    <g stroke="rgb(255 255 255 / .22)" stroke-width=".45" stroke-linejoin="round" filter="url(#emboss)">
+    <polygon points="12,30 40,30 22,41.5" fill="#f6d98c"/>
+    <polygon points="12,30 22,41.5 12,41.5" fill="#e6a94a"/>
+    <polygon points="22,41.5 40,30 52,41.5" fill="#c58f3a"/>
+    <polygon points="40,30 68,30 52,41.5" fill="#fbe3a0"/>
+    <polygon points="52,41.5 68,30 68,41.5" fill="#b4772e"/>
+    <polygon points="23,41.5 34.5,41.5 23,60" fill="#edbf63"/>
+    <polygon points="34.5,41.5 34.5,76.5 23,60" fill="#b98332"/>
+    <polygon points="23,60 34.5,76.5 23,76.5" fill="#e2a94c"/>
+    <polygon points="52,20 63.5,20 52,45" fill="#f9dd93"/>
+    <polygon points="63.5,20 63.5,50 52,45" fill="#d19a3c"/>
+    <polygon points="52,45 63.5,50 52,82" fill="#e9b85a"/>
+    <polygon points="63.5,50 63.5,82 52,82" fill="#a06f28"/>
+    <polygon points="63.5,58 80,40 88,48" fill="#f4c96e"/>
+    <polygon points="63.5,58 88,48 71.5,64" fill="#e2893f"/>
+    <polygon points="63.5,68 71.5,63 88,81" fill="#dfa84a"/>
+    <polygon points="63.5,68 88,81 80,89" fill="#c46b3a"/>
+    </g>
+  </svg>
+  <div class="name">pi-kit</div>
+  <div class="status" id="status" role="status" aria-live="polite">Starting…</div>
+  <div class="credit">Built by Soverius.AI GmbH</div>
+  <div class="bar"><i></i></div>
+  <script>
+    // main.ts calls this through executeJavaScript as the boot moves on.
+    window.setStatus = (text) => { document.getElementById('status').textContent = String(text); };
+  </script>
+</body>
+</html>

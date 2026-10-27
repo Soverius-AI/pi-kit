@@ -1,0 +1,16 @@
+{
+  "name": "settings-feature-keybindings",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/settings/feature-keybindings/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:settings",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

@@ -1,0 +1,227 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "rootDir": ".",
+    "sourceMap": true,
+    "declaration": false,
+    "moduleResolution": "bundler",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "es2022",
+    "module": "esnext",
+    "lib": [
+      "es2022",
+      "dom"
+    ],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "strict": true,
+    "paths": {
+      "@pi-kit/data-access": [
+        "./libs/shared/data-access/src/index.ts"
+      ],
+      "@pi-kit/protocol": [
+        "./libs/shared/protocol/src/index.ts"
+      ],
+      "@pi-kit/pi-adapter": [
+        "./libs/shared/pi-adapter/src/index.ts"
+      ],
+      "better-sqlite3-multiple-ciphers": [
+        "./node_modules/better-sqlite3-multiple-ciphers/index"
+      ],
+      "better-sqlite3": [
+        "./node_modules/better-sqlite3-multiple-ciphers/index"
+      ],
+      "@pi-kit/secret-store": [
+        "./libs/shared/secret-store/src/index.ts"
+      ],
+      "@pi-kit/ui": [
+        "./libs/shared/ui/src/index.ts"
+      ],
+      "@pi-kit/design-system": [
+        "./libs/shared/design-system/src/index.ts"
+      ],
+      "@pi-kit/testing": [
+        "./libs/shared/testing/src/index.ts"
+      ],
+      "@pi-kit/threads/util": [
+        "./libs/threads/util/src/index.ts"
+      ],
+      "@pi-kit/threads/data": [
+        "./libs/threads/data/src/index.ts"
+      ],
+      "@pi-kit/threads/ui": [
+        "./libs/threads/ui/src/index.ts"
+      ],
+      "@pi-kit/threads/api": [
+        "./libs/threads/api/src/index.ts"
+      ],
+      "@pi-kit/threads/feature-sidebar": [
+        "./libs/threads/feature-sidebar/src/index.ts"
+      ],
+      "@pi-kit/threads/feature-worktree": [
+        "./libs/threads/feature-worktree/src/index.ts"
+      ],
+      "@pi-kit/settings/util": [
+        "./libs/settings/util/src/index.ts"
+      ],
+      "@pi-kit/settings/data": [
+        "./libs/settings/data/src/index.ts"
+      ],
+      "@pi-kit/settings/api": [
+        "./libs/settings/api/src/index.ts"
+      ],
+      "@pi-kit/settings/feature-settings": [
+        "./libs/settings/feature-settings/src/index.ts"
+      ],
+      "@pi-kit/settings/feature-providers": [
+        "./libs/settings/feature-providers/src/index.ts"
+      ],
+      "@pi-kit/settings/feature-connectors": [
+        "./libs/settings/feature-connectors/src/index.ts"
+      ],
+      "@pi-kit/settings/feature-attendant": [
+        "./libs/settings/feature-attendant/src/index.ts"
+      ],
+      "@pi-kit/settings/feature-keybindings": [
+        "./libs/settings/feature-keybindings/src/index.ts"
+      ],
+      "@pi-kit/settings/feature-projects-trust": [
+        "./libs/settings/feature-projects-trust/src/index.ts"
+      ],
+      "@pi-kit/settings/feature-advanced": [
+        "./libs/settings/feature-advanced/src/index.ts"
+      ],
+      "@pi-kit/onboarding/data": [
+        "./libs/onboarding/data/src/index.ts"
+      ],
+      "@pi-kit/onboarding/feature-onboarding": [
+        "./libs/onboarding/feature-onboarding/src/index.ts"
+      ],
+      "@pi-kit/update/data": [
+        "./libs/update/data/src/index.ts"
+      ],
+      "@pi-kit/update/api": [
+        "./libs/update/api/src/index.ts"
+      ],
+      "@pi-kit/update/feature-update": [
+        "./libs/update/feature-update/src/index.ts"
+      ],
+      "@pi-kit/chat/api": [
+        "./libs/chat/api/src/index.ts"
+      ],
+      "@pi-kit/chat/data": [
+        "./libs/chat/data/src/index.ts"
+      ],
+      "@pi-kit/chat/ui": [
+        "./libs/chat/ui/src/index.ts"
+      ],
+      "@pi-kit/chat/ui/effort": [
+        "./libs/chat/ui/src/effort.ts"
+      ],
+      "@pi-kit/chat/feature-chat": [
+        "./libs/chat/feature-chat/src/index.ts"
+      ],
+      "@pi-kit/chat/feature-composer": [
+        "./libs/chat/feature-composer/src/index.ts"
+      ],
+      "@pi-kit/chat/feature-interrupts": [
+        "./libs/chat/feature-interrupts/src/index.ts"
+      ],
+      "@pi-kit/chat/feature-genui": [
+        "./libs/chat/feature-genui/src/index.ts"
+      ],
+      "@pi-kit/review/api": [
+        "./libs/review/api/src/index.ts"
+      ],
+      "@pi-kit/review/data": [
+        "./libs/review/data/src/index.ts"
+      ],
+      "@pi-kit/review/util": [
+        "./libs/review/util/src/index.ts"
+      ],
+      "@pi-kit/review/feature-review": [
+        "./libs/review/feature-review/src/index.ts"
+      ],
+      "@pi-kit/files/data": [
+        "./libs/files/data/src/index.ts"
+      ],
+      "@pi-kit/files/util": [
+        "./libs/files/util/src/index.ts"
+      ],
+      "@pi-kit/files/feature-files": [
+        "./libs/files/feature-files/src/index.ts"
+      ],
+      "@pi-kit/session-tree/api": [
+        "./libs/session-tree/api/src/index.ts"
+      ],
+      "@pi-kit/session-tree/data": [
+        "./libs/session-tree/data/src/index.ts"
+      ],
+      "@pi-kit/session-tree/ui": [
+        "./libs/session-tree/ui/src/index.ts"
+      ],
+      "@pi-kit/session-tree/feature-tree": [
+        "./libs/session-tree/feature-tree/src/index.ts"
+      ],
+      "@pi-kit/terminal/data": [
+        "./libs/terminal/data/src/index.ts"
+      ],
+      "@pi-kit/terminal/feature-terminal": [
+        "./libs/terminal/feature-terminal/src/index.ts"
+      ],
+      "@pi-kit/chat/util": [
+        "./libs/chat/util/src/index.ts"
+      ],
+      "@pi-kit/session-tree/util": [
+        "./libs/session-tree/util/src/index.ts"
+      ],
+      "@pi-kit/threads/feature-learn": [
+        "./libs/threads/feature-learn/src/index.ts"
+      ],
+      "@pi-kit/threads/feature-new-thread": [
+        "./libs/threads/feature-new-thread/src/index.ts"
+      ],
+      "@pi-kit/api": [
+        "./libs/shared/api/src/index.ts"
+      ],
+      "@pi-kit/artifacts/data": [
+        "./libs/artifacts/data/src/index.ts"
+      ],
+      "@pi-kit/artifacts/feature-artifacts": [
+        "./libs/artifacts/feature-artifacts/src/index.ts"
+      ],
+      "@pi-kit/i18n": [
+        "./libs/shared/i18n/src/index.ts"
+      ],
+      "@pi-kit/i18n/testing": [
+        "./libs/shared/i18n/src/testing.ts"
+      ],
+      "@pi-kit/chat/feature-composer/dialogs": [
+        "./libs/chat/feature-composer/src/lib/dialog-host.ts"
+      ],
+      "@pi-kit/agents/data": [
+        "./libs/agents/data/src/index.ts"
+      ],
+      "@pi-kit/agents/util": [
+        "./libs/agents/util/src/index.ts"
+      ],
+      "@pi-kit/agents/api": [
+        "./libs/agents/api/src/index.ts"
+      ],
+      "@pi-kit/agents/feature-agents": [
+        "./libs/agents/feature-agents/src/index.ts"
+      ]
+    },
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "exclude": [
+    "node_modules",
+    "tmp"
+  ]
+}

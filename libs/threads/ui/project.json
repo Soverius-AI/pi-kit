@@ -1,0 +1,16 @@
+{
+  "name": "threads-ui",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/threads/ui/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:threads",
+    "type:ui"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

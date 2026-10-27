@@ -1,0 +1,38 @@
+{
+  "name": "shared-protocol",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/shared/protocol/src",
+  "projectType": "library",
+  "tags": [
+    "scope:shared",
+    "type:util"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/libs/shared/protocol",
+        "main": "libs/shared/protocol/src/index.ts",
+        "tsConfig": "libs/shared/protocol/tsconfig.lib.json",
+        "assets": [
+          "libs/shared/protocol/*.md"
+        ]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "options": {
+        "command": "vitest run",
+        "cwd": "libs/shared/protocol"
+      }
+    }
+  }
+}

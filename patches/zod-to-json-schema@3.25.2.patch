@@ -1,0 +1,38 @@
+diff --git a/dist/cjs/zodToJsonSchema.js b/dist/cjs/zodToJsonSchema.js
+index 2673e3a2e506aa6b8ab2d55a7a7d1a5386e32e1b..4756d14aaccc33dfc521ca72cd9d220b325642a3 100644
+--- a/dist/cjs/zodToJsonSchema.js
++++ b/dist/cjs/zodToJsonSchema.js
+@@ -4,7 +4,14 @@ exports.zodToJsonSchema = void 0;
+ const parseDef_js_1 = require("./parseDef.js");
+ const Refs_js_1 = require("./Refs.js");
+ const any_js_1 = require("./parsers/any.js");
++const { toJSONSchema } = require("zod");
+ const zodToJsonSchema = (schema, options) => {
++    // Zod 4 owns its JSON Schema conversion. Preserve the legacy path for schemas received from older external clients.
++    if (schema?._zod) return toJSONSchema(schema, {
++        target: typeof options === "object" && options.target === "openApi3" ? "openapi-3.0" : "draft-07",
++        unrepresentable: "any",
++        io: "input",
++    });
+     const refs = (0, Refs_js_1.getRefs)(options);
+     let definitions = typeof options === "object" && options.definitions
+         ? Object.entries(options.definitions).reduce((acc, [name, schema]) => ({
+diff --git a/dist/esm/zodToJsonSchema.js b/dist/esm/zodToJsonSchema.js
+index 6359a758fcb92e480afebbfb94fef5f0f5a14c30..5a04f40f205f30af9cf8dbea119ea24963f782d2 100644
+--- a/dist/esm/zodToJsonSchema.js
++++ b/dist/esm/zodToJsonSchema.js
+@@ -1,7 +1,14 @@
+ import { parseDef } from "./parseDef.js";
+ import { getRefs } from "./Refs.js";
+ import { parseAnyDef } from "./parsers/any.js";
++import { toJSONSchema } from "zod";
+ const zodToJsonSchema = (schema, options) => {
++    // Zod 4 owns its JSON Schema conversion. Preserve the legacy path for schemas received from older external clients.
++    if (schema?._zod) return toJSONSchema(schema, {
++        target: typeof options === "object" && options.target === "openApi3" ? "openapi-3.0" : "draft-07",
++        unrepresentable: "any",
++        io: "input",
++    });
+     const refs = getRefs(options);
+     let definitions = typeof options === "object" && options.definitions
+         ? Object.entries(options.definitions).reduce((acc, [name, schema]) => ({

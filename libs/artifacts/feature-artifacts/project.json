@@ -1,0 +1,31 @@
+{
+  "name": "artifacts-feature-artifacts",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/artifacts/feature-artifacts/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:artifacts",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/artifacts/feature-artifacts/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/artifacts/feature-artifacts/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/artifacts/feature-artifacts/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

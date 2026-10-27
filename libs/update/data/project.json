@@ -1,0 +1,31 @@
+{
+  "name": "update-data",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/update/data/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:update",
+    "type:data"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/update/data/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/update/data/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/update/data/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

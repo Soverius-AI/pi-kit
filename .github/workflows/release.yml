@@ -1,0 +1,214 @@
+# Release builds.
+#
+#   mac      macos-14 (Apple Silicon)   pnpm run release --only mac   -> pi-kit-<v>-mac-arm64.dmg + .zip, latest-mac.yml
+#   windows  windows-latest (x64)       pnpm run release --only win   -> pi-kit-<v>-win-x64.exe + -portable.exe, pi-kit-<v>-win-arm64.exe + -portable.exe, latest.yml
+#                                       (one run packs both architectures so latest.yml lists both installers; the arm64 build is a cross build)
+#   linux    ubuntu-22.04 / -arm       native x64 and arm64 AppImages, latest-linux.yml / latest-linux-arm64.yml
+#   publish  ubuntu-latest              on a `v*` tag only: a DRAFT GitHub release holding every file. Nothing is published until you press the button.
+#
+# Triggers: a `v*` tag push builds the artifacts, then drafts the release. Manual runs build (and smoke-test the Linux AppImages) without drafting a release.
+# Cut a release: set "version" in package.json, commit, `git tag v<version> && git push origin v<version>`. The publish job refuses a tag that differs from package.json.
+#
+# What each build job checks (scripts/release.mjs and scripts/release-smoke.mjs):
+#   - the natives of every target triple are the right ones (file headers; loaded in Electron for the runner's own target), see scripts/natives.mjs
+#   - on `v*` tags (also manual runs for Linux), the smoke test launches the packaged app of the runner's own target with a scratch agent folder, a local fake model, a file secret store and PI_OFFLINE=1,
+#     opens a thread, sends one prompt, asserts the answer and quits. The Windows arm64 build cannot run on an x64 runner: it gets the header checks only.
+#
+# Signing is OPT-IN. Without any of the secrets below the builds are unsigned: macOS is ad-hoc signed (runs on the machine that built it, and after
+# "Open anyway" elsewhere; Gatekeeper rejects it), Windows is unsigned (SmartScreen warns). Electron-updater only installs updates of a build
+# whose signature matches on macOS, so signed releases are what makes the in-app update work for other people.
+#
+#   macOS signing      secret MAC_CSC_LINK          base64 of a "Developer ID Application" .p12 (or an https URL to it)
+#                      secret MAC_CSC_KEY_PASSWORD  the .p12's password
+#                      secret APPLE_TEAM_ID         signing team's ID (also needed with API-key notarization)
+#                      secret MAC_PROVISIONING_PROFILE_BASE64  profile for dev.pi-kit.app with Keychain Sharing
+#   macOS notarising   variable PI_KIT_NOTARIZE=1   (Settings > Secrets and variables > Actions > Variables), plus either
+#                      secrets APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID,
+#                      or an App Store Connect API key: secrets APPLE_API_KEY_BASE64 (the .p8 file, base64; the step below writes it out and points
+#                      APPLE_API_KEY at it) + APPLE_API_KEY_ID + APPLE_API_ISSUER
+#   Windows signing    secret WIN_CSC_LINK          base64 of a code-signing .pfx (or an https URL), secret WIN_CSC_KEY_PASSWORD
+#                      (an EV/HSM or Azure Trusted Signing setup needs electron-builder's `win.azureSignOptions` / a custom sign hook, not wired here)
+# electron-builder reads CSC_LINK / CSC_KEY_PASSWORD for macOS and WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD for Windows; the jobs below map the secrets onto them.
+#
+# pi-kit's own update source is this repository (electron-builder.config.cjs `publish`); PI_KIT_UPDATE_REPO=owner/name (a repository variable) points a build at a fork.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NX_DAEMON: 'false'
+  # Never let electron-builder go looking for a signing identity on its own; the config picks CSC_NAME / CSC_LINK or ad-hoc signs.
+  CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+  PI_KIT_UPDATE_REPO: ${{ vars.PI_KIT_UPDATE_REPO }}
+
+jobs:
+  mac:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      # pnpm first (setup-node's `cache: pnpm` needs it): the version comes from `packageManager` in package.json, the action is pinned exactly.
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Notarisation API key file (only when APPLE_API_KEY_BASE64 is set)
+        run: |
+          if [ -n "$APPLE_API_KEY_BASE64" ]; then
+            mkdir -p "$RUNNER_TEMP/keys"
+            echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/keys/AuthKey.p8"
+            echo "APPLE_API_KEY=$RUNNER_TEMP/keys/AuthKey.p8" >> "$GITHUB_ENV"
+          fi
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+      - name: Keychain Sharing provisioning profile
+        run: |
+          if [ -n "$MAC_PROVISIONING_PROFILE_BASE64" ]; then
+            printf '%s' "$MAC_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$RUNNER_TEMP/pi-kit.provisionprofile"
+            echo "PI_KIT_MAC_PROVISIONING_PROFILE=$RUNNER_TEMP/pi-kit.provisionprofile" >> "$GITHUB_ENV"
+          fi
+        env:
+          MAC_PROVISIONING_PROFILE_BASE64: ${{ secrets.MAC_PROVISIONING_PROFILE_BASE64 }}
+      - name: Build the macOS app (Apple Silicon)
+        run: pnpm run release --only mac
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          PI_KIT_NOTARIZE: ${{ vars.PI_KIT_NOTARIZE }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      # The zip is what electron-updater installs from, so it is the artifact worth launching; the unpacked folder is the same app.
+      - name: Smoke test (zip)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: node scripts/release-smoke.mjs dist/release/pi-kit-*-mac-arm64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-mac
+          if-no-files-found: error
+          path: |
+            dist/release/*.dmg
+            dist/release/*.zip
+            dist/release/*.blockmap
+            dist/release/latest-mac.yml
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      # pnpm first (setup-node's `cache: pnpm` needs it): the version comes from `packageManager` in package.json, the action is pinned exactly.
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build the Windows apps (x64 and arm64)
+        run: pnpm run release --only win
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      # The runner is x64: it can launch the x64 app, not the arm64 one (that one has only the native header checks of the release step).
+      - name: Smoke test (x64, the unpacked app)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: node scripts/release-smoke.mjs dist/release/win-unpacked
+      # The installer itself: silent install into a temp folder (NSIS /S /D=), launch, uninstall. Written for this workflow and not run anywhere
+      # before it; it must not block a release until it has been seen green once, hence continue-on-error.
+      - name: Smoke test (x64 installer)
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        continue-on-error: true
+        run: node scripts/release-smoke.mjs dist/release/pi-kit-*-win-x64.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          if-no-files-found: error
+          path: |
+            dist/release/*.exe
+            dist/release/*.blockmap
+            dist/release/latest.yml
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            appimageArch: x86_64
+            runner: ubuntu-22.04
+          - arch: arm64
+            appimageArch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      # node-pty compiles during install (allowBuilds); Electron and the smoke test need desktop libraries and a virtual display.
+      - name: Linux build and runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 libgtk-3-0 libnss3 libasound2 libgbm1 libsecret-1-0 libxtst6 libxss1 xvfb xauth
+      - run: pnpm install --frozen-lockfile
+      - name: Build the Linux AppImage
+        run: pnpm run release --only linux-${{ matrix.arch }}
+      # Extract the actual AppImage without FUSE, then exercise its packaged app on the matching CPU under Xvfb.
+      - name: Smoke test (AppImage)
+        run: xvfb-run -a node scripts/release-smoke.mjs dist/release/pi-kit-*-linux-${{ matrix.appimageArch }}.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-${{ matrix.arch }}
+          if-no-files-found: error
+          path: |
+            dist/release/*.AppImage
+            dist/release/latest-linux*.yml
+
+  publish:
+    # A draft only: review the files and the notes, then publish it by hand. electron-updater sees it once it is published.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    needs: [mac, windows, linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: The tag must be the version in package.json
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+      - name: Draft the GitHub release
+        run: |
+          ls -l release
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "pi-kit $GITHUB_REF_NAME" --generate-notes release/*
+        env:
+          GH_TOKEN: ${{ github.token }}

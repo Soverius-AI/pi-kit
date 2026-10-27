@@ -1,0 +1,15 @@
+{
+  "name": "@pi-kit/meat-proxy",
+  "version": "0.1.0",
+  "description": "The Meat Proxy Score and the Vibe Score: /score tells, for a finished thread, how much of its outcome the person steered. A pi package; it uses pi-kit's plugin events (doc/docs/plugins.md).",
+  "keywords": ["pi-package", "pi-kit", "score", "meat-proxy"],
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "pi": {
+    "extensions": ["./extensions/meat-proxy.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}

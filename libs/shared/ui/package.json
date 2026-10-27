@@ -1,0 +1,14 @@
+{
+  "name": "@pi-kit/ui",
+  "version": "0.0.1",
+  "sideEffects": false,
+  "private": true,
+  "peerDependencies": {
+    "@angular/common": "22.2.3",
+    "@angular/core": "22.2.3",
+    "@tanstack/angular-virtual": "6.1.8",
+    "@pi-kit/design-system": "0.0.1",
+    "@pi-kit/protocol": "0.0.1",
+    "@pi-kit/i18n": "0.0.1"
+  }
+}

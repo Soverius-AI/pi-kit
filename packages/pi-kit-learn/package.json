@@ -1,0 +1,15 @@
+{
+  "name": "@pi-kit/learn",
+  "version": "0.1.0",
+  "description": "Learn a skill from a finished thread: /learn drafts a SKILL.md from the thread's transcript and outcome. A pi package; it uses pi-kit's plugin events (doc/docs/plugins.md).",
+  "keywords": ["pi-package", "pi-kit", "skills", "learn"],
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "pi": {
+    "extensions": ["./extensions/learn.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}

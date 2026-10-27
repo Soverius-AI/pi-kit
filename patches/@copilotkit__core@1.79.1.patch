@@ -1,0 +1,74 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -8 +8,2 @@
+-let zod_to_json_schema = require("zod-to-json-schema");
++let zod = require("zod");
++let zod_to_json_schema = { zodToJsonSchema: (schema, options = {}) => zod.toJSONSchema(schema, { target: options.target === "openApi3" ? "openapi-3.0" : "draft-07", unrepresentable: "any", io: "input" }) };
+@@ -1973,2 +1974,2 @@
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+@@ -1992,2 +1993,2 @@
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+@@ -2003,2 +2004,2 @@
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+@@ -2038,2 +2039,2 @@
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+@@ -2048,2 +2049,2 @@
+-						...this.localAgents,
+-						...this.remoteAgents
++						...this.remoteAgents,
++						...this.localAgents
+@@ -2640,2 +2641,2 @@
+-				...this.localAgents,
+-				...this.remoteAgents
++				...this.remoteAgents,
++				...this.localAgents
+diff --git a/dist/index.mjs b/dist/index.mjs
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -7 +7,2 @@
+-import { zodToJsonSchema } from "zod-to-json-schema";
++import { toJSONSchema } from "zod";
++const zodToJsonSchema = (schema, options = {}) => toJSONSchema(schema, { target: options.target === "openApi3" ? "openapi-3.0" : "draft-07", unrepresentable: "any", io: "input" });
+@@ -1972,2 +1973,2 @@
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+@@ -1991,2 +1992,2 @@
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+@@ -2002,2 +2003,2 @@
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+@@ -2037,2 +2038,2 @@
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+@@ -2047,2 +2048,2 @@
+-						...this.localAgents,
+-						...this.remoteAgents
++						...this.remoteAgents,
++						...this.localAgents
+@@ -2639,2 +2640,2 @@
+-				...this.localAgents,
+-				...this.remoteAgents
++				...this.remoteAgents,
++				...this.localAgents

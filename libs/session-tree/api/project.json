@@ -1,0 +1,16 @@
+{
+  "name": "session-tree-api",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/session-tree/api/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:session-tree",
+    "type:api"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

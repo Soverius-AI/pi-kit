@@ -1,0 +1,31 @@
+{
+  "name": "threads-feature-learn",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/threads/feature-learn/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:threads",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/threads/feature-learn/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/threads/feature-learn/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/threads/feature-learn/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

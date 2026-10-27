@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <!-- Hardened runtime (required for notarization). Chromium's V8 and the Node runtime that runs the backend need JIT. -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <!-- The backend loads better-sqlite3-multiple-ciphers, @napi-rs/keyring and node-pty (.node files) and node-pty forks spawn-helper; with library validation on,
+         every one of them would have to carry the same Team ID. electron-builder signs them, but Node's dlopen of a prebuilt
+         binary is the case Apple's docs name for this entitlement. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- Network: the backend listens on 127.0.0.1 and pi talks to model providers and MCP servers. These two only matter if the
+         App Sandbox is ever turned on; it is not, because pi runs the user's shell commands and edits their files. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.network.server</key>
+    <true/>
+    <!-- Voice input: the microphone, which the hardened runtime blocks without this. -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+  </dict>
+</plist>

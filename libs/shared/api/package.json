@@ -1,0 +1,9 @@
+{
+  "name": "@pi-kit/api",
+  "version": "0.0.1",
+  "peerDependencies": {
+    "@angular/core": "22.2.3"
+  },
+  "sideEffects": false,
+  "private": true
+}

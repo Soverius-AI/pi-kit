@@ -1,0 +1,7 @@
+<skill name="alpha" location="{{ROOT}}/alpha/SKILL.md">
+References are relative to {{ROOT}}/alpha.
+
+# Alpha
+
+When asked, start the answer with the word ALPHA.
+</skill>

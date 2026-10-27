@@ -1,0 +1,25 @@
+/* The site's few tokens: the gold of the mark as the accent, a readable measure for long records. */
+:root {
+  --ifm-color-primary: #b8860b;
+  --ifm-color-primary-dark: #a67a0a;
+  --ifm-color-primary-darker: #9c7309;
+  --ifm-color-primary-darkest: #815f08;
+  --ifm-color-primary-light: #ca9412;
+  --ifm-color-primary-lighter: #d39b13;
+  --ifm-color-primary-lightest: #e1ab25;
+  --ifm-code-font-size: 90%;
+  --ifm-font-family-base: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+[data-theme='dark'] {
+  --ifm-color-primary: #e1ab25;
+  --ifm-color-primary-dark: #d39b13;
+  --ifm-color-primary-darker: #ca9412;
+  --ifm-color-primary-darkest: #a67a0a;
+  --ifm-color-primary-light: #e6b63f;
+  --ifm-color-primary-lighter: #e9bd4f;
+  --ifm-color-primary-lightest: #f0cf7e;
+}
+.markdown table {
+  display: table;
+  width: 100%;
+}

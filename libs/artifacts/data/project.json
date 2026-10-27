@@ -1,0 +1,31 @@
+{
+  "name": "artifacts-data",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/artifacts/data/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:artifacts",
+    "type:data"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/artifacts/data/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/artifacts/data/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/artifacts/data/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

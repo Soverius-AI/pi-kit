@@ -1,0 +1,31 @@
+{
+  "name": "settings-data",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/settings/data/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:settings",
+    "type:data"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/settings/data/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/settings/data/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/settings/data/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

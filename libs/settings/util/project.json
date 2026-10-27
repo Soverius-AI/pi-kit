@@ -1,0 +1,28 @@
+{
+  "name": "settings-util",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/settings/util/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:settings",
+    "type:util"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "options": {
+        "command": "vitest run",
+        "cwd": "libs/settings/util"
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "@pi-kit/threads-ui",
+  "version": "0.0.1",
+  "private": true,
+  "sideEffects": false
+}

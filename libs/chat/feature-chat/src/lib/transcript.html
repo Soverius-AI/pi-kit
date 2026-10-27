@@ -1,0 +1,434 @@
+@if (emptyPage(); as page) {
+  <!-- A thread without a message: the new-thread page of the threads domain, loaded when it is first needed. -->
+  <ng-container *ngComponentOutlet="page" />
+}
+<div pkVirtualTranscript #virtual="pkVirtualTranscript" [messages]="visibleMessages()" [threadKey]="chat.threadId()">
+  <div aria-hidden="true" [style.height.px]="virtual.before()"></div>
+  @for (row of virtual.rows(); track row.id) {
+    <div pkVirtualRow [messageId]="row.id">
+      <copilot-chat-message-view
+        [messages]="row.messages"
+        [agentId]="agentId() ?? 'pi'"
+        [state]="state()"
+        [isLoading]="chat.running()"
+        [userMessageTemplate]="userTpl"
+        [assistantMessageTemplate]="assistantTpl"
+        [reasoningMessageTemplate]="reasoningTpl"
+      />
+    </div>
+  }
+  <div aria-hidden="true" [style.height.px]="virtual.after()"></div>
+</div>
+<div class="pk-transcript-tail">
+  <ng-container *ngTemplateOutlet="tailTpl" />
+  @if (showCursor() && chat.messages().at(-1)?.role !== 'reasoning') {
+    <ng-container *ngTemplateOutlet="cursorTpl" />
+  }
+</div>
+@defer (when chat.connecting()) {
+  <pk-replay-loading [loading]="chat.connecting()" [hasMessages]="chat.messages().length > 0" />
+}
+
+<!-- ---- user message -->
+<ng-template #userTpl let-message="message">
+  @let branch = tree.branches().get(message.id);
+  <pk-turn
+    role="user"
+    [attr.data-block]="message.id"
+    [attr.data-turn]="message.id"
+    [class.pk-hot]="hot() === message.id"
+  >
+    <copilot-chat-user-message
+      [message]="textOnly(message)"
+      [branchIndex]="branch?.index ?? 0"
+      [numberOfBranches]="branch?.count ?? 1"
+      toolbarClass="pk-actions"
+      (editMessage)="tree.editMessage(message.id)"
+      (switchToBranch)="tree.switchBranch(message.id, $event.branchIndex)"
+    >
+      <ng-template #messageRenderer let-content="content">
+        @let chips = skillsOf(message.id);
+        @if (reviewOf(message.id); as comments) {
+          <!-- A batch of review comments: the sentence that opened the message, and a chip that lists them. -->
+          <div class="pk-user prose">
+            @if (chips) {
+              <div
+                class="pk-skill-chips"
+                [attr.aria-label]="'chat.transcript.skillsAndPromptTemplates' | transloco"
+                data-testid="message-chips"
+              >
+                @for (chip of chips; track chip.kind + ':' + chip.name) {
+                  <pk-skill-chip
+                    [kind]="chip.kind"
+                    [name]="chip.name"
+                    [scope]="chip.scope"
+                    [pinned]="chip.pinned"
+                    [readonly]="true"
+                  />
+                }
+              </div>
+            }
+            <span [textContent]="preamble(content)"></span>
+            <div class="mt-2">
+              <button
+                type="button"
+                class="badge badge-outline gap-1 cursor-pointer"
+                [attr.aria-expanded]="reviewOpen().has(message.id)"
+                (click)="toggleReview(message.id)"
+              >
+                {{
+                  'chat.transcript.review'
+                    | transloco
+                      : {
+                          value1: comments.length,
+                          value2:
+                            comments.length === 1
+                              ? ('chat.transcript.comment' | transloco)
+                              : ('chat.transcript.comments' | transloco),
+                        }
+                }}
+                <span aria-hidden="true">{{ reviewOpen().has(message.id) ? '▾' : '▸' }}</span>
+              </button>
+            </div>
+            @if (reviewOpen().has(message.id)) {
+              <ul
+                class="mt-2 flex flex-col gap-3 t-sm list-none p-0"
+                [attr.aria-label]="'chat.transcript.reviewComments' | transloco"
+              >
+                @for (comment of comments; track comment.id) {
+                  <li>
+                    <code>{{ comment.file }}:{{ comment.line }}</code>
+                    @if (comment.side === 'old') {
+                      <span class="muted"> {{ 'chat.transcript.removedLine' | transloco }}</span>
+                    }
+                    @if (comment.snippet.trim()) {
+                      <pre class="mono muted whitespace-pre-wrap break-words border-l-2 border-base-300 pl-2 my-1">{{
+                        comment.snippet
+                      }}</pre>
+                    }
+                    <div class="whitespace-pre-wrap break-words">{{ comment.text }}</div>
+                  </li>
+                }
+              </ul>
+            }
+          </div>
+        } @else if (agentOf(message); as agent) {
+          <!-- A background agent's report or question folds to one line: who it is from and how it starts; opening shows it whole. -->
+          <details class="pk-work-row single pk-from-agent" data-testid="agent-note" [title]="content.slice(0, 1000)">
+            <summary>
+              <pk-icon name="agents" class="glyph" />
+              <span class="lbl">{{ 'chat.transcript.fromAgent' | transloco: { value1: agent } }}</span>
+              <span class="hint plain">{{ firstLine(content) }}</span>
+              <span class="chev" aria-hidden="true">›</span>
+            </summary>
+            <div class="body prose whitespace-pre-wrap break-words" [textContent]="content"></div>
+          </details>
+        } @else {
+          <!-- Skill and prompt-template chips over the sentence: the instructions pi got are in the Entries inspector, not here. -->
+          <div class="pk-user prose">
+            @if (chips) {
+              <div
+                class="pk-skill-chips"
+                [attr.aria-label]="'chat.transcript.skillsAndPromptTemplates' | transloco"
+                data-testid="message-chips"
+              >
+                @for (chip of chips; track chip.kind + ':' + chip.name) {
+                  <pk-skill-chip
+                    [kind]="chip.kind"
+                    [name]="chip.name"
+                    [scope]="chip.scope"
+                    [pinned]="chip.pinned"
+                    [readonly]="true"
+                  />
+                }
+              </div>
+            }
+            <!-- Keep literal text independent of template indentation in this pre-wrap bubble. -->
+            <span [textContent]="content"></span>
+            @for (src of imagesOf(message); track $index) {
+              <button
+                type="button"
+                class="pk-thumb"
+                data-testid="message-image"
+                [attr.aria-label]="'shared.lightbox.open' | transloco"
+                (click)="preview(src)"
+              >
+                <img [src]="src" [alt]="'chat.transcript.attachedImage' | transloco" />
+              </button>
+            }
+          </div>
+        }
+      </ng-template>
+    </copilot-chat-user-message>
+    <div class="pk-when">
+      {{ 'chat.transcript.turn' | transloco: { value1: chat.turns().turns.get(message.id) } }}
+    </div>
+  </pk-turn>
+</ng-template>
+
+<!-- ---- reasoning -->
+<ng-template #reasoningTpl let-message="message">
+  @let piece = pieceOf(message.id);
+  @if (piece) {
+    @let think = thinkOf(message);
+    <pk-turn
+      role="pi"
+      [attr.data-turn]="turnKey(piece)"
+      [attr.data-after]="piece.after ?? null"
+      [attr.data-cont]="contOf(piece)"
+      [attr.data-work]="piece.work ? 'row' : null"
+      [attr.data-work-first]="piece.work?.first ? '' : null"
+      [attr.data-work-last]="piece.work?.last ? '' : null"
+      [class.pk-hot]="hot() === turnKey(piece)"
+    >
+      @if (piece.work; as work) {
+        @if (work.first) {
+          <ng-container *ngTemplateOutlet="workHead; context: { $implicit: work }" />
+        }
+        @if (workOpen(work)) {
+          <details class="pk-work-row" data-testid="work-row" [open]="rowOpen(work)">
+            <summary>
+              <span class="dot" [attr.data-state]="think.state === 'streaming' ? 'running' : 'done'"></span>
+              <span class="lbl">{{ think.label }}</span>
+              <span class="live">{{ think.state === 'streaming' ? think.live : '' }}</span>
+              <span class="m">{{ think.meta }}</span>
+              <span class="chev" aria-hidden="true">›</span>
+            </summary>
+            <div class="body trace">
+              @for (p of think.paragraphs; track $index) {
+                <p>{{ p }}</p>
+              }
+            </div>
+          </details>
+        }
+      } @else {
+        <pk-think [state]="think.state" [label]="think.label" [live]="think.live" [meta]="think.meta">
+          @for (p of think.paragraphs; track $index) {
+            <p>{{ p }}</p>
+          }
+        </pk-think>
+      }
+    </pk-turn>
+  }
+</ng-template>
+
+<!-- ---- assistant message -->
+<ng-template #assistantTpl let-message="message" let-loading="isLoading">
+  @let piece = pieceOf(message.id);
+  @if (piece && visible(message, piece)) {
+    <pk-turn
+      role="pi"
+      [attr.data-turn]="turnKey(piece)"
+      [attr.data-after]="piece.after ?? null"
+      [attr.data-cont]="contOf(piece)"
+      [attr.data-work]="piece.work ? 'row' : null"
+      [attr.data-work-first]="piece.work?.first ? '' : null"
+      [attr.data-work-last]="piece.work?.last ? '' : null"
+      [class.pk-hot]="hot() === turnKey(piece)"
+    >
+      @if (piece.work?.first) {
+        <ng-container *ngTemplateOutlet="workHead; context: { $implicit: piece.work }" />
+      }
+      @if (!piece.work || workOpen(piece.work)) {
+        @if (piece.work; as work) {
+          @let row = rowLabel(message, piece);
+          <details class="pk-work-row" data-testid="work-row" [open]="rowOpen(work)">
+            <summary [title]="row.title">
+              <span class="dot" [attr.data-state]="row.state"></span>
+              <span class="lbl">{{ row.text }}</span>
+              <span class="hint">{{ row.hint }}</span>
+              <span class="m">{{ row.meta }}</span>
+              <span class="chev" aria-hidden="true">›</span>
+            </summary>
+            <div class="body">
+              <ng-container
+                *ngTemplateOutlet="assistantBody; context: { message: message, piece: piece, loading: loading }"
+              />
+            </div>
+          </details>
+        } @else {
+          <ng-container
+            *ngTemplateOutlet="assistantBody; context: { message: message, piece: piece, loading: loading }"
+          />
+        }
+      }
+    </pk-turn>
+  }
+</ng-template>
+
+<!-- The one line of a turn's work (doc/docs/design-system.md "Work group"): what pi did, opening into the rows. -->
+<ng-template #workHead let-work>
+  <button
+    type="button"
+    class="pk-work"
+    data-testid="work-head"
+    [attr.aria-expanded]="workOpen(work)"
+    [attr.aria-label]="(workOpen(work) ? 'chat.transcript.hideWork' : 'chat.transcript.showWork') | transloco"
+    (click)="toggleWork(work)"
+  >
+    <span class="chev" aria-hidden="true">›</span>
+    @if (working(work)) {
+      <span class="dot running" aria-hidden="true"></span>
+    }
+    <span>{{ workLabel(work) }}</span>
+  </button>
+</ng-template>
+
+<ng-template #assistantBody let-message="message" let-piece="piece" let-loading="loading">
+  <copilot-chat-assistant-message
+    [message]="message"
+    [messages]="chat.transcriptMessages()"
+    agentId="pi"
+    [isLoading]="loading"
+    [toolbarVisible]="piece.toolbar && !chat.running()"
+    toolbarClass="pk-actions"
+  >
+    <ng-template #markdownRenderer let-content="content">
+      @if (content.trim()) {
+        <pk-prose [text]="content" [streaming]="chat.running() && lastId() === message.id" />
+      }
+    </ng-template>
+
+    <ng-template #toolCallsView let-m="message" let-isLoading="isLoading">
+      @if (piece.step; as step) {
+        @if (stepShown(step)) {
+          <div class="pk-activity">
+            @if (stepLine(m, step, message.id); as line) {
+              <div class="pk-step">
+                <span>{{ line.text }}</span>
+                <progress class="progress progress-primary" [value]="line.done" [max]="line.total"></progress>
+                <span>{{ line.elapsed }}</span>
+              </div>
+            }
+            @for (call of m.toolCalls; track call.id) {
+              <span [pkToolCall]="call.id">
+                <copilot-chat-tool-calls-view
+                  [message]="single(m, call)"
+                  [messages]="chat.transcriptMessages()"
+                  agentId="pi"
+                  [isLoading]="isLoading"
+                />
+              </span>
+            }
+          </div>
+        }
+      }
+    </ng-template>
+
+    <ng-template #thumbsUpButton>
+      <span
+        class="pk-rate"
+        [class.on]="chat.feedback()[message.id] === 'up'"
+        [attr.data-rating]="chat.feedback()[message.id] ?? null"
+      >
+        <copilot-chat-assistant-message-thumbs-up-button (clicked)="chat.rate(message.id, 'up')" />
+      </span>
+    </ng-template>
+    <ng-template #thumbsDownButton>
+      <span class="pk-rate" [class.on]="chat.feedback()[message.id] === 'down'">
+        <copilot-chat-assistant-message-thumbs-down-button (clicked)="chat.rate(message.id, 'down')" />
+      </span>
+    </ng-template>
+    <ng-template #regenerateButton>
+      @if (piece.after) {
+        <copilot-chat-assistant-message-regenerate-button (clicked)="chat.regenerate(piece.after)" />
+      }
+    </ng-template>
+  </copilot-chat-assistant-message>
+</ng-template>
+
+<!-- ---- the cursor: pi has been asked and has not produced anything yet -->
+<ng-template #cursorTpl>
+  <pk-turn role="pi">
+    <span
+      class="loading loading-dots loading-sm text-primary"
+      role="status"
+      [attr.aria-label]="'chat.transcript.piIsWorking' | transloco"
+    ></span>
+  </pk-turn>
+</ng-template>
+
+<!-- ---- the end of the thread -->
+<ng-template #tailTpl>
+  @if (chat.contextNearlyFull() && chat.blocks().length > 0) {
+    <pk-marker
+      [class.bad]="chat.contextLevel() === 'error'"
+      [class.warn]="chat.contextLevel() !== 'error'"
+      data-testid="context-marker"
+    >
+      {{ 'chat.transcript.contextFull' | transloco: { value1: contextLabel(), value2: chat.contextAdvice() } }}
+    </pk-marker>
+  }
+
+  <pk-interrupts />
+
+  <!-- A skill drafted from this thread: read it in the review dialog, then approve or discard. -->
+  @if (pendingDraft(); as draft) {
+    <pk-skill-draft-card
+      [name]="draft.name"
+      [lead]="draftLead(draft)"
+      [note]="draftNote(draft)"
+      (read)="learn.read(draft.threadId)"
+      (dismiss)="dismissDraft(draft.id)"
+    />
+  }
+
+  @if (chat.compacting()) {
+    <pk-marker
+      ><span class="animate-pulse">{{ 'chat.transcript.compactingContext' | transloco }}</span></pk-marker
+    >
+  }
+  @if (chat.retry(); as retry) {
+    <p class="text-sm text-muted pt-4">
+      {{
+        'chat.transcript.retryingAttemptOf'
+          | transloco: { value1: retry.attempt, value2: retry.maxAttempts, value3: retry.reason }
+      }}
+    </p>
+  }
+  @if (chat.runError(); as error) {
+    <div role="alert" class="alert alert-error alert-soft mt-6 text-sm">
+      @if (outOfFunds(error.message)) {
+        <span>{{ 'chat.transcript.yourRadiusBalanceIsEmptyAddFunds' | transloco }}</span>
+        <a
+          class="btn btn-primary btn-xs"
+          [href]="fundsUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="add-funds"
+          >{{ 'chat.transcript.addFunds' | transloco }}</a
+        >
+      } @else {
+        <span>{{ error.message }}</span>
+      }
+      <button type="button" class="btn btn-ghost btn-xs" (click)="chat.setRunError(undefined)">
+        {{ 'chat.transcript.dismiss' | transloco }}
+      </button>
+    </div>
+  }
+  @for (notice of chat.notices(); track notice.id) {
+    <div
+      role="status"
+      class="alert alert-soft mt-4 text-sm"
+      [class.alert-info]="notice.level === 'info'"
+      [class.alert-warning]="notice.level === 'warning'"
+      [class.alert-error]="notice.level === 'error'"
+    >
+      <span>{{ notice.text }}</span>
+      <button type="button" class="btn btn-ghost btn-xs" (click)="chat.dismissNotice(notice.id)">
+        {{ 'chat.transcript.dismiss' | transloco }}
+      </button>
+    </div>
+  }
+
+  @if (chat.blocks().length === 0 && !chat.waitingForAnswer() && !onNewThreadPage() && !chat.connecting()) {
+    <div class="grid place-items-center py-16 text-center text-sm text-muted">
+      <p>
+        {{ 'chat.transcript.sayWhatYouWantPiToDo' | transloco }} <code>/</code>
+        {{ 'chat.transcript.forCommands' | transloco }} <code>@</code> {{ 'chat.transcript.forFiles' | transloco }}
+        <code>!</code>
+        {{ 'chat.transcript.forAShellCommand' | transloco }}
+      </p>
+    </div>
+  }
+</ng-template>

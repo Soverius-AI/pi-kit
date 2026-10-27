@@ -1,0 +1,16 @@
+{
+  "name": "terminal-feature-terminal",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/terminal/feature-terminal/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:terminal",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

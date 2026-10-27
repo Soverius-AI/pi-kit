@@ -1,0 +1,167 @@
+<input #drawer type="checkbox" id="t-threads" class="pk-toggle" />
+
+<div class="pk-shell" [attr.data-panel]="bus.panel() ? 'open' : 'closed'">
+  <!-- Sidebar: the only left column (layout). Projects, their threads, the backend status. -->
+  <pk-thread-sidebar (opened)="open($event, drawer)" />
+
+  <!-- Main -->
+  <main class="pk-main" [attr.data-setup]="bus.onboarding() ? 'open' : null">
+    @defer (when bus.onboarding(); prefetch on idle) {
+      <pk-onboarding-strip />
+    }
+    <header class="pk-header">
+      <label
+        for="t-threads"
+        class="btn btn-ghost btn-sm btn-square pk-only-sm"
+        [title]="'shell.app.threads' | transloco"
+        >☰</label
+      >
+      <!-- The wide window's sidebar switch (⌘B); below 1024px ☰ above opens the drawer instead. -->
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm btn-square pk-only-wide"
+        data-testid="toggle-sidebar"
+        [attr.aria-pressed]="!prefs.sidebarCollapsed()"
+        [attr.aria-label]="sidebarLabel()"
+        [title]="sidebarLabel()"
+        (click)="shell.toggleSidebar()"
+      >
+        <pk-icon name="sidebar" size="16" />
+      </button>
+      @if (review.mode() === 'review' && !threads.selected()?.learning) {
+        <button type="button" class="btn btn-ghost btn-sm" (click)="review.exit()">
+          {{ 'shell.app.chat' | transloco }}
+        </button>
+        <h1 class="font-medium shrink-0">{{ 'shell.app.reviewChanges' | transloco }}</h1>
+        <span class="pk-review-totals t-xs pk-hide-sm" [title]="review.summary()">
+          <span class="text-success">+{{ review.totals().added }}</span>
+          <span class="text-error">−{{ review.totals().removed }}</span>
+        </span>
+      } @else {
+        <h1 class="font-medium truncate">{{ shell.title() }}</h1>
+      }
+      <div class="pk-header-actions ml-auto flex items-center gap-2">
+        <!-- One control for every side panel (doc/docs/design-system.md, "Layout"). -->
+        <pk-panel-switcher />
+      </div>
+    </header>
+
+    @if (review.mode() === 'review' && !threads.selected()?.learning) {
+      <pk-review-toolbar />
+    }
+    @if (threads.selected()?.learning) {
+      @if (!learn.editing()) {
+        @defer (on immediate) {
+          <pk-skill-review-dialog [embedded]="true" />
+        }
+      }
+    } @else if (threads.selectedId() && review.mode() === 'review') {
+      @defer (on immediate) {
+        <pk-review-view /> <pk-review-tray />
+      }
+    } @else if (threads.selectedId()) {
+      @defer (on
+    immediate) {
+        <pk-chat />
+      }
+    } @else {
+      <div class="row-start-3 row-span-2 grid place-items-center p-6 text-sm text-muted">
+        <p>{{ 'shell.app.noThreadIsOpenPickOneOn' | transloco }}</p>
+      </div>
+    }
+  </main>
+
+  <!-- Side panel: the session graph, files, changes, terminal, artifacts or agents. layout.css makes it a drawer below 1440px and a sheet below 768px. -->
+  @if (bus.panel()) {
+    <button
+      type="button"
+      class="pk-panel-resize"
+      role="separator"
+      [attr.aria-label]="'shell.app.resizeSidePanel' | transloco"
+      aria-orientation="vertical"
+      [attr.aria-valuenow]="prefs.panelWidth()"
+      [attr.aria-valuemin]="panelWidth.min"
+      [attr.aria-valuemax]="panelWidth.max"
+      (pointerdown)="startPanelResize($event)"
+      (keydown)="resizePanelKey($event)"
+      (dblclick)="prefs.setPanelWidth(panelWidth.default)"
+    ></button>
+  }
+  @switch (bus.panel()) {
+    @case ('tree') {
+      @defer (on immediate) {
+        <pk-session-panel />
+      }
+    }
+    @case ('files') {
+      @defer (on immediate) {
+        <pk-files-panel />
+      }
+    }
+    @case ('changes') {
+      @defer (on immediate) {
+        <pk-changes-panel />
+      }
+    }
+    @case ('terminal') {
+      @defer (on immediate) {
+        <pk-terminal-panel />
+      }
+    }
+    @case ('artifacts') {
+      @defer (on immediate) {
+        <pk-artifacts-panel [suspended]="browserSuspended()" [resizing]="panelResizing()" />
+      }
+    }
+    @case ('agents') {
+      @defer (on
+  immediate) {
+        <pk-agents-panel />
+      }
+    }
+  }
+
+  <footer class="pk-status">
+    @if (shell.sessionLabel()) {
+      <span>{{ shell.sessionLabel() }}</span>
+      <span>{{ shell.runState() }}</span>
+      @if (session.stats()?.autoCompaction) {
+        <span class="pk-hide-sm">{{ 'shell.app.autoCompactionOn' | transloco }}</span>
+      }
+      <button
+        type="button"
+        class="pk-total"
+        [title]="'shell.app.usageByModelAndByTurn' | transloco"
+        data-testid="status-totals"
+        (click)="registry.showUsage()"
+      >
+        {{ shell.totals() }}
+      </button>
+    }
+    @for (entry of shell.statusEntries(); track entry[0]) {
+      <span class="truncate" [title]="entry[0]"><pk-ansi-text [text]="entry[1]" /></span>
+    }
+    <span class="ml-auto">{{ shell.backendLabel() }}</span>
+  </footer>
+</div>
+
+<pk-palette />
+@defer (when dialogs.current(); prefetch on idle) {
+  <pk-dialog-host />
+}
+<pk-settings-dialog />
+@defer (when bus.onboarding(); prefetch on idle) {
+  <pk-onboarding />
+}
+<pk-trust-dialog />
+<pk-outcome-menu />
+@defer (when worktrees.open()) {
+  <pk-worktree-dialog />
+}
+@if (learn.open() && learn.editing()) {
+  @defer (on immediate) {
+    <pk-skill-review-dialog />
+  }
+}
+<pk-toasts />
+<pk-lightbox />

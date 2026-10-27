@@ -1,0 +1,78 @@
+{
+  "objects": [
+    {
+      "downloads": { "monthly": 12034, "weekly": 3011 },
+      "dependents": "3",
+      "updated": "2026-10-13T08:14:02.114Z",
+      "searchScore": 0.0004,
+      "package": {
+        "name": "pi-subagents",
+        "scope": "unscoped",
+        "version": "0.5.0",
+        "description": "Run pi in sub-threads with their own tools and budget.",
+        "keywords": ["pi-package", "pi-extension", "pi-skill", "agents"],
+        "date": "2026-10-13T08:14:02.114Z",
+        "links": { "npm": "https://www.npmjs.com/package/pi-subagents", "homepage": "https://github.com/nicolo/pi-subagents#readme", "repository": "https://github.com/nicolo/pi-subagents", "bugs": "https://github.com/nicolo/pi-subagents/issues" },
+        "author": { "name": "nicolo", "email": "n@example.com" },
+        "publisher": { "username": "nicolo", "email": "n@example.com" },
+        "maintainers": [{ "username": "nicolo", "email": "n@example.com" }],
+        "license": "MIT",
+        "pi": { "extensions": ["./extensions/subagents.ts", "./extensions/budget.ts"], "skills": ["./skills"] }
+      },
+      "score": { "final": 0.5, "detail": { "quality": 0.9, "popularity": 0.2, "maintenance": 0.9 } }
+    },
+    {
+      "downloads": { "monthly": 3100, "weekly": 700 },
+      "dependents": "0",
+      "updated": "2026-10-03T11:00:00.000Z",
+      "searchScore": 0.0003,
+      "package": {
+        "name": "pi-swarm",
+        "scope": "unscoped",
+        "version": "1.2.1",
+        "description": "Fan a task out to parallel agents and merge the results.",
+        "keywords": ["pi-package", "extension"],
+        "date": "2026-10-03T11:00:00.000Z",
+        "links": { "npm": "https://www.npmjs.com/package/pi-swarm", "repository": "git+https://github.com/someone/pi-swarm.git" },
+        "publisher": { "username": "someone", "email": "s@example.com" },
+        "maintainers": []
+      },
+      "score": { "final": 0.4, "detail": {} }
+    },
+    {
+      "downloads": { "monthly": 800, "weekly": 150 },
+      "updated": "2026-10-01T09:30:00.000Z",
+      "package": {
+        "name": "@devops/skills-devops",
+        "scope": "devops",
+        "version": "2.0.0",
+        "description": "Terraform, Kubernetes and GitHub Actions skills.",
+        "keywords": ["pi-package", "pi-skills", "devops"],
+        "date": "2026-10-01T09:30:00.000Z",
+        "links": { "npm": "https://www.npmjs.com/package/@devops/skills-devops", "homepage": "https://devops.example/skills" },
+        "author": { "name": "Dev Ops" },
+        "publisher": { "username": "devops", "email": "d@example.com" }
+      }
+    },
+    {
+      "downloads": { "monthly": 2400 },
+      "updated": "2026-09-20T09:30:00.000Z",
+      "package": {
+        "name": "pi-review-bot",
+        "scope": "unscoped",
+        "version": "0.9.3",
+        "keywords": ["pi-package"],
+        "date": "2026-09-20T09:30:00.000Z",
+        "links": { "repository": "ssh://git@github.com/team/pi-review-bot.git" },
+        "publisher": { "username": "team" },
+        "pi": { "extensions": "./extensions/review.ts", "prompts": ["./prompts/review.md"], "themes": ["!./themes/old.json"] }
+      }
+    },
+    {
+      "package": { "name": "no-version-here", "keywords": ["pi-package"] }
+    },
+    { "unexpected": true }
+  ],
+  "total": 6,
+  "time": "Mon Oct 17 2026 10:00:00 GMT+0000 (Coordinated Universal Time)"
+}

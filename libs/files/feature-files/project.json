@@ -1,0 +1,16 @@
+{
+  "name": "files-feature-files",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/files/feature-files/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:files",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

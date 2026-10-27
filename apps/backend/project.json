@@ -1,0 +1,127 @@
+{
+  "name": "backend",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/backend/src",
+  "projectType": "application",
+  "tags": [
+    "scope:backend"
+  ],
+  "implicitDependencies": [
+    "secret-cli",
+    "backend-runtime"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "cache": true,
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "production",
+        "^production",
+        "{workspaceRoot}/scripts/backend-runtime.cjs",
+        "{workspaceRoot}/packages/pi-kit-learn/**/*",
+        "{workspaceRoot}/packages/pi-kit-meat-proxy/**/*",
+        "{workspaceRoot}/packages/pi-computer-use/{package.json,README.md,extensions/*.ts,lib/*.mjs}"
+      ],
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "defaultConfiguration": "production",
+      "options": {
+        "outputPath": "dist/apps/backend",
+        "main": "apps/backend/src/main.ts",
+        "additionalEntryPoints": [
+          "apps/backend/src/openapi.ts"
+        ],
+        "tsConfig": "apps/backend/tsconfig.app.json",
+        "platform": "node",
+        "format": [
+          "cjs"
+        ],
+        "target": "node24",
+        "bundle": true,
+        "thirdParty": true,
+        "external": [
+          "@napi-rs/keyring",
+          "better-sqlite3-multiple-ciphers",
+          "node-pty",
+          "keychain-store"
+        ],
+        "esbuildConfig": "apps/backend/esbuild.config.cjs",
+        "metafile": true,
+        "generatePackageJson": false,
+        "assets": [
+          {
+            "input": "apps/backend/src/assets",
+            "glob": "**/*",
+            "output": "assets"
+          },
+          {
+            "input": "apps/backend/src/db/migrations",
+            "glob": "*.sql",
+            "output": "migrations"
+          },
+          {
+            "input": "packages/pi-kit-learn",
+            "glob": "{package.json,README.md,extensions/*.ts,lib/{analysis,verification}.mjs,prompts/*.md,templates/*.md}",
+            "output": "packages/pi-kit-learn"
+          },
+          {
+            "input": "packages/pi-kit-meat-proxy",
+            "glob": "{package.json,README.md,extensions/*.ts,lib/{hunks,ledger,score,attribution,pipeline}.mjs,prompts/*.md}",
+            "output": "packages/pi-kit-meat-proxy"
+          },
+          {
+            "input": "packages/pi-computer-use",
+            "glob": "{package.json,README.md,extensions/*.ts,lib/{computer-use,host}.mjs}",
+            "output": "packages/pi-computer-use"
+          }
+        ]
+      },
+      "configurations": {
+        "production": {
+          "minify": true,
+          "sourcemap": false
+        },
+        "development": {
+          "minify": false,
+          "sourcemap": true
+        }
+      }
+    },
+    "serve": {
+      "continuous": true,
+      "executor": "@nx/js:node",
+      "defaultConfiguration": "development",
+      "dependsOn": [
+        "build"
+      ],
+      "options": {
+        "buildTarget": "backend:build",
+        "runBuildTargetDependencies": false
+      },
+      "configurations": {
+        "development": {
+          "buildTarget": "backend:build:development"
+        },
+        "production": {
+          "buildTarget": "backend:build:production"
+        }
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "options": {
+        "command": "vitest run",
+        "cwd": "apps/backend"
+      }
+    }
+  }
+}

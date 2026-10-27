@@ -1,0 +1,84 @@
+{
+  "transcript": {
+    "threadId": "t-notes",
+    "title": "Add notes",
+    "cwd": "/work/notes-app",
+    "prompts": [
+      "Add notes/alpha.md and notes/beta.md as short notes. alpha is titled # Alpha and has two lines.",
+      "No, not that. Instead make mapRow in src/map.ts reject negative totals, see line 2.",
+      "Review comments: notes/alpha.md:2 Say \"first\" in this line.",
+      "Then run `npm test` and tell me the result."
+    ],
+    "toolCalls": 9,
+    "steps": [],
+    "errors": [],
+    "checks": [],
+    "diff": null,
+    "changedLines": 0,
+    "commitMessage": null,
+    "base": null,
+    "head": null,
+    "truncated": false,
+    "redactions": 0,
+    "turns": [
+      {
+        "n": 1,
+        "at": 1792000000000,
+        "text": "Add notes/alpha.md and notes/beta.md as short notes. alpha is titled # Alpha and has two lines.",
+        "queued": false,
+        "gapMs": null,
+        "toolCalls": 4,
+        "files": ["notes/alpha.md", "notes/beta.md"],
+        "chips": [],
+        "review": null,
+        "answers": [],
+        "previous": null
+      },
+      {
+        "n": 2,
+        "at": 1792000120000,
+        "text": "No, not that. Instead make mapRow in src/map.ts reject negative totals, see line 2.",
+        "queued": false,
+        "gapMs": 120000,
+        "toolCalls": 2,
+        "files": ["src/map.ts"],
+        "chips": [{ "kind": "skill", "name": "pdf-tools" }],
+        "review": null,
+        "answers": [{ "method": "confirm", "title": "Allow bash?", "status": "resolved", "confirmed": true }],
+        "previous": "I added notes/alpha.md and notes/beta.md. I also changed the README."
+      },
+      {
+        "n": 3,
+        "at": 1792000200000,
+        "text": "Review comments: notes/alpha.md:2 Say \"first\" in this line.",
+        "queued": false,
+        "gapMs": 60000,
+        "toolCalls": 1,
+        "files": ["notes/alpha.md"],
+        "chips": [],
+        "review": [{ "file": "notes/alpha.md", "side": "new", "line": 2, "text": "Say \"first\" in this line.", "snippet": "The first note." }],
+        "answers": [],
+        "previous": "mapRow now rejects negative totals."
+      },
+      {
+        "n": 4,
+        "at": 1792000200800,
+        "text": "Then run `npm test` and tell me the result.",
+        "queued": true,
+        "gapMs": 800,
+        "toolCalls": 2,
+        "files": [],
+        "chips": [],
+        "review": null,
+        "answers": [],
+        "previous": "Done."
+      }
+    ]
+  },
+  "baselines": [
+    { "path": "notes/alpha.md", "existed": false, "at": 1792000010000, "turn": 1, "edits": 2 },
+    { "path": "notes/beta.md", "existed": false, "at": 1792000020000, "turn": 1, "edits": 1 },
+    { "path": "src/map.ts", "existed": true, "at": 1792000130000, "turn": 2, "edits": 1 }
+  ],
+  "outsideEdits": [{ "path": "notes/gamma.md", "firstAt": 1792000300000, "lastAt": 1792000320000, "count": 3 }]
+}

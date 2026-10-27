@@ -1,0 +1,38 @@
+{
+  "name": "shared-secret-store",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/shared/secret-store/src",
+  "projectType": "library",
+  "tags": [
+    "scope:shared",
+    "type:util"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/libs/shared/secret-store",
+        "main": "libs/shared/secret-store/src/index.ts",
+        "tsConfig": "libs/shared/secret-store/tsconfig.lib.json",
+        "assets": [
+          "libs/shared/secret-store/*.md"
+        ]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "options": {
+        "command": "vitest run",
+        "cwd": "libs/shared/secret-store"
+      }
+    }
+  }
+}

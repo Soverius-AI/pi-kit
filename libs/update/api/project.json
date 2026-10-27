@@ -1,0 +1,16 @@
+{
+  "name": "update-api",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/update/api/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:update",
+    "type:api"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-hidden="true">
+  <!-- pi-kit mark (πk) in its facets, on a transparent ground: splash, README, about. -->
+  <defs>
+    <filter id="emboss" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="1.2" stdDeviation="0.7" flood-color="#000000" flood-opacity="0.45"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="3.5" flood-color="#e3b457" flood-opacity="0.32"/>
+    </filter>
+  </defs>
+  <g stroke="rgb(255 255 255 / .22)" stroke-width=".45" stroke-linejoin="round" filter="url(#emboss)">
+    <polygon points="12,30 40,30 22,41.5" fill="#f6d98c"/>
+    <polygon points="12,30 22,41.5 12,41.5" fill="#e6a94a"/>
+    <polygon points="22,41.5 40,30 52,41.5" fill="#c58f3a"/>
+    <polygon points="40,30 68,30 52,41.5" fill="#fbe3a0"/>
+    <polygon points="52,41.5 68,30 68,41.5" fill="#b4772e"/>
+    <polygon points="23,41.5 34.5,41.5 23,60" fill="#edbf63"/>
+    <polygon points="34.5,41.5 34.5,76.5 23,60" fill="#b98332"/>
+    <polygon points="23,60 34.5,76.5 23,76.5" fill="#e2a94c"/>
+    <polygon points="52,20 63.5,20 52,45" fill="#f9dd93"/>
+    <polygon points="63.5,20 63.5,50 52,45" fill="#d19a3c"/>
+    <polygon points="52,45 63.5,50 52,82" fill="#e9b85a"/>
+    <polygon points="63.5,50 63.5,82 52,82" fill="#a06f28"/>
+    <polygon points="63.5,58 80,40 88,48" fill="#f4c96e"/>
+    <polygon points="63.5,58 88,48 71.5,64" fill="#e2893f"/>
+    <polygon points="63.5,68 71.5,63 88,81" fill="#dfa84a"/>
+    <polygon points="63.5,68 88,81 80,89" fill="#c46b3a"/>
+  </g>
+</svg>

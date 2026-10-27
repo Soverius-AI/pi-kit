@@ -1,0 +1,16 @@
+{
+  "name": "review-api",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/review/api/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:review",
+    "type:api"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

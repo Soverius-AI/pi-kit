@@ -1,0 +1,6 @@
+{
+  "name": "@pi-kit/session-tree-util",
+  "version": "0.0.1",
+  "private": true,
+  "sideEffects": false
+}

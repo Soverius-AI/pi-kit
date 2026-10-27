@@ -1,0 +1,7 @@
+node_modules/
+dist/
+out/
+output/
+.nx/
+.angular/
+libs/shared/api/src/generated/

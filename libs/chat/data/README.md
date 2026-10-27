@@ -1,0 +1,7 @@
+# chat-data
+
+`@pi-kit/chat/data`, library type `type:data` of the `chat` domain (tags `scope:chat`, `type:data`).
+
+The SignalStores and their mappers; the stores call the generated operations of `@pi-kit/api` directly. May use `data`, `util`, `scope:shared` and the `api` of other domains.
+
+The boundary rules are in `eslint.config.mjs` at the repository root; `doc/docs/structure.md` has the tree and the rule per type.

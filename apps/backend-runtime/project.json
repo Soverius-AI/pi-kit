@@ -1,0 +1,272 @@
+{
+  "name": "backend-runtime",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/backend-runtime/src",
+  "tags": [
+    "scope:backend"
+  ],
+  "targets": {
+    "build": {
+      "executor": "nx:noop",
+      "dependsOn": [
+        "bundle-pi",
+        "bundle-needle",
+        "bundle-natives"
+      ]
+    },
+    "bundle-worker": {
+      "executor": "@nx/esbuild:esbuild",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ],
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "defaultConfiguration": "production",
+      "configurations": {
+        "production": {
+          "minify": true,
+          "sourcemap": false,
+          "metafile": false
+        },
+        "development": {
+          "minify": false,
+          "sourcemap": true
+        }
+      },
+      "options": {
+        "tsConfig": "apps/backend-runtime/tsconfig.json",
+        "platform": "node",
+        "format": [
+          "esm"
+        ],
+        "target": "node24",
+        "bundle": true,
+        "thirdParty": true,
+        "generatePackageJson": false,
+        "skipTypeCheck": true,
+        "metafile": true,
+        "outputPath": "dist/apps/backend-runtime-worker",
+        "main": "apps/backend-runtime/src/codemode-worker.mjs",
+        "includeIgnoredAssetFiles": true
+      }
+    },
+    "bundle-pi": {
+      "executor": "@nx/esbuild:esbuild",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ],
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "defaultConfiguration": "production",
+      "configurations": {
+        "production": {
+          "minify": true,
+          "sourcemap": false,
+          "metafile": false
+        },
+        "development": {
+          "minify": false,
+          "sourcemap": true
+        }
+      },
+      "dependsOn": [
+        "bundle-worker"
+      ],
+      "options": {
+        "tsConfig": "apps/backend-runtime/tsconfig.json",
+        "platform": "node",
+        "format": [
+          "esm"
+        ],
+        "target": "node24",
+        "bundle": true,
+        "thirdParty": true,
+        "generatePackageJson": false,
+        "skipTypeCheck": true,
+        "metafile": true,
+        "outputPath": "dist/apps/backend-runtime/assets/pi",
+        "main": "apps/backend-runtime/src/pi/index.mjs",
+        "additionalEntryPoints": [
+          "apps/backend-runtime/src/pi/mcp.mjs",
+          "apps/backend-runtime/src/pi/codemode.mjs",
+          "apps/backend-runtime/src/pi/image-resize-worker.mjs",
+          "apps/backend-runtime/src/pi/bundle/cli.mjs",
+          "apps/backend-runtime/src/pi/bundle/rpc-entry.mjs"
+        ],
+        "esbuildConfig": "apps/backend-runtime/esbuild.pi.cjs",
+        "assets": [
+          {
+            "input": "node_modules/@earendil-works/pi-coding-agent",
+            "glob": "{package.json,README.md,CHANGELOG.md,LICENSE,docs/**/*,examples/**/*,schemas/**/*,containerization.md}",
+            "output": "."
+          },
+          {
+            "input": "node_modules/@earendil-works/pi-coding-agent/dist",
+            "glob": "{modes/interactive/theme/*.json,modes/interactive/assets/*.png,core/export-html/**/*.{html,css,js}}",
+            "output": "dist"
+          },
+          {
+            "input": "node_modules/@earendil-works/pi-tui",
+            "glob": "native/**/prebuilds/**/*.{node,dll}",
+            "output": "."
+          },
+          {
+            "input": "node_modules/@silvia-odwyer/photon-node",
+            "glob": "{photon_rs_bg.wasm,LICENSE}",
+            "output": "dist"
+          },
+          {
+            "input": "dist/apps/backend-runtime-worker",
+            "glob": "codemode-worker.js",
+            "output": "dist"
+          },
+          {
+            "input": "node_modules/quickjs-wasi",
+            "glob": "{quickjs.wasm,LICENSE}",
+            "output": "."
+          }
+        ],
+        "includeIgnoredAssetFiles": true
+      }
+    },
+    "bundle-needle": {
+      "executor": "@nx/esbuild:esbuild",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ],
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "defaultConfiguration": "production",
+      "configurations": {
+        "production": {
+          "minify": true,
+          "sourcemap": false,
+          "metafile": false
+        },
+        "development": {
+          "minify": false,
+          "sourcemap": true
+        }
+      },
+      "options": {
+        "tsConfig": "apps/backend-runtime/tsconfig.json",
+        "platform": "node",
+        "format": [
+          "esm"
+        ],
+        "target": "node24",
+        "bundle": true,
+        "thirdParty": true,
+        "generatePackageJson": false,
+        "skipTypeCheck": true,
+        "metafile": true,
+        "outputPath": "dist/apps/backend-runtime/assets/needle",
+        "main": "apps/backend-runtime/src/needle/index.mjs",
+        "additionalEntryPoints": [
+          "apps/backend-runtime/src/needle/node/index.mjs",
+          "apps/backend-runtime/src/needle/node/worker.mjs"
+        ],
+        "esbuildOptions": {
+          "outdir": "dist/apps/backend-runtime/assets/needle/dist",
+          "outbase": "apps/backend-runtime/src/needle",
+          "splitting": true,
+          "chunkNames": "node/chunk-[hash]",
+          "alias": {
+            "needle-internal": "./node_modules/cactus-needle/dist"
+          },
+          "ignoreAnnotations": true
+        },
+        "assets": [
+          {
+            "input": "node_modules/cactus-needle",
+            "glob": "{package.json,LICENSE,NOTICE,vendor/*}",
+            "output": "."
+          }
+        ],
+        "includeIgnoredAssetFiles": true
+      }
+    },
+    "bundle-natives": {
+      "executor": "@nx/esbuild:esbuild",
+      "cache": true,
+      "inputs": [
+        "default",
+        "{workspaceRoot}/pnpm-lock.yaml"
+      ],
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "defaultConfiguration": "production",
+      "configurations": {
+        "production": {
+          "minify": true,
+          "sourcemap": false,
+          "metafile": false
+        },
+        "development": {
+          "minify": false,
+          "sourcemap": true
+        }
+      },
+      "options": {
+        "tsConfig": "apps/backend-runtime/tsconfig.json",
+        "platform": "node",
+        "format": [
+          "cjs"
+        ],
+        "target": "node24",
+        "bundle": true,
+        "thirdParty": true,
+        "generatePackageJson": false,
+        "skipTypeCheck": true,
+        "metafile": true,
+        "outputPath": "dist/apps/backend-runtime-natives/node_modules",
+        "main": "node_modules/@napi-rs/keyring/index.js",
+        "additionalEntryPoints": [
+          "node_modules/better-sqlite3-multiple-ciphers/lib/index.js",
+          "node_modules/node-pty/lib/index.js",
+          "node_modules/node-pty/lib/conpty_console_list_agent.js",
+          "node_modules/node-pty/lib/worker/conoutSocketWorker.js"
+        ],
+        "esbuildOptions": {
+          "outbase": "node_modules",
+          "outExtension": {
+            ".js": ".js"
+          }
+        },
+        "external": [
+          "*.node",
+          "@napi-rs/keyring-*"
+        ],
+        "assets": [
+          {
+            "input": "node_modules/@napi-rs/keyring",
+            "glob": "{package.json,LICENSE}",
+            "output": "@napi-rs/keyring"
+          },
+          {
+            "input": "node_modules/better-sqlite3-multiple-ciphers",
+            "glob": "{package.json,LICENSE,prebuilds/*.node}",
+            "output": "better-sqlite3-multiple-ciphers"
+          },
+          {
+            "input": "node_modules/node-pty",
+            "glob": "{package.json,LICENSE,prebuilds/**/*.{node,dll,exe},prebuilds/**/spawn-helper,build/Release/*.node,build/Release/spawn-helper}",
+            "output": "node-pty"
+          }
+        ],
+        "includeIgnoredAssetFiles": true
+      }
+    }
+  }
+}

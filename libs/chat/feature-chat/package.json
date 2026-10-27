@@ -1,0 +1,9 @@
+{
+  "name": "@pi-kit/chat-feature-chat",
+  "version": "0.0.1",
+  "private": true,
+  "sideEffects": false,
+  "peerDependencies": {
+    "@tanstack/angular-virtual": "6.1.8"
+  }
+}

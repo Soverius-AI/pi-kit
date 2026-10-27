@@ -1,0 +1,31 @@
+{
+  "name": "chat-data",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/chat/data/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:chat",
+    "type:data"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/chat/data/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/chat/data/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/chat/data/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

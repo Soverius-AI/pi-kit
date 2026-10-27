@@ -1,0 +1,16 @@
+{
+  "name": "threads-feature-worktree",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/threads/feature-worktree/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:threads",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

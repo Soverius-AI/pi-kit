@@ -1,0 +1,16 @@
+{
+  "name": "update-feature-update",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/update/feature-update/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:update",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "session-tree-util",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/session-tree/util/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:session-tree",
+    "type:util"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/session-tree/util/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/session-tree/util/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/session-tree/util/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

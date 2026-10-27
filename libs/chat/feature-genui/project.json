@@ -1,0 +1,16 @@
+{
+  "name": "chat-feature-genui",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/chat/feature-genui/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:chat",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

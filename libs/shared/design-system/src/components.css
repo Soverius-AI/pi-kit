@@ -1,0 +1,7392 @@
+/* pi-kit transcript, activity, composer, graph and review component styles.
+   The Angular primitives are built on these classes in libs/shared/design-system/src/lib
+   (pk-turn, pk-activity-row, pk-think, pk-marker, pk-approval, pk-composer-well, pk-command-menu,
+   pk-breadcrumb-strip). */
+
+/* Turns */
+.copilot-open-generative-ui-container.pk-open-ui-sized {
+  height: var(--pk-open-ui-height) !important;
+}
+
+/* Turns carry no avatars: the user block's background is the only marker, captions show on hover. */
+.pk-turn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 12px;
+}
+.pk-turn .who {
+  display: none;
+}
+.pk-turn:hover .pk-when,
+.pk-turn:focus-within .pk-when {
+  opacity: 1;
+}
+.pk-turn + .pk-turn {
+  margin-top: 32px;
+}
+/* A turn inside a display-contents wrapper component (the extensions' approval blocks) is spaced the same */
+.pk-measure > .contents > .pk-turn {
+  margin-top: 32px;
+}
+.pk-turn .body > * + * {
+  margin-top: 12px;
+}
+.pk-user {
+  background: var(--color-base-100);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+.pk-when {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+/* Assistant prose (markdown) inside a turn: 15/24, measure from the shell, blocks 12 apart */
+.prose > * + * {
+  margin-top: 12px;
+}
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  font-weight: 500;
+  margin-top: 24px;
+}
+.prose h1 {
+  font-size: 22px;
+  line-height: 28px;
+}
+.prose h2 {
+  font-size: 17px;
+  line-height: 24px;
+}
+.prose h3,
+.prose h4 {
+  font-size: 15px;
+  line-height: 24px;
+}
+.prose ul,
+.prose ol {
+  padding-left: 24px;
+}
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li + li {
+  margin-top: 4px;
+}
+.prose a {
+  color: var(--color-info);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.prose blockquote {
+  border-left: 2px solid var(--color-base-300);
+  padding-left: 12px;
+  color: var(--pk-muted);
+}
+.prose hr {
+  border: 0;
+  height: 1px;
+  background: var(--color-base-300);
+  margin: 24px 0;
+}
+.prose pre {
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+.prose pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 18px;
+  display: block;
+  overflow-x: auto;
+}
+.prose th,
+.prose td {
+  border: 1px solid var(--color-base-300);
+  padding: 4px 8px;
+  text-align: left;
+}
+.prose th {
+  background: var(--color-base-100);
+  font-weight: 500;
+}
+.pk-caret > :last-child::after {
+  content: '▌';
+  margin-left: 2px;
+  animation: pk-blink 1.1s steps(1) infinite;
+}
+@keyframes pk-blink {
+  50% {
+    opacity: 0;
+  }
+}
+.pk-user {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pk-user img {
+  max-height: 160px;
+  border-radius: 8px;
+  margin-top: 8px;
+  display: block;
+}
+/* A small image that opens the lightbox: the button is the image, nothing else. */
+.pk-thumb {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  border-radius: 8px;
+}
+.pk-thumb:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.pk-chip-strip copilot-chat-attachment-queue img {
+  cursor: zoom-in;
+}
+
+/* Context inspector (doc/docs/design-system.md, "Context inspector"): the Session panel's view of what the model sees, by kind and piece. */
+.pk-context {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.pk-context .head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-base-300);
+  font-size: 13px;
+}
+.pk-context .head progress {
+  height: 6px;
+}
+.pk-context .group {
+  border-bottom: 1px solid var(--color-base-300);
+}
+.pk-context .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.pk-context .row:hover {
+  background: var(--color-base-200);
+}
+.pk-context .row .chev {
+  width: 12px;
+  color: var(--pk-muted);
+  font-size: 11px;
+}
+.pk-context .row .lbl {
+  flex: 1;
+  min-width: 0;
+}
+.pk-context .share {
+  width: 72px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-base-300);
+  overflow: hidden;
+  flex: none;
+}
+.pk-context .share .fill {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+}
+.pk-context .num {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--pk-muted);
+  min-width: 44px;
+  text-align: right;
+}
+.pk-context .item {
+  margin: 0 12px 6px 32px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.pk-context .item summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.pk-context .item summary::-webkit-details-marker {
+  display: none;
+}
+.pk-context .item summary .lbl {
+  flex: 1;
+  min-width: 0;
+}
+.pk-context .item[open] summary {
+  border-bottom: 1px solid var(--color-base-300);
+}
+.pk-context .item .text {
+  margin: 0;
+  padding: 8px;
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--color-base-200);
+}
+
+/* Lightbox (docs/design-system.md, "Lightbox"): the image over a dimmed window, its caption under it, a close button at the top right. */
+.pk-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: color-mix(in oklab, var(--color-base-100) 15%, rgb(0 0 0 / 0.78));
+  cursor: zoom-out;
+  animation: pk-lightbox-in 140ms ease-out;
+}
+.pk-lightbox:focus {
+  outline: none;
+}
+.pk-lightbox figure {
+  margin: 0;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: default;
+}
+.pk-lightbox img {
+  max-width: calc(100vw - 64px);
+  max-height: calc(100vh - 96px);
+  object-fit: contain;
+  border-radius: 10px;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 0.5);
+  background: var(--color-base-100);
+}
+.pk-lightbox figcaption {
+  font-size: 12px;
+  color: white;
+  opacity: 0.85;
+  max-width: calc(100vw - 64px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-lightbox .close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  border: 0;
+  background: rgb(255 255 255 / 0.12);
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+}
+.pk-lightbox .close:hover {
+  background: rgb(255 255 255 / 0.22);
+}
+.pk-lightbox .close:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 2px;
+}
+@keyframes pk-lightbox-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-lightbox {
+    animation: none;
+  }
+}
+
+/* Syntax colours (highlight.js classes) from the theme tokens, on a base-100 surface.
+   Scoped to the assistant's markdown (.prose) and to tool output (.pk-out), and written to beat CopilotKit's own highlight theme: its
+   assistant message component injects an unscoped one-light / `.dark` one-dark stylesheet into <head> (ViewEncapsulation.None) after ours, so a
+   plain `.hljs-keyword` rule loses on source order whichever highlight.js copy produced the markup. :root adds one class of specificity to every rule
+   here, which also outranks its `.dark .hljs-*` rules, without !important. */
+:root :is(.prose, .pk-out) .hljs {
+  color: var(--color-base-content);
+  background: transparent;
+}
+:root :is(.prose, .pk-out) :is(.hljs-comment, .hljs-quote, .hljs-meta) {
+  color: var(--pk-muted);
+  font-style: italic;
+}
+:root :is(.prose, .pk-out) :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag, .hljs-name) {
+  color: var(--color-info);
+}
+:root :is(.prose, .pk-out) :is(.hljs-string, .hljs-regexp, .hljs-addition, .hljs-attribute, .hljs-template-variable) {
+  color: var(--color-success);
+}
+:root :is(.prose, .pk-out) :is(.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-variable, .hljs-link) {
+  color: var(--color-warning);
+  text-decoration: none;
+}
+:root
+  :is(.prose, .pk-out)
+  :is(
+    .hljs-title,
+    .hljs-section,
+    .hljs-built_in,
+    .hljs-type,
+    .hljs-selector-id,
+    .hljs-selector-class,
+    .hljs-class .hljs-title
+  ) {
+  color: var(--color-primary);
+}
+:root
+  :is(.prose, .pk-out)
+  :is(.hljs-params, .hljs-subst, .hljs-formula, .hljs-attr, .hljs-selector-attr, .hljs-selector-pseudo) {
+  color: inherit;
+}
+:root :is(.prose, .pk-out) .hljs-deletion {
+  color: var(--color-error);
+}
+:root :is(.prose, .pk-out) .hljs-emphasis {
+  font-style: italic;
+}
+:root :is(.prose, .pk-out) .hljs-strong {
+  font-weight: 500;
+}
+
+/* Thinking trace: one summary line that updates while streaming, full trace on demand */
+.pk-think {
+  border-radius: 8px;
+}
+.pk-think summary {
+  display: grid;
+  grid-template-columns: 8px auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 28px;
+  list-style: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--pk-muted);
+  border-radius: 6px;
+  padding-right: 8px;
+}
+.pk-think summary::-webkit-details-marker {
+  display: none;
+}
+.pk-think summary:hover {
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-think .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--color-base-300);
+}
+.pk-think[data-state='streaming'] .dot {
+  background: var(--color-primary);
+  animation: pk-pulse 1.2s ease-in-out infinite;
+}
+.pk-think .live {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+}
+.pk-think .m {
+  font-size: 12px;
+  white-space: nowrap;
+}
+.pk-think .trace {
+  margin: 4px 0 8px 18px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--color-base-300);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--pk-muted);
+  max-height: 240px;
+  overflow-y: auto;
+}
+.pk-think .trace p + p {
+  margin-top: 8px;
+}
+@keyframes pk-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Activity list */
+.pk-activity {
+  border-left: 2px solid var(--color-base-300);
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pk-activity > * {
+  min-width: 0;
+}
+.pk-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-step progress {
+  width: 64px;
+  height: 3px;
+}
+.pk-earlier {
+  font-size: 12px;
+  color: var(--pk-muted);
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.pk-earlier:hover {
+  color: var(--color-base-content);
+}
+/* Work group (doc/docs/design-system.md, "Work group"): one line for a turn's work, opening into rows that open into their details. */
+.pk-work {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--pk-muted);
+  cursor: pointer;
+}
+.pk-work:hover {
+  color: var(--color-base-content);
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-work .chev,
+.pk-work-row > summary .chev {
+  display: inline-block;
+  width: 12px;
+  text-align: center;
+  color: var(--pk-muted);
+  transition: transform 120ms ease-out;
+}
+.pk-work[aria-expanded='true'] .chev,
+.pk-work-row[open] > summary .chev {
+  transform: rotate(90deg);
+}
+.pk-work .dot.running {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  animation: pk-pulse 1.2s ease-in-out infinite;
+}
+.pk-work-row {
+  border: 1px solid var(--color-base-300);
+  border-top-width: 0;
+  background: var(--color-base-100);
+}
+.pk-turn[data-work-first] .pk-work-row {
+  border-top-width: 1px;
+  border-radius: 8px 8px 0 0;
+}
+.pk-turn[data-work-last] .pk-work-row {
+  border-radius: 0 0 8px 8px;
+}
+.pk-turn[data-work-first][data-work-last] .pk-work-row {
+  border-radius: 8px;
+}
+.pk-turn .body > .pk-work + .pk-work-row {
+  margin-top: 6px;
+}
+.pk-work-row > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 10px;
+  list-style: none;
+  font-size: 13px;
+  cursor: pointer;
+}
+.pk-work-row > summary::-webkit-details-marker {
+  display: none;
+}
+.pk-work-row > summary:hover {
+  background: color-mix(in srgb, var(--color-base-content) 3%, transparent);
+}
+.pk-work-row > summary .dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 9999px;
+  background: var(--color-success);
+}
+.pk-work-row > summary .dot[data-state='running'] {
+  background: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+.pk-work-row > summary .dot[data-state='error'] {
+  background: var(--color-error);
+}
+.pk-work-row > summary .lbl {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pk-work-row > summary .hint,
+.pk-work-row > summary .live {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--pk-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.pk-work-row > summary .live {
+  font-family: inherit;
+  font-style: italic;
+}
+.pk-work-row > summary .m {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--pk-muted);
+  white-space: nowrap;
+}
+.pk-work-row > .body {
+  padding: 4px 10px 10px;
+}
+.pk-work-row.single {
+  border-top-width: 1px;
+  border-radius: 8px;
+}
+.pk-from-agent > summary .glyph {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--pk-muted);
+}
+.pk-from-agent > summary .glyph {
+  width: 16px;
+  height: 16px;
+}
+.pk-from-agent > summary .hint.plain {
+  font-family: inherit;
+}
+.pk-from-agent > .body {
+  font-size: 14px;
+  line-height: 22px;
+}
+.pk-work-row > .body.trace {
+  margin: 0;
+  padding: 4px 12px 10px 28px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--pk-muted);
+  max-height: 240px;
+  overflow-y: auto;
+}
+.pk-work-row > .body.trace p + p {
+  margin-top: 8px;
+}
+/* Rows sit flush: the turn spacing between pieces does not apply inside a group. */
+.pk-messages pk-turn[data-work='row']:not([data-work-first]) {
+  margin-top: 0;
+}
+.pk-messages pk-turn[data-work='row']:not([data-work-first]) .pk-activity {
+  margin-top: 0;
+}
+.pk-row .sub {
+  grid-column: 2 / -1;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: -2px;
+  padding-bottom: 4px;
+}
+.pk-row[data-state='running'] .sub {
+  color: var(--color-base-content);
+  opacity: 0.8;
+}
+.pk-row {
+  display: grid;
+  grid-template-columns: 8px auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 28px;
+  padding: 2px 8px 2px 0;
+  border-radius: 6px;
+}
+.pk-row:hover {
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-row .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--color-success);
+}
+.pk-row[data-state='running'] .dot {
+  background: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 25%, transparent);
+}
+.pk-row[data-state='error'] .dot {
+  background: var(--color-error);
+}
+.pk-row .tool {
+  font-weight: 500;
+}
+.pk-row .target {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--pk-muted);
+}
+.pk-row .stat {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--pk-muted);
+  white-space: nowrap;
+}
+.pk-row[role='button'] {
+  cursor: pointer;
+}
+.pk-row .stat .btn {
+  margin: -4px 0;
+}
+.pk-out {
+  margin: 2px 0 6px 18px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.pk-out.patch,
+.pk-out.files {
+  background: var(--color-base-100);
+}
+.pk-out pre {
+  max-height: 320px;
+  overflow: auto;
+}
+.pk-out .meta {
+  color: var(--pk-muted);
+  font-size: 12px;
+  line-height: 16px;
+  padding: 0 12px 8px;
+}
+.pk-out .meta:first-child {
+  padding-top: 8px;
+}
+.pk-out.term {
+  background: var(--pk-sunken);
+  color: #d9dce2;
+}
+.pk-out pre {
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+.pk-out .add {
+  background: color-mix(in srgb, var(--color-success) 16%, transparent);
+  color: var(--color-success);
+  display: block;
+}
+.pk-out .del {
+  background: color-mix(in srgb, var(--color-error) 16%, transparent);
+  color: var(--color-error);
+  display: block;
+}
+.pk-out .hunk {
+  color: var(--pk-muted);
+  display: block;
+}
+
+/* Marker, approval */
+.pk-marker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--pk-muted);
+  margin: 24px 0;
+}
+.pk-marker::before,
+.pk-marker::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-base-300);
+}
+/* A background agent's transcript in the Agents panel: the thread's transcript at the panel's density. */
+.pk-agent-transcript .pk-turn + .pk-turn {
+  margin-top: 12px;
+}
+.pk-agent-transcript .pk-turn .body > * + * {
+  margin-top: 8px;
+}
+.pk-agent-transcript .pk-user {
+  padding: 8px 12px;
+  background: var(--color-base-200);
+  font-size: 14px;
+  line-height: 20px;
+}
+.pk-agent-transcript .pk-when {
+  display: none;
+}
+.pk-agent-transcript .prose {
+  font-size: 14px;
+  line-height: 22px;
+}
+.pk-agent-transcript .pk-think summary,
+.pk-agent-transcript .pk-work {
+  min-height: 24px;
+}
+/* Run ring (doc/docs/design-system.md, "Run ring"): the small gauge that says "running" without a word; takes the current colour. */
+.pk-run-ring {
+  display: inline-flex;
+  flex: none;
+  --pk-run-ring-size: 16px;
+}
+.pk-run-ring svg {
+  width: var(--pk-run-ring-size);
+  height: var(--pk-run-ring-size);
+}
+.pk-run-ring .track {
+  stroke: currentColor;
+  opacity: 0.2;
+}
+.pk-run-ring .context {
+  stroke: currentColor;
+}
+.pk-run-ring[data-level='warn'] .context {
+  stroke: var(--color-warning);
+}
+.pk-run-ring[data-level='err'] .context {
+  stroke: var(--color-error);
+}
+.pk-run-ring.running {
+  animation: pk-run-ring-pulse 1.6s ease-in-out infinite;
+}
+.pk-run-ring .runner {
+  transform-origin: 8px 8px;
+  animation: pk-run-ring-spin 1.2s linear infinite;
+}
+@keyframes pk-run-ring-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+@keyframes pk-run-ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-run-ring.running,
+  .pk-run-ring .runner {
+    animation: none;
+  }
+}
+/* Agent card (doc/docs/design-system.md, "Agent card"): who the agent is, its state, icon actions, then its numbers. */
+.pk-agent-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  background: var(--color-base-100);
+}
+.pk-agent-card .head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pk-agent-card .glyph {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--pk-muted);
+}
+.pk-agent-card .glyph {
+  width: 18px;
+  height: 18px;
+}
+.pk-agent-card .who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+  line-height: 1.2;
+}
+.pk-agent-card .who .name {
+  font-weight: 500;
+  font-size: 13px;
+}
+.pk-agent-card .who .role {
+  font-size: 11px;
+  color: var(--pk-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pk-agent-card .actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+.pk-agent-card .fold {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pk-agent-card .fold .chev {
+  width: 12px;
+  text-align: center;
+  color: var(--pk-muted);
+  transition: transform 120ms ease-out;
+}
+.pk-agent-card .fold[aria-expanded='true'] .chev {
+  transform: rotate(90deg);
+}
+.pk-agent-card.folded:not(.open) {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.pk-agent-card .state-icon {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+.pk-agent-card .state-icon.ok {
+  color: var(--color-success);
+}
+.pk-agent-card .state-icon.bad {
+  color: var(--color-error);
+}
+.pk-agent-card .state-icon.off {
+  color: var(--pk-muted);
+}
+.pk-agent-card .pk-run-ring,
+.pk-bar .pk-run-ring {
+  color: var(--color-primary);
+}
+.pk-agent-card .meta,
+.pk-agent-context .meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  font-size: 11px;
+  color: var(--pk-muted);
+}
+.pk-agent-card .meta > div,
+.pk-agent-context .meta > div {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.pk-agent-card .meta dd,
+.pk-agent-context .meta dd {
+  margin: 0;
+}
+.pk-agent-card .meta .model.long,
+.pk-agent-context .meta .model.long {
+  flex: 1 1 100%;
+}
+.pk-agent-context {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-base-300);
+  background: var(--color-base-200);
+}
+/* Shimmer: grey bars that sweep while a page loads (doc/docs/design-system.md, "Shimmer"). */
+.pk-shimmer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+.pk-shimmer .bar {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--color-base-200) 0%, var(--color-base-300) 40%, var(--color-base-200) 80%);
+  background-size: 200% 100%;
+  animation: pk-shimmer 1.4s ease-in-out infinite;
+}
+.pk-shimmer .bar.title {
+  height: 18px;
+  margin-bottom: 4px;
+}
+@keyframes pk-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-shimmer .bar {
+    animation: none;
+    background: var(--color-base-200);
+  }
+}
+.pk-approval {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 35%, transparent);
+}
+.pk-approval .q {
+  font-weight: 500;
+}
+.pk-approval .from {
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-approval .detail {
+  font-size: 13px;
+  line-height: 18px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.pk-approval.stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+}
+
+/* Composer */
+.pk-well {
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+}
+.pk-well:focus-within {
+  border-color: var(--color-primary);
+}
+.pk-well textarea {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  resize: none;
+  padding: 12px 16px 4px;
+  font: inherit;
+  font-size: 15px;
+  line-height: 24px;
+  color: inherit;
+  outline: none;
+}
+.pk-well textarea::placeholder {
+  color: var(--pk-muted);
+}
+.pk-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 8px 8px;
+}
+.pk-toolbar .grow {
+  flex: 1;
+}
+.pk-hint {
+  font-size: 12px;
+  color: var(--pk-muted);
+  padding: 8px 4px 0;
+  display: flex;
+  gap: 16px;
+}
+.pk-well textarea:disabled {
+  opacity: 0.6;
+}
+.pk-well .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px 0;
+}
+.pk-well .chips img {
+  height: 48px;
+  width: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+}
+.pk-well .chips .chip {
+  position: relative;
+}
+.pk-well .chips .chip button {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+}
+.pk-well[data-mode='shell'] textarea {
+  font-family: var(--pk-font-mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+.pk-widget {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  padding: 0 4px 8px;
+  white-space: pre-wrap;
+}
+
+/* Command menu */
+.pk-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: min(480px, 100%);
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  box-shadow: var(--pk-shadow);
+  overflow: hidden;
+}
+.pk-menu .head {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--pk-muted);
+  border-bottom: 1px solid var(--color-base-300);
+}
+.pk-menu .group {
+  padding: 8px 12px 2px;
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-menu .item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  margin: 0 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 18px;
+}
+.pk-menu .item[aria-selected='true'] {
+  background: var(--color-base-200);
+}
+.pk-menu .item .desc {
+  color: var(--pk-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-menu .item {
+  cursor: pointer;
+}
+.pk-menu .item[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pk-menu .items {
+  max-height: min(320px, 40vh);
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+.pk-menu .empty {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--pk-muted);
+}
+.pk-menu.inline {
+  position: static;
+  width: 100%;
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
+}
+
+/* Popover anchored to a header button (model and thinking) */
+.pk-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: min(360px, calc(100vw - 32px));
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  box-shadow: var(--pk-shadow);
+  z-index: 40;
+}
+.pk-popover .pk-section:first-child {
+  padding-top: 4px;
+}
+.pk-popover .opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+  margin: 0 8px;
+  padding: 0 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.pk-popover .opt:hover {
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-popover .opt[aria-selected='true'] {
+  background: var(--color-base-200);
+}
+.pk-popover .opt[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Model and effort chips, context meter, usage line and usage dialog */
+/* The right-hand group of the composer toolbar (chips, meter, Stop, Send) stays right-aligned when it wraps onto a second row */
+.pk-toolbar .end {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+/* A popover that opens upwards from the composer toolbar (chips) instead of down from the header */
+.pk-popover.up {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+.pk-popover.start {
+  right: auto;
+  left: 0;
+}
+.pk-popover.wide {
+  width: min(440px, calc(100vw - 32px));
+}
+.pk-popover .list {
+  max-height: min(288px, 40vh);
+  overflow-y: auto;
+  padding: 8px 0;
+}
+.pk-popover .opt.two {
+  height: auto;
+  min-height: 40px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  align-items: center;
+}
+.pk-popover .opt .main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.pk-popover .opt .sub {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-popover .opt .badges {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.pk-popover .foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px 12px;
+  border-top: 1px solid var(--color-base-300);
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-chip {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+.pk-chip > .btn {
+  font-weight: 400;
+  color: var(--pk-muted);
+  max-width: 100%;
+}
+.pk-chip > .btn .v {
+  color: var(--color-base-content);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-chip > .btn .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  flex-shrink: 0;
+}
+.pk-chip > .btn[aria-disabled='true'] {
+  opacity: 0.5;
+}
+/* The model picker: one popover for the composer chip (opens upward) and the header button (opens downward). The list is on top and scrolls; the search field sits at
+   the bottom, next to the thumb, so the list above it is what moves. Pinned models are a section of their own at the top; every provider is a banded sticky section with its state and usage. */
+.pk-picker {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  translate: var(--shift, 0px) 0;
+  width: min(480px, calc(100vw - 32px));
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  box-shadow: var(--pk-shadow);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: pk-pop 120ms ease-out;
+}
+.pk-picker.down {
+  bottom: auto;
+  top: calc(100% + 6px);
+  left: auto;
+  right: 0;
+}
+@keyframes pk-pop {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pk-picker .models {
+  max-height: min(440px, 58vh);
+  overflow-y: auto;
+  padding: 0 0 8px;
+}
+.pk-picker .grp {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 7px 16px;
+  background: var(--color-base-200);
+  border-top: 1px solid var(--color-base-300);
+  border-bottom: 1px solid var(--color-base-300);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  white-space: nowrap;
+}
+.pk-picker .grp:first-child {
+  margin-top: 0;
+  border-top: 0;
+}
+.pk-picker .grp .nm {
+  color: var(--color-base-content);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+.pk-picker .grp .tile {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-base-content);
+}
+.pk-picker .grp .tile.pinned {
+  color: var(--color-primary);
+  border-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
+}
+.pk-picker .grp .hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pk-picker .grp .chip {
+  flex: none;
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-base-300);
+}
+.pk-picker .grp .chip.ok {
+  border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
+  color: var(--color-success);
+}
+.pk-picker .grp .usage {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex: none;
+}
+.pk-picker .grp .usage .w + .w::before {
+  content: '·';
+  margin-right: 6px;
+}
+.pk-picker .grp .bar {
+  width: 56px;
+  height: 3px;
+  border-radius: 9999px;
+  background: var(--color-base-300);
+  overflow: hidden;
+}
+.pk-picker .grp .bar i {
+  display: block;
+  height: 100%;
+  background: var(--color-success);
+}
+.pk-picker .grp .bar i.warn {
+  background: var(--color-warning);
+}
+.pk-picker .opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 8px;
+  padding: 5px 8px;
+  min-height: 40px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.pk-picker .opt:hover {
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-picker .opt[aria-selected='true'] {
+  background: var(--color-base-200);
+}
+.pk-picker .opt.active {
+  outline: 1px solid color-mix(in srgb, var(--color-primary) 60%, transparent);
+  outline-offset: -1px;
+}
+.pk-picker .opt .main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.pk-picker .opt .id {
+  font-family: var(--pk-font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pk-picker .opt .sub {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pk-picker .opt .badges {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.pk-picker .opt .badges .chip {
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-base-300);
+  color: var(--pk-muted);
+}
+.pk-picker .opt .badges .chip.on {
+  border-color: color-mix(in srgb, var(--color-primary) 60%, transparent);
+  color: var(--color-primary);
+}
+.pk-picker .opt .pin {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: -4px;
+  padding: 0;
+  flex: none;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pk-muted);
+  cursor: pointer;
+}
+.pk-picker .opt .pin .pk-icon {
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+}
+.pk-picker .opt:hover .pin .pk-icon,
+.pk-picker .opt .pin:focus-visible .pk-icon,
+.pk-picker .opt .pin.on .pk-icon {
+  opacity: 1;
+}
+.pk-picker .opt .pin:hover {
+  background: color-mix(in srgb, var(--color-base-content) 8%, transparent);
+}
+.pk-picker .opt .pin.on {
+  color: var(--color-primary);
+}
+.pk-picker .empty {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--pk-muted);
+}
+.pk-picker .find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--color-base-300);
+  background: var(--color-base-100);
+}
+.pk-picker .find input {
+  flex: 1;
+  min-width: 0;
+}
+.pk-picker .find .n {
+  font-size: 12px;
+  color: var(--pk-muted);
+  white-space: nowrap;
+}
+.pk-picker .find kbd {
+  font-family: var(--pk-font-mono);
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 4px;
+  flex: none;
+  border: 1px solid var(--color-base-300);
+  border-radius: 4px;
+  color: var(--pk-muted);
+}
+.pk-picker .foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 16px 10px;
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-picker .foot > span {
+  min-width: 0;
+}
+.pk-picker .foot .link {
+  flex: none;
+  white-space: nowrap;
+}
+.pk-picker .foot b {
+  font-weight: 500;
+  color: var(--color-base-content);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-picker {
+    animation: none;
+  }
+}
+@media (max-width: 480px) {
+  .pk-picker .grp .plan,
+  .pk-picker .grp .usage .w + .w,
+  .pk-picker .grp .usage .bar {
+    display: none;
+  }
+}
+/* Icons (pk-icon): the icon file from icons.css as a mask over the text colour, so `color` tints it and no SVG sits in the DOM. 16px unless the
+   context or `--pk-icon-size` says otherwise. */
+.pk-icon {
+  display: inline-block;
+  flex: none;
+  width: var(--pk-icon-size, 16px);
+  height: var(--pk-icon-size, 16px);
+  background-color: currentColor;
+  mask: var(--icon) center / contain no-repeat;
+}
+/* Segmented control (pk-seg): an inset track (darker than its surface, inner shadow) of quiet items; the chosen one is a raised tile
+   in the primary colour. Items are buttons (`aria-pressed`, or `role="radio"` with `aria-checked`) or radio inputs labelled by their
+   `aria-label`; a button may sit in a span (a tooltip host). 32px tall; `pk-seg-xs` (28px) for dense panel headers, `pk-seg-icons` for
+   square icon-only items. */
+.pk-seg {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: calc(var(--radius-field) + 3px);
+  background: color-mix(in srgb, var(--color-base-content) 5%, var(--color-base-200));
+  box-shadow:
+    inset 0 1px 2px color-mix(in srgb, black 28%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-base-content) 7%, transparent);
+}
+.pk-seg > span {
+  display: flex;
+}
+.pk-seg > button,
+.pk-seg > span > button,
+.pk-seg > input[type='radio'] {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 26px;
+  min-width: 30px;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: transparent;
+  color: var(--pk-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 120ms ease-out,
+    background-color 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+.pk-seg > input[type='radio']::after {
+  content: attr(aria-label);
+}
+.pk-seg > * > .pk-icon,
+.pk-seg > button > .pk-icon {
+  --pk-icon-size: 14px;
+}
+.pk-seg :is(button, input):hover:not(:disabled, [aria-pressed='true'], [aria-checked='true'], :checked) {
+  color: var(--color-base-content);
+  background: color-mix(in srgb, var(--color-base-content) 6%, transparent);
+}
+.pk-seg :is(button[aria-pressed='true'], button[aria-checked='true'], input:checked) {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-base-100));
+  box-shadow:
+    0 1px 2px color-mix(in srgb, black 30%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--color-primary) 30%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
+}
+.pk-seg :is(button, input):focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+.pk-seg :is(button, input):disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.pk-seg-xs {
+  padding: 2px;
+}
+.pk-seg-xs > button,
+.pk-seg-xs > span > button,
+.pk-seg-xs > input[type='radio'] {
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+.pk-seg-icons > button,
+.pk-seg-icons > span > button {
+  width: 30px;
+  padding: 0;
+}
+.pk-seg-icons .pk-icon {
+  --pk-icon-size: 16px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-seg :is(button, input) {
+    transition: none;
+  }
+}
+/* Effort as a flask: liquid rises in the bowl with the level, so the chip needs no word. Two masks: the liquid (the bowl filled by a gradient
+   that stops at the level; the bowl spans 12.5 % to 64.6 % of the height from the bottom) under the outline, which turns primary from high and
+   glows at max. `--level` is a registered number so the liquid moves rather than jumps. */
+@property --level {
+  syntax: '<number>';
+  inherits: true;
+  initial-value: 0;
+}
+.pk-flask {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: var(--pk-flask-size, 16px);
+  height: var(--pk-flask-size, 16px);
+  color: var(--pk-muted);
+  --level: 0;
+  transition: --level 220ms cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.pk-flask::before,
+.pk-flask::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  mask: var(--icon) center / contain no-repeat;
+}
+.pk-flask::before {
+  --icon: var(--pk-icon-flask-bowl);
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--color-primary) 75%, transparent) calc(12.5% + var(--level) * 52.1%),
+    transparent 0
+  );
+}
+.pk-flask::after {
+  --icon: var(--pk-icon-flask);
+  background-color: currentColor;
+  transition: filter 220ms ease-out;
+}
+.pk-flask[data-level='minimal'] {
+  color: var(--color-base-content);
+  --level: 0.15;
+}
+.pk-flask[data-level='low'] {
+  color: var(--color-base-content);
+  --level: 0.3;
+}
+.pk-flask[data-level='medium'] {
+  color: var(--color-base-content);
+  --level: 0.5;
+}
+.pk-flask[data-level='high'] {
+  color: var(--color-primary);
+  --level: 0.65;
+}
+.pk-flask[data-level='xhigh'] {
+  color: var(--color-primary);
+  --level: 0.8;
+}
+.pk-flask[data-level='max'] {
+  color: var(--color-primary);
+  --level: 1;
+}
+.pk-flask[data-level='max']::after {
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--color-primary) 70%, transparent));
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-flask,
+  .pk-flask::after {
+    transition: none;
+  }
+}
+/* Context meter: a 56px track with the fill, a tick where pi compacts on its own, and the percentage next to it */
+.pk-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  white-space: nowrap;
+}
+.pk-meter:hover {
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-meter .track {
+  position: relative;
+  width: 56px;
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--color-base-300);
+  overflow: visible;
+  flex-shrink: 0;
+}
+.pk-meter .fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 9999px;
+  background: var(--pk-muted);
+}
+.pk-meter .tick {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--pk-muted);
+  opacity: 0.8;
+}
+.pk-meter[data-level='warning'] {
+  color: var(--color-warning);
+}
+.pk-meter[data-level='warning'] .fill {
+  background: var(--color-warning);
+}
+.pk-meter[data-level='error'] {
+  color: var(--color-error);
+}
+.pk-meter[data-level='error'] .fill {
+  background: var(--color-error);
+}
+.pk-tip {
+  display: block;
+  width: 280px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 12px;
+  text-align: left;
+  white-space: normal;
+  font-size: 12px;
+  line-height: 16px;
+}
+.pk-tip b {
+  font-weight: 500;
+}
+.pk-tip p + p {
+  margin-top: 6px;
+}
+.pk-hint .warn {
+  color: var(--color-warning);
+}
+.pk-hint .bad {
+  color: var(--color-error);
+}
+.pk-marker.warn {
+  color: var(--color-warning);
+}
+.pk-marker.bad {
+  color: var(--color-error);
+}
+/* Usage line under an assistant turn: muted 12px, hidden until the turn is hovered or focused, unless "Show usage" is on */
+.pk-usage {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+  font-variant-numeric: tabular-nums;
+}
+.pk-turn:hover .pk-usage,
+.pk-turn:focus-within .pk-usage,
+.pk-transcript[data-usage='show'] .pk-usage {
+  opacity: 1;
+}
+/* Usage dialog (the /cost and /session equivalent): totals, tables by model and by turn, compaction history */
+.pk-usage-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.pk-usage-totals .k {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+}
+.pk-usage-totals .v {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.pk-usage-table {
+  width: 100%;
+  overflow-x: auto;
+}
+.pk-usage-table td.num,
+.pk-usage-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pk-usage-table .preview {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-status .pk-total {
+  color: inherit;
+  text-decoration: none;
+  border-radius: 4px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  cursor: pointer;
+}
+.pk-status .pk-total:hover {
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+@media (max-width: 767px) {
+  .pk-meter .txt {
+    display: none;
+  }
+  .pk-chip > .btn .v {
+    max-width: 96px;
+  }
+}
+
+/* Generative UI in the transcript: a bordered block, a 36px bar that says what it is, then the surface */
+.pk-genui {
+  display: block;
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--color-base-100);
+}
+.pk-genui .bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--color-base-300);
+  font-size: 13px;
+}
+.pk-genui .note {
+  padding: 12px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--pk-muted);
+}
+.pk-genui .note.error {
+  color: var(--color-error);
+}
+/* An MCP App's frame: the app draws on the page background */
+.pk-genui .app {
+  background: var(--color-base-200);
+}
+.pk-genui .app iframe {
+  display: block;
+  width: 100%;
+  height: 120px;
+  border: 0;
+  background: transparent;
+  color-scheme: normal;
+}
+/* A2UI surface: CopilotKit's `copilot-a2ui-activity-renderer` draws it, the catalog's root `Card` (apps/renderer/src/app/genui/a2ui-catalog.ts)
+   is the `pk-genui` frame above, and `.pk-a2ui` on that frame themes CopilotKit's own components (Text, Button, TextField, ...) through their `--a2ui-*`
+   variables. Our own components (Row, Column, Badge, Table) are daisyUI markup. */
+.copilot-a2ui-surface-renderer-layout {
+  display: block;
+}
+.pk-a2ui {
+  font-size: 14px;
+  line-height: 22px;
+  --a2ui-color-primary: var(--color-primary);
+  --a2ui-color-on-primary: var(--color-primary-content);
+  --a2ui-color-surface: var(--color-base-100);
+  --a2ui-color-border: var(--color-base-300);
+  --a2ui-color-muted: var(--pk-muted);
+  --a2ui-color-error: var(--color-error);
+  --a2ui-color-input: var(--color-base-100);
+  --a2ui-color-on-input: var(--color-base-content);
+  --a2ui-color-placeholder: var(--color-base-200);
+  --a2ui-color-placeholder-highlight: var(--color-base-300);
+  --a2ui-border-radius: var(--radius-field);
+  /* Spacing is the container's business (`inset`): a button or a rule brings no margin of its own, so a table, a rule and a padded footer sit edge to edge */
+  --a2ui-spacing-m: 0px;
+  --a2ui-list-gap: 8px;
+  --a2ui-card-padding: 12px;
+  --a2ui-card-shadow: none;
+  --a2ui-button-padding: 0 12px;
+  --a2ui-button-border-radius: var(--radius-field);
+  --a2ui-input-padding: 0 12px;
+  --a2ui-font-size-s: 13px;
+  --a2ui-font-size-xs: 12px;
+}
+/* The reset of Tailwind leaves headings and form controls unstyled: give CopilotKit's components the type of the rest of the app */
+.pk-a2ui button,
+.pk-a2ui input,
+.pk-a2ui textarea,
+.pk-a2ui select {
+  font: inherit;
+}
+.pk-a2ui h1,
+.pk-a2ui h2,
+.pk-a2ui h3,
+.pk-a2ui h4,
+.pk-a2ui h5 {
+  margin: 0;
+  font-weight: 500;
+}
+.pk-a2ui h1 {
+  font-size: 20px;
+  line-height: 28px;
+}
+.pk-a2ui h2 {
+  font-size: 18px;
+  line-height: 26px;
+}
+.pk-a2ui h3,
+.pk-a2ui h4,
+.pk-a2ui h5 {
+  font-size: 16px;
+  line-height: 24px;
+}
+.pk-a2ui copilot-a2ui-text .text {
+  white-space: pre-wrap;
+}
+.pk-a2ui copilot-a2ui-text .caption {
+  font-size: 12px;
+  line-height: 16px;
+}
+.pk-a2ui copilot-a2ui-button .button {
+  min-height: 32px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 22px;
+}
+.pk-a2ui copilot-a2ui-button .button.primary {
+  border-color: transparent;
+}
+.pk-a2ui copilot-a2ui-text-field {
+  gap: 4px;
+}
+.pk-a2ui copilot-a2ui-text-field .label {
+  font-weight: 400;
+}
+.pk-a2ui copilot-a2ui-text-field .input {
+  min-height: 32px;
+}
+.pk-a2ui input[type='checkbox'],
+.pk-a2ui input[type='radio'],
+.pk-a2ui input[type='range'] {
+  accent-color: var(--color-primary);
+}
+.pk-a2ui table.table th {
+  font-weight: 500;
+  color: var(--pk-muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+.pk-a2ui table.table code {
+  font-family: var(--pk-font-mono);
+  font-size: 13px;
+}
+
+/* MCP servers panel (dialog) */
+
+/* Session graph v2: 36px two-line rows, 28px lane pitch, abandoned branches folded into
+   group rows, inline actions on hover, a compaction band across the lanes, a sticky position strip. */
+.pk-graph {
+  --lane: 28px;
+  --row: 36px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 8px;
+}
+.pk-graph .row {
+  position: relative;
+  display: grid;
+  grid-template-columns: calc(var(--pk-lanes, 2) * var(--lane) + 8px) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  min-height: var(--row);
+  padding-right: 8px;
+}
+.pk-graph .row:hover {
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-graph .row[aria-selected='true'] {
+  background: var(--color-base-300);
+}
+.pk-graph .row[aria-selected='true'] .title .tx {
+  font-weight: 500;
+}
+.pk-graph .row.side {
+  background: color-mix(in srgb, var(--color-base-200) 55%, transparent);
+}
+.pk-graph .row.side .title .tx {
+  color: var(--pk-muted);
+}
+.pk-graph svg {
+  width: calc(var(--pk-lanes, 2) * var(--lane) + 8px);
+  height: var(--row);
+  display: block;
+}
+.pk-graph .l {
+  stroke: color-mix(in srgb, var(--color-base-content) 30%, transparent);
+  stroke-width: 2;
+  fill: none;
+  stroke-linecap: round;
+}
+.pk-graph .l.on {
+  stroke: var(--color-primary);
+  stroke-width: 3;
+}
+.pk-graph .c {
+  fill: var(--color-base-100);
+  stroke: color-mix(in srgb, var(--color-base-content) 50%, transparent);
+  stroke-width: 2;
+}
+.pk-graph .c.on {
+  stroke: var(--color-primary);
+  stroke-width: 2.5;
+}
+.pk-graph .c.leaf {
+  fill: var(--color-primary);
+  stroke: var(--color-primary);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-primary) 60%, transparent));
+}
+.pk-graph .c.ghost {
+  stroke: color-mix(in srgb, var(--color-base-content) 30%, transparent);
+  stroke-dasharray: 2 2;
+  fill: none;
+}
+.pk-graph .c.summary {
+  stroke: var(--color-info);
+  stroke-dasharray: 3 2;
+}
+.pk-graph .c.compaction {
+  fill: var(--color-base-100);
+  stroke: var(--color-warning);
+}
+/* Context fill per turn: a ring around the node, arc length = share of the context window used after the turn
+   (pathLength 100, dasharray "<pct> 100"); muted below 70 %, warning from 70 %, error from 90 %. */
+.pk-graph .g {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-base-content) 38%, transparent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.pk-graph .g.warn {
+  stroke: var(--color-warning);
+}
+.pk-graph .g.hot {
+  stroke: var(--color-error);
+  stroke-width: 2;
+}
+.pk-graph .body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+.pk-graph .title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+.pk-graph .title .n {
+  color: var(--pk-muted);
+  font-size: 12px;
+  min-width: 16px;
+  text-align: right;
+}
+.pk-graph .title .tx {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-graph .title .tag {
+  flex: none;
+  font-size: 11px;
+  line-height: 14px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-info);
+  color: var(--color-info);
+}
+.pk-graph .sub {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 24px;
+}
+.pk-graph .sub b {
+  font-weight: 500;
+}
+.pk-graph .meta {
+  font-size: 12px;
+  color: var(--pk-muted);
+  white-space: nowrap;
+}
+.pk-graph .acts {
+  display: none;
+  gap: 2px;
+}
+.pk-graph .row:hover .meta,
+.pk-graph .row[aria-selected='true'] .meta {
+  display: none;
+}
+.pk-graph .row:hover .acts,
+.pk-graph .row[aria-selected='true'] .acts {
+  display: flex;
+}
+.pk-graph .acts button {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: var(--pk-muted);
+  font-size: 14px;
+}
+.pk-graph .acts button:hover {
+  background: var(--color-base-300);
+  color: var(--color-base-content);
+}
+.pk-graph .acts button.go {
+  color: var(--color-primary);
+}
+.pk-graph .group .chev {
+  color: var(--pk-muted);
+  font-size: 11px;
+  width: 12px;
+  text-align: center;
+}
+.pk-graph .group .title .tx {
+  color: var(--pk-muted);
+}
+.pk-graph .band {
+  display: grid;
+  grid-template-columns: calc(var(--pk-lanes, 2) * var(--lane) + 8px) minmax(0, 1fr);
+  align-items: center;
+  height: 28px;
+  padding-right: 12px;
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-graph .band svg {
+  height: 28px;
+}
+.pk-graph .band .txt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.pk-graph .band .txt::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--color-base-300);
+}
+.pk-graph-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 8px 16px;
+  background: var(--color-base-100);
+  border-top: 1px solid var(--color-base-300);
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-graph-foot .cur {
+  color: var(--color-base-content);
+  font-weight: 500;
+}
+/* Session graph v2 in the app: find highlights, a selected band, the group row's sub line, the foot as a flex child */
+.pk-graph mark {
+  background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+.pk-graph .band[aria-selected='true'] {
+  background: var(--color-base-300);
+}
+.pk-graph .band:hover {
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-graph .band[aria-selected='true']:hover {
+  background: var(--color-base-300);
+}
+.pk-graph .sub.in-group {
+  padding-left: 20px;
+}
+.pk-graph .row.group {
+  cursor: pointer;
+}
+.pk-graph .acts button:focus-visible {
+  outline-offset: -2px;
+}
+.pk-graph[role='listbox']:focus-visible {
+  outline-offset: -2px;
+}
+.pk-graph-foot {
+  flex: none;
+  z-index: 1;
+}
+.pk-graph-foot > span {
+  white-space: nowrap;
+}
+.pk-graph-foot > span.truncate {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pk-graph .group .chev {
+  font-size: 12px;
+}
+.pk-graph-foot .btn-link {
+  color: var(--color-primary);
+  font-weight: 400;
+  height: auto;
+  min-height: 0;
+}
+/* Transcript sync: the turn under the pointer in the graph */
+.pk-turn.pk-sync {
+  background: color-mix(in srgb, var(--color-primary) 7%, transparent);
+  border-radius: 6px;
+}
+
+/* Context menu (Files panel, graph "More"): the one floating surface of the panels, so it takes the shadow token */
+.pk-ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: default;
+}
+.pk-ctx {
+  position: fixed;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  min-width: 208px;
+  padding: 4px;
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  box-shadow: var(--pk-shadow);
+}
+.pk-ctx .item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+.pk-ctx .item:hover:not(:disabled),
+.pk-ctx .item:focus-visible {
+  background: var(--color-base-200);
+  outline: none;
+}
+.pk-ctx .item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pk-ctx .item.danger {
+  color: var(--color-error);
+}
+.pk-ctx .hint {
+  color: var(--pk-muted);
+  font-size: 12px;
+}
+.pk-ctx .sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--color-base-300);
+}
+.dropdown-content.pk-viewport-menu:popover-open {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  transform: none;
+  translate: none;
+  scale: 1;
+  transition-property: opacity;
+}
+
+/* Review mode: file list in the panel, unified diff in the main column, comment tray instead of the composer */
+.pk-file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.pk-file:hover {
+  background: var(--color-base-200);
+}
+.pk-file[aria-current='true'] {
+  background: var(--color-base-300);
+}
+.pk-file .p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.pk-file .s {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+.pk-file .k {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  font-weight: 500;
+  margin-right: 4px;
+}
+.pk-filetabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-x: auto;
+}
+.pk-filetabs code {
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.pk-filetabs code[aria-current='true'] {
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+
+/* Review controls share one quiet band instead of competing with the window header. */
+.pk-review-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px var(--pk-gutter);
+  border-bottom: 1px solid var(--color-base-300);
+  background: var(--color-base-100);
+  container: review-toolbar / inline-size;
+}
+.pk-review-source {
+  width: 140px;
+  flex-shrink: 0;
+}
+.pk-review-navigation {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.pk-review-file {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+}
+.pk-review-progress,
+.pk-review-layout,
+.pk-review-totals {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.pk-review-totals {
+  display: flex;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+@container review-toolbar (max-width: 760px) {
+  .pk-review-progress {
+    display: none;
+  }
+}
+@container review-toolbar (max-width: 560px) {
+  .pk-review-source {
+    width: 112px;
+  }
+  .pk-review-layout {
+    display: none;
+  }
+}
+@media (max-width: 767px) {
+  .pk-review-toolbar {
+    gap: 6px;
+  }
+}
+
+.pk-diff {
+  display: block;
+  font-family: var(--pk-font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  overflow: clip;
+}
+.pk-diff .hd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--color-base-300);
+  font-family: var(--pk-font-sans);
+  font-size: 13px;
+}
+/* Find remains visible while navigating virtual rows in the review scroller. */
+.pk-diff-find,
+.pk-diff-compact-tools {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: var(--color-base-100);
+  border-bottom: 1px solid var(--color-base-300);
+  font-family: var(--pk-font-sans);
+}
+.pk-diff-find > .input {
+  flex: 1;
+  min-width: 64px;
+  width: 200px;
+}
+.pk-diff-find-count {
+  flex-shrink: 0;
+  min-width: 52px;
+  text-align: center;
+  color: var(--pk-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.pk-diff-compact-tools {
+  justify-content: flex-end;
+  padding: 2px 6px;
+}
+.pk-diff-match {
+  padding: 0;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--color-warning) 30%, transparent);
+  color: inherit;
+}
+.pk-diff-match.current {
+  background: color-mix(in srgb, var(--color-warning) 65%, var(--color-base-100));
+  outline: 1px solid var(--color-warning);
+}
+
+.pk-diff .ln {
+  display: grid;
+  grid-template-columns: 28px 44px 44px minmax(0, 1fr);
+  align-items: stretch;
+}
+.pk-diff .ln:hover {
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-diff .ln .g {
+  display: grid;
+  place-items: center;
+}
+.pk-diff .ln .g button {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+  font-size: 13px;
+  line-height: 18px;
+  opacity: 0;
+}
+.pk-diff .ln:hover .g button,
+.pk-diff .ln .g button[aria-pressed='true'] {
+  opacity: 1;
+}
+.pk-diff .ln .no {
+  color: var(--pk-muted);
+  text-align: right;
+  padding-right: 8px;
+  user-select: none;
+  font-size: 12px;
+}
+.pk-diff .ln .c {
+  padding: 0 12px 0 8px;
+  white-space: pre;
+  overflow-x: auto;
+}
+.pk-diff .ln.add {
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+.pk-diff .ln.add .c {
+  color: var(--color-success);
+}
+.pk-diff .ln.del {
+  background: color-mix(in srgb, var(--color-error) 14%, transparent);
+}
+.pk-diff .ln.del .c {
+  color: var(--color-error);
+}
+.pk-diff .ln.hunk {
+  background: var(--color-base-200);
+  color: var(--pk-muted);
+}
+.pk-diff .ln.hunk .c {
+  padding: 2px 12px;
+}
+.pk-diff .ln.commented {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+.pk-diff :is(.ln.sp, .split-pane) .h.commented {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+/* The viewer's body scrolls as one, never one row at a time; rows stretch to the widest line. */
+.pk-diff .body {
+  overflow-x: auto;
+  container-type: inline-size;
+}
+.pk-diff .rows {
+  width: max-content;
+  min-width: 100%;
+}
+.pk-diff .rows .ln .c {
+  overflow: visible;
+}
+.pk-diff[data-diff-virtual='true'] .rows {
+  min-width: max(100%, calc(var(--pk-diff-code-width, 0px) + var(--pk-diff-gutter, 116px)));
+}
+.pk-diff-row,
+.pk-diff-cards {
+  display: flow-root;
+}
+.pk-diff-spacer {
+  pointer-events: none;
+  overflow-anchor: none;
+}
+.pk-diff .note {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-base-300);
+  font-family: var(--pk-font-sans);
+}
+.pk-diff .note:last-child {
+  border-bottom: 0;
+}
+/* Split layout: two halves per row, each with its own gutter, number and code, so a hover shows one `+`. */
+.pk-diff .ln.sp {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.pk-diff :is(.ln.sp, .split-pane) .h {
+  display: grid;
+  grid-template-columns: 28px 44px minmax(0, 1fr);
+  align-items: stretch;
+  min-width: 0;
+}
+.pk-diff .ln.sp .h + .h {
+  border-left: 1px solid var(--color-base-300);
+}
+.pk-diff :is(.ln.sp, .split-pane) .h:hover .g button {
+  opacity: 1;
+}
+.pk-diff :is(.ln.sp, .split-pane) .h .g {
+  display: grid;
+  place-items: center;
+}
+.pk-diff :is(.ln.sp, .split-pane) .h .g button {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+  font-size: 13px;
+  line-height: 18px;
+  opacity: 0;
+}
+.pk-diff :is(.ln.sp, .split-pane) .h .g button[aria-pressed='true'] {
+  opacity: 1;
+}
+.pk-diff :is(.ln.sp, .split-pane) .h .no {
+  color: var(--pk-muted);
+  text-align: right;
+  padding-right: 8px;
+  user-select: none;
+  font-size: 12px;
+}
+.pk-diff :is(.ln.sp, .split-pane) .h .c {
+  padding: 0 12px 0 8px;
+  white-space: pre;
+}
+.pk-diff :is(.ln.sp, .split-pane) .h.add {
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+.pk-diff :is(.ln.sp, .split-pane) .h.add .c {
+  color: var(--color-success);
+}
+.pk-diff :is(.ln.sp, .split-pane) .h.del {
+  background: color-mix(in srgb, var(--color-error) 14%, transparent);
+}
+.pk-diff :is(.ln.sp, .split-pane) .h.del .c {
+  color: var(--color-error);
+}
+.pk-diff :is(.ln.sp, .split-pane) .h.empty {
+  background: var(--color-base-200);
+}
+/* Split panes stay inside the viewport. A row subgrid shares line, hunk and comment heights,
+   while each pane scrolls code horizontally; the viewer synchronizes those offsets. */
+.pk-diff .split-head {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  background: var(--color-base-200);
+  color: var(--pk-muted);
+  border-bottom: 1px solid var(--color-base-300);
+}
+.pk-diff .split-head span {
+  padding: 2px 12px;
+}
+.pk-diff .split-head span + span {
+  border-left: 1px solid var(--color-base-300);
+}
+.pk-diff .split-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+}
+.pk-diff .split-pane {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-template-columns: max(100%, var(--pk-split-width, 0px));
+  min-width: 0;
+  overflow-x: auto;
+}
+.pk-diff .split-pane + .split-pane {
+  box-shadow: inset 1px 0 var(--color-base-300);
+}
+.pk-diff.split .split-pane .h {
+  grid-template-columns: 28px 44px max-content;
+  min-height: 20px;
+}
+.pk-diff .split-shared {
+  grid-column: 1 / -1;
+  min-width: 0;
+  z-index: 1;
+}
+.pk-diff .split-shared .hunk .c {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Inside a transcript row: no header, no gutter, no frame (doc/docs/design-system.md, "Diff viewer"). */
+.pk-diff.compact {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  max-height: 320px;
+  overflow: auto;
+}
+.pk-diff.compact .ln {
+  grid-template-columns: 40px 40px minmax(0, 1fr);
+}
+.pk-diff.compact .ln:hover {
+  background: transparent;
+}
+.pk-diff.compact .ln.add {
+  background: color-mix(in srgb, var(--color-success) 16%, transparent);
+}
+.pk-diff.compact .ln.del {
+  background: color-mix(in srgb, var(--color-error) 16%, transparent);
+}
+.pk-diff.compact .ln.hunk .g {
+  display: none;
+}
+.pk-diff.compact .ln .g {
+  display: none;
+}
+
+/* The card spans the visible width of the diff (not the code column) and stays in view when the rows scroll sideways. */
+.pk-cmt {
+  font-family: var(--pk-font-sans);
+  position: sticky;
+  left: 12px;
+  width: calc(100cqw - 24px);
+  margin: 4px 12px 8px 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  font-size: 13px;
+  line-height: 18px;
+}
+.pk-cmt .by {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--pk-muted);
+  margin-bottom: 4px;
+}
+.pk-cmt .by .act {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.pk-cmt textarea {
+  width: 100%;
+  border: 1px solid var(--color-base-300);
+  border-radius: 6px;
+  background: var(--color-base-100);
+  padding: 8px 10px;
+  font: inherit;
+  color: inherit;
+  resize: vertical;
+  min-height: 64px;
+}
+.pk-cmt textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.pk-tray {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+}
+.pk-tray .chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.pk-tray .chip {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: var(--color-base-200);
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .pk-turn {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pk-turn .who {
+    display: none;
+  }
+  .pk-toolbar > .join {
+    order: 10;
+    width: 100%;
+  }
+  .pk-toolbar > .join .btn {
+    flex: 1;
+  }
+  .pk-diff .ln {
+    grid-template-columns: 24px 0 36px minmax(0, 1fr);
+  }
+  .pk-diff .ln .no.old {
+    visibility: hidden;
+    padding: 0;
+    overflow: hidden;
+  }
+  .pk-diff .rows {
+    width: auto;
+  }
+  .pk-diff .rows .ln .c {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pk-diff.compact .ln {
+    grid-template-columns: 0 36px minmax(0, 1fr);
+  }
+  .pk-cmt {
+    margin: 4px 8px 8px 8px;
+    left: 8px;
+    width: calc(100cqw - 16px);
+  }
+  .pk-tray {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .pk-tray .btn {
+    width: 100%;
+  }
+}
+
+/* Files panel rows and the terminal panel */
+.pk-node {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 4px 0 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 18px;
+  cursor: default;
+  user-select: none;
+}
+.pk-node:hover,
+.pk-node:focus-visible {
+  background: var(--color-base-200);
+}
+.pk-node[aria-selected='true'] {
+  background: var(--color-base-300);
+}
+.pk-node .tw {
+  flex: none;
+  width: 16px;
+  text-align: center;
+  color: var(--pk-muted);
+}
+.pk-node .nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-node .act {
+  opacity: 0;
+}
+.pk-node:hover .act,
+.pk-node:focus-within .act {
+  opacity: 1;
+}
+.pk-nest {
+  margin-left: 16px;
+  border-left: 1px solid var(--color-base-300);
+  padding-left: 4px;
+}
+/* Files panel decoration: type icon, pi marker, folder dot, git badge, size and time at 1440 and up */
+.pk-node .pk-ico {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: block;
+  color: color-mix(in srgb, var(--color-base-content) 55%, transparent);
+}
+.pk-node .pk-ico {
+  display: block;
+}
+.pk-node .pk-ico.folder,
+.pk-node .pk-ico.folder-open {
+  color: color-mix(in srgb, var(--color-info) 85%, transparent);
+}
+.pk-node .pk-ico.code,
+.pk-node .pk-ico.markdown {
+  color: color-mix(in srgb, var(--color-base-content) 75%, transparent);
+}
+.pk-node .pk-ico.config {
+  color: color-mix(in srgb, var(--color-warning) 80%, transparent);
+}
+.pk-node .pk-ico.image {
+  color: color-mix(in srgb, var(--color-success) 80%, transparent);
+}
+.pk-node .pi {
+  flex: none;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--color-primary);
+  margin: 0 2px;
+}
+.pk-node .dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  margin: 0 5px;
+}
+.pk-node .bdg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  font-weight: 500;
+}
+.pk-node .sz,
+.pk-node .mt {
+  display: none;
+  flex: none;
+  font-size: 12px;
+  color: var(--pk-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+.pk-node .act-spacer {
+  flex: none;
+  width: 24px;
+}
+.pk-node.ignored {
+  opacity: 0.5;
+}
+.pk-node.gone .nm {
+  text-decoration: line-through;
+  color: var(--pk-muted);
+}
+@media (min-width: 1440px) {
+  .pk-node .sz {
+    display: block;
+    width: 52px;
+  }
+  .pk-node .mt {
+    display: block;
+    width: 48px;
+  }
+}
+.pk-term {
+  flex: 1;
+  min-height: 0;
+  background: var(--pk-sunken);
+  padding: 8px 0 0 12px;
+  overflow: hidden;
+}
+.pk-term .xterm {
+  height: 100%;
+}
+.pk-term .xterm-viewport {
+  background: transparent !important;
+}
+
+/* Close button for dialogs and panels: a round 32px ghost target with an SVG X, never a text glyph. */
+.pk-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  display: grid;
+  place-items: center;
+  color: var(--pk-muted);
+  flex: none;
+}
+.pk-close:hover {
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+.pk-close .pk-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Settings groups and the Versions block: a bordered group of rows, label and hint left, controls right */
+.pk-group {
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.pk-group > header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--color-base-200);
+  border-bottom: 1px solid var(--color-base-300);
+}
+.pk-group > header h4 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.pk-group > header p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-group .row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 24px;
+  padding: 12px 16px;
+  min-height: 56px;
+}
+.pk-group .row + .row {
+  border-top: 1px solid var(--color-base-300);
+}
+.pk-group .row .lbl {
+  font-size: 14px;
+  line-height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pk-group .row .hint {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  margin-top: 2px;
+}
+.pk-group .row .ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Several choices in one row's control (the attendant's schedule, the cost cap): an options grid, the words left and the control right on
+   each line, lines 10px apart, so the toggles align under each other instead of floating after their labels. The row's label column
+   aligns to the first line. */
+.pk-group .row:has(> .ctl > .pk-opts) {
+  align-items: start;
+}
+.pk-opts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 10px;
+  min-width: 280px;
+  padding: 2px 0;
+  font-size: 13px;
+  line-height: 20px;
+}
+.pk-opts > label {
+  display: contents;
+}
+.pk-opts .num {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.pk-opts .num .input {
+  width: 72px;
+}
+@media (max-width: 767px) {
+  .pk-opts {
+    min-width: 0;
+    width: 100%;
+  }
+}
+.pk-group .chip {
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-info) 50%, transparent);
+  color: var(--color-info);
+  white-space: nowrap;
+}
+.pk-group .chip.ok {
+  border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
+  color: var(--color-success);
+}
+.pk-group .chip.warn {
+  border-color: color-mix(in srgb, var(--color-warning) 60%, transparent);
+  color: var(--color-warning);
+}
+.pk-group .chip.err {
+  border-color: color-mix(in srgb, var(--color-error) 60%, transparent);
+  color: var(--color-error);
+}
+.pk-group .chip.off {
+  border-color: var(--color-base-300);
+  color: var(--pk-muted);
+}
+@media (max-width: 767px) {
+  .pk-group .row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 8px;
+  }
+}
+
+/* The update progress toast: the job's rows and its last line, with Cancel; after it, "Restart to use ..." */
+.pk-update-toast {
+  display: grid;
+  gap: 6px;
+  max-width: 24rem;
+}
+.pk-update-toast .line {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The dot on the sidebar footer's settings button when anything is outdated or waits for a restart */
+.pk-update-dot {
+  position: relative;
+}
+.pk-update-dot::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--color-warning);
+  box-shadow: 0 0 0 2px var(--color-base-200);
+}
+
+/* Settings overhaul: a left nav with sections and counts, groups of rows
+   with a storage chip, colour for state only (amber for the primary action and the selected item, info for storage chips, success / warning / error for status). */
+.pk-settings {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(20 24 32 / 0.45);
+  z-index: 50;
+  padding: 24px;
+}
+.pk-settings .win {
+  width: min(1040px, 100%);
+  height: min(720px, calc(100dvh - 48px));
+  background: var(--color-base-100);
+  border-radius: 12px;
+  box-shadow: var(--pk-shadow);
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-rows: 56px minmax(0, 1fr);
+  overflow: hidden;
+}
+.pk-settings .win:focus {
+  outline: none;
+}
+.pk-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+}
+.pk-settings .win,
+.pk-wf .win {
+  position: relative;
+  z-index: 1;
+}
+.pk-settings .head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--color-base-300);
+}
+.pk-settings .head h2 {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 500;
+  margin: 0;
+}
+.pk-settings .head input[type='search'] {
+  max-width: 320px;
+}
+.pk-settings nav {
+  padding: 12px 8px;
+  border-right: 1px solid var(--color-base-300);
+  background: var(--color-base-200);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.pk-settings nav .sec {
+  padding: 12px 12px 4px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--pk-muted);
+}
+.pk-settings nav .sec:first-child {
+  padding-top: 4px;
+}
+.pk-settings nav [role='tab'] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--color-base-content);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  flex: none;
+}
+.pk-settings nav [role='tab']:hover {
+  background: var(--color-base-300);
+}
+.pk-settings nav [role='tab'][aria-selected='true'] {
+  background: var(--color-base-100);
+  font-weight: 500;
+}
+.pk-settings nav [role='tab'] .ic {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--pk-muted);
+}
+.pk-settings nav [role='tab'] .cnt {
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--pk-muted);
+}
+.pk-settings nav [role='tab'] .cnt.warn {
+  color: var(--color-warning);
+}
+.pk-settings main {
+  overflow-y: auto;
+  padding: 24px 32px 32px;
+  min-width: 0;
+}
+.pk-settings .intro {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.pk-settings .intro h3 {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 500;
+  margin: 0;
+}
+.pk-settings .intro p {
+  color: var(--pk-muted);
+  margin: 0;
+}
+.pk-settings .page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.pk-settings .page + .page {
+  margin-top: 32px;
+}
+.pk-settings .saved {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-success);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pk-settings .saved.saving {
+  color: var(--pk-muted);
+}
+.pk-settings .banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  font-size: 13px;
+  line-height: 18px;
+  grid-column: 1 / -1;
+}
+.pk-settings .win:has(.banner) {
+  grid-template-rows: 56px auto minmax(0, 1fr);
+}
+.pk-settings .empty {
+  padding: 32px 0;
+  color: var(--pk-muted);
+  text-align: center;
+}
+.pk-group .row.stack {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 12px;
+}
+.pk-group .row .ctl.wrap {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.pk-group .row .lbl .chip.store {
+  font-weight: 400;
+}
+.pk-group .row .sub {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+}
+.pk-group .row .sub.err {
+  color: var(--color-error);
+}
+.pk-group .row .sub.warn {
+  color: var(--color-warning);
+}
+.pk-group > header .actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* A model or provider as a card in a list: dot, name, detail, trailing control */
+.pk-model-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+  background: var(--color-base-100);
+}
+.pk-model-card[aria-selected='true'] {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+.pk-model-card .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--color-base-300);
+}
+.pk-model-card[aria-selected='true'] .dot {
+  background: var(--color-primary);
+}
+.pk-model-card .nm {
+  font-family: var(--pk-font-mono);
+  font-size: 13px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-model-card .md {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+}
+.pk-model-card.dragging {
+  opacity: 0.5;
+}
+.pk-model-card.over {
+  border-color: var(--color-info);
+  box-shadow: 0 -2px 0 var(--color-info);
+}
+.pk-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.pk-cards + .pk-cards {
+  padding-top: 0;
+}
+.pk-settings .grip {
+  color: var(--pk-muted);
+  cursor: grab;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.pk-settings .grip:active {
+  cursor: grabbing;
+}
+
+/* Provider cards (the 8j look: state in words and colour, one primary action) */
+
+/* Connector cards: the provider card with a 32px logo tile instead of the dot. State is words and a chip; the controls (project only, exposure) sit under the text. */
+
+/* Keybinding rows */
+.pk-keys .row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.pk-keys .id {
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+}
+.pk-keycap {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--color-base-300);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--color-base-200);
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.pk-keycap.custom {
+  border-color: color-mix(in srgb, var(--color-primary) 60%, transparent);
+}
+.pk-keycap.clash {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+.pk-keycap.recording {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 25%, transparent);
+  animation: pk-pulse 1.2s ease-in-out infinite;
+}
+@keyframes pk-pulse {
+  50% {
+    opacity: 0.65;
+  }
+}
+
+/* The API-key workflow: a small dialog above the settings window */
+.pk-wf {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(20 24 32 / 0.45);
+  z-index: 60;
+  padding: 16px;
+}
+.pk-wf .win {
+  width: min(560px, 100%);
+  height: auto;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-base-100);
+  border-radius: 12px;
+  box-shadow: var(--pk-shadow);
+  overflow: hidden;
+}
+.pk-wf .win:focus {
+  outline: none;
+}
+.pk-wf .head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--color-base-300);
+}
+.pk-wf .head h2 {
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 500;
+  margin: 0;
+}
+.pk-wf .dots {
+  display: flex;
+  gap: 6px;
+  margin-left: 4px;
+}
+.pk-wf .dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--color-base-300);
+}
+.pk-wf .dots i.on {
+  background: var(--color-primary);
+}
+.pk-wf .body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+.pk-wf .lbl {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.pk-wf .hint {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+}
+.pk-wf .foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--color-base-300);
+}
+.pk-wf .box {
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+}
+.pk-wf .pick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.pk-wf .pick button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+}
+.pk-wf .pick button:hover {
+  background: var(--color-base-200);
+}
+.pk-wf .pick button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+.kv {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 16px;
+  row-gap: 6px;
+  font-size: 13px;
+  line-height: 18px;
+  margin: 0;
+}
+.kv dt {
+  color: var(--pk-muted);
+}
+.kv dd {
+  margin: 0;
+}
+.pk-wf .chip,
+.pk-settings .chip,
+.kv .chip {
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-info) 50%, transparent);
+  color: var(--color-info);
+  white-space: nowrap;
+  display: inline-block;
+}
+.pk-wf .chip.ok,
+.pk-settings .chip.ok {
+  border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
+  color: var(--color-success);
+}
+.pk-wf .chip.warn,
+.pk-settings .chip.warn {
+  border-color: color-mix(in srgb, var(--color-warning) 60%, transparent);
+  color: var(--color-warning);
+}
+.pk-wf .chip.err,
+.pk-settings .chip.err {
+  border-color: color-mix(in srgb, var(--color-error) 60%, transparent);
+  color: var(--color-error);
+}
+.pk-wf .chip.off,
+.pk-settings .chip.off {
+  border-color: var(--color-base-300);
+  color: var(--pk-muted);
+}
+/* ── First-run onboarding ─────────────────────────────────────────────────────────────────
+   A full-window flow: a progress rail on the left (a row above the card below 1024px) and one card at a time. Amber marks the step in progress and the
+   primary action only; the provider cards use state chips. The last step docks into a strip above the real chat page (`.pk-ob-strip`). */
+.pk-ob {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  background: var(--color-base-200);
+}
+.pk-ob:focus {
+  outline: none;
+}
+.pk-ob .rail {
+  padding: 40px 32px;
+  border-right: 1px solid var(--color-base-300);
+  background: var(--color-base-100);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.pk-ob .rail .brand {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 500;
+  margin-bottom: 24px;
+}
+.pk-ob .rail .grow {
+  flex: 1;
+}
+.pk-ob .rail .skip {
+  align-self: flex-start;
+  cursor: pointer;
+}
+.pk-ob .ob-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pk-ob .ob-step {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+  padding: 8px 0;
+  color: var(--pk-muted);
+  font-size: 13px;
+  line-height: 18px;
+}
+.pk-ob .ob-step .num {
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--color-base-300);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+}
+.pk-ob .ob-step.done {
+  color: var(--color-base-content);
+}
+.pk-ob .ob-step.done .num {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+.pk-ob .ob-step.now {
+  color: var(--color-base-content);
+  font-weight: 500;
+}
+.pk-ob .ob-step.now .num {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary-content);
+}
+.pk-ob .ob-step small {
+  display: block;
+  font-weight: 400;
+  color: var(--pk-muted);
+  font-size: 12px;
+  line-height: 16px;
+  margin-top: 2px;
+}
+.pk-ob main {
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  align-items: start;
+  padding: 48px 32px;
+  min-height: 0;
+}
+.pk-ob .ob-card {
+  width: min(720px, 100%);
+  min-width: 0;
+}
+.pk-ob h1 {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 500;
+  margin: 0 0 4px;
+}
+.pk-ob .lead {
+  color: var(--pk-muted);
+  margin: 0 0 24px;
+}
+.pk-ob .found {
+  display: flex;
+  gap: 4px 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  font-size: 13px;
+  line-height: 18px;
+  margin-bottom: 20px;
+}
+.pk-ob .found b {
+  font-weight: 500;
+}
+.pk-ob .found,
+.pk-ob .box {
+  overflow-wrap: anywhere;
+}
+.pk-ob .box {
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  margin-bottom: 4px;
+}
+.pk-ob .foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+.pk-ob .pk-group {
+  background: var(--color-base-100);
+}
+.pk-ob .pk-group .scope {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 208px;
+  overflow-y: auto;
+  padding: 8px 12px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+  background: var(--color-base-200);
+}
+.pk-ob .pk-group .scope label {
+  min-height: 24px;
+}
+.pk-ob .pk-group .ob-scope {
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-base-300);
+}
+.pk-ob .pk-group .ob-scope .lbl {
+  font-size: 14px;
+  line-height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pk-ob .pk-group .ob-scope .hint {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  margin: 2px 0 10px;
+}
+.pk-ob .chip,
+.pk-ob-strip .chip {
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-info) 50%, transparent);
+  color: var(--color-info);
+  white-space: nowrap;
+  display: inline-block;
+}
+.pk-ob .chip.ok,
+.pk-ob-strip .chip.ok {
+  border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
+  color: var(--color-success);
+}
+.pk-ob .chip.err,
+.pk-ob-strip .chip.err {
+  border-color: color-mix(in srgb, var(--color-error) 60%, transparent);
+  color: var(--color-error);
+}
+.pk-ob .chip.rec {
+  border-color: color-mix(in srgb, var(--color-primary) 60%, transparent);
+  color: var(--color-primary);
+}
+/* The four ways to get a model (also used by Settings › Providers). */
+.pk-prov {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  column-gap: 14px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  background: var(--color-base-100);
+}
+.pk-prov + .pk-prov {
+  margin-top: 10px;
+}
+.pk-prov .logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--color-base-200);
+  font-weight: 600;
+  font-size: 14px;
+}
+.pk-prov .logo .pk-icon {
+  width: 20px;
+  height: 20px;
+}
+.pk-prov .logo-primary {
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  color: var(--color-primary);
+}
+.pk-prov .nm {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pk-prov .ds {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  margin-top: 2px;
+}
+.pk-prov .st {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-success);
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+.pk-prov .act {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pk-prov .more {
+  grid-column: 1 / -1;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-base-300);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pk-prov.rec {
+  border-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
+}
+.pk-prov .chip {
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-info) 50%, transparent);
+  color: var(--color-info);
+  white-space: nowrap;
+  font-weight: 400;
+  display: inline-block;
+}
+.pk-prov .chip.ok {
+  border-color: color-mix(in srgb, var(--color-success) 50%, transparent);
+  color: var(--color-success);
+}
+.pk-prov .chip.rec {
+  border-color: color-mix(in srgb, var(--color-primary) 60%, transparent);
+  color: var(--color-primary);
+}
+/* The last step: a strip above the real chat page (the main column makes room for it). */
+.pk-main[data-setup='open'] {
+  --pk-setup-h: 88px;
+  position: relative;
+  padding-top: var(--pk-setup-h);
+}
+pk-onboarding-strip {
+  display: contents;
+}
+.pk-ob-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--pk-setup-h);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 var(--pk-gutter);
+  background: var(--color-base-100);
+  border-bottom: 1px solid var(--color-base-300);
+}
+.pk-ob-strip .top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.pk-ob-strip .top > * {
+  flex: none;
+}
+.pk-ob-strip .top > .detail {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.pk-ob-strip .title {
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pk-ob-strip .dots {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+.pk-ob-strip .dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--color-base-300);
+}
+.pk-ob-strip .dots i.on {
+  background: var(--color-primary);
+}
+.pk-ob-strip .prompts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pk-ob-strip .prompts .pill {
+  height: 32px;
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 14px;
+  font-size: 13px;
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+  border: 0;
+  cursor: pointer;
+  flex: none;
+}
+.pk-ob-strip .prompts .pill:hover {
+  background: var(--color-base-300);
+}
+@media (max-width: 1023px) {
+  .pk-ob {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .pk-ob .rail {
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-base-300);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .pk-ob .rail .brand {
+    margin: 0 16px 0 0;
+    font-size: 17px;
+    line-height: 24px;
+    white-space: nowrap;
+  }
+  .pk-ob .rail .grow,
+  .pk-ob .rail .skip {
+    display: none;
+  }
+  .pk-ob .ob-steps {
+    flex-direction: row;
+    gap: 16px;
+  }
+  .pk-ob .ob-step {
+    grid-template-columns: 24px auto;
+    padding: 0;
+    white-space: nowrap;
+    align-items: center;
+  }
+  .pk-ob .ob-step small {
+    display: none;
+  }
+  .pk-ob main {
+    padding: 24px 16px;
+  }
+  .pk-prov {
+    grid-template-columns: 40px minmax(0, 1fr);
+    row-gap: 12px;
+  }
+  .pk-prov > .act {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+  .pk-prov > .act .select,
+  .pk-prov > .act .input {
+    flex: 1;
+    min-width: 140px;
+  }
+  .pk-ob .foot {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 767px) {
+  .pk-main[data-setup='open'] {
+    --pk-setup-h: 136px;
+  }
+  .pk-ob-strip .top {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .pk-ob-strip .top > .detail {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .pk-settings {
+    padding: 0;
+  }
+  .pk-settings .win {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 56px auto minmax(0, 1fr);
+    border-radius: 0;
+    height: 100dvh;
+    width: 100%;
+  }
+  .pk-group > header {
+    flex-wrap: wrap;
+  }
+  .pk-group > header .actions {
+    margin-left: 0;
+  }
+  .pk-settings .win:has(.banner) {
+    grid-template-rows: 56px auto auto minmax(0, 1fr);
+  }
+  .pk-settings .head {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .pk-settings .head .saved span.txt {
+    display: none;
+  }
+  .pk-settings nav {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-base-300);
+    padding: 8px;
+  }
+  .pk-settings nav .sec {
+    display: none;
+  }
+  .pk-settings nav [role='tab'] .cnt {
+    display: none;
+  }
+  .pk-settings main {
+    padding: 16px;
+  }
+  .pk-settings .banner {
+    padding: 8px 12px;
+    flex-wrap: wrap;
+  }
+  .pk-group .row .ctl.wrap {
+    justify-content: flex-start;
+  }
+  .pk-provider {
+    grid-template-columns: 8px minmax(0, 1fr);
+  }
+  .pk-provider .actions {
+    grid-column: 2;
+    justify-content: flex-start;
+    margin-top: 8px;
+  }
+  .pk-connector {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .pk-connector .actions {
+    grid-column: 2;
+    justify-content: flex-start;
+    min-height: 0;
+    margin-top: 8px;
+  }
+  .pk-connector .tools .tool {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .pk-wf {
+    padding: 0;
+    place-items: end stretch;
+  }
+  .pk-wf .win {
+    width: 100%;
+    height: auto;
+    border-radius: 12px 12px 0 0;
+  }
+}
+
+/* Appearance preferences: the text sizes and density the settings dialog sets on <html> (see ViewPrefs). Later rules win over the defaults above. */
+.prose {
+  font-size: var(--pk-prose-size, 15px);
+  line-height: var(--pk-prose-line, 24px);
+}
+.prose pre code,
+.pk-out pre,
+.pk-out pre code {
+  font-size: var(--pk-code-size, 13px);
+  line-height: var(--pk-code-line, 20px);
+}
+html[data-density='compact'] .pk-turn + .pk-turn,
+html[data-density='compact'] .pk-measure > .contents > .pk-turn {
+  margin-top: 20px;
+}
+html[data-density='compact'] .pk-transcript {
+  padding-top: 16px;
+}
+/* "Collapse tool output": a tool call's output is capped to six lines and scrolls inside its box. */
+html[data-tool-output='collapsed'] .pk-out {
+  max-height: calc(var(--pk-code-line, 20px) * 6 + 24px);
+  overflow: auto;
+}
+html[data-tool-output='collapsed'] .pk-out pre {
+  max-height: none;
+  overflow: visible;
+}
+/* ── The chat on CopilotKit's components ──────────────────────────────────────────────────────
+   CopilotKit's stylesheet is not loaded, so its components arrive as plain elements with their class names and `data-*` hooks;
+   this block lays them out and styles them with tokens. `.cpk\:*` selectors name the few structural classes of the view and
+   scroll view that have no other hook. */
+.pk-main > pk-chat {
+  grid-row: 2 / 5;
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.pk-chat copilot-chat-view {
+  display: block;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.pk-chat .copilotKitChat {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.pk-chat copilot-chat-view-scroll-view {
+  display: block;
+  flex: 1;
+  min-height: 0;
+}
+.pk-chat copilot-chat-view-scroll-view > div {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+.pk-chat [cdkscrollable] {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+/* "↓ Latest" sits over the thread, centred above the composer (CopilotKit sets its distance from the bottom inline) */
+.pk-chat .cpk\:absolute.cpk\:inset-x-0 {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  z-index: 30;
+  pointer-events: none;
+}
+.pk-chat .cpk\:absolute.cpk\:inset-x-0 > * {
+  pointer-events: auto;
+}
+.pk-chat copilot-chat-view-feather {
+  display: none;
+}
+/* The composer floats over the bottom of the scroll view; the view reserves its measured height under the last message */
+.pk-chat copilot-chat-view-input-container {
+  display: block;
+}
+.pk-chat copilot-chat-view-input-container > .pk-composer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  /* Cover scrolling text behind the well and its footer, leaving the native scrollbar visible and reachable. */
+  pointer-events: none;
+  background: linear-gradient(to right, var(--color-base-200) 0 calc(100% - 16px), transparent calc(100% - 16px));
+}
+/* The view measures the content box of the container to reserve its height under the thread, so the container has no padding of its own: the measure column carries the 12 / 16 around the well */
+.pk-chat .pk-composer {
+  padding: 0;
+  display: flow-root;
+}
+.pk-chat .pk-composer > .pk-measure {
+  pointer-events: auto;
+  width: calc(100% - 2 * var(--pk-gutter));
+  max-width: var(--pk-measure);
+  margin: 12px auto 16px;
+}
+.pk-well {
+  position: relative;
+}
+.pk-well copilot-chat-input,
+.pk-well .copilotKitInput {
+  display: block;
+}
+.pk-well pk-composer-field {
+  display: block;
+}
+
+/* The transcript: the pieces of a turn are siblings, spaced as one turn (32 between turns, 12 inside, 0 within an activity list) */
+pk-transcript.pk-messages {
+  display: block;
+  padding: 24px var(--pk-gutter) 0;
+}
+.pk-messages copilot-chat-message-view {
+  display: block;
+}
+.pk-messages copilot-chat-message-view > div {
+  display: flex;
+  flex-direction: column;
+  max-width: var(--pk-measure);
+  margin: -32px auto 0;
+}
+.pk-virtual-transcript {
+  overflow-anchor: none;
+}
+.pk-virtual-row {
+  display: flow-root;
+  overflow-anchor: none;
+}
+.pk-messages .pk-virtual-row copilot-chat-message-view > div {
+  margin: 0 auto;
+}
+.pk-transcript-tail {
+  max-width: var(--pk-measure);
+  margin: 0 auto;
+}
+/* Only rendered turns need the first-turn offset; an empty view must not pull suggestions over the welcome text. */
+.pk-messages:has(.pk-start) copilot-chat-message-view > div {
+  margin-top: 0;
+}
+.pk-messages copilot-slot,
+.pk-messages copilot-activity {
+  display: contents;
+}
+.pk-messages pk-turn {
+  margin-top: 32px;
+}
+.pk-messages pk-turn[data-cont='turn'] {
+  margin-top: 12px;
+}
+.pk-messages pk-turn[data-cont='activity'],
+.pk-messages pk-turn[data-cont='usage'] {
+  margin-top: 0;
+}
+.pk-messages pk-turn[data-cont='usage'] .pk-usage {
+  margin-top: 2px;
+}
+.pk-messages pk-turn[data-cont='activity'] .pk-activity {
+  padding-top: 4px;
+}
+.pk-messages pk-marker,
+.pk-messages .pk-marker {
+  margin-top: 24px;
+}
+.pk-messages copilot-chat-user-message,
+.pk-messages copilot-chat-assistant-message {
+  display: block;
+}
+.pk-messages .copilotKitAssistantMessage {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pk-messages .copilotKitUserMessage {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.pk-messages pk-prose {
+  display: block;
+}
+pk-transcript[data-usage='show'] .pk-usage {
+  opacity: 1;
+}
+.pk-messages .pk-turn.pk-hot .pk-usage,
+.pk-messages .pk-turn.pk-hot .pk-actions {
+  opacity: 1;
+}
+.pk-messages [data-testid='copilot-loading-cursor'] {
+  display: none;
+}
+
+/* The toolbars under a message (copy, edit, branches / copy, regenerate, thumbs): icon buttons, shown with the turn's hover */
+.pk-messages .pk-actions {
+  display: block;
+  margin-top: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+/* A user block's buttons share the row of its caption (the caption left, the buttons right) instead of taking a row of their own */
+.pk-messages pk-turn {
+  position: relative;
+}
+.pk-messages pk-turn[data-role='user'] .pk-actions {
+  position: absolute;
+  right: 0;
+  bottom: -4px;
+  margin: 0;
+  z-index: 1;
+}
+/* An answer's buttons float at the right, over the row of its usage line, so the turn does not grow by a row of hidden buttons */
+.pk-messages .copilotKitAssistantMessage .pk-actions {
+  position: absolute;
+  right: 0;
+  bottom: -28px;
+  margin: 0;
+  z-index: 1;
+}
+.pk-messages .pk-turn:hover .pk-actions,
+.pk-messages .pk-turn:focus-within .pk-actions {
+  opacity: 1;
+}
+.pk-actions > div {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.pk-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pk-muted);
+  cursor: pointer;
+}
+.pk-actions button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-base-content) 6%, transparent);
+  color: var(--color-base-content);
+}
+.pk-actions button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.pk-actions button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.pk-actions .pk-rate.on button {
+  color: var(--color-primary);
+}
+.pk-actions copilot-chat-user-message-branch-navigation,
+.pk-actions copilot-chat-user-message-branch-navigation > div {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-actions copilot-icon,
+.pk-actions .pk-icon {
+  display: inline-block;
+}
+
+/* Pills under the thread (CopilotKit's suggestion view): prompt-template suggestions, "Rerun last", what extensions offer */
+[data-testid='copilot-suggestions'] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: calc(100% - 2 * var(--pk-gutter));
+  max-width: var(--pk-measure);
+  margin: 24px auto 0;
+  padding: 0;
+}
+[data-testid='copilot-suggestion'] {
+  border: 1px solid var(--color-base-300);
+  border-radius: 9999px;
+  background: var(--color-base-100);
+  color: inherit;
+  padding: 4px 12px;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+[data-testid='copilot-suggestion']:hover {
+  background: var(--color-base-200);
+}
+
+/* The attachment queue above the textarea: images as 48px thumbnails, `@path` references as mono chips */
+.copilotKitAttachmentQueue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 16px 0;
+}
+.copilotKitAttachmentQueueItem {
+  position: relative;
+}
+.copilotKitAttachmentQueuePreviewImage {
+  display: block;
+  height: 48px;
+  width: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.copilotKitAttachmentQueueItem--document {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 28px 0 8px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+  background: var(--color-base-200);
+}
+.copilotKitAttachmentQueueItem--document::before {
+  content: '@';
+  color: var(--pk-muted);
+}
+.copilotKitAttachmentQueueDocIcon,
+.copilotKitAttachmentQueueFileSize {
+  display: none;
+}
+.copilotKitAttachmentQueuePreviewDocument,
+.copilotKitAttachmentQueueDocInfo {
+  display: contents;
+}
+.copilotKitAttachmentQueueRemoveButton {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 9999px;
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.copilotKitAttachmentQueueItem--document .copilotKitAttachmentQueueRemoveButton {
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+}
+
+/* The chip strip of the well: skill and prompt-template chips, then CopilotKit's queue of images and `@path` chips, in one wrapping row */
+.pk-chip-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 8px;
+}
+.pk-chip-strip.empty {
+  display: none;
+}
+.pk-chip-strip copilot-chat-attachment-queue,
+.pk-chip-strip .copilotKitAttachmentQueue {
+  display: contents;
+}
+.pk-skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  max-width: 100%;
+  padding: 0 4px 0 8px;
+  border-radius: 9999px;
+  background: var(--color-base-200);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.pk-skill-chip:hover {
+  background: var(--color-base-300);
+}
+.pk-skill-chip .glyph {
+  font-family: var(--pk-font-mono);
+  color: var(--pk-muted);
+}
+.pk-skill-chip .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+.pk-skill-chip .scope {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-info) 50%, transparent);
+  color: var(--color-info);
+}
+.pk-skill-chip button {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--pk-muted);
+  cursor: pointer;
+}
+.pk-skill-chip button:hover,
+.pk-skill-chip button:focus-visible {
+  background: var(--color-base-300);
+  color: var(--color-base-content);
+}
+.pk-skill-chip:hover button:hover {
+  background: color-mix(in srgb, var(--color-base-content) 14%, transparent);
+}
+.pk-skill-chip button .pk-icon {
+  width: 12px;
+  height: 12px;
+}
+.pk-skill-chip .pin {
+  opacity: 0;
+  width: 0;
+  margin-right: -4px;
+  overflow: hidden;
+}
+.pk-skill-chip:hover .pin,
+.pk-skill-chip:focus-within .pin,
+.pk-skill-chip .pin[aria-pressed='true'] {
+  opacity: 1;
+  width: 16px;
+  margin-right: 0;
+}
+@media (hover: none) {
+  .pk-skill-chip .pin {
+    opacity: 1;
+    width: 16px;
+    margin-right: 0;
+  }
+}
+/* Pinned: dimmer, the pin stays filled */
+.pk-skill-chip.pinned {
+  background: color-mix(in srgb, var(--color-base-200) 55%, transparent);
+  border: 1px solid var(--color-base-300);
+}
+.pk-skill-chip.pinned .name,
+.pk-skill-chip.pinned .glyph {
+  color: var(--pk-muted);
+}
+.pk-skill-chip .pin-mark {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  color: var(--pk-muted);
+}
+/* In the transcript, over the sentence of the user's message */
+.pk-user .pk-skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pk-user .pk-skill-chips:last-child {
+  margin-bottom: 0;
+}
+.pk-user .pk-skill-chip {
+  padding: 0 8px;
+}
+
+/* The ⊕ menu (CopilotKit's tools menu in a CDK overlay) and tooltips */
+[cdkmenu][data-copilotkit] {
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  box-shadow: var(--pk-shadow);
+  padding: 4px;
+  min-width: 200px;
+  max-height: min(360px, 60vh);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+[cdkmenu][data-copilotkit] [cdkmenuitem] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+}
+[cdkmenu][data-copilotkit] [cdkmenuitem]:hover,
+[cdkmenu][data-copilotkit] [cdkmenuitem]:focus-visible {
+  background: var(--color-base-200);
+  outline: 0;
+}
+[cdkmenu][data-copilotkit] [cdkmenuitem] copilot-icon {
+  margin-left: auto;
+  color: var(--pk-muted);
+}
+[cdkmenu][data-copilotkit] .cpk\:h-px {
+  height: 1px;
+  margin: 4px -4px;
+  background: var(--color-base-300);
+}
+.copilot-tooltip {
+  background: var(--color-neutral);
+  color: var(--color-neutral-content);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+.copilot-tooltip-arrow {
+  display: none;
+}
+.pk-toolbar copilot-chat-tools-menu {
+  display: inline-flex;
+}
+.pk-hint > span.truncate {
+  max-width: 40ch;
+}
+
+/* Compact composer toolbar (design-system "Composer" and "Controls"): one row at >= 768px, every control 32px tall.
+   Left: the tools pill (⊕ @ ! as 28px round buttons in a 32px pill), the model chip, the effort chip. Right: the
+   "Deliver" chip while a run is active, the context ring (a 32px disc with a 20px gauge inside), and one round 32px
+   icon button: amber ↑ to send, red ■ on base-200 to stop. Chips are pills with a 14px SVG chevron. */
+.pk-toolbar.compact {
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 2px 6px 6px 6px;
+  container-type: inline-size;
+}
+.pk-toolbar.compact > * {
+  flex: none;
+}
+/* When the row is tight, lower-priority controls give way before anything overflows: the "Deliver" word goes first,
+   then the model and effort chips may shrink and truncate their value; the right cluster never moves or clips. */
+.pk-toolbar.compact .pk-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.pk-toolbar.compact .pk-chip > .btn {
+  min-width: 0;
+}
+.pk-toolbar.compact .pk-chip.mode {
+  flex: none;
+}
+@container (max-width: 680px) {
+  .pk-toolbar.compact .pk-chip.mode > .btn > span:first-child {
+    display: none;
+  }
+}
+.pk-toolbar.compact .pk-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 2px;
+  border-radius: 9999px;
+  background: var(--color-base-200);
+}
+.pk-toolbar.compact .pk-tools .btn {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 9999px;
+  color: var(--pk-muted);
+}
+.pk-toolbar.compact .pk-tools .btn:hover {
+  background: var(--color-base-300);
+  color: var(--color-base-content);
+}
+.pk-toolbar.compact .pk-chip > .btn {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
+  gap: 6px;
+  border-radius: 9999px;
+  background: var(--color-base-200);
+}
+.pk-toolbar.compact .pk-chip > .btn:hover {
+  background: var(--color-base-300);
+}
+.pk-toolbar.compact .pk-chip > .btn .chev {
+  width: 14px;
+  height: 14px;
+  color: var(--pk-muted);
+  flex: none;
+  margin-left: 2px;
+}
+.pk-toolbar.compact .pk-chip > .btn:hover .chev {
+  color: var(--color-base-content);
+}
+.pk-toolbar.compact .pk-chip.mode > .btn .v {
+  color: var(--color-primary);
+}
+.pk-toolbar.compact .grow {
+  flex: 1 1 8px;
+  min-width: 8px;
+}
+.pk-toolbar.compact .end {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+}
+.pk-toolbar.compact .end .pk-ring {
+  margin-right: 0;
+}
+.pk-ring {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  margin-right: 2px;
+  border-radius: 9999px;
+  display: grid;
+  place-items: center;
+  color: var(--pk-muted);
+}
+.pk-ring svg {
+  width: 32px;
+  height: 32px;
+  transform: rotate(-90deg);
+}
+.pk-ring .disc {
+  fill: var(--color-base-200);
+}
+.pk-ring:hover .disc {
+  fill: var(--color-base-300);
+}
+.pk-ring .track {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-base-content) 22%, transparent);
+  stroke-width: 1.5;
+}
+.pk-ring .arc {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-base-content) 65%, transparent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+.pk-ring[data-level='warn'] .arc {
+  stroke: var(--color-warning);
+}
+.pk-ring[data-level='hot'] .arc {
+  stroke: var(--color-error);
+}
+.pk-send {
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  display: grid;
+  place-items: center;
+  background: var(--color-primary);
+  color: var(--color-primary-content);
+  flex: none;
+}
+.pk-send:disabled {
+  background: var(--color-base-300);
+  color: var(--pk-muted);
+}
+.pk-send .pk-icon {
+  width: 14px;
+  height: 14px;
+}
+.pk-send.stop {
+  background: var(--color-base-200);
+  color: var(--color-error);
+}
+.pk-send.stop:hover {
+  background: color-mix(in srgb, var(--color-error) 18%, var(--color-base-200));
+}
+.pk-usage-pop {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: min(300px, calc(100vw - 48px));
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  box-shadow: var(--pk-shadow);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 13px;
+  z-index: 40;
+}
+.pk-usage-pop .hd {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pk-usage-pop .hd b {
+  font-size: 15px;
+  font-weight: 500;
+}
+.pk-usage-pop .bar {
+  height: 4px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--color-base-content) 12%, transparent);
+  position: relative;
+  overflow: hidden;
+}
+.pk-usage-pop .bar .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--color-primary);
+  border-radius: 9999px;
+}
+.pk-usage-pop .bar .tick {
+  position: absolute;
+  top: -2px;
+  width: 1.5px;
+  height: 8px;
+  background: var(--pk-muted);
+}
+.pk-usage-pop .kv {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  row-gap: 4px;
+  column-gap: 12px;
+  color: var(--pk-muted);
+}
+.pk-usage-pop .kv dd {
+  margin: 0;
+  color: var(--color-base-content);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pk-usage-pop .kv dt.sub {
+  padding-left: 12px;
+}
+/* Phones: two rows. Row 1 keeps the tools pill and the right cluster (ring, send) beside the text; row 2 holds the
+   chips, left-aligned, each able to shrink. Nothing overflows the well at 375px. */
+@media (max-width: 767px) {
+  .pk-toolbar.compact {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .pk-toolbar.compact .pk-tools {
+    order: 1;
+  }
+  .pk-toolbar.compact .grow {
+    order: 2;
+  }
+  .pk-toolbar.compact .end {
+    order: 3;
+  }
+  .pk-toolbar.compact .pk-chip {
+    order: 4;
+  }
+  .pk-toolbar.compact .pk-chip > .btn .v {
+    max-width: 140px;
+  }
+}
+
+/* Queue bar: messages queued while a run is active, docked onto the composer as one unit (the bar has
+   square bottom corners, the well square top corners). A header line names the count and the delivery rule;
+   rows are 36px with a fixed kind column so texts align; row actions appear on hover, Remove is always visible. */
+.pk-queue {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px 10px 0 0;
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  border-bottom: 0;
+}
+.pk-queue + .pk-well {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.pk-queue .head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--pk-muted);
+  border-bottom: 1px solid var(--color-base-300);
+}
+.pk-queue .head b {
+  color: var(--color-base-content);
+  font-weight: 500;
+}
+.pk-queue .head .count {
+  font-size: 11px;
+  line-height: 16px;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  background: var(--color-base-300);
+  color: var(--color-base-content);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pk-queue .row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  height: 36px;
+  padding: 0 8px 0 12px;
+}
+.pk-queue .row + .row {
+  border-top: 1px solid color-mix(in srgb, var(--color-base-300) 60%, transparent);
+}
+.pk-queue .row:hover {
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-queue .kind {
+  justify-self: start;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-base-300);
+  color: var(--pk-muted);
+  white-space: nowrap;
+}
+.pk-queue .kind.steer {
+  border-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
+  color: var(--color-primary);
+}
+.pk-queue .txt {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-queue .acts {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.pk-queue .acts .btn {
+  height: 28px;
+  min-height: 28px;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.pk-queue .acts .btn-square {
+  width: 28px;
+  opacity: 0.7;
+}
+.pk-queue .row:hover .acts .btn,
+.pk-queue .row:focus-within .acts .btn {
+  opacity: 1;
+}
+
+/* Phones: the queue bar keeps "Queued [n]" and the two links on one line (the delivery rule moves to a tooltip),
+   rows keep the kind chip, a single-line text and the Remove target; Steer now / Edit live behind a tap on the row. */
+@media (max-width: 767px) {
+  .pk-queue .head {
+    gap: 8px;
+  }
+  .pk-queue .head .rule {
+    display: none;
+  }
+  .pk-queue .head a {
+    white-space: nowrap;
+  }
+  .pk-queue .row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 8px;
+  }
+  .pk-queue .acts .btn:not(.btn-square) {
+    display: none;
+  }
+  .pk-queue .acts .btn-square {
+    opacity: 1;
+  }
+}
+
+/* Human-in-the-loop blocks and the queue bar's wiring. The approval grows a muted hint line (the extension's timeout
+   counting down, then the keys that answer it); a select block lists its options full width; the block takes the focus when it appears. */
+.pk-approval .hint {
+  font-size: 12px;
+  color: var(--pk-muted);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.pk-approval:focus {
+  outline: none;
+}
+.pk-approval:focus-visible {
+  border-color: var(--color-warning);
+}
+.pk-approval .btn[data-option] {
+  width: 100%;
+  justify-content: flex-start;
+}
+.pk-approval .btn[data-option] .kbd {
+  min-width: 18px;
+}
+.pk-approval textarea {
+  resize: vertical;
+}
+
+/* The queue bar sits in its own element; the well below it loses its top corners only while the bar has rows. Each row is wrapped
+   in `.item` (the phone's tap-to-open strip lives inside it), so the hairline between rows is drawn between the wrappers. */
+pk-queue-bar:has(.pk-queue) + .pk-well {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.pk-queue .row + .row {
+  border-top: 0;
+}
+.pk-queue .item + .item {
+  border-top: 1px solid color-mix(in srgb, var(--color-base-300) 60%, transparent);
+}
+.pk-queue .head .link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pk-queue .head .link:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.pk-queue button.txt {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  text-align: left;
+  cursor: default;
+}
+.pk-queue .more {
+  display: none;
+}
+@media (max-width: 767px) {
+  .pk-queue button.txt {
+    cursor: pointer;
+  }
+  .pk-queue .item.open .more {
+    display: flex;
+    gap: 8px;
+    padding: 0 12px 8px;
+  }
+}
+
+/* Phones: the approval's buttons go under the question instead of squeezing it (a 375px block would otherwise wrap the sentence in a third of its width). */
+@media (max-width: 767px) {
+  .pk-approval:not(.stack) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .pk-approval:not(.stack) > div:last-child {
+    justify-content: flex-end;
+  }
+}
+/* The compact toolbar: round 32px ghost targets (extension
+   buttons, the microphone), the ring and send as real buttons, the ring's levels under the names the store uses, and the voice states of the
+   hint row. Controls are 32px, or 28px inside the tools pill; nothing here changes a height. */
+.pk-toolbar.compact .end {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+}
+.pk-toolbar.compact .pk-tools .btn .pk-icon,
+.pk-toolbar.compact .pk-tools copilot-icon,
+.pk-toolbar.compact .pk-tools copilot-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.pk-toolbar.compact .pk-tools .btn.mono {
+  font-family: var(--pk-font-mono);
+  font-size: 13px;
+  line-height: 1;
+}
+.pk-ghost {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--pk-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  overflow: hidden;
+}
+.pk-ghost.mono {
+  font-family: var(--pk-font-mono);
+}
+.pk-ghost:hover:not(:disabled) {
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+.pk-ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pk-ghost .pk-icon {
+  width: 16px;
+  height: 16px;
+}
+.pk-ghost.rec {
+  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 16%, transparent);
+}
+.pk-ghost.rec:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-error) 24%, transparent);
+  color: var(--color-error);
+}
+.pk-ghost.rec .pk-icon {
+  animation: pk-pulse 1.4s ease-in-out infinite;
+}
+.pk-ring {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.pk-ring:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.pk-ring[data-level='warning'] .arc {
+  stroke: var(--color-warning);
+}
+.pk-ring[data-level='error'] .arc {
+  stroke: var(--color-error);
+}
+.pk-ring .sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.pk-send {
+  border: 0;
+  cursor: pointer;
+}
+.pk-send:disabled {
+  cursor: default;
+}
+.pk-usage-pop button.link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-base-content);
+  font: inherit;
+}
+.pk-usage-pop button.link:disabled {
+  opacity: 0.5;
+  cursor: default;
+  text-decoration: none;
+}
+.pk-usage-pop .hd .muted {
+  margin-left: auto;
+}
+.pk-usage-pop .bar .fill {
+  min-width: 2px;
+}
+@media (max-width: 767px) {
+  .pk-toolbar.compact > .pk-ghost {
+    order: 1;
+  }
+}
+
+/* Voice states in the hint row: the first-use prompt, the starting microphone, listening (the words as they are recognised), transcribing,
+   errors. The waveform is in the well: while a recording is wanted `copilot-chat-input` is in transcribe mode and CopilotKit's recorder takes
+   the editor row (the same 40px as one line of the textarea, so nothing moves); its box is sized here because its Tailwind classes are not
+   loaded, and the canvas draws in `currentColor`. */
+.pk-voice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 0 1 auto;
+  color: var(--pk-muted);
+}
+.pk-voice.hidden {
+  display: none;
+}
+.pk-voice .txt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-voice .txt.partial {
+  color: var(--color-base-content);
+}
+.pk-voice .txt.err {
+  color: var(--color-error);
+  white-space: normal;
+}
+.pk-hint > .ml-auto {
+  white-space: nowrap;
+}
+/* While a voice state needs the row, the key hints make room. */
+.pk-hint:has(> .pk-voice:not(.hidden)) > .ml-auto {
+  display: none;
+}
+.pk-voice .btn {
+  flex: none;
+}
+.pk-voice .progress {
+  flex: none;
+}
+.pk-voice .rec-dot {
+  order: -2;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--color-error);
+  animation: pk-pulse 1.4s ease-in-out infinite;
+}
+.pk-voice .loading {
+  order: -2;
+  flex: none;
+}
+.pk-well copilot-chat-audio-recorder {
+  display: block;
+}
+/* The element's own box, not a class: CopilotKit 0.6.0 does not hand `audioRecorderClass` to the recorder it mounts itself. */
+.pk-well copilot-chat-audio-recorder > div {
+  box-sizing: border-box;
+  width: 100%;
+  height: 40px;
+  padding: 10px 16px 6px;
+  color: var(--color-primary);
+}
+.pk-well copilot-chat-audio-recorder canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+@keyframes pk-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-ghost.rec .pk-icon,
+  .pk-voice .rec-dot {
+    animation: none;
+  }
+}
+/* ── Projects, thread state and the attendant ─────────────────────────────────────────────── */
+/* The approval a waiting badge opened: marked for a moment so the eye finds it. */
+.pk-approval[data-reveal] {
+  outline: 2px solid var(--color-info);
+  outline-offset: 2px;
+}
+/* Settings › Attendant: the activity list is a daisyUI `table table-sm` with a muted head and right-aligned numbers. */
+.pk-attendant-activity th {
+  font-weight: 400;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  white-space: nowrap;
+}
+.pk-attendant-activity td {
+  vertical-align: top;
+  font-size: 13px;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+.pk-attendant-activity .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pk-attendant-activity .chip {
+  margin-left: 6px;
+}
+
+/* Worktrees and the agents next to a thread: the lease chip in the Files panel, "also working here", the notes in review mode, the choice rows of the worktree dialogs, the branch in the breadcrumb strip. */
+.pk-node .pk-lease {
+  flex: 0 1 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 240px;
+  min-width: 0;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  color: var(--color-warning);
+}
+.pk-lease .pk-icon {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+.pk-lease .by {
+  flex: none;
+}
+.pk-lease b {
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 479px) {
+  .pk-lease .by {
+    display: none;
+  }
+}
+.pk-others {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 0 12px 8px;
+  font-size: 12px;
+  line-height: 16px;
+}
+.pk-agent {
+  display: inline-block;
+  height: 16px;
+  padding: 0 7px;
+  border-radius: 9999px;
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+  white-space: nowrap;
+}
+.pk-agent[data-state='running'] {
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary);
+}
+.pk-agent[data-state='waiting'] {
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  color: var(--color-warning);
+}
+.pk-agent[data-state='terminal'] {
+  color: var(--pk-muted);
+}
+.pk-lease-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+}
+.pk-lease-note .pk-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-top: 2px;
+  color: var(--color-warning);
+}
+.pk-lease-note.conflict {
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+}
+.pk-lease-note code {
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+}
+.pk-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.pk-choice:hover:not(:disabled) {
+  background: var(--color-base-200);
+}
+.pk-choice[aria-pressed='true'] {
+  background: var(--color-base-300);
+}
+.pk-choice:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pk-choice .lbl {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.pk-choice .hint {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+}
+.pk-wf .box ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pk-branch-crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--color-base-content);
+}
+.pk-branch-crumb .pk-icon {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+/* The outcome badge (doc/docs/design-system.md "Outcome badge"): a muted 16px glyph after the state badge of a sidebar row and at the end of the breadcrumb strip; its menu is the context menu. */
+.pk-outcome {
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--pk-muted);
+  cursor: pointer;
+}
+.pk-outcome .pk-icon {
+  width: 14px;
+  height: 14px;
+}
+.pk-outcome:hover,
+.pk-outcome[aria-expanded='true'] {
+  background: var(--color-base-300);
+  color: var(--color-base-content);
+}
+.pk-outcome:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+.pk-crumb-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  flex: none;
+}
+.pk-crumb-end:empty {
+  display: none;
+}
+@media (max-width: 767px) {
+  .pk-crumb-end {
+    margin-left: auto;
+  }
+}
+
+/* The mark (doc/docs/design-system.md "Brand"): `pk-logo`, mono or gold, with the name beside it when asked. */
+.pk-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1;
+}
+.pk-logo svg {
+  display: block;
+  flex: none;
+}
+.pk-logo .name {
+  font-size: calc(var(--pk-logo-size, 20px) * 0.8);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: var(--color-base-content);
+}
+.pk-logo .name b {
+  font-weight: 400;
+  opacity: 0.55;
+}
+/* While a range is being dragged, text must not get selected and the gutter stays the drop target. */
+.pk-diff.selecting {
+  user-select: none;
+  cursor: row-resize;
+}
+
+/* Skills learned from threads (doc/docs/design-system.md "Skill draft card" and "Skill review dialog"). The card ends a thread that has a drafted skill; it is information,
+   so it takes the info tint and never the approval's warning fill. The review dialog is a wider workflow dialog (`.pk-wf`) with the skill text in a monospace editor. */
+.pk-draft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-info) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-info) 30%, transparent);
+}
+.pk-draft .glyph {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--color-info);
+}
+.pk-draft .msg {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+.pk-draft .name {
+  font-style: normal;
+  font-weight: 500;
+  font-family: var(--pk-font-mono);
+  font-size: 13px;
+}
+.pk-draft .note {
+  color: var(--pk-muted);
+  font-size: 13px;
+  margin-left: 4px;
+}
+@media (max-width: 767px) {
+  .pk-draft {
+    flex-wrap: wrap;
+  }
+  .pk-draft .msg {
+    flex-basis: calc(100% - 30px);
+  }
+  .pk-draft .btn {
+    margin-left: auto;
+  }
+}
+.pk-wf.pk-learn .win {
+  width: min(820px, 100%);
+  max-height: min(92dvh, 920px);
+}
+.pk-learn .namefield {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.pk-learn .namefield input {
+  font-family: var(--pk-font-mono);
+  font-size: 13px;
+}
+.pk-learn .editor {
+  font-family: var(--pk-font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  min-height: 260px;
+  resize: vertical;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+  width: 100%;
+}
+.pk-learn .editor[readonly] {
+  background: var(--color-base-200);
+}
+.pk-learn .scopes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.pk-learn .scopes .pk-choice .path {
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+.pk-learn .prov {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 12px;
+  row-gap: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  margin: 0;
+}
+.pk-learn .prov dt {
+  color: var(--pk-muted);
+}
+.pk-learn .prov dd {
+  margin: 0;
+  font-family: var(--pk-font-mono);
+  overflow-wrap: anywhere;
+}
+.pk-learn .problems {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-error);
+}
+.pk-learn .verify {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.pk-learn .verification {
+  gap: 10px;
+}
+.pk-learn .vhead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pk-learn .vsummary {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+}
+.pk-learn .vprompt {
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  min-height: 64px;
+  resize: vertical;
+  width: 100%;
+}
+.pk-learn .vfiles,
+.pk-learn .vchecks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 16px;
+}
+.pk-learn .vfiles li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 12px;
+  align-items: center;
+}
+.pk-learn .vchecks li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: 12px;
+  align-items: baseline;
+}
+.pk-learn .vfiles .path,
+.pk-learn .vchecks .cmd {
+  font-family: var(--pk-font-mono);
+  overflow-wrap: anywhere;
+}
+.pk-learn .vfiles .num,
+.pk-learn .vchecks .num {
+  color: var(--pk-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pk-learn .vwarn {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-warning);
+}
+.pk-learn .vstale {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+.pk-learn .vrun {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+@media (max-width: 767px) {
+  .pk-learn .scopes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pk-wf.pk-learn .win {
+    max-height: 94dvh;
+  }
+  .pk-learn .editor {
+    min-height: 200px;
+  }
+  .pk-learn .vfiles li,
+  .pk-learn .vchecks li {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .pk-learn .vfiles .num:last-child,
+  .pk-learn .vchecks .num:last-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 767px) {
+  .pk-learn .scopes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pk-wf.pk-learn .win {
+    max-height: 94dvh;
+  }
+  .pk-learn .editor {
+    min-height: 200px;
+  }
+}
+
+/* The record of a learned skill (doc/docs/design-system.md "Learned skill record"): a block under the skill's row in Settings › Extensions and skills, in the row's
+   own column of the group (no card of its own: it is part of the row above it). The facts are one muted sentence; the flag is the only coloured line; the actions are small. */
+.pk-group pk-learned-skill {
+  display: block;
+}
+.pk-group pk-learned-skill + .row {
+  border-top: 1px solid var(--color-base-300);
+}
+.pk-learned .rec-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 0 16px 12px;
+}
+.pk-learned .rec {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  overflow-wrap: anywhere;
+}
+.pk-learned .rec .from {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--color-base-content);
+}
+.pk-learned .flag {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-warning);
+}
+.pk-learned .flag .pk-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-top: 1px;
+}
+.pk-learned .run {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 16px;
+}
+.pk-learned .err {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-error);
+  overflow-wrap: anywhere;
+}
+.pk-learned .acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.pk-learned .confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  max-width: 560px;
+}
+.pk-learned .confirm p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+.pk-learned .confirm code {
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.pk-retired > header {
+  padding: 0;
+}
+.pk-retired > header .disclose {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 12px 16px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.pk-retired > header .disclose h4 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.pk-retired > header .disclose p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-retired > header .disclose .chev {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--pk-muted);
+  transition: transform 160ms;
+}
+.pk-retired > header .disclose[aria-expanded='true'] .chev {
+  transform: rotate(90deg);
+}
+.pk-retired > header .chip {
+  margin-right: 16px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-retired > header .disclose .chev {
+    transition: none;
+  }
+}
+
+/* The Meat Proxy Score and the Vibe Score (doc/docs/design-system.md "Score meter", "Hunk label", "Score histogram"). Steered is the person's: the primary tint; the rest is
+   pi's own and stays muted. Nothing is a warning or a grade: it describes a thread, it does not mark it. */
+.pk-score {
+  display: grid;
+  gap: 6px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  background: var(--color-base-200);
+}
+.pk-score .nums {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.pk-score .nums b {
+  font-weight: 600;
+}
+.pk-score .nums .muted {
+  color: var(--pk-muted);
+}
+.pk-score .bar {
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--color-base-300);
+  overflow: hidden;
+}
+.pk-score .bar i {
+  display: block;
+  height: 100%;
+  background: var(--color-primary);
+}
+.pk-score .line {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  overflow-wrap: anywhere;
+}
+.pk-score[data-stale='true'] .line::after {
+  content: ' The outcome has changed since; score it again.';
+  color: var(--color-warning);
+}
+.pk-diff .ln.hunk .c.marked {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  white-space: normal;
+}
+.pk-hunk-mark {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 8px;
+  border-radius: 9999px;
+  font-family: var(--pk-font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  background: var(--color-base-300);
+}
+.pk-hunk-mark[data-label='specified'] {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+.pk-hunk-mark[data-label='corrected'] {
+  color: var(--color-info);
+  background: color-mix(in srgb, var(--color-info) 14%, transparent);
+}
+.pk-hunk-mark[data-label='manual'] {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+.pk-hunk-mark[data-by='person'] {
+  outline: 1px solid currentColor;
+  outline-offset: -1px;
+}
+.pk-hunk-trace {
+  font-family: var(--pk-font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pk-hunk-rel {
+  margin-left: auto;
+  width: 10rem;
+  max-width: 100%;
+  font-family: var(--pk-font-sans);
+}
+.pk-histogram {
+  display: grid;
+  gap: 8px;
+}
+.pk-histogram .plot {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  align-items: end;
+  gap: 4px;
+  height: 72px;
+}
+.pk-histogram .plot .col {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+}
+.pk-histogram .plot .col i {
+  display: block;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+  background: var(--color-primary);
+}
+.pk-histogram .plot .col[data-empty='true'] i {
+  background: var(--color-base-300);
+}
+.pk-histogram .axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+}
+.pk-histogram .recent {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 16px;
+}
+.pk-histogram .recent li {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.pk-histogram .recent .pct {
+  flex: none;
+  min-width: 5ch;
+  white-space: nowrap;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.pk-histogram .recent .what {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--pk-muted);
+}
+/* ── List pages, wizards, tooltips and motion ───────────────────────────────────────────────────────────────────
+   A list page shows what is configured as `.pk-item` rows; the amber square "+" in the group header opens a wizard (`.pk-wf` with its dots), which has its
+   choices as `.pk-choices` / `.pk-gallery` tiles and its details as a `.pk-form`. One control column width for every row (`ctl ctl-w`). */
+.pk-group > header .add {
+  margin-left: auto;
+}
+.pk-group .row .ctl.ctl-w {
+  width: var(--pk-ctl-w);
+  justify-content: flex-end;
+}
+.pk-group .row .ctl.ctl-w > .input,
+.pk-group .row .ctl.ctl-w > .select {
+  width: 100%;
+}
+
+/* A row of something configured: tile, name with its state, one detail line, actions */
+.pk-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  min-height: 60px;
+}
+.pk-item + .pk-item {
+  border-top: 1px solid var(--color-base-300);
+}
+.pk-item.off .tile,
+.pk-item.off .nm,
+.pk-item.off .ds {
+  opacity: 0.6;
+}
+.pk-item .tile {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--color-base-content);
+}
+.pk-item .tile.logo,
+.pk-choices .tile.logo {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.pk-item .tile .pk-icon {
+  width: 18px;
+  height: 18px;
+}
+.pk-tile {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  flex: none;
+}
+.pk-tile .pk-icon {
+  width: 18px;
+  height: 18px;
+}
+.pk-item .nm {
+  font-size: 14px;
+  line-height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pk-item .nm .cnt {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+}
+.pk-item .ds {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  margin-top: 2px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pk-item .act {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.pk-item .act .btn {
+  white-space: nowrap;
+}
+.pk-item .act .btn-ghost {
+  color: var(--pk-muted);
+}
+.pk-item .act .btn-ghost:hover {
+  color: var(--color-base-content);
+}
+.pk-item .act .pk-icon {
+  width: 16px;
+  height: 16px;
+}
+.pk-item .extra {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  min-width: 0;
+}
+.pk-item .extra .signin {
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.pk-item .extra .signin .url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pk-item .extra .signin .url a {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+}
+.pk-item .extra .err {
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--color-base-200);
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 96px;
+  overflow: auto;
+}
+.pk-item .extra .tools {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 16px;
+}
+.pk-item .extra .tools .tool {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr);
+  gap: 12px;
+  padding: 4px 0;
+}
+.pk-item .extra .tools .tool + .tool {
+  border-top: 1px solid var(--color-base-300);
+}
+.pk-item .extra .tools .tnm {
+  font-family: var(--pk-font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pk-item .extra .tools .tds {
+  color: var(--pk-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-item .extra .tools-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px 0 4px;
+  border-radius: 9999px;
+  font-size: 12px;
+  color: var(--pk-muted);
+  align-self: flex-start;
+}
+.pk-item .extra .tools-toggle:hover {
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+.pk-item .extra .tools-toggle .pk-icon {
+  width: 14px;
+  height: 14px;
+  transition: transform 120ms ease-out;
+}
+.pk-item .extra .tools-toggle[aria-expanded='true'] .pk-icon {
+  transform: rotate(90deg);
+}
+.pk-group .empty {
+  padding: 28px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  color: var(--pk-muted);
+  font-size: 13px;
+}
+
+/* Usage of a subscription window: a thin bar and words */
+.pk-quota {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-quota .bar {
+  width: 72px;
+  height: 4px;
+  border-radius: 9999px;
+  background: var(--color-base-300);
+  overflow: hidden;
+}
+.pk-quota .bar i {
+  display: block;
+  height: 100%;
+  background: var(--color-success);
+}
+.pk-quota .bar i.warn {
+  background: var(--color-warning);
+}
+
+/* Choice tiles in a wizard: one grid, equal tiles, the recommended one outlined in amber; a gallery is three across */
+.pk-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.pk-choices > button {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: start;
+  text-align: left;
+  padding: 12px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  background: var(--color-base-100);
+  cursor: pointer;
+  transition:
+    border-color 120ms ease-out,
+    background-color 120ms ease-out;
+}
+.pk-choices > button:hover {
+  background: var(--color-base-200);
+}
+.pk-choices > button[aria-pressed='true'] {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+.pk-choices > button.rec {
+  border-color: color-mix(in srgb, var(--color-primary) 60%, transparent);
+}
+.pk-choices .tile {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  font-weight: 500;
+}
+.pk-choices .tile .pk-icon {
+  width: 18px;
+  height: 18px;
+}
+.pk-choices .t {
+  font-size: 14px;
+  line-height: 20px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.pk-choices .d {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--pk-muted);
+  margin-top: 2px;
+  display: block;
+}
+.pk-choices.one {
+  grid-template-columns: minmax(0, 1fr);
+}
+.pk-gallery {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 2px;
+}
+.pk-gallery > button {
+  grid-template-columns: 32px minmax(0, 1fr);
+}
+.pk-gallery .tile {
+  width: 32px;
+  height: 32px;
+}
+.pk-gallery .tile .pk-icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* A form in a dialog: a 140px label column, the control column fills; hints sit under the control */
+.pk-form {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  column-gap: 16px;
+  row-gap: 12px;
+  align-items: center;
+}
+.pk-form > label {
+  font-size: 13px;
+  line-height: 18px;
+}
+.pk-form > .hint {
+  grid-column: 2;
+  margin-top: -8px;
+}
+.pk-form .input,
+.pk-form .select,
+.pk-form .textarea {
+  width: 100%;
+}
+.pk-form .mono {
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+}
+.pk-wf .win.wide {
+  width: min(720px, 100%);
+}
+.pk-wf .box .ok-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+}
+.pk-wf .pick button .logo {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  font-size: 10px;
+  font-weight: 600;
+  flex: none;
+}
+.pk-wf .chip.rec {
+  border-color: color-mix(in srgb, var(--color-primary) 60%, transparent);
+  color: var(--color-primary);
+}
+
+/* Key/value rows of a form (a server's headers and environment): key, value, "keep in the keychain", remove. A secret value is a password field and is marked by the lock. */
+.pk-form .kvs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px 28px;
+  gap: 6px;
+  align-items: center;
+}
+.pk-form .kvs .input {
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+}
+.pk-form .kvs .btn:not(.add-row) {
+  width: 28px;
+  min-width: 28px;
+  padding: 0;
+}
+.pk-form .kvs .btn.lock[aria-pressed='true'] {
+  color: var(--color-primary);
+}
+.pk-form .kvs .btn .pk-icon {
+  width: 14px;
+  height: 14px;
+}
+.pk-form .kvs .input.stored::placeholder {
+  color: var(--color-success);
+  opacity: 1;
+}
+.pk-form .kvs .add-row {
+  grid-column: 1 / -1;
+  justify-self: start;
+  white-space: nowrap;
+}
+
+/* The file editor (doc/docs/design-system.md "File editor"): a textarea laid over the same text in colour, one scroll container with the line numbers sticky on the left. The line with
+   the error is tinted and its number is red. Colours are the tokens: names info, strings success, numbers and literals warning, punctuation muted. */
+.pk-editor {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  font-family: var(--pk-font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+  overflow: auto;
+  max-height: min(380px, 50dvh);
+  min-height: 120px;
+  background: var(--color-base-200);
+}
+.pk-editor:focus-within {
+  border-color: var(--color-primary);
+}
+.pk-editor .ln {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  color: var(--pk-muted);
+  text-align: right;
+  padding: 8px 6px;
+  user-select: none;
+  background: color-mix(in srgb, var(--color-base-300) 50%, var(--color-base-200));
+}
+.pk-editor .ln span {
+  display: block;
+  height: 18px;
+  flex: none;
+}
+.pk-editor .ln span.err {
+  color: var(--color-error);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--color-error);
+}
+.pk-editor .code {
+  min-width: 0;
+}
+.pk-editor .sizer {
+  position: relative;
+  width: max-content;
+  min-width: 100%;
+}
+.pk-editor .hl {
+  padding: 8px 10px;
+  white-space: pre;
+  pointer-events: none;
+}
+.pk-editor .hl .row {
+  min-height: 18px;
+}
+.pk-editor .hl .err-line {
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+}
+.pk-editor .field {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 8px 10px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--color-base-content);
+  font: inherit;
+  line-height: inherit;
+  tab-size: 2;
+}
+.pk-editor .field::selection {
+  background: color-mix(in srgb, var(--color-primary) 30%, transparent);
+  color: transparent;
+}
+.pk-editor .k {
+  color: var(--color-info);
+}
+.pk-editor .s {
+  color: var(--color-success);
+}
+.pk-editor .n,
+.pk-editor .l {
+  color: var(--color-warning);
+}
+.pk-editor .p,
+.pk-editor .m {
+  color: var(--pk-muted);
+}
+.pk-editor .h {
+  font-weight: 600;
+}
+.pk-editor .c {
+  color: var(--color-info);
+}
+.pk-editor-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  min-height: 16px;
+}
+.pk-editor-status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--color-success);
+  flex: none;
+}
+.pk-editor-status .dot.bad {
+  background: var(--color-error);
+}
+
+/* Tooltip (pkTip): one bubble in the CDK overlay, so a group's clipping cannot cut it. The delay is the directive's; the fade is here. */
+.pk-tt-pane {
+  pointer-events: none;
+}
+.pk-tt {
+  position: relative;
+  max-width: min(280px, calc(100vw - 16px));
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--color-base-content);
+  color: var(--color-base-100);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  text-align: left;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.pk-tt.show {
+  opacity: 1;
+}
+.pk-tt .arrow {
+  position: absolute;
+  left: var(--pk-tt-ax, 50%);
+  width: 0;
+  height: 0;
+  border: 5px solid transparent;
+  transform: translateX(-50%);
+}
+.pk-tt[data-side='top'] .arrow {
+  top: 100%;
+  border-top-color: var(--color-base-content);
+}
+.pk-tt[data-side='bottom'] .arrow {
+  bottom: 100%;
+  border-bottom-color: var(--color-base-content);
+}
+
+/* Motion (doc/docs/design-system.md "Motion"): only in answer to an action, nothing moves on its own. Section 120ms with a 4px rise, dialog 120ms from .98,
+   wizard step 160ms 24px in the direction of travel, an expanding row 160ms. */
+@keyframes pk-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes pk-pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pk-win-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pk-step-fwd {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pk-step-back {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pk-expand-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.pk-settings .page {
+  animation: pk-pane-in 120ms ease-out;
+}
+.pk-settings,
+.pk-wf {
+  animation: pk-fade-in 120ms ease-out;
+}
+.pk-settings > .win,
+.pk-wf > .win {
+  animation: pk-win-in 120ms ease-out;
+}
+.pk-wf .wstep {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: pk-step-fwd 160ms ease-out;
+}
+.pk-wf .wstep.back {
+  animation-name: pk-step-back;
+}
+.pk-expand {
+  animation: pk-expand-in 160ms ease-out;
+}
+.pk-settings .saved {
+  animation: pk-fade-in 120ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-settings,
+  .pk-wf,
+  .pk-settings > .win,
+  .pk-wf > .win,
+  .pk-settings .page,
+  .pk-wf .wstep,
+  .pk-expand,
+  .pk-settings .saved {
+    animation: none;
+  }
+  .pk-tt,
+  .pk-choices > button,
+  .pk-item .extra .tools-toggle .pk-icon {
+    transition: none;
+  }
+}
+@media (max-width: 767px) {
+  /* A header with the "+" keeps it on the title's line; the chip and the ghost buttons go under */
+  .pk-group > header:has(> .add) {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .pk-group > header:has(> .add) > div:first-child {
+    flex: 1 1 calc(100% - 44px);
+    min-width: 0;
+  }
+  .pk-group > header:has(> .add) > .add {
+    order: 1;
+  }
+  .pk-group > header:has(> .add) > :not(:first-child):not(.add) {
+    order: 2;
+  }
+  .pk-wf .foot {
+    flex-wrap: wrap;
+  }
+  .pk-wf .foot .hint {
+    flex: 1 1 100%;
+    order: -1;
+  }
+  .pk-choices,
+  .pk-gallery {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pk-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pk-form > .hint {
+    grid-column: 1;
+  }
+  .pk-group .row .ctl.ctl-w {
+    width: 100%;
+  }
+  .pk-item {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+  .pk-item .act {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
+
+/* ── Projects ───────────────────────────────────────────────────────────────────────
+   The list is `.pk-item.open` rows that open a project's page; the page is `.pk-detail`, which slides in from the right (160ms) and out again on Back, under the
+   `.pk-path` breadcrumb. A text field of the page saves when it loses the focus; nothing on it has a width of its own: every control is in `ctl ctl-w`. */
+.pk-item.open {
+  cursor: pointer;
+}
+.pk-item.open:hover {
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-item.open .act .grip {
+  width: 14px;
+  height: 14px;
+  color: var(--pk-muted);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.pk-item.open:hover .act .grip,
+.pk-item.open:focus-within .act .grip {
+  opacity: 1;
+}
+.pk-item.open .act .chev {
+  width: 16px;
+  height: 16px;
+}
+.pk-item.open.dragging {
+  opacity: 0.5;
+}
+.pk-item.open.over {
+  box-shadow: inset 0 2px 0 var(--color-primary);
+}
+@media (hover: none) {
+  .pk-item.open .act .grip {
+    display: none;
+  }
+}
+.pk-path {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--pk-muted);
+}
+.pk-path button {
+  color: var(--pk-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0 2px;
+}
+.pk-path button:hover {
+  color: var(--color-base-content);
+  text-decoration: underline;
+}
+.pk-path .pk-icon {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+.pk-path [aria-current] {
+  color: var(--color-base-content);
+}
+.pk-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  animation: pk-detail-in 160ms ease-out;
+}
+.pk-detail.leaving {
+  animation: pk-detail-out 160ms ease-in forwards;
+}
+.pk-detail .intro h3:focus {
+  outline: none;
+}
+.pk-detail .intro {
+  margin-bottom: 0;
+}
+@keyframes pk-detail-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pk-detail-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+.pk-group.pk-back-in {
+  animation: pk-pane-in 120ms ease-out;
+}
+.pk-group .pk-script-new {
+  padding: 12px 16px;
+}
+.pk-group .pk-script-new:not(:first-child),
+.pk-group [role='list']:not(:empty) ~ .pk-script-new {
+  border-top: 1px solid var(--color-base-300);
+}
+.pk-form > .hint.err {
+  color: var(--color-error);
+}
+.pk-form > .actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.pk-form .textarea {
+  min-height: 0;
+}
+@media (max-width: 767px) {
+  .pk-item.open {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+  .pk-item.open .act {
+    grid-column: auto;
+    justify-content: flex-end;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-detail,
+  .pk-detail.leaving,
+  .pk-group.pk-back-in {
+    animation: none;
+  }
+  .pk-item.open .act .grip {
+    transition: none;
+  }
+}
+
+/* ---- The new-thread page and its Where row (doc/docs/design-system.md "New thread").
+   The page replaces the transcript of a thread that has no message; the row sits directly above the well. One grid for both modes: switching the mode changes
+   the values in the three slots (branch, from, setup), never the layout. The menus open upwards: the composer is at the bottom of the window. */
+.pk-start {
+  width: min(640px, calc(100% - 2 * var(--pk-gutter)));
+  margin: 10vh auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pk-start h2 {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 500;
+  margin: 0;
+}
+.pk-start .lead {
+  color: var(--pk-muted);
+  font-size: 14px;
+  line-height: 20px;
+  margin: 0;
+}
+.pk-recent {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.pk-recent button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+  text-align: left;
+  font-size: 13px;
+  background: var(--color-base-100);
+  cursor: pointer;
+  min-width: 0;
+}
+.pk-recent button:hover {
+  background: var(--color-base-200);
+}
+.pk-recent button > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-recent small {
+  color: var(--pk-muted);
+  font-size: 12px;
+}
+
+.pk-where {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px 10px;
+  margin-bottom: 8px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  background: var(--color-base-100);
+  font-size: 13px;
+}
+.pk-where .top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.pk-where .proj {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-weight: 500;
+  max-width: 100%;
+}
+.pk-where .proj:hover {
+  background: var(--color-base-200);
+}
+.pk-where .proj .pk-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--pk-muted);
+  flex: none;
+}
+.pk-where .proj .chev {
+  width: 12px;
+  height: 12px;
+}
+.pk-where .proj > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-where .what {
+  font-size: 12px;
+  color: var(--pk-muted);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pk-where .what .mono {
+  color: var(--color-base-content);
+  font-size: 12px;
+}
+.pk-where .rem {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pk-where .grid {
+  display: grid;
+  grid-template-columns: auto auto auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-base-300);
+}
+.pk-where .grid .k {
+  font-size: 12px;
+  color: var(--pk-muted);
+  padding-left: 2px;
+}
+.pk-where .grid .k:not(:first-child) {
+  margin-left: 8px;
+}
+.pk-where .grid .v {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  animation: pk-where-open 160ms ease-out;
+}
+.pk-where .grid .val {
+  font-size: 13px;
+  line-height: 28px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pk-where .pick {
+  height: 28px;
+  min-height: 28px;
+  font-weight: 400;
+  background: var(--color-base-200);
+  border: 1px solid var(--color-base-300);
+  max-width: 100%;
+}
+.pk-where .pick .mono {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pk-where .pick .chev {
+  width: 12px;
+  height: 12px;
+  color: var(--pk-muted);
+  flex: none;
+}
+.pk-where .carry {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.pk-where .anchor {
+  position: relative;
+  min-width: 0;
+}
+.pk-where-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  width: 360px;
+  max-width: calc(100vw - 2 * var(--pk-gutter));
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--color-base-100);
+  border: 1px solid var(--color-base-300);
+  border-radius: 10px;
+  box-shadow: var(--pk-shadow);
+  z-index: 40;
+  padding: 6px;
+  animation: pk-where-open 120ms ease-out;
+}
+.pk-where-menu .opt {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 13px;
+}
+.pk-where-menu .opt:hover,
+.pk-where-menu .opt:focus-visible {
+  background: var(--color-base-200);
+  outline: none;
+}
+.pk-where-menu .opt[aria-selected='true'] {
+  background: var(--color-base-200);
+}
+.pk-where-menu .opt[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pk-where-menu .opt .sub {
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-where-menu .opt.more {
+  border-top: 1px solid var(--color-base-300);
+  border-radius: 0 0 6px 6px;
+  margin-top: 4px;
+  padding-top: 8px;
+}
+.pk-hint .pk-where-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pk-where-menu .typed {
+  display: flex;
+  gap: 6px;
+  padding: 6px 4px 2px;
+}
+.pk-where-menu .typed input {
+  flex: 1;
+  min-width: 0;
+}
+@keyframes pk-where-open {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-where .grid .v,
+  .pk-where-menu {
+    animation: none;
+  }
+}
+@media (max-width: 767px) {
+  .pk-start {
+    margin-top: 4vh;
+  }
+  .pk-recent {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pk-where .rem {
+    margin-left: 0;
+  }
+  .pk-where .grid {
+    grid-template-columns: auto minmax(0, 1fr);
+    row-gap: 8px;
+  }
+  .pk-where .grid .k:not(:first-child) {
+    margin-left: 0;
+  }
+  /* On a phone the menus span the card instead of hanging from their button. */
+  .pk-where {
+    position: relative;
+  }
+  .pk-where .anchor {
+    position: static;
+  }
+  .pk-where-menu {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+  }
+}
+
+/* Segmented tabs and bounded lists: shared by settings and other dense panels. */
+.pk-tabs {
+  display: block;
+  min-width: 0;
+}
+.pk-tab-list {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--color-base-300);
+  border-radius: 12px;
+  background: var(--color-base-200);
+  scrollbar-width: thin;
+}
+.pk-tab-list [role='tab'] {
+  display: inline-flex;
+  flex: 1 0 auto;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--pk-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 120ms ease-out,
+    color 120ms ease-out;
+}
+.pk-tab-list [role='tab']:hover:not(:disabled) {
+  color: var(--color-base-content);
+  background: color-mix(in srgb, var(--color-base-content) 4%, transparent);
+}
+.pk-tab-list [role='tab'][aria-selected='true'] {
+  color: var(--color-primary);
+  background: var(--color-base-100);
+  border-color: var(--color-base-300);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+}
+.pk-tab-list [role='tab']:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.pk-tab-count {
+  color: var(--pk-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.pk-tab-panel {
+  display: block;
+  min-width: 0;
+  padding-top: 16px;
+}
+.pk-tab-panel[hidden] {
+  display: none;
+}
+.pk-scroll-area {
+  display: block;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  padding: 4px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 12px;
+}
+/* Flush lists share their enclosing panel’s border and spacing. */
+.pk-scroll-area.pk-scroll-area-flush {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+}
+.pk-tab-list [role='tab']:focus-visible,
+.pk-tab-panel:focus-visible,
+.pk-scroll-area:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+/* Inside a clipping list or a bordered panel an outside ring is cut off or doubles the border; draw it inset. */
+.pk-tab-list [role='tab']:focus-visible,
+.pk-scroll-area.pk-scroll-area-flush:focus-visible {
+  outline-offset: -2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pk-tab-list [role='tab'] {
+    transition: none;
+  }
+}

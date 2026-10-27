@@ -1,0 +1,31 @@
+{
+  "name": "chat-feature-composer",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/chat/feature-composer/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:chat",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/chat/feature-composer/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/chat/feature-composer/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/chat/feature-composer/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

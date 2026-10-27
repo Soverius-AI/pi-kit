@@ -1,0 +1,16 @@
+{
+  "name": "session-tree-feature-tree",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/session-tree/feature-tree/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:session-tree",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

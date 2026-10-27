@@ -1,0 +1,47 @@
+# A single-package repository. The installed pnpm 10 refuses a workspace file without `packages` ("packages field missing or empty"),
+# while `'.'` would make Nx see the root package.json as a project of its own (its build/lint/test scripts call nx again). An
+# exclude-only pattern satisfies both: no workspace package, the root is still the one project pnpm installs.
+packages:
+  - '!**'
+
+# pnpm blocks dependency install scripts until approved. These are the ones this repo needs (native prebuilds and binaries
+# for the terminal, the bundler, the Nx daemon and the Windows installer). The rest only print notices or report telemetry.
+allowBuilds:
+  node-pty: true
+  esbuild: true
+  nx: true
+  '@parcel/watcher': true
+  lmdb: true
+  msgpackr-extract: true
+  unrs-resolver: true
+  electron-winstaller: true
+  better-sqlite3-multiple-ciphers: false
+  '@scarf/scarf': false
+  protobufjs: false
+  '@google/genai': false
+
+# One flat node_modules: Nx, electron-builder and the native-module scripts expect it, and a git worktree
+# install still links from the shared store. Peers are installed automatically and a peer mismatch warns only
+# (the replacement for the old npm legacy-peer-deps=true).
+nodeLinker: hoisted
+autoInstallPeers: true
+strictPeerDependencies: false
+overrides:
+  zod: 4.6.7
+minimumReleaseAgeExclude:
+  - electron@44.9.0
+  - '@earendil-works/chord@1.4.0'
+  - '@earendil-works/pi-agent-core@1.4.0'
+  - '@earendil-works/pi-ai@1.4.0'
+  - '@earendil-works/pi-codemode@1.4.0'
+  - '@earendil-works/pi-coding-agent@1.4.0'
+  - '@earendil-works/pi-durable@1.4.0'
+  - '@earendil-works/pi-mcp@1.4.0'
+  - '@earendil-works/pi-telemetry@1.4.0'
+  - '@earendil-works/pi-tui@1.4.0'
+patchedDependencies:
+  '@a2ui/web_core@0.10.4': patches/@a2ui__web_core@0.10.4.patch
+  '@ag-ui/client@1.0.2': patches/@ag-ui__client@1.0.2.patch
+  '@copilotkit/angular@0.6.0': patches/@copilotkit__angular@0.6.0.patch
+  '@copilotkit/core@1.79.1': patches/@copilotkit__core@1.79.1.patch
+  zod-to-json-schema@3.25.2: patches/zod-to-json-schema@3.25.2.patch

@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node10",
+    "esModuleInterop": true,
+    "types": ["node"],
+    "emitDecoratorMetadata": false,
+    "experimentalDecorators": false
+  },
+  "include": ["*.ts"]
+}

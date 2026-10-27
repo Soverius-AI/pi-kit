@@ -1,0 +1,31 @@
+{
+  "name": "review-feature-review",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/review/feature-review/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:review",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/review/feature-review/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/review/feature-review/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/review/feature-review/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

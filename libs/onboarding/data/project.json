@@ -1,0 +1,31 @@
+{
+  "name": "onboarding-data",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/onboarding/data/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:onboarding",
+    "type:data"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/onboarding/data/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/onboarding/data/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/onboarding/data/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

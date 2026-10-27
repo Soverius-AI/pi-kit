@@ -1,0 +1,31 @@
+{
+  "name": "settings-feature-projects-trust",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/settings/feature-projects-trust/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:settings",
+    "type:feature"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/settings/feature-projects-trust/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/settings/feature-projects-trust/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/settings/feature-projects-trust/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev:web"
+      ],
+      "port": 4200
+    },
+    {
+      "name": "docs",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "doc",
+        "serve",
+        "--port",
+        "3005",
+        "--no-open"
+      ],
+      "port": 3005
+    },
+    {
+      "name": "docs-build",
+      "runtimeExecutable": "doc/node_modules/.bin/docusaurus",
+      "runtimeArgs": [
+        "serve",
+        "doc",
+        "--port",
+        "3006",
+        "--no-open"
+      ],
+      "port": 3006
+    }
+  ]
+}

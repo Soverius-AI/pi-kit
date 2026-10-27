@@ -1,0 +1,31 @@
+{
+  "name": "settings-api",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/settings/api/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:settings",
+    "type:api"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/settings/api/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/settings/api/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/settings/api/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

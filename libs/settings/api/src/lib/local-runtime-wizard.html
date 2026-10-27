@@ -1,0 +1,991 @@
+<div class="flex flex-col gap-4" data-testid="local-runtime-wizard">
+  @if (runtime.error(); as error) {
+    <p class="t-sm text-error m-0" role="alert">{{ error }}</p>
+  }
+  @if (catalog.hardwareError(); as error) {
+    <div class="flex flex-wrap items-center gap-2" role="alert">
+      <p class="t-sm text-error m-0">{{ error }}</p>
+      <button type="button" class="btn btn-sm" [disabled]="catalog.detecting()" (click)="catalog.detect()">
+        {{ 'settings.language.retry' | transloco }}
+      </button>
+    </div>
+  }
+  @if (runtime.status()?.job; as job) {
+    <section
+      class="rounded-xl border border-base-300 p-4 flex flex-col gap-3"
+      [attr.aria-label]="'settings.modelManagement.downloadAndSetupStatus' | transloco"
+      data-testid="local-job"
+    >
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <b class="t-sm" role="status">{{ jobTitle() }}</b>
+        @if (!runtime.active()) {
+          <button type="button" class="btn btn-xs btn-ghost" [disabled]="busy()" (click)="runtime.dismiss()">
+            {{ 'settings.mcpSection.dismiss' | transloco }}
+          </button>
+        }
+      </div>
+      @if (jobFile(); as file) {
+        <p class="t-sm break-all m-0">{{ file }}</p>
+      }
+      @if (jobRepository(); as repository) {
+        <p class="t-xs muted m-0">{{ repository }}</p>
+      }
+      @if (runtime.active()) {
+        <p class="t-sm muted m-0">{{ job.detail }}</p>
+        @if (job.totalBytes && job.receivedBytes !== undefined) {
+          <progress
+            class="progress progress-primary w-full"
+            [value]="job.receivedBytes"
+            [max]="job.totalBytes"
+            [attr.aria-label]="'settings.localRuntimeWizard.modelDownloadProgress' | transloco"
+          ></progress>
+          <span class="t-sm muted"
+            >{{ job.receivedBytes / gib | number: '1.2-2' }} / {{ job.totalBytes / gib | number: '1.2-2' }} GiB</span
+          >
+        }
+        <button
+          type="button"
+          class="btn btn-sm self-start"
+          [disabled]="runtime.submitting() || job.state === 'cancelling'"
+          (click)="runtime.cancel()"
+        >
+          {{
+            job.kind === 'reload'
+              ? job.state === 'cancelling'
+                ? ('settings.modelManagement.stoppingWait' | transloco)
+                : ('settings.modelManagement.stopWaitingForReload' | transloco)
+              : job.state === 'cancelling'
+                ? ('settings.modelManagement.removingIncompleteFiles' | transloco)
+                : job.kind === 'download'
+                  ? ('settings.modelManagement.cancelDownloadAndRemovePartialFile' | transloco)
+                  : ('settings.localRuntimeWizard.cancelSetup' | transloco)
+          }}
+        </button>
+      } @else if (job.state === 'cancelled' || job.state === 'failed') {
+        @if (job.error) {
+          <p class="t-sm text-error m-0" role="alert">{{ job.error }}</p>
+        }
+        @if (job.kind === 'download') {
+          @if (job.receivedBytes) {
+            <p class="t-xs muted m-0">
+              {{
+                'settings.modelManagement.giBTransferredBeforeItStoppedThisIsProgress'
+                  | transloco: { size: (job.receivedBytes / gib | number: '1.2-2') }
+              }}
+            </p>
+          }
+          @if (runtime.storage(); as storage) {
+            <p class="t-sm m-0">
+              {{
+                partialCount() > 0
+                  ? ('settings.modelManagement.incompleteDownloadFilesRemainRemoveThemFromYour' | transloco)
+                  : ('settings.modelManagement.noIncompleteDownloadFilesRemain' | transloco)
+              }}
+            </p>
+          }
+        }
+        <div class="flex flex-wrap gap-2">
+          @if (runtime.canRetry()) {
+            <button type="button" class="btn btn-sm btn-primary" [disabled]="busy()" (click)="runtime.retry()">
+              {{
+                job.kind === 'download'
+                  ? ('settings.modelManagement.retryThisDownload' | transloco)
+                  : job.kind === 'reload'
+                    ? ('settings.modelManagement.retryModelReload' | transloco)
+                    : ('settings.modelManagement.retrySetup' | transloco)
+              }}
+            </button>
+          } @else if (job.kind === 'start') {
+            <p class="t-sm muted m-0">
+              {{ 'settings.modelManagement.privateEngineStartupHasBeenRemovedUseYour' | transloco }}
+            </p>
+            <button type="button" class="btn btn-sm" (click)="tab.set('engines')">
+              {{ 'settings.modelManagement.openEngines' | transloco }}
+            </button>
+          } @else {
+            <p class="t-sm muted m-0">{{ 'settings.modelManagement.thisEarlierJobDidNotSaveItsFile' | transloco }}</p>
+            <button type="button" class="btn btn-sm" (click)="findModel()">
+              {{ 'settings.modelManagement.findModelAgain' | transloco }}
+            </button>
+          }
+        </div>
+        @if (runtime.canRetry() && job.kind === 'download') {
+          <p class="t-xs muted m-0">
+            {{ 'settings.modelManagement.retriesTheSamePinnedFileFromTheBeginning' | transloco }}
+          </p>
+        }
+      } @else if (job.kind === 'download') {
+        <p class="t-sm m-0">
+          {{ 'settings.modelManagement.downloadVerified' | transloco }}
+          {{
+            runtime.status()?.engine?.modelIds.includes(job.model?.id ?? '')
+              ? ('settings.modelManagement.addedToYourLlamaSwapConfig' | transloco)
+              : ('settings.modelManagement.theFileIsInYourModels' | transloco)
+          }}
+        </p>
+        <button type="button" class="btn btn-sm self-start" (click)="tab.set('installed')">
+          {{ 'settings.modelManagement.viewInYourModels' | transloco }}
+        </button>
+      } @else if (job.kind === 'reload' && job.state === 'complete') {
+        <p class="t-sm m-0">{{ job.detail }}</p>
+      }
+      @if (job.logs.length > 0) {
+        <details>
+          <summary class="t-sm cursor-pointer">{{ 'settings.localRuntimeWizard.setupLog' | transloco }}</summary>
+          <pre class="t-xs whitespace-pre-wrap break-all max-h-48 overflow-auto mt-2">{{ job.logs.join('\n') }}</pre>
+        </details>
+      }
+    </section>
+  }
+  @if (catalog.detecting() && !catalog.hardware()) {
+    <p class="t-sm muted m-0" role="status">
+      {{ 'settings.modelManagement.readingYourLocalModelLibrary' | transloco }}
+    </p>
+  }
+  @if (catalog.hardware(); as hardware) {
+    @if (missingTools().length > 0 && tab() !== 'engines') {
+      <button type="button" class="btn btn-sm btn-primary self-start" (click)="tab.set('engines')">
+        {{ 'settings.installGuide.title' | transloco }}
+      </button>
+    }
+    <pk-tabs #localTabs [label]="'settings.modelManagement.localModelManagement' | transloco" [(value)]="tab">
+      <pk-tab-panel
+        value="installed"
+        [label]="'settings.modelManagement.yourModels' | transloco"
+        [count]="libraryCount()"
+      >
+        <div class="flex flex-col gap-4">
+          <div class="flex flex-wrap justify-between items-center gap-3">
+            <p class="t-sm muted m-0">
+              {{
+                'settings.modelManagement.filesInLlamaSwapGiBGiBFree'
+                  | transloco
+                    : {
+                        files: hardware.models.length,
+                        configured: configuredModels().length,
+                        size: (modelBytes() / gib | number: '1.1-1'),
+                        free: ((runtime.storage()?.freeBytes ?? hardware.diskFreeBytes) / gib | number: '1.1-1'),
+                      }
+              }}
+            </p>
+            <div class="flex gap-2">
+              <button type="button" class="btn btn-sm" [disabled]="catalog.detecting()" (click)="catalog.detect()">
+                {{
+                  catalog.detecting()
+                    ? ('settings.modelManagement.refreshing' | transloco)
+                    : ('settings.modelManagement.refreshModels' | transloco)
+                }}
+              </button>
+              <button type="button" class="btn btn-sm btn-primary" (click)="findModel()">
+                {{ 'settings.modelManagement.downloadAModel' | transloco }}
+              </button>
+            </div>
+          </div>
+          <div class="rounded-lg bg-base-200 p-3 flex flex-wrap items-center gap-3">
+            <div class="flex-1 min-w-0">
+              <b class="t-sm">{{ 'settings.modelManagement.llamaSwapConfig' | transloco }}</b>
+              <p class="t-xs muted break-all m-0">
+                {{ targetConfigPath() || 'Choose which existing config should receive downloads.' }}
+              </p>
+              <p class="t-xs muted m-0">
+                {{ 'settings.modelManagement.downloadsAreAddedHereReloadYourLlamaSwap' | transloco }}
+              </p>
+            </div>
+            <button type="button" class="btn btn-sm" (click)="tab.set('engines')">
+              {{
+                hasConfigTarget()
+                  ? ('settings.modelManagement.engineSettings' | transloco)
+                  : ('settings.modelManagement.detectConfig' | transloco)
+              }}
+            </button>
+          </div>
+          @for (config of configErrors(); track config.path) {
+            <div class="rounded-lg border border-base-300 p-3" role="alert">
+              <p class="t-sm m-0">{{ config.error }}</p>
+              <p class="t-xs mono muted break-all m-0 mt-1">{{ config.path }}</p>
+            </div>
+          }
+          @if (libraryCount() > 0) {
+            <input
+              class="input input-sm w-full"
+              type="search"
+              [attr.aria-label]="'settings.modelManagement.filterYourModels' | transloco"
+              [placeholder]="'settings.modelManagement.filterYourModels' | transloco"
+              [value]="modelQuery()"
+              (input)="modelQuery.set($any($event.target).value)"
+            />
+            <pk-scroll-area
+              [label]="'settings.modelManagement.yourModelLibrary' | transloco"
+              data-testid="installed-models-list"
+            >
+              <div class="flex flex-col divide-y divide-base-300">
+                @if (models().length > 0) {
+                  <h3 class="t-xs muted m-0 p-3">{{ 'settings.modelManagement.filesOnThisMachine' | transloco }}</h3>
+                }
+                @for (model of models(); track modelIdentity('local-file', model.path)) {
+                  <article
+                    class="p-3 flex flex-col gap-2"
+                    [attr.data-model-id]="model.id"
+                    [attr.data-model-uid]="modelIdentity('local-file', model.path)"
+                  >
+                    <div class="flex flex-wrap items-start gap-3">
+                      <div class="min-w-0 flex-1">
+                        <b class="t-sm break-all">{{ model.file }}</b>
+                        <div class="flex flex-wrap gap-2 mt-1">
+                          <span class="t-xs muted">{{ model.bytes / gib | number: '1.1-1' }} GiB · GGUF</span
+                          ><span class="chip off">{{
+                            model.source
+                              ? ('settings.modelManagement.downloaded' | transloco)
+                              : ('settings.modelManagement.localFile' | transloco)
+                          }}</span>
+                          @if (registered().has(model.id)) {
+                            <span class="chip ok">{{ 'settings.modelManagement.inLlamaSwap' | transloco }}</span>
+                          }
+                        </div>
+                      </div>
+                      <div class="flex gap-2">
+                        @if (!registered().has(model.id)) {
+                          <button
+                            type="button"
+                            class="btn btn-sm"
+                            [disabled]="busy() || !hasConfigTarget()"
+                            (click)="runtime.register(model.id)"
+                          >
+                            {{ 'settings.modelManagement.addToLlamaSwap' | transloco }}
+                          </button>
+                        }
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-ghost"
+                          [disabled]="busy()"
+                          [attr.title]="'settings.modelManagement.deleteThisModelFile' | transloco"
+                          (click)="removingModel.set(model.id)"
+                        >
+                          {{ 'shared.diffViewer.delete' | transloco }}
+                        </button>
+                      </div>
+                    </div>
+                    <ng-container [ngTemplateOutlet]="fileDetails" [ngTemplateOutletContext]="{ $implicit: model }" />
+                  </article>
+                }
+                @if (filteredConfiguredModels().length > 0) {
+                  <h3 class="t-xs muted m-0 p-3">{{ 'settings.modelManagement.configuredInLlamaSwap' | transloco }}</h3>
+                }
+                @for (model of filteredConfiguredModels(); track model.key) {
+                  <article
+                    class="p-3 flex flex-col gap-2"
+                    [attr.data-model-uid]="model.key"
+                    [attr.data-model-id]="model.file?.id"
+                    [attr.data-server-model]="model.fromConfig ? null : model.name"
+                    [attr.data-config-model]="model.fromConfig ? model.name : null"
+                  >
+                    <div class="flex items-center gap-3">
+                      <b class="t-sm break-all flex-1">{{ model.name }}</b>
+                      @if (model.fromConfig) {
+                        <button
+                          type="button"
+                          class="btn btn-sm"
+                          [disabled]="busy()"
+                          (click)="modelSettings.set({ path: model.location, model: model.name })"
+                        >
+                          {{ 'settings.modelManagement.configure' | transloco }}
+                        </button>
+                      }
+                      @if (model.file; as file) {
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-ghost"
+                          [disabled]="busy()"
+                          [attr.title]="'settings.modelManagement.deleteThisModelFile' | transloco"
+                          (click)="removingModel.set(file.id)"
+                        >
+                          {{ 'shared.diffViewer.delete' | transloco }}
+                        </button>
+                      }
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="chip off">{{
+                        model.fromConfig
+                          ? model.selected
+                            ? ('settings.modelManagement.downloadTarget' | transloco)
+                            : ('settings.modelManagement.configFile' | transloco)
+                          : ('settings.modelManagement.server' | transloco)
+                      }}</span>
+                      <span class="chip" [class.ok]="model.running">{{ model.state }}</span>
+                      <span class="t-xs muted break-all">{{ model.server }}</span>
+                    </div>
+                    <p class="t-xs mono muted break-all m-0">{{ model.location }}</p>
+                    @for (endpoint of model.endpoints; track endpoint) {
+                      <p class="t-xs mono muted break-all m-0">{{ endpoint }}</p>
+                    }
+                    @if (model.file; as file) {
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="t-xs muted">{{ file.bytes / gib | number: '1.1-1' }} GiB · GGUF</span>
+                        <span class="chip ok">{{ 'settings.modelManagement.inLlamaSwap' | transloco }}</span>
+                        <span class="chip off">{{
+                          file.source
+                            ? ('settings.modelManagement.downloaded' | transloco)
+                            : ('settings.modelManagement.localFile' | transloco)
+                        }}</span>
+                      </div>
+                      <ng-container [ngTemplateOutlet]="fileDetails" [ngTemplateOutletContext]="{ $implicit: file }" />
+                    }
+                  </article>
+                }
+                @if (models().length === 0 && filteredConfiguredModels().length === 0) {
+                  <p class="t-sm muted p-3 m-0">
+                    {{ 'settings.modelManagement.noModelMatchesThisFilter' | transloco }}
+                  </p>
+                }
+              </div>
+            </pk-scroll-area>
+            @if (configuredModels().length > 0) {
+              <p class="t-xs muted m-0">
+                {{ 'settings.modelManagement.modelsReadFromConfigStayVisibleWhenLlama' | transloco }}
+              </p>
+            }
+          } @else {
+            <div class="rounded-lg border border-base-300 p-4 flex flex-col items-start gap-3">
+              <p class="t-sm m-0">{{ 'settings.modelManagement.noModelsFoundYetDownloadOneOrAdd' | transloco }}</p>
+              <button type="button" class="btn btn-sm" (click)="tab.set('engines')">
+                {{ 'settings.modelManagement.checkAModelFolder' | transloco }}
+              </button>
+            </div>
+          }
+          @if (runtime.storage(); as storage) {
+            @if (storage.files.length > 0) {
+              <section
+                class="flex flex-col gap-3"
+                [attr.aria-label]="'settings.modelManagement.incompleteAndCorruptModelFiles' | transloco"
+              >
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <b class="t-sm">{{ 'settings.modelManagement.leftoverFiles' | transloco }}</b>
+                  @if (partialCount() > 0) {
+                    <button type="button" class="btn btn-sm" [disabled]="busy()" (click)="runtime.cleanup()">
+                      {{
+                        'settings.modelManagement.removeIncompleteDownloadsGiB'
+                          | transloco: { size: (partialBytes() / gib | number: '1.2-2') }
+                      }}
+                    </button>
+                  }
+                </div>
+                <p class="t-xs muted m-0">
+                  {{ 'settings.modelManagement.theseAreActualFilesOnDiskNotDownload' | transloco }}
+                </p>
+                <pk-scroll-area [label]="'settings.modelManagement.leftoverModelFiles' | transloco" maxHeight="14rem">
+                  @for (file of storage.files; track file.id) {
+                    <div class="p-3 flex flex-col gap-2">
+                      <div class="flex items-start gap-3">
+                        <div class="min-w-0 flex-1">
+                          <p class="t-sm break-all m-0">{{ file.file }}</p>
+                          <span class="t-xs muted"
+                            >{{
+                              file.kind === 'partial'
+                                ? ('settings.modelManagement.incompleteDownload' | transloco)
+                                : ('settings.modelManagement.corruptBackup' | transloco)
+                            }}
+                            · {{ file.bytes / gib | number: '1.2-2' }} GiB</span
+                          >
+                        </div>
+                        <button
+                          type="button"
+                          class="btn btn-sm btn-ghost"
+                          [disabled]="busy()"
+                          (click)="removingFile.set(file.id)"
+                        >
+                          {{ 'settings.mcpSection.remove' | transloco }}
+                        </button>
+                      </div>
+                      @if (removingFile() === file.id) {
+                        <div role="alert" class="flex flex-wrap gap-2 items-center">
+                          <span class="t-sm">{{ 'settings.modelManagement.deleteThisLeftoverFile' | transloco }}</span
+                          ><button type="button" class="btn btn-sm" (click)="removingFile.set('')">
+                            {{ 'settings.modelManagement.keepFile' | transloco }}</button
+                          ><button
+                            type="button"
+                            class="btn btn-sm btn-error"
+                            [disabled]="busy()"
+                            (click)="deleteFile(file.id)"
+                          >
+                            {{ 'settings.modelManagement.deleteLeftover' | transloco }}
+                          </button>
+                        </div>
+                      }
+                    </div>
+                  }
+                </pk-scroll-area>
+              </section>
+            }
+          }
+        </div>
+      </pk-tab-panel>
+      <pk-tab-panel value="download" [label]="'settings.modelManagement.downloadModels' | transloco">
+        <section
+          class="flex flex-col gap-3"
+          [attr.aria-label]="'settings.localRuntimeWizard.findAModelDownload' | transloco"
+        >
+          <div
+            class="flex flex-col gap-3"
+            [hidden]="reviewing() && candidate()"
+            [style.display]="reviewing() && candidate() ? 'none' : null"
+          >
+            <form
+              class="flex flex-wrap items-end gap-2"
+              (submit)="$event.preventDefault(); catalog.search(estimateContext)"
+            >
+              <label class="flex flex-col gap-1 flex-1 min-w-40 t-sm"
+                >{{ 'settings.modelManagement.searchHuggingFace' | transloco }}
+                <input
+                  class="input input-sm w-full"
+                  type="search"
+                  [placeholder]="'settings.modelManagement.modelOrFamilyEGQwen' | transloco"
+                  [value]="catalog.query()"
+                  (input)="catalog.setQuery($any($event.target).value)"
+                />
+              </label>
+              <button
+                class="btn btn-sm btn-primary"
+                type="submit"
+                [disabled]="catalog.searching()"
+                data-testid="local-search"
+              >
+                {{
+                  catalog.searching()
+                    ? ('files.filesPanel.searching' | transloco)
+                    : ('settings.localRuntimeWizard.findModelsThatFit' | transloco)
+                }}
+              </button>
+            </form>
+            <p class="t-xs muted m-0">
+              {{ 'settings.modelManagement.searchChecksPublicGGUFFilesNothingDownloadsUntil' | transloco }}
+            </p>
+          </div>
+          @if (catalog.catalogError(); as error) {
+            <p class="t-sm text-error m-0" role="alert">{{ error }}</p>
+          }
+          @if (catalog.catalog(); as results) {
+            <div
+              class="flex flex-col gap-3"
+              [hidden]="reviewing() && candidate()"
+              [style.display]="reviewing() && candidate() ? 'none' : null"
+            >
+              @if (!estimatesCurrent()) {
+                <p class="t-sm text-warning m-0" role="status">
+                  {{ 'settings.modelManagement.searchChangedFindModelsAgainToRefreshEstimates' | transloco }}
+                </p>
+              }
+              <p class="t-sm muted m-0" role="status">
+                {{
+                  'settings.modelManagement.filesFoundSelectOneToReview' | transloco: { count: results.models.length }
+                }}
+              </p>
+              @if (results.models.length > 0) {
+                <pk-scroll-area
+                  #downloadResults
+                  [label]="'settings.modelManagement.availableModelDownloads' | transloco"
+                  data-testid="local-model-results"
+                >
+                  <div class="flex flex-col gap-1">
+                    @for (model of results.models; track model.id) {
+                      <label
+                        class="flex items-start gap-3 rounded-lg p-3 cursor-pointer hover:bg-base-200"
+                        [class.bg-base-200]="selection() === model.id"
+                      >
+                        <input
+                          type="radio"
+                          class="radio radio-sm mt-1"
+                          [name]="localTabs.id + '-download'"
+                          [checked]="selection() === model.id"
+                          (change)="selectDownload(model.id)"
+                          (click)="selectDownload(model.id)"
+                        />
+                        <span class="min-w-0 flex-1 flex flex-col gap-1">
+                          <b class="t-sm break-all">{{ model.repository }}</b>
+                          <span class="t-xs muted break-all">{{ model.file }}</span>
+                          <span class="flex flex-wrap items-center gap-2">
+                            <span class="t-xs">{{ model.bytes / gib | number: '1.1-1' }} GiB</span>
+                            <span
+                              class="chip"
+                              [class.ok]="model.estimate.fitsMemory && model.estimate.fitsDisk"
+                              [class.warn]="!model.estimate.fitsMemory || !model.estimate.fitsDisk"
+                            >
+                              {{
+                                !model.estimate.fitsDisk
+                                  ? ('settings.modelManagement.notEnoughDisk' | transloco)
+                                  : !model.estimate.fitsMemory
+                                    ? ('settings.modelManagement.exceedsRAMBudget' | transloco)
+                                    : ('settings.modelManagement.fitsEstimatedBudget' | transloco)
+                              }}
+                            </span>
+                          </span>
+                        </span>
+                      </label>
+                    }
+                  </div>
+                </pk-scroll-area>
+              } @else {
+                <div class="rounded-lg border border-base-300 p-4 t-sm">
+                  {{ 'settings.modelManagement.noVerifiedSingleFileModelsFoundTryAnother' | transloco }}
+                </div>
+              }
+            </div>
+            @if (candidate(); as model) {
+              <div class="flex flex-col gap-3" [hidden]="!reviewing()" [style.display]="!reviewing() ? 'none' : null">
+                <button type="button" class="btn btn-sm btn-ghost self-start" (click)="backToResults()">
+                  {{ 'settings.modelManagement.backToResults' | transloco }}
+                </button>
+                @if (!estimatesCurrent()) {
+                  <p class="t-sm text-warning m-0" role="status">
+                    {{ 'settings.modelManagement.searchChangedGoBackAndFindModelsAgain' | transloco }}
+                  </p>
+                }
+                <section
+                  class="rounded-xl border border-base-300 bg-base-200 p-4 flex flex-col gap-3"
+                  #downloadReview
+                  tabindex="-1"
+                  [attr.aria-label]="'settings.modelManagement.reviewSelectedDownload' | transloco"
+                  data-testid="local-download-review"
+                >
+                  <div>
+                    <h4 class="font-medium m-0">{{ 'settings.modelManagement.reviewThisFile' | transloco }}</h4>
+                    <p class="t-sm break-all mt-1 mb-0">{{ model.repository }} · {{ model.file }}</p>
+                  </div>
+                  <dl class="grid grid-cols-2 gap-x-4 gap-y-2 t-sm m-0">
+                    <div>
+                      <dt class="muted">{{ 'settings.modelManagement.downloadSize' | transloco }}</dt>
+                      <dd class="m-0">{{ model.bytes / gib | number: '1.1-1' }} GiB</dd>
+                    </div>
+                    <div>
+                      <dt class="muted">{{ 'settings.modelManagement.estimatedMemory' | transloco }}</dt>
+                      <dd class="m-0">{{ model.estimate.memoryBytes / gib | number: '1.1-1' }} GiB</dd>
+                    </div>
+                    <div>
+                      <dt class="muted">{{ 'settings.modelManagement.diskAvailable' | transloco }}</dt>
+                      <dd class="m-0">
+                        {{
+                          'settings.modelManagement.giB1GiBReserveRequired'
+                            | transloco: { size: (hardware.diskFreeBytes / gib | number: '1.1-1') }
+                        }}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt class="muted">{{ 'settings.modelManagement.license' | transloco }}</dt>
+                      <dd class="m-0 break-all">{{ model.license }}</dd>
+                    </div>
+                  </dl>
+                  <p class="t-xs muted m-0">
+                    {{ model.estimate.explanation }}
+                    {{ 'settings.modelManagement.thePinnedFileIsCheckedWithSHA256' | transloco }}
+                  </p>
+                  @if (!model.estimate.fitsMemory || !model.estimate.fitsDisk) {
+                    <p class="t-sm text-warning m-0" role="status">
+                      {{
+                        !model.estimate.fitsDisk
+                          ? ('settings.modelManagement.freeUpDiskSpaceOrChooseASmaller' | transloco)
+                          : ('settings.modelManagement.memoryEstimateAdvisory' | transloco)
+                      }}
+                    </p>
+                  }
+                  <a class="link t-sm self-start" [href]="model.source" target="_blank" rel="noopener noreferrer">{{
+                    'settings.modelManagement.openModelCardAndLicense' | transloco
+                  }}</a>
+                  <label class="t-sm flex gap-2 items-start">
+                    <input
+                      type="checkbox"
+                      class="checkbox checkbox-sm mt-1"
+                      [checked]="accepted()"
+                      [disabled]="busy() || catalog.searching() || !estimatesCurrent()"
+                      (change)="accepted.set($any($event.target).checked)"
+                    />
+                    {{ 'settings.localRuntimeWizard.iReviewedTheModelCardAndLicense' | transloco }}
+                  </label>
+                  <p class="t-xs mono muted break-all m-0">
+                    {{
+                      targetConfigPath()
+                        ? ('settings.modelManagement.addTo' | transloco: { path: targetConfigPath() })
+                        : ('settings.modelManagement.chooseALlamaSwapConfigInEnginesBefore' | transloco)
+                    }}
+                  </p>
+                  <div class="flex flex-wrap items-center gap-3">
+                    <button
+                      class="btn btn-sm btn-primary"
+                      type="button"
+                      [disabled]="
+                        !hasConfigTarget() ||
+                        busy() ||
+                        catalog.searching() ||
+                        !accepted() ||
+                        !estimatesCurrent() ||
+                        !model.estimate.fitsDisk
+                      "
+                      (click)="download()"
+                      data-testid="local-download"
+                    >
+                      {{
+                        downloading()
+                          ? ('settings.modelManagement.downloading' | transloco)
+                          : ('settings.modelManagement.downloadGiB'
+                            | transloco: { size: (model.bytes / gib | number: '1.1-1') })
+                      }}
+                    </button>
+                    <span class="t-xs muted">{{
+                      'settings.modelManagement.verifiedDownloadsAreAddedToYourLlamaSwap' | transloco
+                    }}</span>
+                  </div>
+                </section>
+              </div>
+            }
+            @for (note of results.notes; track note) {
+              <p class="t-xs muted m-0">{{ note }}</p>
+            }
+          } @else if (!catalog.searching() && !catalog.catalogError()) {
+            <div class="rounded-lg border border-base-300 p-4 flex flex-col gap-2">
+              <b class="t-sm">{{ 'settings.modelManagement.findAModelForThisMachine' | transloco }}</b>
+              <p class="t-sm muted m-0">
+                {{ 'settings.modelManagement.enterAModelFamilyOrLeaveSearchEmpty' | transloco }}
+              </p>
+            </div>
+          }
+        </section>
+      </pk-tab-panel>
+      <pk-tab-panel value="engines" [label]="'settings.modelManagement.engines' | transloco">
+        <div class="flex flex-col gap-4">
+          <pk-local-install-guide [guide]="hardware.installer.guide" [installed]="missingTools().length === 0" />
+          <pk-llama-runtime-updates />
+          <section
+            class="rounded-xl border border-base-300 p-4 flex flex-col gap-3"
+            [attr.aria-label]="'settings.modelManagement.llamaSwapSetup' | transloco"
+          >
+            <div>
+              <h4 class="font-medium m-0">{{ 'settings.modelManagement.llamaSwapLlamaCpp' | transloco }}</h4>
+              <p class="t-sm muted mt-1 mb-0">
+                {{ 'settings.modelManagement.llamaSwapUsesYourExistingConfigToLoad' | transloco }}
+              </p>
+            </div>
+            @for (entry of engineTools(); track entry.id) {
+              <div class="flex flex-wrap items-start gap-2">
+                <b class="t-sm">{{ entry.name }}</b
+                ><span class="chip" [class.ok]="entry.tool?.path">{{
+                  entry.tool?.path
+                    ? ('settings.modelManagement.installed' | transloco)
+                    : ('settings.modelManagement.notInstalled' | transloco)
+                }}</span>
+                @if (entry.tool?.version) {
+                  <span class="t-xs muted">{{ entry.tool?.version }}</span>
+                }
+              </div>
+            }
+            @if (missingTools().length > 0) {
+              <p class="t-sm m-0">{{ hardware.installer.reason }}</p>
+              <button
+                type="button"
+                class="btn btn-sm btn-primary self-start"
+                [disabled]="busy() || !hardware.installer.supported"
+                (click)="runtime.install(missingTools())"
+                data-testid="local-install"
+              >
+                {{
+                  'settings.modelManagement.setUp'
+                    | transloco: { tools: missingTools().join('settings.settingsWindow.and' | transloco) }
+                }}
+              </button>
+              @if (!hardware.installer.supported) {
+                @for (source of hardware.installer.sources; track source) {
+                  <a class="link t-sm" [href]="source" target="_blank" rel="noopener noreferrer">{{
+                    source.includes('llama-swap')
+                      ? ('settings.modelManagement.installLlamaSwap' | transloco)
+                      : ('settings.modelManagement.installLlamaCpp' | transloco)
+                  }}</a>
+                }
+              }
+            }
+            <p class="t-xs muted m-0">
+              {{ 'settings.modelManagement.useYourExistingLlamaSwapServiceWithThe' | transloco }}
+            </p>
+          </section>
+          <section
+            class="rounded-xl border border-base-300 p-4 flex flex-col gap-3"
+            [attr.aria-label]="'settings.modelManagement.swap.service' | transloco"
+            data-testid="llama-swap-service"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <h4 class="font-medium m-0">{{ 'settings.modelManagement.swap.service' | transloco }}</h4>
+                <span
+                  class="chip"
+                  [class.ok]="managed()?.state === 'running'"
+                  [class.err]="managed()?.state === 'failed'"
+                  data-testid="llama-swap-state"
+                  >{{ swapState() }}</span
+                >
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                @if (managed()?.state === 'running' || managed()?.state === 'starting') {
+                  <button
+                    type="button"
+                    class="btn btn-sm"
+                    [disabled]="runtime.submitting()"
+                    (click)="stopSwap()"
+                    data-testid="llama-swap-stop"
+                  >
+                    {{ 'settings.modelManagement.swap.stop' | transloco }}
+                  </button>
+                } @else {
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    [disabled]="busy() || !managed()?.canStart"
+                    (click)="startSwap()"
+                    data-testid="llama-swap-start"
+                  >
+                    {{ 'settings.modelManagement.swap.start' | transloco }}
+                  </button>
+                }
+              </div>
+            </div>
+            <p class="t-sm m-0">{{ 'settings.modelManagement.swap.explain' | transloco }}</p>
+            @if (managed(); as swap) {
+              <p class="t-xs mono muted break-all m-0">
+                {{ swap.configPath || ('settings.modelManagement.swap.noConfig' | transloco) }} · {{ swap.listen }}
+              </p>
+              @if (swap.reason && swap.state !== 'running' && swap.state !== 'starting') {
+                <p class="t-sm m-0" data-testid="llama-swap-reason">{{ swap.reason }}</p>
+              }
+              @if (swap.error) {
+                <p class="t-sm text-error m-0" role="alert" data-testid="llama-swap-error">{{ swap.error }}</p>
+              }
+              @if (swapLog().length > 0) {
+                <details class="t-xs">
+                  <summary class="cursor-pointer muted">
+                    {{ 'settings.modelManagement.swap.lastLines' | transloco }}
+                  </summary>
+                  <pre class="mono t-xs m-0 mt-1 whitespace-pre-wrap break-all max-h-40 overflow-auto">{{
+                    swapLog().join('\n')
+                  }}</pre>
+                </details>
+              }
+            }
+            <label class="t-sm flex items-center gap-2">
+              <input
+                type="checkbox"
+                class="checkbox checkbox-sm"
+                [checked]="runtime.status()?.autostart ?? false"
+                [disabled]="busy() || runtime.submitting()"
+                (change)="runtime.setAutostart($any($event.target).checked)"
+                data-testid="llama-swap-autostart"
+              />
+              {{ 'settings.modelManagement.swap.startWithApp' | transloco }}
+            </label>
+            <div class="flex flex-col gap-2" data-testid="llama-swap-doctor">
+              <div class="flex flex-wrap items-center gap-2">
+                <b class="t-sm">{{ 'settings.modelManagement.swap.doctor' | transloco }}</b>
+                <button
+                  type="button"
+                  class="btn btn-xs btn-ghost"
+                  [disabled]="runtime.checking()"
+                  (click)="checkSwap()"
+                  data-testid="llama-swap-check"
+                >
+                  {{
+                    runtime.checking()
+                      ? ('settings.modelManagement.checking' | transloco)
+                      : ('settings.modelManagement.swap.checkAgain' | transloco)
+                  }}
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-xs"
+                  [class.btn-primary]="doctor()?.fixable"
+                  [disabled]="busy() || !doctor()?.fixable"
+                  [attr.title]="
+                    doctor()?.fixable ? null : ('settings.modelManagement.swap.nothingToRepair' | transloco)
+                  "
+                  (click)="repairSwap()"
+                  data-testid="llama-swap-repair"
+                >
+                  {{ 'settings.modelManagement.swap.repair' | transloco }}
+                </button>
+              </div>
+              @if (doctor(); as report) {
+                @if (report.issues.length === 0) {
+                  <p class="t-xs muted m-0">{{ 'settings.modelManagement.swap.nothingWrong' | transloco }}</p>
+                } @else {
+                  <ul class="m-0 pl-4 t-xs flex flex-col gap-1">
+                    @for (issue of report.issues; track issue.kind + (issue.model ?? '')) {
+                      <li [class.text-error]="!issue.fixable">{{ issue.detail }}</li>
+                    }
+                  </ul>
+                }
+              }
+            </div>
+          </section>
+          <form class="flex flex-wrap items-end gap-2" (submit)="$event.preventDefault(); catalog.detect()">
+            <label class="flex flex-col gap-1 flex-1 min-w-40 t-sm"
+              >{{ 'settings.modelManagement.modelFolder' | transloco
+              }}<input
+                class="input input-sm w-full mono"
+                [placeholder]="'settings.localRuntimeWizard.models' | transloco"
+                [value]="catalog.directory()"
+                (input)="catalog.setDirectory($any($event.target).value)"
+                data-testid="model-directory"
+            /></label>
+            <button type="submit" class="btn btn-sm" [disabled]="catalog.detecting()">
+              {{
+                catalog.detecting()
+                  ? ('settings.modelManagement.checking' | transloco)
+                  : ('settings.modelManagement.checkFolderAndEngines' | transloco)
+              }}
+            </button>
+          </form>
+          <section
+            class="flex flex-col gap-3 rounded-lg border border-base-300 p-4"
+            [attr.aria-label]="'settings.modelManagement.llamaSwapConfiguration' | transloco"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h4 class="font-medium m-0">{{ 'settings.modelManagement.llamaSwapConfiguration' | transloco }}</h4>
+              <button type="button" class="btn btn-sm" [disabled]="catalog.detecting()" (click)="catalog.detect()">
+                {{
+                  catalog.detecting()
+                    ? ('settings.modelManagement.detecting' | transloco)
+                    : ('settings.getModel.detectAgain' | transloco)
+                }}
+              </button>
+            </div>
+            @if (targetConfigPath()) {
+              <p class="t-sm m-0">{{ 'settings.modelManagement.downloadsUseThisConfigAutomatically' | transloco }}</p>
+              <p class="t-xs mono muted break-all m-0" data-testid="llama-swap-config-path">{{ targetConfigPath() }}</p>
+            } @else {
+              <p class="t-sm m-0">
+                {{
+                  (hardware.configs?.length ?? 0) > 1
+                    ? ('settings.modelManagement.severalConfigsWereDetectedChooseTheOneYour' | transloco)
+                    : 'No llama-swap config
+            found. Start your existing service once, or install llama-swap here for first-time setup.'
+                }}
+              </p>
+            }
+            @if ((hardware.configs?.length ?? 0) > 1) {
+              <label class="t-sm flex flex-col gap-1"
+                >{{ 'settings.modelManagement.downloadConfig' | transloco }}
+                <select
+                  class="select select-sm w-full"
+                  [attr.aria-label]="'settings.modelManagement.downloadConfig' | transloco"
+                  [value]="targetConfigPath()"
+                  [disabled]="busy() || catalog.detecting()"
+                  (change)="chooseConfig($any($event.target).value)"
+                >
+                  <option value="" disabled>{{ 'settings.modelManagement.chooseADetectedConfig' | transloco }}</option>
+                  @for (config of hardware.configs ?? []; track config.path) {
+                    <option [value]="config.path">
+                      {{ config.path }}{{ config.error ? ('settings.modelManagement.needsRepair' | transloco) : '' }}
+                    </option>
+                  }
+                </select>
+              </label>
+            }
+            @if ((hardware.configs?.length ?? 0) > 1) {
+              <button
+                type="button"
+                class="btn btn-sm btn-ghost self-start"
+                [disabled]="busy() || catalog.detecting()"
+                (click)="chooseConfig('')"
+              >
+                {{ 'settings.modelManagement.useAutomaticDetection' | transloco }}
+              </button>
+            }
+            @for (config of hardware.configs ?? []; track config.path) {
+              <div class="flex flex-wrap items-center gap-2">
+                <div class="flex-1 min-w-0">
+                  <span class="t-xs"
+                    >{{
+                      config.selected
+                        ? ('settings.modelManagement.downloadTarget' | transloco)
+                        : ('settings.modelManagement.detectedConfig' | transloco)
+                    }}
+                    · {{ 'common.counts.model.other' | transloco: { count: config.models.length }
+                    }}{{ config.source ? ' · ' + config.source : '' }}</span
+                  >
+                  @if (!config.selected) {
+                    <p class="t-xs mono muted break-all m-0">{{ config.path }}</p>
+                  }
+                  @if (config.error) {
+                    <p class="t-xs text-error m-0" role="alert">{{ config.error }}</p>
+                  }
+                </div>
+                <button type="button" class="btn btn-sm" [disabled]="busy()" (click)="editConfig(config.path)">
+                  {{ 'settings.modelManagement.advancedYAML' | transloco }}
+                </button>
+              </div>
+            }
+            <p class="t-xs muted m-0">
+              {{ 'settings.modelManagement.savingValidatesYAMLAndPreservesTheFileS' | transloco }}
+            </p>
+          </section>
+          @if (hardware.servers.length > 0) {
+            <section
+              class="flex flex-col gap-2"
+              [attr.aria-label]="'settings.modelManagement.detectedServers' | transloco"
+            >
+              <h4 class="font-medium m-0">{{ 'settings.modelManagement.detectedServers' | transloco }}</h4>
+              <p class="t-xs muted m-0">
+                {{ 'settings.modelManagement.theseServicesRunIndependentlyTheirModelsAreAvailable' | transloco }}
+              </p>
+              @for (server of hardware.servers; track server.baseUrl) {
+                <div class="rounded-lg border border-base-300 p-3">
+                  <b class="t-sm">{{ server.name }}</b>
+                  <p class="t-xs mono break-all m-0">{{ server.baseUrl }}</p>
+                  <span class="t-xs muted">{{
+                    'common.counts.model.other' | transloco: { count: server.models.length }
+                  }}</span>
+                </div>
+              }
+            </section>
+          }
+        </div>
+      </pk-tab-panel>
+    </pk-tabs>
+  }
+</div>
+
+@if (configEditor(); as source) {
+  <pk-file-editor-dialog [source]="source" (closed)="configEditor.set(undefined)" (saved)="catalog.detect()" />
+}
+@if (modelSettings(); as selection) {
+  <pk-local-model-settings
+    [path]="selection.path"
+    [model]="selection.model"
+    (closed)="modelSettings.set(undefined)"
+    (advanced)="modelYaml(selection.path)"
+    (changed)="catalog.detect()"
+  />
+}
+
+<ng-template #fileDetails let-model>
+  <details>
+    <summary class="t-xs muted cursor-pointer">{{ 'settings.modelManagement.fileDetails' | transloco }}</summary>
+    <p class="t-xs mono break-all m-0 mt-1">{{ model.path }}</p>
+    @if (model.source) {
+      <a class="link t-xs" [href]="model.source" target="_blank" rel="noopener noreferrer">{{
+        'settings.modelManagement.modelSource' | transloco
+      }}</a>
+    }
+  </details>
+  @if (removingModel() === model.id) {
+    <div class="rounded-lg border border-error p-3 flex flex-col gap-2" role="alert">
+      <p class="t-sm m-0">
+        {{
+          'settings.modelManagement.deleteThisFileAndReclaimGiBItWill2'
+            | transloco: { size: (model.bytes / gib | number: '1.1-1') }
+        }}
+      </p>
+      <p class="t-xs mono break-all m-0">{{ model.path }}</p>
+      <div class="flex gap-2">
+        <button type="button" class="btn btn-sm" (click)="removingModel.set('')">
+          {{ 'settings.modelManagement.keepFile' | transloco }}</button
+        ><button type="button" class="btn btn-sm btn-error" [disabled]="busy()" (click)="deleteModel(model.id)">
+          {{ 'settings.modelManagement.deleteFile' | transloco }}
+        </button>
+      </div>
+    </div>
+  }
+</ng-template>

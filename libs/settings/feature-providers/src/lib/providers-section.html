@@ -1,0 +1,464 @@
+<div class="flex flex-col gap-5" data-testid="section-providers">
+  <!-- A sign-in that was started from elsewhere (/login, a model chip, "Sign in again") still has its box here; the wizard shows its own. -->
+  @if (!wizard()) {
+    <pk-login-flow />
+  }
+  @if (store.overview(); as overview) {
+    @if (secrets.status(); as sec) {
+      @if (sec.available && sec.movable.length > 0) {
+        <section
+          class="pk-group"
+          [attr.aria-label]="'settings.providersSection.keysInPlainText' | transloco"
+          data-setting="key-storage"
+          data-testid="move-keys"
+        >
+          <header>
+            <div>
+              <h4>
+                {{
+                  'settings.providersSection.inAuthJsonAsPlainText'
+                    | transloco
+                      : {
+                          value1: sec.movable.length,
+                          value2:
+                            sec.movable.length === 1
+                              ? ('settings.providersSection.keyIs' | transloco)
+                              : ('settings.providersSection.keysAre' | transloco),
+                        }
+                }}
+              </h4>
+              <p>
+                {{
+                  'settings.providersSection.moveIntoTheAuthJsonThenHolds'
+                    | transloco
+                      : {
+                          value1:
+                            sec.movable.length === 1
+                              ? ('settings.providersSection.it' | transloco)
+                              : ('settings.providersSection.them' | transloco),
+                          value2: sec.label,
+                          value3: names(sec.movable),
+                        }
+                }}
+              </p>
+            </div>
+            <span class="chip warn">{{ 'settings.providersSection.plainText' | transloco }}</span>
+          </header>
+          <div class="row">
+            <div class="hint">{{ 'settings.providersSection.thisNeverHappensByItselfAuthJson' | transloco }}</div>
+            <div class="ctl ctl-w">
+              <button
+                type="button"
+                class="btn btn-sm"
+                data-testid="move-keys-button"
+                [disabled]="secrets.moving()"
+                (click)="secrets.moveKeys()"
+              >
+                {{ 'settings.providersSection.moveMyExistingKeysIntoTheKeychain' | transloco }}
+              </button>
+            </div>
+          </div>
+        </section>
+      } @else if (!sec.available) {
+        <section
+          class="pk-group"
+          [attr.aria-label]="'settings.providersSection.noCredentialStore' | transloco"
+          data-setting="key-storage"
+          data-testid="no-store"
+        >
+          <header>
+            <div>
+              <h4>
+                {{
+                  (sec.credentialsEnabled === false
+                    ? 'settings.advancedSection.storageDisabled'
+                    : 'settings.providersSection.noCredentialStoreOnThisMachine'
+                  ) | transloco
+                }}
+              </h4>
+              <p>
+                {{
+                  (sec.credentialsEnabled === false
+                    ? 'settings.advancedSection.directStorageHint'
+                    : 'settings.providersSection.aPIKeysStayInAuthJsonAs'
+                  ) | transloco
+                }}
+              </p>
+            </div>
+            <span class="chip warn">{{ 'settings.providersSection.plainText' | transloco }}</span>
+          </header>
+        </section>
+      }
+      @if (secrets.moved(); as moved) {
+        <div
+          class="rounded-box border border-base-300 bg-base-200 p-4 flex flex-col gap-2"
+          role="status"
+          data-testid="move-result"
+        >
+          @if (moved.moved.length > 0) {
+            <p class="t-sm m-0">
+              <span class="chip ok">{{ 'settings.providersSection.moved' | transloco }}</span>
+              {{
+                'settings.providersSection.inTheNow'
+                  | transloco
+                    : {
+                        value1: names(moved.moved),
+                        value2:
+                          moved.moved.length === 1
+                            ? ('settings.providersSection.is' | transloco)
+                            : ('settings.providersSection.are' | transloco),
+                        value3: sec.label,
+                      }
+              }}
+            </p>
+          }
+          @for (failure of moved.failed; track failure.provider) {
+            <p class="t-sm m-0">
+              <span class="chip err">{{ 'settings.providersSection.left' | transloco }}</span>
+              {{
+                'settings.providersSection.stayedInAuthJson'
+                  | transloco: { value1: failure.provider, value2: failure.reason }
+              }}
+            </p>
+          }
+          @if (moved.moved.length === 0 && moved.failed.length === 0) {
+            <p class="t-sm m-0">{{ 'settings.providersSection.thereWasNothingToMove' | transloco }}</p>
+          }
+          <div>
+            <button type="button" class="btn btn-sm" (click)="secrets.dismissMoved()">
+              {{ 'settings.providersSection.close' | transloco }}
+            </button>
+          </div>
+        </div>
+      }
+    }
+
+    <section
+      class="pk-group"
+      [attr.aria-label]="'settings.providersSection.providers' | transloco"
+      data-setting="providers"
+    >
+      <header>
+        <div>
+          <h4>{{ 'settings.providersSection.signedIn' | transloco }}</h4>
+          <p>{{ summary() }}</p>
+        </div>
+        <span class="chip store" [pkTip]="authTip()">{{ 'settings.providersSection.piAuthJson' | transloco }}</span>
+        <button
+          type="button"
+          class="btn btn-sm btn-primary btn-square add"
+          [pkTip]="'settings.providersSection.addAProvider' | transloco"
+          [attr.aria-label]="'settings.providersSection.addAProvider' | transloco"
+          data-testid="add-provider"
+          (click)="open()"
+        >
+          <pk-icon name="plus" size="16" />
+        </button>
+      </header>
+      <div role="list">
+        @for (group of groups(); track group.id) {
+          @if (group.id === 'llama.cpp') {
+            <details class="llama-group" data-provider-group="llama.cpp">
+              <summary>
+                <span class="llama-mark" aria-hidden="true"
+                  ><img class="provider-logo" src="/provider-logos/llama-cpp.svg" alt=""
+                /></span>
+                <span class="llama-title">
+                  <span class="flex items-center gap-2 flex-wrap"
+                    ><strong>{{ 'settings.modelManagement.llamaCpp' | transloco }}</strong
+                    ><span class="chip ok">{{ 'chat.modelPicker.local' | transloco }}</span></span
+                  >
+                  <span class="llama-subtitle">{{ 'settings.modelManagement.llamaCppConnections' | transloco }}</span>
+                </span>
+                <span class="llama-metrics">
+                  <strong>{{ group.models }}</strong>
+                  {{
+                    group.models === 1
+                      ? ('settings.getModel.model' | transloco)
+                      : ('settings.getModel.models' | transloco)
+                  }}
+                  <span class="separator" aria-hidden="true">·</span>
+                  {{
+                    group.connections.length === 1
+                      ? ('settings.modelManagement.oneConnection' | transloco)
+                      : ('settings.modelManagement.connectionCount' | transloco: { count: group.connections.length })
+                  }}
+                </span>
+                <pk-icon class="llama-chevron" name="chevron-down" />
+              </summary>
+              <div
+                class="llama-connections"
+                role="list"
+                [attr.aria-label]="'settings.modelManagement.llamaCppConnections' | transloco"
+              >
+                @for (row of group.connections; track row.id) {
+                  <ng-container
+                    [ngTemplateOutlet]="connectionRow"
+                    [ngTemplateOutletContext]="{ $implicit: row, nested: true }"
+                  />
+                }
+              </div>
+            </details>
+          } @else {
+            @for (row of group.connections; track row.id) {
+              <ng-container [ngTemplateOutlet]="connectionRow" [ngTemplateOutletContext]="{ $implicit: row }" />
+            }
+          }
+        } @empty {
+          <div class="empty" data-testid="providers-empty">
+            <span>{{ 'settings.providersSection.noProvidersYetAddOneToGet' | transloco }}</span>
+            <button type="button" class="btn btn-sm btn-primary" (click)="open()">
+              {{ 'settings.providersSection.addAProvider' | transloco }}
+            </button>
+          </div>
+        }
+      </div>
+    </section>
+
+    <ng-template #connectionRow let-row let-nested="nested">
+      <div
+        pkItem
+        role="listitem"
+        [class.llama-connection]="nested"
+        [letters]="logo(row) ? '' : nested ? letters(connectionName(row)) : row.letters"
+        [attr.data-provider]="row.id"
+        [attr.data-kind]="row.kind"
+      >
+        @if (logo(row); as image) {
+          <img tile class="provider-logo" [src]="image" alt="" />
+        }
+        <ng-container nm>
+          {{ nested ? connectionName(row) : row.name }}
+          @if (nested) {
+            @if (connectionSource(row); as source) {
+              <span class="connection-source">· {{ source }}</span>
+            }
+          } @else {
+            <span class="chip" [class]="row.chip.tone">{{ row.chip.text }}</span>
+            @if (count(row); as models) {
+              <span class="cnt">{{ models }}</span>
+            }
+          }
+        </ng-container>
+        <ng-container ds>
+          <span data-testid="credential-line">{{ row.line }}</span>
+          @if (nested && count(row); as models) {
+            <span>· {{ models }}</span>
+          }
+          @for (w of row.usage?.windows ?? []; track w.name) {
+            <pk-quota [name]="w.name" [used]="w.used" [resets]="w.resets" />
+          }
+          @if (row.usage?.credit; as credit) {
+            <span>{{ 'settings.modelManagement.credit' | transloco: { value: credit } }}</span>
+          }
+        </ng-container>
+        <ng-container act>
+          @for (action of row.actions; track action) {
+            @switch (action) {
+              @case ('sign-out') {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-ghost btn-square"
+                  [pkTip]="'settings.mcpSection.signOut' | transloco"
+                  [attr.aria-label]="'Sign out of ' + row.name"
+                  (click)="store.logout(row.id)"
+                >
+                  <pk-icon name="sign-in" />
+                </button>
+              }
+              @case ('change-key') {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-ghost btn-square"
+                  [pkTip]="'settings.providersSection.changeTheKey' | transloco"
+                  [attr.aria-label]="'Change the key for ' + row.name"
+                  (click)="store.openKeyWorkflow(row.id)"
+                >
+                  <pk-icon name="pencil" />
+                </button>
+              }
+              @case ('remove-key') {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-ghost btn-square"
+                  [pkTip]="'settings.providersSection.removeTheKey' | transloco"
+                  [attr.aria-label]="'Remove the key for ' + row.name"
+                  (click)="store.logout(row.id)"
+                >
+                  <pk-icon name="trash" />
+                </button>
+              }
+              @case ('remove-provider') {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-ghost btn-square"
+                  [pkTip]="'settings.providersSection.removeProvider' | transloco"
+                  [attr.aria-label]="'settings.providersSection.removeNamedProvider' | transloco: { name: row.name }"
+                  [disabled]="removeBusy()"
+                  (click)="removing.set(row)"
+                >
+                  <pk-icon name="trash" />
+                </button>
+              }
+              @case ('test') {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-ghost btn-square"
+                  [pkTip]="'settings.providersSection.testTheConnection' | transloco"
+                  [attr.aria-label]="'Test the connection to ' + row.name"
+                  (click)="test(row)"
+                >
+                  <pk-icon name="refresh" />
+                </button>
+              }
+              @case ('edit') {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-ghost btn-square"
+                  [pkTip]="
+                    (row.id === 'litellm' ? 'settings.litellm.edit' : 'settings.providersSection.editAddressAndModels')
+                      | transloco
+                  "
+                  [attr.aria-label]="'Edit ' + row.name"
+                  (click)="open({ method: row.id === 'litellm' ? 'litellm' : 'local', provider: row.id })"
+                >
+                  <pk-icon name="pencil" />
+                </button>
+              }
+            }
+          }
+        </ng-container>
+      </div>
+    </ng-template>
+
+    @if (environment().length > 0) {
+      <section
+        class="pk-group"
+        [attr.aria-label]="'settings.providersSection.keysFromTheEnvironment' | transloco"
+        data-setting="providers-environment"
+        data-testid="environment-keys"
+      >
+        <header>
+          <div>
+            <h4>{{ 'settings.providersSection.keysFromTheEnvironment' | transloco }}</h4>
+            <p>{{ 'settings.providersSection.foundInTheShellPiKitStarted' | transloco }}</p>
+          </div>
+          <span class="chip off">{{ 'settings.providersSection.readOnly' | transloco }}</span>
+        </header>
+        <div role="list">
+          @for (row of environment(); track row.id) {
+            <div
+              pkItem
+              role="listitem"
+              [letters]="logo(row) ? '' : row.letters"
+              [attr.data-provider]="row.id"
+              data-kind="environment"
+            >
+              @if (logo(row); as image) {
+                <img tile class="provider-logo" [src]="image" alt="" />
+              }
+              <ng-container nm>
+                {{ row.name }}
+                <span class="chip off">{{ row.chip.text }}</span>
+                @if (count(row); as models) {
+                  <span class="cnt">{{ models }}</span>
+                }
+              </ng-container>
+              <ng-container ds>{{ 'settings.providersSection.addAKeyHereToStopDepending' | transloco }}</ng-container>
+              <button
+                act
+                type="button"
+                class="btn btn-sm btn-ghost"
+                [attr.data-testid]="'add-key-instead-' + row.id"
+                (click)="open({ method: 'api_key', provider: row.id })"
+              >
+                {{ 'settings.providersSection.addAKeyInstead' | transloco }}
+              </button>
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    <p class="t-xs muted break-all">
+      {{ 'settings.providersSection.signingOutRemovesTheStoredCredentialOnly' | transloco }}
+      <code>{{ store.settings()?.agentDir }}/auth.json</code>.
+    </p>
+  } @else if (store.error()) {
+    <p class="text-sm text-error" role="alert">
+      {{ 'settings.providersSection.piSProvidersCouldNotBeRead' | transloco: { value1: store.error() } }}
+    </p>
+  } @else {
+    <div class="py-8 grid place-items-center">
+      <span
+        class="loading loading-dots loading-sm text-primary"
+        [attr.aria-label]="'settings.providersSection.loadingProviders' | transloco"
+      ></span>
+    </div>
+  }
+</div>
+
+@if (removing(); as row) {
+  <div class="pk-wf" data-testid="remove-provider-modal">
+    <button
+      type="button"
+      class="pk-backdrop"
+      tabindex="-1"
+      [attr.aria-label]="'settings.providersSection.cancelRemove' | transloco"
+      [disabled]="removeBusy()"
+      (click)="closeRemoval()"
+    ></button>
+    <section
+      class="win"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="remove-provider-title"
+      aria-describedby="remove-provider-description"
+      tabindex="-1"
+      cdkTrapFocus
+      [cdkTrapFocusAutoCapture]="true"
+      data-testid="remove-provider-confirm"
+      (keydown.escape)="$event.preventDefault(); $event.stopPropagation(); closeRemoval()"
+    >
+      <header class="head">
+        <h2 id="remove-provider-title">
+          {{ 'settings.providersSection.removeConfirm' | transloco: { name: row.name } }}
+        </h2>
+      </header>
+      <div class="body">
+        <p class="m-0 text-sm" id="remove-provider-description">
+          {{ 'settings.providersSection.removeExplanation' | transloco }}
+        </p>
+      </div>
+      <footer class="foot justify-end">
+        <button
+          type="button"
+          class="btn btn-sm btn-ghost"
+          cdkFocusInitial
+          data-testid="remove-provider-cancel"
+          [disabled]="removeBusy()"
+          (click)="closeRemoval()"
+        >
+          {{ 'settings.providersSection.cancelRemove' | transloco }}
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm btn-error"
+          data-testid="remove-provider-yes"
+          [disabled]="removeBusy()"
+          (click)="removeProvider()"
+        >
+          @if (removeBusy()) {
+            <span class="loading loading-spinner loading-xs" aria-hidden="true"></span>
+          }
+          {{ 'settings.providersSection.removeProvider' | transloco }}
+        </button>
+      </footer>
+    </section>
+  </div>
+}
+@defer (when wizard() !== undefined; prefetch on idle) {
+  @if (wizard(); as entry) {
+    <pk-add-provider-wizard [entry]="entry" (closed)="wizard.set(undefined)" />
+  }
+}

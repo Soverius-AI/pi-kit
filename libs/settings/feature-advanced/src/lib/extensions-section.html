@@ -1,0 +1,612 @@
+<div class="flex flex-col gap-5" [attr.data-testid]="section() === 'skills' ? 'section-skills' : 'section-extensions'">
+  @if (section() === 'skills' ? store.shows('skills', 'skill-commands') : store.shows('packages', 'resources')) {
+    <div class="flex items-center gap-3 flex-wrap">
+      <button
+        type="button"
+        class="btn btn-sm"
+        data-testid="reload-resources"
+        [disabled]="store.reloading() || !store.canReload()"
+        [pkTip]="
+          store.canReload()
+            ? ('settings.extensionsSection.runsReloadInTheOpenThread' | transloco)
+            : ('settings.extensionsSection.openAThreadFirst' | transloco)
+        "
+        (click)="store.reload()"
+      >
+        @if (store.reloading()) {
+          <span class="loading loading-spinner loading-xs"></span>
+        }
+        {{ 'settings.extensionsSection.reload' | transloco }}
+      </button>
+      <span class="t-sm muted"
+        >{{ 'settings.extensionsSection.runs' | transloco }} <code>/reload</code
+        >{{ 'settings.extensionsSection.piReadsItsExtensionsSkillsPromptsAnd' | transloco }}</span
+      >
+    </div>
+  }
+
+  <pk-tabs
+    [label]="(section() === 'skills' ? 'shared.catalog.skills' : 'shared.catalog.extensions') | transloco"
+    [(value)]="tab"
+  >
+    @if (section() === 'extensions' && store.shows('packages')) {
+      <pk-tab-panel value="packages" [label]="'shared.catalog.packages' | transloco">
+        <section
+          class="pk-group"
+          [attr.aria-label]="'shared.catalog.packages' | transloco"
+          data-setting="packages"
+          data-testid="packages-group"
+        >
+          <header>
+            <div>
+              <h4>{{ 'settings.extensionsSection.packages' | transloco }}</h4>
+              <p>
+                {{ 'settings.extensionsSection.installedWith' | transloco }}
+                <span class="mono">{{ 'settings.extensionsSection.piInstall' | transloco }}</span
+                >{{ 'settings.extensionsSection.eachBringsExtensionsSkillsPromptsOrThemes' | transloco }}
+              </p>
+            </div>
+            <span class="chip off" data-testid="packages-count" [pkTip]="summary()">{{ onText() }}</span>
+            <span class="chip store" [pkTip]="'settings.extensionsSection.storedInPiSSettingsJsonOr' | transloco">{{
+              'settings.extensionsSection.piSettingsJson' | transloco
+            }}</span>
+            <button
+              type="button"
+              class="btn btn-sm btn-ghost"
+              data-testid="check-updates"
+              [pkTip]="'settings.extensionsSection.checkNpmAndGitForNewerVersions' | transloco"
+              [disabled]="pkgs.checking()"
+              (click)="pkgs.checkForUpdates()"
+            >
+              @if (pkgs.checking()) {
+                <span class="loading loading-spinner loading-xs"></span>
+              }
+              {{ 'settings.extensionsSection.checkForUpdates' | transloco }}
+            </button>
+            <button
+              type="button"
+              class="btn btn-sm btn-primary btn-square add"
+              [pkTip]="'settings.extensionsSection.addAPackage' | transloco"
+              [attr.aria-label]="'settings.extensionsSection.addAPackage' | transloco"
+              data-testid="add-package"
+              (click)="pkgs.openWizard()"
+            >
+              <pk-icon name="plus" size="16" />
+            </button>
+          </header>
+          @if (pkgs.error(); as text) {
+            <p class="text-sm text-error break-words px-4 pt-3 m-0" role="alert">{{ text }}</p>
+          }
+          @for (error of pkgs.overview()?.errors ?? []; track $index) {
+            <p class="text-sm text-error break-words px-4 pt-3 m-0">{{ error }}</p>
+          }
+          <pk-scroll-area class="pk-scroll-area-flush" [label]="'shared.catalog.packages' | transloco">
+            <div role="list">
+              @for (row of packageRows(); track row.id) {
+                <div
+                  pkItem
+                  role="listitem"
+                  [dimmed]="!row.item.enabled"
+                  [attr.data-testid]="'package-' + row.name"
+                  [attr.data-package]="row.item.source"
+                  [attr.data-state]="row.item.enabled ? 'on' : 'off'"
+                >
+                  <ng-container tile>
+                    <pk-icon name="extension" />
+                  </ng-container>
+                  <ng-container nm>
+                    {{ row.name }}
+                    <span class="chip" [class.ok]="row.item.enabled" [class.off]="!row.item.enabled">{{
+                      row.item.enabled
+                        ? ('settings.extensionsSection.on' | transloco)
+                        : ('settings.extensionsSection.off' | transloco)
+                    }}</span>
+                    @if (row.originChip === 'bundled') {
+                      <span class="chip off">{{ 'settings.extensionsSection.bundled' | transloco }}</span>
+                    } @else if (row.item.scope === 'project') {
+                      <span class="chip">{{ 'settings.extensionsSection.project' | transloco }}</span>
+                    }
+                    @if (row.item.version) {
+                      <span class="cnt mono">{{ row.item.version }}</span>
+                    }
+                    @if (row.outdated; as text) {
+                      <span
+                        class="chip warn"
+                        [attr.data-testid]="'outdated-' + row.name"
+                        [pkTip]="'settings.extensionsSection.aNewerVersionIsAvailable' | transloco"
+                        >{{ text }}</span
+                      >
+                    }
+                    @if (row.missing) {
+                      <span
+                        class="chip err"
+                        [pkTip]="'settings.extensionsSection.piListsItInSettingsButNothing' | transloco"
+                        >{{ 'settings.extensionsSection.notInstalled' | transloco }}</span
+                      >
+                    }
+                  </ng-container>
+                  <ng-container ds>
+                    {{ row.parts.brings }} ·
+                    <span [class.mono]="row.parts.originMono" [pkTip]="row.item.path ?? row.item.source">{{
+                      row.parts.origin
+                    }}</span>
+                    @if (row.parts.installed; as when) {
+                      · {{ when }}
+                    }
+                  </ng-container>
+                  <ng-container act>
+                    @if (busy(row.id)) {
+                      <span
+                        class="loading loading-spinner loading-xs"
+                        [attr.aria-label]="'settings.extensionsSection.working' | transloco"
+                      ></span>
+                    } @else {
+                      @if (row.outdated) {
+                        <button
+                          type="button"
+                          class="btn btn-sm"
+                          [attr.data-testid]="'update-' + row.name"
+                          (click)="pkgs.update(row.id)"
+                        >
+                          {{ 'settings.extensionsSection.update' | transloco }}
+                        </button>
+                      }
+                      <input
+                        type="checkbox"
+                        class="toggle toggle-sm toggle-primary"
+                        [pkTip]="'settings.extensionsSection.loadThisPackage' | transloco"
+                        [attr.aria-label]="
+                          (row.item.enabled
+                            ? ('settings.extensionsSection.turnOff' | transloco)
+                            : ('settings.extensionsSection.turnOn' | transloco)) + row.name
+                        "
+                        [attr.data-testid]="'package-toggle-' + row.name"
+                        [checked]="row.item.enabled"
+                        [disabled]="row.missing"
+                        (change)="pkgs.setEnabled(row.id, $any($event.target).checked)"
+                      />
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-ghost btn-square"
+                        [pkTip]="'settings.extensionsSection.more' | transloco"
+                        [attr.aria-label]="('settings.extensionsSection.moreFor' | transloco) + row.name"
+                        aria-haspopup="menu"
+                        [attr.data-testid]="'package-more-' + row.name"
+                        (click)="openMenu($event, row)"
+                      >
+                        <pk-icon name="more" />
+                      </button>
+                    }
+                  </ng-container>
+                  <div extra class="extra">
+                    @if (removing() === row.id) {
+                      <div class="signin pk-expand" role="alert" [attr.data-testid]="'remove-confirm-' + row.name">
+                        <div>
+                          {{ 'settings.extensionsSection.remove' | transloco }}
+                          <strong class="font-medium">{{ row.name }}</strong
+                          >{{ 'settings.extensionsSection.piRuns' | transloco }}
+                          <span class="mono">{{ 'settings.extensionsSection.piRemove' | transloco }}</span>
+                          {{
+                            'settings.extensionsSection.forIt'
+                              | transloco
+                                : {
+                                    value1:
+                                      row.originChip === 'bundled'
+                                        ? ('settings.extensionsSection.piKitDoesNotOfferItsOwn' | transloco)
+                                        : '',
+                                  }
+                          }}
+                        </div>
+                        <div class="flex gap-2">
+                          <button type="button" class="btn btn-sm btn-ghost" (click)="removing.set('')">
+                            {{ 'settings.extensionsSection.keepIt' | transloco }}
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn-sm btn-error"
+                            [attr.data-testid]="'remove-yes-' + row.name"
+                            (click)="remove(row.id)"
+                          >
+                            {{ 'settings.extensionsSection.remove' | transloco }}
+                          </button>
+                        </div>
+                      </div>
+                    }
+                    @if (contentsOf(row.item.source, row.item.scope).length > 0) {
+                      <button
+                        type="button"
+                        class="tools-toggle"
+                        [attr.aria-expanded]="open() === row.id"
+                        [attr.data-testid]="'toggle-contents-' + row.name"
+                        (click)="open.set(open() === row.id ? '' : row.id)"
+                      >
+                        <pk-icon name="chevron-right-small" />
+                        {{
+                          open() === row.id
+                            ? ('settings.extensionsSection.hideWhatItBrings' | transloco)
+                            : ('settings.extensionsSection.showWhatItBrings' | transloco)
+                        }}
+                      </button>
+                      @if (open() === row.id) {
+                        <div class="flex flex-col pk-expand" [attr.data-testid]="'contents-' + row.name">
+                          @for (item of contentsOf(row.item.source, row.item.scope); track item.key) {
+                            <div
+                              class="flex items-center gap-3 py-1 t-sm"
+                              [attr.data-testid]="'resource-' + item.type + '-' + item.name"
+                            >
+                              <span class="chip off">{{
+                                item.type === 'prompts'
+                                  ? ('settings.extensionsSection.prompt' | transloco)
+                                  : item.type.slice(0, -1)
+                              }}</span>
+                              <span class="mono min-w-0 flex-1 truncate" [pkTip]="item.path">{{ item.name }}</span>
+                              <input
+                                type="checkbox"
+                                class="toggle toggle-xs toggle-primary"
+                                [attr.aria-label]="
+                                  (item.enabled
+                                    ? ('settings.extensionsSection.turnOff' | transloco)
+                                    : ('settings.extensionsSection.turnOn' | transloco)) + item.name
+                                "
+                                [checked]="item.enabled"
+                                [disabled]="busy(item.key) || !row.item.enabled"
+                                (change)="store.toggleResource(item.key, $any($event.target).checked)"
+                              />
+                            </div>
+                          }
+                        </div>
+                      }
+                    }
+                  </div>
+                </div>
+              } @empty {
+                <div class="empty" data-testid="packages-empty">
+                  @if (pkgs.loading()) {
+                    <span
+                      class="loading loading-dots loading-sm text-primary"
+                      [attr.aria-label]="'settings.extensionsSection.readingThePackages' | transloco"
+                    ></span>
+                  } @else {
+                    <span>{{ 'settings.extensionsSection.noPackagesYetAPackageBringsExtensions' | transloco }}</span>
+                    <button type="button" class="btn btn-sm btn-primary" (click)="pkgs.openWizard()">
+                      {{ 'settings.extensionsSection.addAPackage' | transloco }}
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          </pk-scroll-area>
+        </section>
+      </pk-tab-panel>
+    }
+    @if (section() === 'skills' ? store.shows('skills') : store.shows('resources')) {
+      <pk-tab-panel
+        value="inventory"
+        [label]="
+          (section() === 'skills' ? 'settings.sectionTabs.library' : 'settings.sectionTabs.localFiles') | transloco
+        "
+      >
+        <div class="flex flex-col gap-5">
+          @if (store.resources(); as resources) {
+            @for (error of resources.errors; track $index) {
+              <p class="text-sm text-error break-words m-0" role="alert">{{ error }}</p>
+            }
+            @if (resources.projectSkipped) {
+              <div role="status" class="alert alert-soft alert-warning text-sm">
+                <span>{{ 'settings.extensionsSection.thisFolderHasItsOwnExtensionsSkills' | transloco }}</span>
+              </div>
+            }
+            @if (section() === 'skills') {
+              <section
+                class="pk-group"
+                [attr.aria-label]="'settings.extensionsSection.yourSkills' | transloco"
+                data-testid="skills-group"
+              >
+                <header>
+                  <div>
+                    <h4>{{ 'settings.extensionsSection.yourSkills' | transloco }}</h4>
+                    <p>
+                      {{ 'settings.extensionsSection.foldersIn' | transloco }}
+                      <span class="mono">{{ 'settings.extensionsSection.piAgentSkills' | transloco }}</span>
+                      {{ 'settings.extensionsSection.andTheProjectS' | transloco }}
+                      <span class="mono">{{ 'settings.extensionsSection.piSkills' | transloco }}</span
+                      >{{ 'settings.extensionsSection.aSkillIsInstructionsPiLoadsWhen' | transloco }}
+                    </p>
+                  </div>
+                  <span class="chip off">{{ count(yourSkills()) }}</span>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary btn-square add"
+                    [pkTip]="'settings.extensionsSection.newSkill' | transloco"
+                    [attr.aria-label]="'settings.extensionsSection.newSkill' | transloco"
+                    data-testid="new-skill"
+                    (click)="newSkill.set(!newSkill())"
+                  >
+                    <pk-icon name="plus" size="16" />
+                  </button>
+                </header>
+                @if (newSkill()) {
+                  <form class="row pk-expand" data-testid="new-skill-form" (submit)="createSkill($event)">
+                    <div class="min-w-0">
+                      <div class="lbl">
+                        <label for="new-skill-name">{{ 'settings.extensionsSection.newSkill' | transloco }}</label>
+                      </div>
+                      <div class="hint">
+                        {{ 'settings.extensionsSection.lowercaseWordsJoinedByHyphensAFolder' | transloco }}
+                      </div>
+                      @if (newSkillError(); as text) {
+                        <div class="hint text-error" role="alert" data-testid="new-skill-error">{{ text }}</div>
+                      }
+                    </div>
+                    <div class="ctl ctl-w wrap">
+                      <input
+                        id="new-skill-name"
+                        class="input input-sm mono"
+                        [placeholder]="'settings.extensionsSection.addAMigration' | transloco"
+                        autocomplete="off"
+                        spellcheck="false"
+                        data-testid="new-skill-name"
+                        [value]="newSkillName()"
+                        (input)="newSkillName.set($any($event.target).value); newSkillError.set('')"
+                      />
+                      <select
+                        class="select select-sm"
+                        [attr.aria-label]="'settings.extensionsSection.whereTheSkillGoes' | transloco"
+                        data-testid="new-skill-scope"
+                        (change)="newSkillScope.set($any($event.target).value)"
+                      >
+                        <option value="user" [selected]="newSkillScope() === 'user'">
+                          {{ 'settings.extensionsSection.forMe' | transloco }}
+                        </option>
+                        <option value="project" [selected]="newSkillScope() === 'project'" [disabled]="!pkgs.cwd()">
+                          {{ 'settings.extensionsSection.thisProject' | transloco }}
+                        </option>
+                      </select>
+                      <button type="button" class="btn btn-sm btn-ghost" (click)="newSkill.set(false)">
+                        {{ 'chat.labels.chatInputToolbarCancelTranscribeButtonLabel' | transloco }}
+                      </button>
+                      <button
+                        type="submit"
+                        class="btn btn-sm btn-primary"
+                        data-testid="new-skill-create"
+                        [disabled]="creating()"
+                      >
+                        {{ 'settings.extensionsSection.createAndEdit' | transloco }}
+                      </button>
+                    </div>
+                  </form>
+                }
+                <pk-scroll-area
+                  class="pk-scroll-area-flush"
+                  [label]="'settings.extensionsSection.yourSkills' | transloco"
+                >
+                  <div role="list">
+                    @for (row of yourSkills(); track row.key) {
+                      <div
+                        pkItem
+                        role="listitem"
+                        [dimmed]="!row.enabled"
+                        [attr.data-testid]="'resource-skills-' + row.name"
+                      >
+                        <ng-container tile>
+                          <pk-icon name="skill" />
+                        </ng-container>
+                        <ng-container nm>
+                          <span [id]="'res-' + row.key">{{ row.name }}</span>
+                          <span class="chip" [class.off]="row.scope === 'user'">{{ row.scope }}</span>
+                        </ng-container>
+                        <ng-container ds>
+                          @if (row.description) {
+                            <span>{{ row.description }}</span> ·
+                          }
+                          <span class="mono" [pkTip]="row.path">/skill:{{ row.name }}</span>
+                        </ng-container>
+                        <ng-container act>
+                          @if (busy(row.key)) {
+                            <span
+                              class="loading loading-spinner loading-xs"
+                              [attr.aria-label]="'settings.settingsWindow.saving' | transloco"
+                            ></span>
+                          }
+                          <button
+                            type="button"
+                            class="btn btn-sm btn-ghost"
+                            data-testid="add-to-composer"
+                            [disabled]="!chat.threadId() || !row.enabled"
+                            [pkTip]="addTitle(row)"
+                            (click)="addToComposer(row)"
+                          >
+                            {{ 'settings.extensionsSection.addToComposer' | transloco }}
+                          </button>
+                          <button
+                            type="button"
+                            class="btn btn-sm btn-ghost btn-square"
+                            [pkTip]="'threads.skillReviewDialog.editTheSkill' | transloco"
+                            [attr.aria-label]="'Edit ' + row.name"
+                            [attr.data-testid]="'edit-skill-' + row.name"
+                            (click)="pkgs.openSkillEditor(row.path)"
+                          >
+                            <pk-icon name="pencil" />
+                          </button>
+                          <input
+                            type="checkbox"
+                            class="toggle toggle-sm toggle-primary"
+                            [attr.aria-label]="
+                              (row.enabled
+                                ? ('settings.extensionsSection.turnOff' | transloco)
+                                : ('settings.extensionsSection.turnOn' | transloco)) + row.name
+                            "
+                            [checked]="row.enabled"
+                            [disabled]="busy(row.key)"
+                            (change)="store.toggleResource(row.key, $any($event.target).checked)"
+                          />
+                        </ng-container>
+                      </div>
+                      <pk-learned-skill [name]="row.name" [path]="row.path" />
+                    } @empty {
+                      <div class="empty">
+                        <span>{{ 'settings.extensionsSection.noSkillOfYourOwnYetThe' | transloco }}</span>
+                      </div>
+                    }
+                  </div>
+                </pk-scroll-area>
+              </section>
+
+              <pk-learned-retired />
+            } @else {
+              <section
+                class="pk-group"
+                [attr.aria-label]="'settings.extensionsSection.yourExtensionsAndPrompts' | transloco"
+                data-testid="files-group"
+              >
+                <header>
+                  <div>
+                    <h4>{{ 'settings.extensionsSection.yourExtensionsAndPrompts' | transloco }}</h4>
+                    <p>{{ 'settings.extensionsSection.topLevelFilesPiFoundBuiltIn' | transloco }}</p>
+                  </div>
+                  <span class="chip off">{{ count(yourFiles()) }}</span>
+                  <span
+                    class="chip store ml-auto"
+                    [pkTip]="'settings.extensionsSection.storedInPiSSettingsJsonOr45d71' | transloco"
+                    >{{ 'settings.extensionsSection.piSettingsJson' | transloco }}</span
+                  >
+                </header>
+                <pk-scroll-area
+                  class="pk-scroll-area-flush"
+                  [label]="'settings.extensionsSection.yourExtensionsAndPrompts' | transloco"
+                >
+                  <div role="list">
+                    @for (row of yourFiles(); track row.key) {
+                      <div
+                        pkItem
+                        role="listitem"
+                        [dimmed]="!row.enabled"
+                        [attr.data-testid]="'resource-' + row.type + '-' + row.name"
+                      >
+                        <ng-container tile>
+                          @if (row.type === 'prompts') {
+                            <pk-icon name="comment" />
+                          } @else {
+                            <pk-icon name="extension" />
+                          }
+                        </ng-container>
+                        <ng-container nm>
+                          <span [id]="'res-' + row.key">{{ row.name }}</span>
+                          <span class="chip" [class.off]="row.origin === 'builtin' || row.scope === 'user'">{{
+                            row.origin === 'builtin' ? ('settings.extensionsSection.builtIn' | transloco) : row.scope
+                          }}</span>
+                          <span class="chip off">{{
+                            row.type === 'prompts'
+                              ? ('threads.trustDialog.resource.prompt' | transloco)
+                              : ('chat.composerLogic.extensionType' | transloco)
+                          }}</span>
+                        </ng-container>
+                        <ng-container ds>
+                          @if (row.description) {
+                            <span>{{ row.description }}</span> ·
+                          }
+                          <span class="mono" [pkTip]="row.path">{{ row.path }}</span>
+                        </ng-container>
+                        <ng-container act>
+                          @if (row.type === 'prompts') {
+                            <button
+                              type="button"
+                              class="btn btn-sm btn-ghost"
+                              data-testid="add-to-composer"
+                              [disabled]="!chat.threadId() || !row.enabled"
+                              [pkTip]="addTitle(row)"
+                              (click)="addToComposer(row)"
+                            >
+                              {{ 'settings.extensionsSection.addToComposer' | transloco }}
+                            </button>
+                          }
+                          @if (busy(row.key)) {
+                            <span
+                              class="loading loading-spinner loading-xs"
+                              [attr.aria-label]="'settings.settingsWindow.saving' | transloco"
+                            ></span>
+                          }
+                          <input
+                            type="checkbox"
+                            class="toggle toggle-sm toggle-primary"
+                            [attr.aria-label]="
+                              (row.enabled
+                                ? ('settings.extensionsSection.turnOff' | transloco)
+                                : ('settings.extensionsSection.turnOn' | transloco)) + row.name
+                            "
+                            [checked]="row.enabled"
+                            [disabled]="busy(row.key) || row.origin === 'builtin'"
+                            (change)="store.toggleResource(row.key, $any($event.target).checked)"
+                          />
+                        </ng-container>
+                      </div>
+                    } @empty {
+                      <div class="empty">
+                        <span>{{ 'settings.extensionsSection.noExtensionOrPromptTemplateOfYour' | transloco }}</span>
+                      </div>
+                    }
+                  </div>
+                </pk-scroll-area>
+              </section>
+            }
+          } @else {
+            <div class="py-8 grid place-items-center">
+              <span
+                class="loading loading-dots loading-sm text-primary"
+                [attr.aria-label]="'settings.extensionsSection.loadingTheInventory' | transloco"
+              ></span>
+            </div>
+          }
+          @if (section() === 'extensions') {
+            <p class="t-xs muted m-0">{{ 'settings.extensionsSection.piKitAlwaysLoadsMCPCodeMode' | transloco }}</p>
+          }
+        </div>
+      </pk-tab-panel>
+    }
+    @if (section() === 'skills' && store.shows('skill-commands') && store.settings(); as settings) {
+      <pk-tab-panel value="commands" [label]="'settings.sectionTabs.commands' | transloco">
+        <section class="pk-group" [attr.aria-label]="'settings.extensionsSection.skillsAsCommands' | transloco">
+          <header>
+            <div>
+              <h4>{{ 'settings.extensionsSection.skillsAsCommands' | transloco }}</h4>
+              <p>{{ 'settings.extensionsSection.howSkillsAppearInTheComposer' | transloco }}</p>
+            </div>
+          </header>
+          <div pkSetting="skill-commands">
+            <input
+              type="checkbox"
+              class="toggle toggle-primary"
+              aria-labelledby="lbl-skill-commands"
+              aria-describedby="hint-skill-commands"
+              [checked]="settings.enableSkillCommands"
+              (change)="store.patch({ enableSkillCommands: $any($event.target).checked }, 'skills')"
+            />
+          </div>
+        </section>
+      </pk-tab-panel>
+    }
+  </pk-tabs>
+</div>
+
+@if (menu(); as m) {
+  <pk-context-menu
+    [items]="menuItems()"
+    [x]="m.x"
+    [y]="m.y"
+    [label]="('settings.extensionsSection.actionsFor' | transloco) + m.row.name"
+    (chosen)="choose($event)"
+    (dismissed)="menu.set(undefined)"
+  />
+}
+@defer (when pkgs.wizard(); prefetch on idle) {
+  @if (section() === 'extensions' && pkgs.wizard()) {
+    <pk-add-package-wizard />
+  }
+}
+@defer (when pkgs.skillEditor() !== undefined; prefetch on idle) {
+  @if (section() === 'skills') {
+    @if (skillSource(); as source) {
+      <pk-file-editor-dialog [source]="source" (closed)="pkgs.closeSkillEditor()" />
+    }
+  }
+}

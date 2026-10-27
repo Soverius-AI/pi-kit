@@ -1,0 +1,19 @@
+/* pi-kit fonts: IBM Plex plus bundled CopilotKit-inspired theme fonts. Must be the first stylesheet loaded, because
+   @import is only valid before other rules. */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+/* Self-hosted SIL OFL fonts; licenses and attribution are in fonts/. */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  src: url('./fonts/plus-jakarta-sans.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Spline Sans Mono';
+  src: url('./fonts/spline-sans-mono.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+}

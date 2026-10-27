@@ -1,0 +1,23 @@
+{
+  "name": "tools-domain-lib",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "tools/generators/domain-lib",
+  "projectType": "library",
+  "tags": [
+    "scope:tools"
+  ],
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "options": {
+        "command": "vitest run",
+        "cwd": "tools/generators/domain-lib"
+      }
+    }
+  }
+}

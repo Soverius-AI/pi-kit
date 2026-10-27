@@ -1,0 +1,16 @@
+{
+  "name": "agents-api",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/agents/api/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:agents",
+    "type:api"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

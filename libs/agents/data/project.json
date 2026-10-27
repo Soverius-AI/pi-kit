@@ -1,0 +1,35 @@
+{
+  "name": "agents-data",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/agents/data/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": [
+    "scope:agents",
+    "type:data"
+  ],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "options": {
+        "tsConfig": "libs/agents/data/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": [
+          "libs/agents/data/src/**/*.spec.ts"
+        ],
+        "setupFiles": [
+          "libs/agents/data/src/test-setup.ts"
+        ]
+      }
+    }
+  }
+}

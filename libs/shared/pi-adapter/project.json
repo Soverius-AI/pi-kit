@@ -1,0 +1,38 @@
+{
+  "name": "shared-pi-adapter",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/shared/pi-adapter/src",
+  "projectType": "library",
+  "tags": [
+    "scope:shared",
+    "type:util"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/libs/shared/pi-adapter",
+        "main": "libs/shared/pi-adapter/src/index.ts",
+        "tsConfig": "libs/shared/pi-adapter/tsconfig.lib.json",
+        "assets": [
+          "libs/shared/pi-adapter/*.md"
+        ]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": [
+        "default",
+        "^production"
+      ],
+      "options": {
+        "command": "vitest run",
+        "cwd": "libs/shared/pi-adapter"
+      }
+    }
+  }
+}
