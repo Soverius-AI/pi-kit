@@ -1,15 +1,6 @@
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import {
-  ChangeDetectionStrategy,
-  Component,
-  ElementRef,
-  computed,
-  effect,
-  inject,
-  untracked,
-  viewChild,
-} from '@angular/core';
+import { Component, ElementRef, Injector, computed, effect, inject, untracked, viewChild } from '@angular/core';
 import {
   SETTINGS_NAV_GROUPS,
   settingsSections,
@@ -19,13 +10,13 @@ import {
 } from '@pi-kit/ui';
 import { AttendantStore } from '@pi-kit/threads/api';
 import { UiStore } from '@pi-kit/data-access';
-import { PkIcon, type PkIconName, PkTip } from '@pi-kit/design-system';
+import { keepFocusInside, PkIcon, type PkIconName, PkTip } from '@pi-kit/design-system';
 import { KeyWorkflow, LocalRuntimeWizard } from '@pi-kit/settings/api';
 import { AdvancedSection, ExtensionsSection } from '@pi-kit/settings/feature-advanced';
 import { AppearanceSection } from './appearance-section';
 import { AttendantSection } from '@pi-kit/settings/feature-attendant';
 import { McpSection } from '@pi-kit/settings/feature-connectors';
-import { ConnectorsStore, SettingsStore } from '@pi-kit/settings/data';
+import { ConnectorsStore, PackagesStore, SettingsStore } from '@pi-kit/settings/data';
 import { GeneralSection } from './general-section';
 import { KeybindingsSection } from '@pi-kit/settings/feature-keybindings';
 import { ModelsSection, ProvidersSection } from '@pi-kit/settings/feature-providers';
@@ -61,7 +52,6 @@ import { ComputerUseSection } from './computer-use-section';
     VoiceSection,
     TranslocoPipe,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (bus.settings()) {
       <div class="pk-settings">
@@ -91,7 +81,7 @@ import { ComputerUseSection } from './computer-use-section';
               autocomplete="off"
               spellcheck="false"
               [value]="store.search()"
-              (input)="store.setSearch($any($event.target).value)"
+              (input)="searchSettings($any($event.target).value)"
             />
             <span
               class="saved ml-auto"
@@ -156,7 +146,7 @@ import { ComputerUseSection } from './computer-use-section';
                   [attr.aria-selected]="isCurrent(section.id)"
                   [attr.aria-controls]="'settings-page'"
                   [attr.data-section]="section.id"
-                  (click)="store.select(section.id)"
+                  (click)="selectSection(section.id)"
                 >
                   <pk-icon class="ic" [name]="icon(section.id)" />
                   <span>{{ section.label }}</span>
@@ -245,6 +235,8 @@ export class SettingsWindow {
   protected readonly i18n = inject(Language);
   protected readonly bus = inject(UiStore);
   protected readonly store = inject(SettingsStore);
+  private readonly packages = inject(PackagesStore);
+  private readonly injector = inject(Injector);
   private readonly attendant = inject(AttendantStore);
   protected readonly attendantOn = this.attendant.enabled;
   protected readonly connectors = inject(ConnectorsStore);
@@ -258,11 +250,25 @@ export class SettingsWindow {
   constructor() {
     effect(() => {
       if (this.bus.settings()) {
-        queueMicrotask(() => this.win()?.nativeElement.focus());
-        // The nav's chip says whether the attendant is on.
-        untracked(() => void this.attendant.load());
+        keepFocusInside(this.injector, () => this.win()?.nativeElement);
+        untracked(() => {
+          void this.attendant.load();
+          if (this.store.visibleSections().includes('extensions')) void this.packages.load();
+        });
       }
     });
+  }
+
+  protected selectSection(section: SettingsSectionId): void {
+    const wasVisible = this.store.visibleSections().includes('extensions');
+    this.store.select(section);
+    if (!wasVisible && this.store.visibleSections().includes('extensions')) void this.packages.load();
+  }
+
+  protected searchSettings(search: string): void {
+    const wasVisible = this.store.visibleSections().includes('extensions');
+    this.store.setSearch(search);
+    if (!wasVisible && this.store.visibleSections().includes('extensions')) void this.packages.load();
   }
 
   protected icon(id: SettingsSectionId): PkIconName {

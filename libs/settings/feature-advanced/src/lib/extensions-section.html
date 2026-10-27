@@ -316,65 +316,15 @@
                   <span class="chip off">{{ count(yourSkills()) }}</span>
                   <button
                     type="button"
-                    class="btn btn-sm btn-primary btn-square add"
-                    [pkTip]="'settings.extensionsSection.newSkill' | transloco"
-                    [attr.aria-label]="'settings.extensionsSection.newSkill' | transloco"
-                    data-testid="new-skill"
-                    (click)="newSkill.set(!newSkill())"
+                    class="btn btn-sm btn-primary"
+                    data-testid="install-skill"
+                    (click)="openInstallSkill()"
                   >
-                    <pk-icon name="plus" size="16" />
+                    {{ 'settings.skillManagement.install' | transloco }}
                   </button>
                 </header>
-                @if (newSkill()) {
-                  <form class="row pk-expand" data-testid="new-skill-form" (submit)="createSkill($event)">
-                    <div class="min-w-0">
-                      <div class="lbl">
-                        <label for="new-skill-name">{{ 'settings.extensionsSection.newSkill' | transloco }}</label>
-                      </div>
-                      <div class="hint">
-                        {{ 'settings.extensionsSection.lowercaseWordsJoinedByHyphensAFolder' | transloco }}
-                      </div>
-                      @if (newSkillError(); as text) {
-                        <div class="hint text-error" role="alert" data-testid="new-skill-error">{{ text }}</div>
-                      }
-                    </div>
-                    <div class="ctl ctl-w wrap">
-                      <input
-                        id="new-skill-name"
-                        class="input input-sm mono"
-                        [placeholder]="'settings.extensionsSection.addAMigration' | transloco"
-                        autocomplete="off"
-                        spellcheck="false"
-                        data-testid="new-skill-name"
-                        [value]="newSkillName()"
-                        (input)="newSkillName.set($any($event.target).value); newSkillError.set('')"
-                      />
-                      <select
-                        class="select select-sm"
-                        [attr.aria-label]="'settings.extensionsSection.whereTheSkillGoes' | transloco"
-                        data-testid="new-skill-scope"
-                        (change)="newSkillScope.set($any($event.target).value)"
-                      >
-                        <option value="user" [selected]="newSkillScope() === 'user'">
-                          {{ 'settings.extensionsSection.forMe' | transloco }}
-                        </option>
-                        <option value="project" [selected]="newSkillScope() === 'project'" [disabled]="!pkgs.cwd()">
-                          {{ 'settings.extensionsSection.thisProject' | transloco }}
-                        </option>
-                      </select>
-                      <button type="button" class="btn btn-sm btn-ghost" (click)="newSkill.set(false)">
-                        {{ 'chat.labels.chatInputToolbarCancelTranscribeButtonLabel' | transloco }}
-                      </button>
-                      <button
-                        type="submit"
-                        class="btn btn-sm btn-primary"
-                        data-testid="new-skill-create"
-                        [disabled]="creating()"
-                      >
-                        {{ 'settings.extensionsSection.createAndEdit' | transloco }}
-                      </button>
-                    </div>
-                  </form>
+                @if (deleteError(); as text) {
+                  <p class="text-error px-4" role="alert">{{ text }}</p>
                 }
                 <pk-scroll-area
                   class="pk-scroll-area-flush"
@@ -418,16 +368,22 @@
                           >
                             {{ 'settings.extensionsSection.addToComposer' | transloco }}
                           </button>
-                          <button
-                            type="button"
-                            class="btn btn-sm btn-ghost btn-square"
-                            [pkTip]="'threads.skillReviewDialog.editTheSkill' | transloco"
-                            [attr.aria-label]="'Edit ' + row.name"
-                            [attr.data-testid]="'edit-skill-' + row.name"
-                            (click)="pkgs.openSkillEditor(row.path)"
-                          >
-                            <pk-icon name="pencil" />
-                          </button>
+                          @if (canDeleteSkill(row)) {
+                            <button
+                              type="button"
+                              class="btn btn-sm btn-ghost btn-square text-error"
+                              [attr.data-testid]="'delete-skill-' + row.name"
+                              [attr.aria-label]="('settings.skillManagement.delete' | transloco) + ' ' + row.name"
+                              [pkTip]="('settings.skillManagement.delete' | transloco) + ' ' + row.name"
+                              [disabled]="!!deleteBusy()"
+                              (click)="confirmDeleteSkill(row)"
+                            >
+                              <pk-icon name="trash" />
+                            </button>
+                          }
+                          @if (deleteBusy() === row.path) {
+                            <span role="status">{{ 'settings.extensionsSection.working' | transloco }}</span>
+                          }
                           <input
                             type="checkbox"
                             class="toggle toggle-sm toggle-primary"
@@ -601,12 +557,5 @@
 @defer (when pkgs.wizard(); prefetch on idle) {
   @if (section() === 'extensions' && pkgs.wizard()) {
     <pk-add-package-wizard />
-  }
-}
-@defer (when pkgs.skillEditor() !== undefined; prefetch on idle) {
-  @if (section() === 'skills') {
-    @if (skillSource(); as source) {
-      <pk-file-editor-dialog [source]="source" (closed)="pkgs.closeSkillEditor()" />
-    }
   }
 }

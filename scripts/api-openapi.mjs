@@ -1,12 +1,14 @@
 // Build the backend contract and its SDK. --check compares every generated file,
 // including added/deleted files, without touching the committed output.
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createClient } from '@hey-api/openapi-ts';
 import config from '../openapi-ts.config.mjs';
+import prettier from 'prettier';
+import prettierConfig from '../prettier.config.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const committed = join(root, 'doc/api/openapi.yaml');
@@ -23,10 +25,12 @@ function run(command, args) {
 
 function files(dir, prefix = '') {
   if (!existsSync(dir)) return [];
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const name = prefix + entry.name;
-    return entry.isDirectory() ? files(join(dir, entry.name), `${name}/`) : [name];
-  }).sort();
+  return readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) => {
+      const name = prefix + entry.name;
+      return entry.isDirectory() ? files(join(dir, entry.name), `${name}/`) : [name];
+    })
+    .sort();
 }
 
 function same(file, generated) {
@@ -42,12 +46,17 @@ try {
   if (!existsSync(entry)) throw new Error('Build the backend first (nx build backend).');
   const document = check ? join(scratch, 'openapi.yaml') : committed;
   run(process.execPath, [entry, document]);
+  writeFileSync(
+    document,
+    await prettier.format(readFileSync(document, 'utf8'), { ...prettierConfig, filepath: document }),
+  );
   const sdk = check ? join(scratch, 'generated') : committedSdk;
   await createClient({ ...config, input: document, output: sdk });
   if (check) {
     same(committed, document);
     const names = files(sdk);
-    if (JSON.stringify(names) !== JSON.stringify(files(committedSdk))) throw new Error('The generated SDK file list changed. Run pnpm run api:openapi.');
+    if (JSON.stringify(names) !== JSON.stringify(files(committedSdk)))
+      throw new Error('The generated SDK file list changed. Run pnpm run api:openapi.');
     for (const name of names) same(join(committedSdk, name), join(sdk, name));
     console.log('OpenAPI document and shared/api SDK are up to date.');
   }

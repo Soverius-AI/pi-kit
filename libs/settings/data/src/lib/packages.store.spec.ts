@@ -9,9 +9,11 @@ import {
   packagesSearch,
   packagesUpdate,
   provideMockApi,
-  skillsCreate,
   skillsRead,
-  skillsSave,
+  skillsSearch,
+  skillsDetail,
+  skillsInstall,
+  skillsRemove,
 } from '@pi-kit/api';
 import { ToastStore } from '@pi-kit/data-access';
 import type { PackageActionResult, PackageItem, PackagesOverview } from '@pi-kit/protocol';
@@ -53,21 +55,11 @@ describe('PackagesStore', () => {
     setEnabled: vi.fn(async (_id: string, _enabled: boolean, _cwd?: string) => current),
     search: vi.fn(async () => ({ results: [], total: 0 })),
     detail: vi.fn(),
-    newSkill: vi.fn(async (_body: unknown, _cwd?: string) => ({
-      path: '/u/skills/x/SKILL.md',
-      text: '---\n',
-      mtime: 1,
-      name: 'x',
-      scope: 'user' as const,
-    })),
     skillFile: vi.fn(),
-    saveSkill: vi.fn(async (_path: string, _body: { text: string; mtime: number }, _cwd?: string) => ({
-      path: '/u/skills/x/SKILL.md',
-      text: 't',
-      mtime: 2,
-      name: 'x',
-      scope: 'user' as const,
-    })),
+    searchSkills: vi.fn(async () => ({ results: [] })),
+    skillDetail: vi.fn(async () => ({ name: 'test', description: 'Real source description' })),
+    installSkill: vi.fn(async () => ({ message: 'Installed skill.', reloaded: 1 })),
+    removeSkill: vi.fn(async () => ({ message: 'Deleted skill.', reloaded: 0 })),
   };
   const settings = { loadResources: vi.fn(async () => undefined), markReload: vi.fn() };
   const toasts = { show: vi.fn() };
@@ -93,12 +85,22 @@ describe('PackagesStore', () => {
           [packagesEnabled, api.setEnabled, (o) => [o.path?.['id'], o.body?.['enabled'], o.query?.['cwd']]],
           [packagesSearch, api.search, (o) => [o.query?.['q'], o.query?.['kind'], o.query?.['cwd']]],
           [packagesDetail, api.detail, (o) => [o.query?.['source'], o.query?.['cwd']]],
-          [skillsCreate, api.newSkill, (o) => [o.body, o.query?.['cwd']]],
           [skillsRead, api.skillFile, (o) => [o.query?.['path'], o.query?.['cwd']]],
-          [skillsSave, api.saveSkill, (o) => [o.query?.['path'], o.body, o.query?.['cwd']]],
+          [skillsSearch, api.searchSkills, (o) => [o.query?.['q']]],
+          [skillsDetail, api.skillDetail, (o) => [o.query?.['source'], o.query?.['name']]],
+          [skillsInstall, api.installSkill, (o) => [o.body, o.query?.['cwd']]],
+          [skillsRemove, api.removeSkill, (o) => [o.query?.['path'], o.body, o.query?.['cwd']]],
         ]),
       ],
     });
+  });
+
+  it('reads a selected skill preview without installing or refreshing resources', async () => {
+    const store = TestBed.inject(PackagesStore);
+    expect(await store.skillDetail('org/repo', 'test')).toMatchObject({ description: 'Real source description' });
+    expect(api.skillDetail).toHaveBeenCalledWith('org/repo', 'test');
+    expect(api.installSkill).not.toHaveBeenCalled();
+    expect(settings.loadResources).not.toHaveBeenCalled();
   });
 
   it('reads the packages for the open folder, and counts the updates', async () => {
@@ -172,20 +174,34 @@ describe('PackagesStore', () => {
     expect(toasts.show).toHaveBeenLastCalledWith('error', 'could not save');
   });
 
-  it('a new skill opens the editor on its file and asks for a reload; a bad name is handed back', async () => {
+  it('searches the skill catalog and refreshes resources after skill-only mutations', async () => {
     const store = TestBed.inject(PackagesStore);
-    const made = await store.newSkill({ name: 'x', scope: 'user' });
-    expect(made.ok).toBe(true);
-    expect(api.newSkill).toHaveBeenCalledWith({ name: 'x', scope: 'user' }, '/proj');
-    expect(store.skillEditor()).toEqual({ path: '/u/skills/x/SKILL.md', created: true });
+    expect(await store.searchSkills('angular')).toEqual({ results: [] });
+    expect(api.searchSkills).toHaveBeenCalledWith('angular');
+    const body = { source: 'org/repo', name: 'angular', scope: 'project' as const };
+    const installing = store.installSkill(body);
+    expect(store.busy().has('skill:+')).toBe(true);
+    expect(await installing).toEqual({ ok: true });
+    expect(api.installSkill).toHaveBeenCalledWith(body, '/proj');
+    expect(settings.loadResources).toHaveBeenCalledOnce();
     expect(settings.markReload).toHaveBeenCalledWith('extensions and skills');
-    store.closeSkillEditor();
-    expect(store.skillEditor()).toBeUndefined();
-    api.newSkill.mockRejectedValueOnce(new Error('exists already'));
-    expect(await store.newSkill({ name: 'x', scope: 'user' })).toEqual({ ok: false, error: 'exists already' });
-    store.openSkillEditor('/u/skills/y/SKILL.md');
-    expect(store.skillEditor()).toEqual({ path: '/u/skills/y/SKILL.md' });
-    await store.saveSkill('/u/skills/y/SKILL.md', { text: 't', mtime: 1 });
-    expect(api.saveSkill).toHaveBeenCalledWith('/u/skills/y/SKILL.md', { text: 't', mtime: 1 }, '/proj');
+    expect(toasts.show).toHaveBeenCalledWith('success', 'Installed skill.', 4000);
+    expect(await store.removeSkill('/proj/.pi/skills/angular/SKILL.md', 123)).toEqual({ ok: true });
+    expect(api.removeSkill).toHaveBeenCalledWith('/proj/.pi/skills/angular/SKILL.md', { mtime: 123 }, '/proj');
+    expect(settings.loadResources).toHaveBeenCalledTimes(2);
+    expect(store.busy().size).toBe(0);
+  });
+
+  it('returns install and delete failures inline without refreshing resources', async () => {
+    const store = TestBed.inject(PackagesStore);
+    api.installSkill.mockRejectedValueOnce(new Error('Source rejected'));
+    expect(await store.installSkill({ source: 'bad', name: 'test', scope: 'user' })).toEqual({
+      ok: false,
+      error: 'Source rejected',
+    });
+    api.removeSkill.mockRejectedValueOnce(new Error('File changed'));
+    expect(await store.removeSkill('/skill/SKILL.md', 1)).toEqual({ ok: false, error: 'File changed' });
+    expect(settings.loadResources).not.toHaveBeenCalled();
+    expect(store.busy().size).toBe(0);
   });
 });
