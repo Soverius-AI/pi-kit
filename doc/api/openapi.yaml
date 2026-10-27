@@ -5885,7 +5885,7 @@ paths:
         - skills
   /api/skills/detail:
     get:
-      description: Reads the selected skill’s real description, instructions, metadata, and file summary from a bounded temporary checkout. No skill is installed or executed.
+      description: Reads the selected skill’s real description, instructions, metadata, and file summary from a temporary checkout. No skill is installed or executed.
       operationId: Skills_detail
       parameters:
         - name: source

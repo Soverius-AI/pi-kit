@@ -1964,7 +1964,7 @@ export const skillsSearch = <ThrowOnError extends boolean = false>(options: Opti
 /**
  * Preview a skill from GitHub
  *
- * Reads the selected skill’s real description, instructions, metadata, and file summary from a bounded temporary checkout. No skill is installed or executed.
+ * Reads the selected skill’s real description, instructions, metadata, and file summary from a temporary checkout. No skill is installed or executed.
  */
 export const skillsDetail = <ThrowOnError extends boolean = false>(options: Options<SkillsDetailData, ThrowOnError>): RequestResult<SkillsDetailResponses, SkillsDetailErrors, ThrowOnError> => (options.client ?? client).get<SkillsDetailResponses, SkillsDetailErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

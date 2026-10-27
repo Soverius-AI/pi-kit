@@ -10,10 +10,6 @@ import { run } from '../worktree/worktree-git';
 export class SkillInstallConflict extends Error {}
 
 export const INSTALL_METADATA = '.pi-kit-source.json';
-const MAX_FILES = 10000;
-const MAX_BYTES = 100 * 1024 * 1024; // Selected skill payload, not the whole collection.
-const MAX_REPOSITORY_BYTES = 1024 * 1024 * 1024;
-const MAX_DEPTH = 10;
 const activeDestinations = new Set<string>();
 
 export function canonicalSkillSource(source: string): string {
@@ -76,36 +72,23 @@ export function parseSkillManifest(text: string): SkillManifest {
   };
 }
 
-/** Walk without following links, bounding both repository discovery and the complete copied payload. */
-async function inventory(root: string, maxBytes = MAX_BYTES, strict = true): Promise<string[]> {
+/** Walk without following links or imposing repository or payload quotas. */
+async function inventory(root: string, strict = true): Promise<string[]> {
   const files: string[] = [];
-  let bytes = 0;
-  let entries = 0;
-  async function visit(dir: string, depth: number): Promise<void> {
-    if (depth > MAX_DEPTH) throw new Error('Repository directory depth limit exceeded');
+  const directories = [root];
+  for (let dir = directories.pop(); dir !== undefined; dir = directories.pop()) {
     for (const entry of await readdir(dir, { withFileTypes: true })) {
       if (entry.name === '.git') continue;
-      if (++entries > MAX_FILES) throw new Error('Repository file count limit exceeded');
       const path = join(dir, entry.name);
       const stat = await lstat(path);
       if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile())) {
         if (strict) throw new Error('Selected skill contains unsafe links or special files');
         continue;
       }
-      if (stat.isDirectory()) await visit(path, depth + 1);
-      else {
-        bytes += stat.size;
-        if (bytes > maxBytes)
-          throw new Error(
-            maxBytes === MAX_BYTES
-              ? 'Selected skill exceeds the 100 MB size limit'
-              : 'Repository exceeds the 1 GB size limit',
-          );
-        files.push(relative(root, path));
-      }
+      if (stat.isDirectory()) directories.push(path);
+      else files.push(relative(root, path));
     }
   }
-  await visit(root, 0);
   return files;
 }
 
@@ -197,20 +180,14 @@ async function withFetchedSkill<T>(
       return result.stdout;
     };
     await git(temp, ['clone', '--depth=1', '--single-branch', '--no-tags', '--no-checkout', '--', source, repo]);
-    // Bound the downloaded object store before materializing it. The fetch itself is time-bounded;
-    // git offers no hard downloaded-byte quota without an OS-level filesystem quota.
-    await inventory(join(repo, '.git'), MAX_REPOSITORY_BYTES);
     let commit = (await git(repo, ['rev-parse', 'HEAD'])).trim();
     if (input.commit && commit !== input.commit) {
       await git(repo, ['fetch', '--depth=1', '--no-tags', '--', source, input.commit]);
       commit = (await git(repo, ['rev-parse', 'FETCH_HEAD'])).trim();
       if (commit !== input.commit) throw new Error('Fetched commit does not match requested commit');
-      await inventory(join(repo, '.git'), MAX_REPOSITORY_BYTES);
     }
     if (!/^[a-f0-9]{40,64}$/.test(commit)) throw new Error('Invalid repository commit');
     const tree = (await git(repo, ['ls-tree', '-r', '-l', '-z', commit])).split('\0').filter(Boolean);
-    let total = 0;
-    if (tree.length > MAX_FILES) throw new Error('Repository file count limit exceeded');
     const unsafeEntries = new Set<string>();
     for (const entry of tree) {
       const match = /^(\d+) (blob|commit) [a-f0-9]+\s+(\d+|-)\t([\s\S]+)$/.exec(entry);
@@ -222,28 +199,17 @@ async function withFetchedSkill<T>(
       )
         throw new Error('Repository contains unsafe tree entries');
       const parts = match[4].split('/');
-      if (
-        parts.length > MAX_DEPTH ||
-        parts.some((p) => !p || p === '.' || p === '..' || p.toLowerCase() === '.git' || p.includes('\\'))
-      )
+      if (parts.some((p) => !p || p === '.' || p === '..' || p.toLowerCase() === '.git' || p.includes('\\')))
         throw new Error('Unsafe repository path');
       if (match[1] === '120000' || match[1] === '160000') unsafeEntries.add(match[4]);
-      total += match[3] === '-' ? 0 : Number(match[3]);
-      if (total > MAX_REPOSITORY_BYTES) throw new Error('Repository exceeds the 1 GB size limit');
     }
     // Materialize symlinks as inert regular files, and never initialize submodules.
     // Keep their tree identities so neither discovery nor payload copying treats them as files.
     await git(repo, ['checkout', '--force', '--detach', commit]);
-    const files = (await inventory(repo, MAX_REPOSITORY_BYTES, false)).filter(
-      (file) => !unsafeEntries.has(file.split(sep).join('/')),
-    );
+    const files = (await inventory(repo, false)).filter((file) => !unsafeEntries.has(file.split(sep).join('/')));
     const candidates: string[] = [];
     for (const file of files.filter((f) => basename(f) === 'SKILL.md')) {
       const folder = dirname(file);
-      if ((await lstat(join(repo, file))).size > 256 * 1024) {
-        if (basename(folder) === input.name) throw new Error('Selected SKILL.md too large');
-        continue;
-      }
       const text = await readFile(join(repo, file), 'utf8');
       let manifest: ReturnType<typeof parseSkillManifest>;
       try {
@@ -314,9 +280,7 @@ export async function previewSkill(
           const text = await readFile(join(selectedRoot, 'SKILL.md'), 'utf8');
           const manifest = parseSkillManifest(text);
           const warnings = [...manifest.warnings];
-          if (text.length > 40000) warnings.push('SKILL.md preview was truncated to 40,000 characters.');
           const allScripts = payload.filter((file) => file.split(sep)[0] === 'scripts').sort();
-          if (allScripts.length > 20) warnings.push('Script listing was truncated to 20 files.');
           let bytes = 0;
           for (const file of payload) bytes += (await lstat(join(selectedRoot, file))).size;
           for (const file of licenses) bytes += (await lstat(join(repo, file))).size;
@@ -331,8 +295,8 @@ export async function previewSkill(
             commit,
             files: payload.length + licenses.length,
             bytes,
-            scripts: allScripts.slice(0, 20).map((file) => file.split(sep).join('/')),
-            content: text.slice(0, 40000),
+            scripts: allScripts.map((file) => file.split(sep).join('/')),
+            content: text,
             warnings,
           };
         },

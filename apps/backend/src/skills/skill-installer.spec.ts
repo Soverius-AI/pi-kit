@@ -1,4 +1,16 @@
-import { cp, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  symlink,
+  truncate,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -172,10 +184,9 @@ describe('skill-only GitHub installer', () => {
     await symlink('/etc/passwd', join(fixture, 'unsafe'));
     await expect(installSkill(input())).rejects.toThrow('unsafe');
   });
-  it('rejects unsupported git tree modes and unsafe paths and oversized objects before checkout', async () => {
+  it('rejects unsupported git tree modes and unsafe paths before checkout', async () => {
     for (const tree of [
       `100600 blob ${commit} 10\tfile\0`,
-      `100644 blob ${commit} 1073741825\tlarge\0`,
       `100644 blob ${commit} 1\t../escape\0`,
       `120000 blob ${commit} 1\tbad\\path\0`,
       `160000 commit ${commit} -\t.git/module\0`,
@@ -249,18 +260,67 @@ describe('skill-only GitHub installer', () => {
     },
   );
 
-  it('accepts a collection over the old 100 MB limit when the selected skill is small', async () => {
+  it('accepts a repository tree exceeding the former 1 GiB size cap', async () => {
     await file('skills/example/SKILL.md', manifest());
     const original = vi.mocked(run).getMockImplementation()!;
     vi.mocked(run).mockImplementation(async (dir, args, options) => {
       const result = await original(dir, args, options);
       return args.includes('ls-tree')
-        ? { ...result, stdout: `100644 blob ${commit} 209715200\tunrelated-asset\0` }
+        ? { ...result, stdout: `100644 blob ${commit} 2147483648\tunrelated-asset\0` }
         : result;
     });
     await installSkill(input());
     expect(await readFile(join(agentDir, 'skills/example/SKILL.md'), 'utf8')).toBe(manifest());
   });
+  it('previews repositories and selected payloads with more than 10,000 files', async () => {
+    await file('SKILL.md', manifest());
+    await mkdir(join(fixture, 'assets'));
+    for (let offset = 0; offset < 10001; offset += 128) {
+      await Promise.all(
+        Array.from({ length: Math.min(128, 10001 - offset) }, (_, i) =>
+          writeFile(join(fixture, 'assets', `${offset + i}.txt`), ''),
+        ),
+      );
+    }
+    const original = vi.mocked(run).getMockImplementation()!;
+    const tree = Array.from({ length: 10001 }, (_, i) => `100644 blob ${commit} 0\tassets/${i}.txt\0`).join('');
+    vi.mocked(run).mockImplementation(async (dir, args, options) => {
+      const result = await original(dir, args, options);
+      return args.includes('ls-tree') ? { ...result, stdout: tree } : result;
+    });
+    const detail = await previewSkill({ source: 'owner/many-files', name: 'example' });
+    expect(detail.files).toBe(10002);
+    expect(detail.content).toBe(manifest());
+    await expect(lstat(fetchDir)).rejects.toMatchObject({ code: 'ENOENT' });
+  }, 30000);
+
+  it('installs skills and supporting files nested beyond ten directories', async () => {
+    const nested = Array.from({ length: 20 }, (_, i) => `level-${i}`).join('/');
+    await file(`${nested}/example/SKILL.md`, manifest());
+    await file(`${nested}/example/${nested}/reference.txt`, 'deep supporting content');
+    const original = vi.mocked(run).getMockImplementation()!;
+    vi.mocked(run).mockImplementation(async (dir, args, options) => {
+      const result = await original(dir, args, options);
+      return args.includes('ls-tree')
+        ? { ...result, stdout: `100644 blob ${commit} 10\t${nested}/example/SKILL.md\0` }
+        : result;
+    });
+    await installSkill(input());
+    expect(await readFile(join(agentDir, 'skills/example', nested, 'reference.txt'), 'utf8')).toBe(
+      'deep supporting content',
+    );
+  });
+
+  it('previews selected payloads larger than the former 100 MiB size cap', async () => {
+    await file('SKILL.md', manifest());
+    await file('large-asset.bin', '');
+    const bytes = 100 * 1024 * 1024 + 1;
+    await truncate(join(fixture, 'large-asset.bin'), bytes);
+    const detail = await previewSkill({ source: 'owner/large-payload', name: 'example' });
+    expect(detail.files).toBe(2);
+    expect(detail.bytes).toBe(bytes + Buffer.byteLength(manifest()));
+  });
+
   it('serializes same-destination installs without overwriting', async () => {
     await file('SKILL.md', manifest());
     const results = await Promise.allSettled([installSkill(input()), installSkill(input())]);
@@ -305,26 +365,25 @@ describe('safe skill metadata previews', () => {
     expect(vi.mocked(run).mock.calls.every(([, args]) => !args.includes('check.sh'))).toBe(true);
   });
 
-  it('omits invalid optional metadata, bounds content/scripts and ignores unrelated broken manifests', async () => {
-    await file(
-      'SKILL.md',
+  it('returns complete instructions and script listings while omitting invalid optional metadata', async () => {
+    const text =
       '---\nname: example\ndescription: valid\nlicense: [MIT]\ncompatibility: 42\nmetadata:\n  author: {name: bad}\n---\n' +
-        'x'.repeat(41000),
-    );
+      'x'.repeat(300000);
+    await file('SKILL.md', text);
     await file('broken/SKILL.md', '---\nname: [invalid\n---\n');
     for (let i = 0; i < 22; i++) await file(`scripts/task-${i}.sh`, 'echo x');
-    const detail = await previewSkill({ source: 'owner/preview-bounded', name: 'example' });
+    const detail = await previewSkill({ source: 'owner/preview-complete', name: 'example' });
     expect(detail).toMatchObject({ path: '.', files: 24 });
     expect(detail.license).toBeUndefined();
     expect(detail.compatibility).toBeUndefined();
     expect(detail.author).toBeUndefined();
-    expect(detail.content).toHaveLength(40000);
-    expect(detail.scripts).toHaveLength(20);
-    expect(detail.warnings.join(' ')).toContain('truncated');
+    expect(detail.content).toBe(text);
+    expect(detail.scripts).toHaveLength(22);
+    expect(detail.warnings.join(' ')).not.toContain('truncated');
     expect(detail.warnings.join(' ')).toContain('Invalid license');
   });
 
-  it('deduplicates and caches bounded metadata without retaining a checkout or sharing mutable results', async () => {
+  it('deduplicates and caches metadata without retaining a checkout or sharing mutable results', async () => {
     await file('SKILL.md', manifest());
     const request = { source: 'owner/preview-cache', name: 'example' };
     const [first, second] = await Promise.all([previewSkill(request), previewSkill(request)]);

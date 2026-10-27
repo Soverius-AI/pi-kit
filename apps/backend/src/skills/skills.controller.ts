@@ -70,7 +70,7 @@ export class SkillsController {
   @ApiOperation({
     summary: 'Preview a skill from GitHub',
     description:
-      'Reads the selected skill’s real description, instructions, metadata, and file summary from a bounded temporary checkout. No skill is installed or executed.',
+      'Reads the selected skill’s real description, instructions, metadata, and file summary from a temporary checkout. No skill is installed or executed.',
   })
   @Responds(SkillDetailSchema)
   @Fails({ 400: 'The skill cannot be previewed.', 409: 'The selected skill name is ambiguous.' })
