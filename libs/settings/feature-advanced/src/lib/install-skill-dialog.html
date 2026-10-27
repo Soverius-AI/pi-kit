@@ -1,0 +1,319 @@
+<div class="pk-wf" data-testid="install-skill-dialog">
+  <button
+    type="button"
+    class="pk-backdrop"
+    tabindex="-1"
+    [disabled]="installing()"
+    [attr.aria-label]="'settings.skillManagement.cancel' | transloco"
+    (click)="close()"
+  ></button>
+  <div
+    #win
+    class="win wide skill-window"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    aria-labelledby="skill-install-title"
+    [attr.aria-busy]="installing()"
+    (keydown.escape)="$event.preventDefault(); $event.stopPropagation(); close()"
+  >
+    <div class="head">
+      <span class="heading-icon"><pk-icon name="skill" size="20" /></span>
+      <div class="heading-copy">
+        <h2 id="skill-install-title">{{ 'settings.skillManagement.install' | transloco }}</h2>
+        <p class="hint">
+          {{
+            (selected() ? 'settings.skillManagement.reviewSubtitle' : 'settings.skillManagement.browseSubtitle')
+              | transloco
+          }}
+        </p>
+      </div>
+      <span class="step chip off">{{
+        (selected() ? 'settings.skillManagement.reviewStep' : 'settings.skillManagement.browseStep') | transloco
+      }}</span>
+      <button
+        type="button"
+        class="pk-close"
+        [disabled]="installing()"
+        [attr.aria-label]="'settings.addPackageWizard.close' | transloco"
+        (click)="close()"
+      >
+        <pk-icon name="close" />
+      </button>
+    </div>
+
+    <div class="body skill-body">
+      @if (selected(); as skill) {
+        <div class="skill-review" data-testid="skill-install-confirm">
+          <div class="skill-identity">
+            <span class="skill-tile"><pk-icon name="skill" size="24" /></span>
+            <div class="identity-copy">
+              <h3>{{ skill.name }}</h3>
+              <a
+                [href]="'https://github.com/' + skill.source"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="source-link"
+                >{{ skill.source }}<pk-icon name="arrow-right" size="12"
+              /></a>
+            </div>
+            <span class="install-count">{{
+              'settings.skillManagement.installs' | transloco: { count: (skill.installs | number) }
+            }}</span>
+          </div>
+
+          @if (loading()) {
+            <div class="preview-loading" role="status" data-testid="skill-preview-loading">
+              <span class="loading loading-spinner loading-sm"></span>
+              <div>
+                <span class="lbl">{{ 'settings.skillManagement.reading' | transloco }}</span>
+                <p class="hint">{{ 'settings.skillManagement.readingHint' | transloco }}</p>
+              </div>
+            </div>
+          } @else if (detailError(); as text) {
+            <div class="box detail-error" role="alert">
+              <p>{{ text }}</p>
+              <button type="button" class="btn btn-sm" (click)="retryPreview()">
+                {{ 'settings.skillManagement.retry' | transloco }}
+              </button>
+            </div>
+          } @else if (info(); as d) {
+            <section class="description-block" aria-labelledby="skill-description-title">
+              <h4 id="skill-description-title">{{ 'settings.skillManagement.whatItDoes' | transloco }}</h4>
+              <p class="skill-description" data-testid="skill-description">{{ d.description }}</p>
+            </section>
+
+            <div class="facts-panel">
+              <dl class="skill-facts">
+                <div>
+                  <dt>{{ 'settings.skillManagement.contents' | transloco }}</dt>
+                  <dd>
+                    {{ 'settings.skillManagement.fileCount' | transloco: { count: d.files } }}
+                    <span class="muted">· {{ size(d.bytes) }}</span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>{{ 'settings.skillManagement.license' | transloco }}</dt>
+                  <dd>{{ d.license || ('settings.skillManagement.notSpecified' | transloco) }}</dd>
+                </div>
+                @if (d.author) {
+                  <div>
+                    <dt>{{ 'settings.skillManagement.author' | transloco }}</dt>
+                    <dd>{{ d.author }}</dd>
+                  </div>
+                }
+                <div>
+                  <dt>{{ 'settings.skillManagement.revision' | transloco }}</dt>
+                  <dd>
+                    <a [href]="sourceUrl()" class="source-link mono" target="_blank" rel="noopener noreferrer"
+                      >{{ d.commit.slice(0, 8) }}<pk-icon name="arrow-right" size="12"
+                    /></a>
+                  </dd>
+                </div>
+                <div>
+                  <dt>{{ 'settings.skillManagement.sourceFolder' | transloco }}</dt>
+                  <dd class="mono break-all">{{ d.path }}</dd>
+                </div>
+              </dl>
+              @if (d.compatibility) {
+                <p class="compatibility">
+                  <span class="lbl">{{ 'settings.skillManagement.requirements' | transloco }}</span>
+                  {{ d.compatibility }}
+                </p>
+              }
+            </div>
+
+            <details class="content-preview" data-testid="skill-content-preview">
+              <summary>
+                <pk-icon name="file-markdown" />{{ 'settings.skillManagement.readInstructions' | transloco
+                }}<pk-icon name="chevron-down" size="14" />
+              </summary>
+              <pre tabindex="0" [attr.aria-label]="'settings.skillManagement.readInstructions' | transloco">{{
+                d.content
+              }}</pre>
+            </details>
+            @if (d.scripts.length) {
+              <details class="content-preview">
+                <summary>
+                  <pk-icon name="code" />{{ 'settings.skillManagement.bundledScripts' | transloco
+                  }}<span class="chip off">{{ d.scripts.length }}</span
+                  ><pk-icon name="chevron-down" size="14" />
+                </summary>
+                <ul class="script-list">
+                  @for (script of d.scripts; track script) {
+                    <li class="mono">{{ script }}</li>
+                  }
+                </ul>
+              </details>
+            }
+            @for (warning of d.warnings; track $index) {
+              <p class="hint preview-warning"><pk-icon name="alert-circle" size="14" />{{ warning }}</p>
+            }
+
+            <section class="destination" aria-labelledby="skill-destination-title">
+              <h4 id="skill-destination-title">{{ 'settings.skillManagement.destination' | transloco }}</h4>
+              <div
+                class="destination-options"
+                role="group"
+                [attr.aria-label]="'settings.extensionsSection.whereTheSkillGoes' | transloco"
+              >
+                <button
+                  type="button"
+                  [attr.aria-pressed]="scope() === 'user'"
+                  [disabled]="installing()"
+                  (click)="scope.set('user')"
+                >
+                  <span class="option-top"
+                    ><span>{{ 'settings.extensionsSection.forMe' | transloco }}</span
+                    ><span class="selection-dot" [class.on]="scope() === 'user'"></span
+                  ></span>
+                  <span class="hint">{{ 'settings.skillManagement.userScopeHint' | transloco }}</span>
+                </button>
+                <button
+                  type="button"
+                  [attr.aria-pressed]="scope() === 'project'"
+                  [disabled]="installing() || !projectAvailable()"
+                  (click)="scope.set('project')"
+                >
+                  <span class="option-top"
+                    ><span>{{ 'settings.extensionsSection.thisProject' | transloco }}</span
+                    ><span class="selection-dot" [class.on]="scope() === 'project'"></span
+                  ></span>
+                  <span class="hint">{{
+                    (projectAvailable()
+                      ? 'settings.skillManagement.projectScopeHint'
+                      : 'settings.skillManagement.trustFirst'
+                    ) | transloco
+                  }}</span>
+                </button>
+              </div>
+              <div class="destination-path">
+                <pk-icon name="folder" size="14" /><code>{{ destination() }}</code>
+              </div>
+            </section>
+            <div class="safety-note">
+              <pk-icon name="alert-circle" size="16" />
+              <div>
+                <p>{{ 'settings.skillManagement.reviewWarning' | transloco }}</p>
+                <p class="hint">{{ 'settings.skillManagement.installBehavior' | transloco }}</p>
+              </div>
+            </div>
+          }
+        </div>
+      } @else {
+        <div class="search-field">
+          <pk-icon name="search" size="18" />
+          <input
+            id="install-skill-search"
+            type="search"
+            maxlength="200"
+            autocomplete="off"
+            spellcheck="false"
+            [attr.aria-label]="'settings.skillManagement.search' | transloco"
+            [placeholder]="'settings.skillManagement.searchPlaceholder' | transloco"
+            [value]="query()"
+            (input)="search($any($event.target).value)"
+          />
+        </div>
+        @if (query().trim().length < 2) {
+          <div class="browse-empty">
+            <span class="empty-tile"><pk-icon name="search" size="24" /></span>
+            <h3>{{ 'settings.skillManagement.findTitle' | transloco }}</h3>
+            <p>{{ 'settings.skillManagement.findHint' | transloco }}</p>
+            <span class="hint">{{ 'settings.skillManagement.minimum' | transloco }}</span>
+          </div>
+        } @else {
+          <div class="results-caption">
+            <span role="status">{{
+              (searching() ? 'settings.skillManagement.searching' : 'settings.skillManagement.resultsCount')
+                | transloco: { count: results().length }
+            }}</span
+            ><span>{{ 'settings.skillManagement.selectHint' | transloco }}</span>
+          </div>
+          <div
+            class="skill-results"
+            [attr.aria-busy]="searching()"
+            role="group"
+            [attr.aria-label]="'settings.skillManagement.search' | transloco"
+          >
+            @for (skill of results(); track skill.id) {
+              <button
+                type="button"
+                class="skill-result"
+                [attr.data-testid]="'skill-result-' + skill.name"
+                (click)="select(skill)"
+              >
+                <span class="result-tile"><pk-icon name="skill" size="20" /></span>
+                <span class="result-copy"
+                  ><span class="result-name">{{ skill.name }}</span
+                  ><span class="result-source">{{ skill.source }}</span>
+                  @if (cachedDescription(skill); as description) {
+                    <span class="result-description">{{ description }}</span>
+                  }
+                </span>
+                <span class="result-meta"
+                  ><span>{{
+                    'settings.skillManagement.installs' | transloco: { count: (skill.installs | number) }
+                  }}</span
+                  ><pk-icon name="chevron-right" size="16"
+                /></span>
+              </button>
+            }
+            @if (searching() && !results().length) {
+              <div class="preview-loading" role="status">
+                <span class="loading loading-spinner loading-sm"></span
+                ><span class="hint">{{ 'settings.skillManagement.searching' | transloco }}</span>
+              </div>
+            }
+            @if (searched() && !searching() && !error() && !results().length) {
+              <div class="browse-empty">
+                <pk-icon name="search" size="24" />
+                <h3>{{ 'settings.skillManagement.empty' | transloco }}</h3>
+                <p>{{ 'settings.skillManagement.emptyHint' | transloco }}</p>
+              </div>
+            }
+          </div>
+        }
+      }
+      @if (error(); as text) {
+        <p role="alert" class="request-error">{{ text }}</p>
+      }
+    </div>
+
+    <div class="foot skill-footer">
+      @if (selected()) {
+        <button type="button" class="btn btn-sm btn-ghost" [disabled]="installing()" (click)="back()">
+          <pk-icon name="back" size="15" />{{ 'settings.skillManagement.back' | transloco }}
+        </button>
+        <span class="footer-spacer"></span>
+        <button type="button" class="btn btn-sm" [disabled]="installing()" (click)="close()">
+          {{ 'settings.skillManagement.cancel' | transloco }}
+        </button>
+        <button
+          type="button"
+          class="btn btn-sm btn-primary"
+          data-testid="install-skill-confirm"
+          [disabled]="installing() || !info() || (scope() === 'project' && !projectAvailable())"
+          (click)="install()"
+        >
+          @if (installing()) {
+            <span class="loading loading-spinner loading-xs"></span>
+          }
+          {{ (installing() ? 'settings.skillManagement.installing' : 'settings.skillManagement.install') | transloco }}
+        </button>
+      } @else {
+        <p class="catalog-note">
+          <pk-icon name="globe" size="14" /><span
+            >{{ 'settings.skillManagement.disclosureShort' | transloco }}
+            <a href="https://skills.sh" target="_blank" rel="noopener noreferrer">{{
+              'settings.skillManagement.catalog' | transloco
+            }}</a></span
+          >
+        </p>
+        <button type="button" class="btn btn-sm" (click)="close()">
+          {{ 'settings.skillManagement.cancel' | transloco }}
+        </button>
+      }
+    </div>
+  </div>
+</div>

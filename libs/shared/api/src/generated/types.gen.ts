@@ -450,6 +450,10 @@ export type DatabaseProtection = {
     recoveryKeyShown: boolean;
 };
 
+export type DeleteSkill = {
+    mtime: number;
+};
+
 export type Diagnostics = {
     backend: {
         host: string;
@@ -646,6 +650,13 @@ export type Installing = {
 export type InstallPackage = {
     source: string;
     scope?: 'user' | 'project';
+};
+
+export type InstallSkill = {
+    source: string;
+    name: string;
+    scope: 'user' | 'project';
+    commit?: string;
 };
 
 export type KeybindingInfo = {
@@ -1377,11 +1388,6 @@ export type NewLocal = {
     setup?: string | null;
 };
 
-export type NewSkill = {
-    name: string;
-    scope: 'user' | 'project';
-};
-
 export type NewWorktree = {
     base?: string;
     carryChanges?: boolean;
@@ -2081,6 +2087,27 @@ export type SignInPasteRequest = {
     url: string;
 };
 
+export type SkillActionResult = {
+    message: string;
+    reloaded: number;
+};
+
+export type SkillDetail = {
+    source: string;
+    name: string;
+    description: string;
+    license?: string;
+    compatibility?: string;
+    author?: string;
+    path: string;
+    commit: string;
+    files: number;
+    bytes: number;
+    scripts: Array<string>;
+    content: string;
+    warnings: Array<string>;
+};
+
 export type SkillDraft = {
     id: string;
     threadId: string;
@@ -2111,9 +2138,17 @@ export type SkillFile = {
     scope: 'user' | 'project';
 };
 
-export type SkillFilePut = {
-    text: string;
-    mtime: number;
+export type SkillSearchResponse = {
+    results: Array<SkillSearchResult>;
+    error?: string;
+};
+
+export type SkillSearchResult = {
+    id: string;
+    name: string;
+    source: string;
+    installs: number;
+    url: string;
 };
 
 export type SkillVerification = {
@@ -8058,18 +8093,50 @@ export type UpdateEventsResponses = {
 
 export type UpdateEventsResponse = UpdateEventsResponses[keyof UpdateEventsResponses];
 
-export type SkillsCreateData = {
-    body: NewSkill;
+export type SkillsSearchData = {
+    body?: never;
     path?: never;
-    query?: {
-        cwd?: string;
+    query: {
+        q: string;
     };
-    url: '/api/skills';
+    url: '/api/skills/search';
 };
 
-export type SkillsCreateErrors = {
+export type SkillsSearchErrors = {
     /**
-     * The name is not a skill name.
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type SkillsSearchError = SkillsSearchErrors[keyof SkillsSearchErrors];
+
+export type SkillsSearchResponses = {
+    /**
+     * OK
+     */
+    200: SkillSearchResponse;
+};
+
+export type SkillsSearchResponse = SkillsSearchResponses[keyof SkillsSearchResponses];
+
+export type SkillsDetailData = {
+    body?: never;
+    path?: never;
+    query: {
+        source: string;
+        name: string;
+    };
+    url: '/api/skills/detail';
+};
+
+export type SkillsDetailErrors = {
+    /**
+     * The skill cannot be previewed.
      */
     400: Problem;
     /**
@@ -8077,21 +8144,92 @@ export type SkillsCreateErrors = {
      */
     401: Problem;
     /**
-     * A skill of that name exists, or the folder is not trusted.
+     * The selected skill name is ambiguous.
      */
     409: Problem;
 };
 
-export type SkillsCreateError = SkillsCreateErrors[keyof SkillsCreateErrors];
+export type SkillsDetailError = SkillsDetailErrors[keyof SkillsDetailErrors];
 
-export type SkillsCreateResponses = {
+export type SkillsDetailResponses = {
     /**
      * OK
      */
-    200: SkillFile;
+    200: SkillDetail;
 };
 
-export type SkillsCreateResponse = SkillsCreateResponses[keyof SkillsCreateResponses];
+export type SkillsDetailResponse = SkillsDetailResponses[keyof SkillsDetailResponses];
+
+export type SkillsInstallData = {
+    body: InstallSkill;
+    path?: never;
+    query?: {
+        cwd?: string;
+    };
+    url: '/api/skills/install';
+};
+
+export type SkillsInstallErrors = {
+    /**
+     * Invalid source or skill, or installation failed.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * The skill exists or the project is not trusted.
+     */
+    409: Problem;
+};
+
+export type SkillsInstallError = SkillsInstallErrors[keyof SkillsInstallErrors];
+
+export type SkillsInstallResponses = {
+    /**
+     * OK
+     */
+    200: SkillActionResult;
+};
+
+export type SkillsInstallResponse = SkillsInstallResponses[keyof SkillsInstallResponses];
+
+export type SkillsRemoveData = {
+    body: DeleteSkill;
+    path?: never;
+    query: {
+        path: string;
+        cwd?: string;
+    };
+    url: '/api/skills/file';
+};
+
+export type SkillsRemoveErrors = {
+    /**
+     * That is not a deletable skill.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * The skill changed, is learned, or the project is not trusted.
+     */
+    409: Problem;
+};
+
+export type SkillsRemoveError = SkillsRemoveErrors[keyof SkillsRemoveErrors];
+
+export type SkillsRemoveResponses = {
+    /**
+     * OK
+     */
+    200: SkillActionResult;
+};
+
+export type SkillsRemoveResponse = SkillsRemoveResponses[keyof SkillsRemoveResponses];
 
 export type SkillsReadData = {
     body?: never;
@@ -8124,42 +8262,6 @@ export type SkillsReadResponses = {
 };
 
 export type SkillsReadResponse = SkillsReadResponses[keyof SkillsReadResponses];
-
-export type SkillsSaveData = {
-    body: SkillFilePut;
-    path?: never;
-    query: {
-        path: string;
-        cwd?: string;
-    };
-    url: '/api/skills/file';
-};
-
-export type SkillsSaveErrors = {
-    /**
-     * The text is not a skill pi can load, or the path is not one of your skills.
-     */
-    400: Problem;
-    /**
-     * The bearer token is missing or wrong.
-     */
-    401: Problem;
-    /**
-     * The file changed since it was opened.
-     */
-    409: Problem;
-};
-
-export type SkillsSaveError = SkillsSaveErrors[keyof SkillsSaveErrors];
-
-export type SkillsSaveResponses = {
-    /**
-     * OK
-     */
-    200: SkillFile;
-};
-
-export type SkillsSaveResponse = SkillsSaveResponses[keyof SkillsSaveResponses];
 
 export type GenUiSandboxFrameData = {
     body?: never;

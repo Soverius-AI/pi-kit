@@ -2,6 +2,30 @@ import { join } from 'node:path';
 
 export const DEFAULT_SHUTDOWN_POLICY = { parentPollMs: 1000, graceMs: 15_000 } as const;
 
+export interface SkillsConfig {
+  offline: boolean;
+  catalogUrl: string;
+  searchTimeoutMs: number;
+  searchCacheMs: number;
+  searchCacheEntries: number;
+  gitTimeoutMs: number;
+  previewCacheMs: number;
+  previewCacheEntries: number;
+  previewConcurrency: number;
+}
+
+export const DEFAULT_SKILLS_CONFIG: Readonly<SkillsConfig> = {
+  offline: false,
+  catalogUrl: 'https://skills.sh',
+  searchTimeoutMs: 8_000,
+  searchCacheMs: 60_000,
+  searchCacheEntries: 100,
+  gitTimeoutMs: 30_000,
+  previewCacheMs: 120_000,
+  previewCacheEntries: 20,
+  previewConcurrency: 2,
+};
+
 export interface BackendConfig {
   token: string;
   port: number;
@@ -14,7 +38,14 @@ export interface BackendConfig {
   /** Folder for the SQLite database (`PI_KIT_DATA_DIR`, Electron passes its userData path). */
   dataDir: string;
   shutdown?: { parentPid?: number; parentPollMs: number; graceMs: number };
-  localRuntime?: { modelDirectories?: string[]; probeMs?: number; installMs?: number; downloadMs?: number; inferenceMs?: number };
+  skills?: Partial<SkillsConfig>;
+  localRuntime?: {
+    modelDirectories?: string[];
+    probeMs?: number;
+    installMs?: number;
+    downloadMs?: number;
+    inferenceMs?: number;
+  };
 }
 
 /** Reads and validates the environment; the backend refuses to start without a token or a port. */
@@ -34,6 +65,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
   const defaultCwd = env['PI_KIT_CWD'] || process.cwd();
   const dataDir = env['PI_KIT_DATA_DIR'] || join(process.cwd(), '.pi-kit-data');
   const parentPid = Number(env['PI_KIT_PARENT_PID']);
-  const shutdown = { ...DEFAULT_SHUTDOWN_POLICY, ...(Number.isInteger(parentPid) && parentPid > 0 ? { parentPid } : {}) };
-  return { token, port, host: '127.0.0.1', origins, dev: env['NODE_ENV'] === 'development', defaultCwd, dataDir, shutdown };
+  const shutdown = {
+    ...DEFAULT_SHUTDOWN_POLICY,
+    ...(Number.isInteger(parentPid) && parentPid > 0 ? { parentPid } : {}),
+  };
+  const skills = {
+    ...DEFAULT_SKILLS_CONFIG,
+    offline: !!env['PI_OFFLINE'],
+    catalogUrl: env['PI_KIT_SKILLS_API_URL'] || DEFAULT_SKILLS_CONFIG.catalogUrl,
+  };
+  return {
+    skills,
+    token,
+    port,
+    host: '127.0.0.1',
+    origins,
+    dev: env['NODE_ENV'] === 'development',
+    defaultCwd,
+    dataDir,
+    shutdown,
+  };
 }

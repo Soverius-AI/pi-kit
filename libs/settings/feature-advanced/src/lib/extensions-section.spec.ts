@@ -1,11 +1,13 @@
 import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ChatStore } from '@pi-kit/chat/api';
-import { UiStore } from '@pi-kit/data-access';
+import { DialogStore, UiStore } from '@pi-kit/data-access';
 import type { PackageItem, ResourceItem, ResourcesOverview } from '@pi-kit/protocol';
 import { PackagesStore, SettingsStore } from '@pi-kit/settings/api';
 import { LearnStore, LearnedStore } from '@pi-kit/threads/api';
 import { ExtensionsSection } from './extensions-section';
+import { InstallSkillDialog } from './install-skill-dialog';
+import { DeleteSkillDialog } from './delete-skill-dialog';
 
 const brings = (extensions = 0, skills = 0, prompts = 0, themes = 0) => ({
   extensions,
@@ -46,7 +48,7 @@ describe('Extensions and Skills sections', () => {
     canReload: () => true,
     reload: vi.fn(),
     toggleResource: vi.fn(),
-    settings: signal<{ enableSkillCommands: boolean } | undefined>(undefined),
+    settings: signal<{ enableSkillCommands: boolean; agentDir?: string } | undefined>(undefined),
     matches: () => new Set(['skill-commands']),
     patch: vi.fn(),
     markReload: vi.fn(),
@@ -60,7 +62,6 @@ describe('Extensions and Skills sections', () => {
     checking: signal(false),
     busy: signal(new Set<string>()),
     wizard: signal(false),
-    skillEditor: signal<{ path: string; created?: boolean } | undefined>(undefined),
     error: signal<string | undefined>(undefined),
     cwd: () => '/proj' as string | undefined,
     load: vi.fn(async () => undefined),
@@ -70,11 +71,7 @@ describe('Extensions and Skills sections', () => {
     update: vi.fn(),
     remove: vi.fn(),
     setEnabled: vi.fn(),
-    newSkill: vi.fn(async () => ({ ok: true })),
-    openSkillEditor: vi.fn(),
-    closeSkillEditor: vi.fn(),
     skillFile: vi.fn(() => new Promise(() => undefined)),
-    saveSkill: vi.fn(),
     search: vi.fn(async () => ({ results: [], total: 0 })),
     detail: vi.fn(),
     install: vi.fn(),
@@ -151,7 +148,8 @@ describe('Extensions and Skills sections', () => {
       errors: [],
     });
     pkgs.wizard.set(false);
-    pkgs.skillEditor.set(undefined);
+    pkgs.busy.set(new Set());
+    pkgs.skillFile.mockReset();
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
@@ -179,13 +177,34 @@ describe('Extensions and Skills sections', () => {
     });
   });
 
-  it('keeps packages and extension files on Extensions and asks for packages when it shows', () => {
+  it('links the active tab to the section while preserving manual selection within a section', () => {
+    settings.settings.set({ enableSkillCommands: true });
+    const f = render('skills');
+    const active = () => q(f, '[role=tab][aria-selected=true]')?.textContent?.trim();
+    expect(active()).toBe('Library');
+    Array.from(el(f).querySelectorAll<HTMLButtonElement>('[role=tab]'))
+      .find((b) => b.textContent?.trim() === 'Commands')
+      ?.click();
+    f.detectChanges();
+    expect(active()).toBe('Commands');
+    f.detectChanges();
+    expect(active()).toBe('Commands');
+    f.componentRef.setInput('section', 'extensions');
+    f.detectChanges();
+    expect(active()).toBe('Packages');
+    f.componentRef.setInput('section', 'skills');
+    f.detectChanges();
+    expect(active()).toBe('Library');
+    expect(pkgs.load).not.toHaveBeenCalled();
+  });
+
+  it('renders packages and extension files without owning package loading', () => {
     const f = render();
     expect(Array.from(el(f).querySelectorAll('.pk-group > header h4')).map((h) => h.textContent)).toEqual([
       'Packages',
       'Your extensions and prompts',
     ]);
-    expect(pkgs.load).toHaveBeenCalled();
+    expect(pkgs.load).not.toHaveBeenCalled();
     expect(q(f, '[data-testid=skills-group]')).toBeNull();
     expect(q(f, 'pk-learned-retired')).toBeNull();
   });
@@ -298,7 +317,7 @@ describe('Extensions and Skills sections', () => {
     expect(pkgs.openWizard).toHaveBeenCalled();
   });
 
-  it('Your skills lists the user’s and the project’s skills (not a package’s), with Add to composer, Edit and the switch', () => {
+  it('Your skills lists the user’s and the project’s skills (not a package’s), with Add to composer and the switch, but no manual editor', () => {
     const f = render('skills');
     const rows = Array.from(el(f).querySelectorAll('[data-testid=skills-group] .pk-item')).map((r) =>
       r.getAttribute('data-testid'),
@@ -310,35 +329,24 @@ describe('Extensions and Skills sections', () => {
     (row.querySelector('[data-testid=add-to-composer]') as HTMLElement).click();
     expect(chat.addChip).toHaveBeenCalledWith({ kind: 'skill', name: 'angular-developer', scope: 'user' });
     expect(ui.closeSettings).toHaveBeenCalled();
-    (row.querySelector('[data-testid=edit-skill-angular-developer]') as HTMLElement).click();
-    expect(pkgs.openSkillEditor).toHaveBeenCalledWith('/u/skills/angular-developer/SKILL.md');
+    expect(ui.focusComposer).toHaveBeenCalled();
+    expect(q(f, '[data-testid^=edit-skill-]')).toBeNull();
+    const toggle = row.querySelector<HTMLInputElement>('input') as HTMLInputElement;
+    toggle.checked = false;
+    toggle.dispatchEvent(new Event('change'));
+    expect(settings.toggleResource).toHaveBeenCalledWith('skills:user:angular-developer', false);
     expect(
       (q(f, '[data-testid=resource-skills-pk-beta] [data-testid=add-to-composer]') as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(q(f, '[data-testid=skills-group] header .chip.off')?.textContent).toBe('1 of 2 on');
   });
 
-  it('"+" on Your skills asks for a name and a scope, refuses a bad name, and creates the folder', async () => {
+  it('has no manual skill creation or editing controls', () => {
     const f = render('skills');
-    q(f, '[data-testid=new-skill]')?.click();
-    f.detectChanges();
-    const name = q<HTMLInputElement>(f, '[data-testid=new-skill-name]') as HTMLInputElement;
-    name.value = 'Bad Name';
-    name.dispatchEvent(new Event('input'));
-    q(f, '[data-testid=new-skill-create]')?.click();
-    f.detectChanges();
-    expect(q(f, '[data-testid=new-skill-error]')?.textContent).toMatch(/lowercase/);
-    expect(pkgs.newSkill).not.toHaveBeenCalled();
-    name.value = 'add-a-migration';
-    name.dispatchEvent(new Event('input'));
-    const scope = q<HTMLSelectElement>(f, '[data-testid=new-skill-scope]') as HTMLSelectElement;
-    scope.value = 'project';
-    scope.dispatchEvent(new Event('change'));
-    q(f, '[data-testid=new-skill-create]')?.click();
-    await f.whenStable();
-    f.detectChanges();
-    expect(pkgs.newSkill).toHaveBeenCalledWith({ name: 'add-a-migration', scope: 'project' });
+    expect(q(f, '[data-testid=new-skill]')).toBeNull();
     expect(q(f, '[data-testid=new-skill-form]')).toBeNull();
+    expect(q(f, '[data-testid^=edit-skill-]')).toBeNull();
+    expect(q(f, 'pk-file-editor-dialog')).toBeNull();
   });
 
   it('Your extensions and prompts: the top-level files and the built-in ones, which cannot be turned off', () => {
@@ -365,10 +373,9 @@ describe('Extensions and Skills sections', () => {
       expect(b.getAttribute('aria-label'), b.outerHTML).toBeTruthy();
   });
 
-  it('the package wizard stays on Extensions and the skill editor stays on Skills', async () => {
+  it('the package wizard stays on Extensions and neither section mounts a skill editor', async () => {
     const f = render();
     pkgs.wizard.set(true);
-    pkgs.skillEditor.set({ path: '/u/skills/x/SKILL.md', created: true });
     f.detectChanges();
     await f.whenStable();
     f.detectChanges();
@@ -379,6 +386,163 @@ describe('Extensions and Skills sections', () => {
     await skills.whenStable();
     skills.detectChanges();
     expect(el(skills).querySelector('pk-add-package-wizard')).toBeNull();
-    expect(el(skills).querySelector('pk-file-editor-dialog')).not.toBeNull();
+    expect(el(skills).querySelector('pk-file-editor-dialog')).toBeNull();
+  });
+  it('offers skill install on Skills only', () => {
+    const skills = render('skills');
+    expect(q(skills, '[data-testid=install-skill]')).toBeTruthy();
+    skills.destroy();
+    const extensions = render('extensions');
+    expect(q(extensions, '[data-testid=install-skill]')).toBeNull();
+  });
+
+  it('opens install in the shared dialog store with a live busy guard, without mounting a local dialog', () => {
+    const f = render('skills');
+    const dialogs = TestBed.inject(DialogStore);
+    q(f, '[data-testid=install-skill]')?.click();
+    f.detectChanges();
+    const state = dialogs.current();
+    expect(state).toMatchObject({ kind: 'component', component: InstallSkillDialog });
+    expect(q(f, 'pk-install-skill-dialog')).toBeNull();
+    expect(q(f, '[role=dialog]')).toBeNull();
+    if (state?.kind !== 'component') throw new Error('Expected component dialog');
+    expect(state.canClose?.()).toBe(true);
+    pkgs.busy.set(new Set(['skill:+']));
+    expect(state.canClose?.()).toBe(false);
+    dialogs.close();
+    expect(dialogs.current()).toBe(state);
+    pkgs.busy.set(new Set());
+    dialogs.close();
+    expect(dialogs.current()).toBeUndefined();
+  });
+
+  it('captures mtime before opening shared deletion confirmation with the skill and a live path guard', async () => {
+    settings.settings.set({ enableSkillCommands: true, agentDir: '/u' });
+    pkgs.skillFile.mockResolvedValue({ mtime: 41 });
+    const f = render('skills');
+    const dialogs = TestBed.inject(DialogStore);
+    const button = q(f, '[data-testid=delete-skill-angular-developer]');
+    expect(button?.querySelector('pk-icon')?.getAttribute('name')).toBe('trash');
+    expect(button?.textContent?.trim()).toBe('');
+    expect(button?.getAttribute('aria-label')).toBe('Delete angular-developer');
+    button?.click();
+    expect(dialogs.current()).toBeUndefined();
+    await f.whenStable();
+    f.detectChanges();
+    expect(pkgs.skillFile).toHaveBeenCalledExactlyOnceWith('/u/skills/angular-developer/SKILL.md');
+    const state = dialogs.current();
+    expect(state).toMatchObject({
+      kind: 'component',
+      component: DeleteSkillDialog,
+      inputs: { skill: resources()?.items[0], mtime: 41 },
+    });
+    expect(q(f, 'pk-delete-skill-dialog')).toBeNull();
+    expect(q(f, '[role=dialog]')).toBeNull();
+    if (state?.kind !== 'component') throw new Error('Expected component dialog');
+    expect(state.canClose?.()).toBe(true);
+    pkgs.busy.set(new Set(['skill:+']));
+    expect(state.canClose?.()).toBe(true);
+    pkgs.busy.set(new Set(['/u/skills/angular-developer/SKILL.md']));
+    expect(state.canClose?.()).toBe(false);
+    dialogs.close();
+    expect(dialogs.current()).toBe(state);
+    pkgs.busy.set(new Set());
+    dialogs.close();
+    expect(dialogs.current()).toBeUndefined();
+  });
+
+  it('blocks duplicate preflight reads and shows progress until confirmation can open', async () => {
+    settings.settings.set({ enableSkillCommands: true, agentDir: '/u' });
+    let finish!: (file: { mtime: number }) => void;
+    pkgs.skillFile.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    const f = render('skills');
+    const button = q<HTMLButtonElement>(f, '[data-testid=delete-skill-angular-developer]');
+    button?.click();
+    button?.click();
+    f.detectChanges();
+    expect(pkgs.skillFile).toHaveBeenCalledOnce();
+    expect(button?.disabled).toBe(true);
+    expect(q(f, '[data-testid=skills-group] [role=status]')).not.toBeNull();
+    expect(TestBed.inject(DialogStore).current()).toBeUndefined();
+    finish({ mtime: 42 });
+    await f.whenStable();
+    f.detectChanges();
+    expect(button?.disabled).toBe(false);
+    expect(q(f, '[data-testid=skills-group] [role=status]')).toBeNull();
+    expect(TestBed.inject(DialogStore).current()).toMatchObject({ kind: 'component', inputs: { mtime: 42 } });
+  });
+
+  it('reports a preflight failure without opening a dialog and permits retry', async () => {
+    settings.settings.set({ enableSkillCommands: true, agentDir: '/u' });
+    pkgs.skillFile.mockRejectedValueOnce(new Error('Cannot read skill')).mockResolvedValueOnce({ mtime: 43 });
+    const f = render('skills');
+    const button = q<HTMLButtonElement>(f, '[data-testid=delete-skill-angular-developer]');
+    button?.click();
+    await f.whenStable();
+    f.detectChanges();
+    expect(q(f, '[data-testid=skills-group] [role=alert]')?.textContent).toContain('Cannot read skill');
+    expect(TestBed.inject(DialogStore).current()).toBeUndefined();
+    expect(button?.disabled).toBe(false);
+    button?.click();
+    await f.whenStable();
+    f.detectChanges();
+    expect(q(f, '[data-testid=skills-group] [role=alert]')).toBeNull();
+    expect(TestBed.inject(DialogStore).current()).toMatchObject({ kind: 'component', inputs: { mtime: 43 } });
+  });
+
+  it('does not open confirmation when a preflight read completes after section destruction', async () => {
+    settings.settings.set({ enableSkillCommands: true, agentDir: '/u' });
+    let finish!: (file: { mtime: number }) => void;
+    pkgs.skillFile.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    const f = render('skills');
+    const dialogs = TestBed.inject(DialogStore);
+    q(f, '[data-testid=delete-skill-angular-developer]')?.click();
+    f.destroy();
+    finish({ mtime: 44 });
+    await Promise.resolve();
+    expect(dialogs.current()).toBeUndefined();
+  });
+
+  it('hides Delete for protected skills but not a same-name manual skill in another scope', () => {
+    settings.settings.set({ enableSkillCommands: true, agentDir: '/u' });
+    resources.set({
+      items: [
+        res({ name: 'custom', type: 'skills', path: '/custom/skills/custom/SKILL.md' }),
+        res({ name: 'builtin', type: 'skills', origin: 'builtin', path: '/u/skills/builtin/SKILL.md' }),
+        res({ name: 'package', type: 'skills', origin: 'package', path: '/u/skills/package/SKILL.md' }),
+        res({ name: 'learned', type: 'skills', path: '/u/skills/learned/SKILL.md' }),
+        res({
+          name: 'learned',
+          key: 'skills:project:learned',
+          type: 'skills',
+          scope: 'project',
+          path: '/proj/.pi/skills/learned/SKILL.md',
+        }),
+      ],
+      errors: [],
+      projectSkipped: false,
+    });
+    const learned = TestBed.inject(LearnedStore);
+    vi.spyOn(learned, 'live').mockReturnValue([
+      {
+        id: 'id',
+        name: 'learned',
+        path: '\\u\\skills\\learned\\SKILL.md',
+        scope: 'user',
+        retiredAt: null,
+        missing: false,
+        learnedFrom: { threadId: 't1', title: 'Test', base: null, head: null },
+        verification: null,
+        uses: 0,
+        mergedAfterUse: 0,
+        threads: 0,
+        lastUsedAt: null,
+        flag: null,
+      },
+    ] as ReturnType<typeof learned.live>);
+    const f = render('skills');
+    const buttons = el(f).querySelectorAll('[data-testid^=delete-skill-]');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.closest('[role=listitem]')?.textContent).toContain('project');
   });
 });

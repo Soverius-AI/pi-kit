@@ -1,9 +1,27 @@
 import { PiPluginService } from '../pi/pi-plugin.service';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BadRequestException, ConflictException } from '@nestjs/common';
-import { PLUGIN_CHANNELS, type PiDialogRequest, type SkillDraft, type SkillVerification, parseSkillText, provenanceOf, verifiedResultOfText } from '@pi-kit/protocol';
+import {
+  PLUGIN_CHANNELS,
+  type PiDialogRequest,
+  type SkillDraft,
+  type SkillVerification,
+  parseSkillText,
+  provenanceOf,
+  verifiedResultOfText,
+} from '@pi-kit/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Completion } from '../attendant/attendant.service';
 import { AttendantRepository } from '../db/attendant.repository';
@@ -18,7 +36,8 @@ import { skillHash } from './verify-rules';
 // The backend loads pi through a native `import()` that a test runner's sandbox does not offer; the test loads the same package its own way.
 vi.mock('../pi/load-pi', () => ({ loadPi: () => import('@earendil-works/pi-coding-agent') }));
 
-const CANNED = '---\nname: add-a-migration\ndescription: Use when adding a table with its migration\n---\n\n# Add a migration\n\n## Steps\n1. Write the SQL\n2. Run the tests\n';
+const CANNED =
+  '---\nname: add-a-migration\ndescription: Use when adding a table with its migration\n---\n\n# Add a migration\n\n## Steps\n1. Write the SQL\n2. Run the tests\n';
 const HEAD = 'b'.repeat(40);
 const BASE = 'a'.repeat(40);
 void ({} as PiDialogRequest);
@@ -46,7 +65,10 @@ const previousAgentDir = process.env['PI_CODING_AGENT_DIR'];
 
 const analysis = {
   buildAnalysisPrompt: () => ({ system: 'S', user: 'U' }),
-  parseDraftReply: (text: string) => (text.startsWith('---') ? { ok: true as const, name: 'add-a-migration', description: 'Use when adding a table with its migration', text } : { ok: false as const, skip: text.startsWith('SKIP'), reason: text }),
+  parseDraftReply: (text: string) =>
+    text.startsWith('---')
+      ? { ok: true as const, name: 'add-a-migration', description: 'Use when adding a table with its migration', text }
+      : { ok: false as const, skip: text.startsWith('SKIP'), reason: text },
 };
 
 function addThread(id: string): void {
@@ -83,7 +105,11 @@ beforeEach(() => {
     allowedIn: () => true,
     enqueueTask: (_id: string, task: () => Promise<void>) => void task(),
     note: vi.fn(),
-    complete: async (_row: unknown, _prompt: unknown, options: { describe: (text: string) => unknown; signal?: AbortSignal }) => {
+    complete: async (
+      _row: unknown,
+      _prompt: unknown,
+      options: { describe: (text: string) => unknown; signal?: AbortSignal },
+    ) => {
       const done = await reply();
       completions.push(done.ok ? done.text : done.code);
       signals.push(options.signal);
@@ -91,7 +117,20 @@ beforeEach(() => {
       return done;
     },
   };
-  const outcomeFor = (id: string) => (id === 'thread-1' || id === 'thread-2' ? { kind: 'merged', base: BASE, head: HEAD, merge: HEAD, prUrl: null, at: 1, files: ['a'], baseBranch: 'main', baseSource: 'start' } : undefined);
+  const outcomeFor = (id: string) =>
+    id === 'thread-1' || id === 'thread-2'
+      ? {
+          kind: 'merged',
+          base: BASE,
+          head: HEAD,
+          merge: HEAD,
+          prUrl: null,
+          at: 1,
+          files: ['a'],
+          baseBranch: 'main',
+          baseSource: 'start',
+        }
+      : undefined;
   service = new LearnService(
     drafts,
     attendantRows,
@@ -103,8 +142,19 @@ beforeEach(() => {
       },
       treeSource: async () => ({ entries: [], leafId: null, path: undefined }),
     } as never,
-    { get: outcomeFor, folderOf: () => project, onOutcome: (listener: typeof outcomeListener) => { outcomeListener = listener; return () => undefined; } } as never,
-    { has: () => true, stats: () => ({ streaming: false }), reload: async (id: string) => void reloaded.push(id) } as never,
+    {
+      get: outcomeFor,
+      folderOf: () => project,
+      onOutcome: (listener: typeof outcomeListener) => {
+        outcomeListener = listener;
+        return () => undefined;
+      },
+    } as never,
+    {
+      has: () => true,
+      stats: () => ({ streaming: false }),
+      reload: async (id: string) => void reloaded.push(id),
+    } as never,
     { touch: (id: string) => void touched.push(id) } as never,
     { overview: async () => ({ items: listed }) } as never,
     { extraPatterns: () => [] } as never,
@@ -117,7 +167,10 @@ beforeEach(() => {
     threadId: id,
     title: null,
     cwd: project,
-    prompts: id === 'empty' ? [] : ['Add a database migration for the invoices table and write a test for the migration runner'],
+    prompts:
+      id === 'empty'
+        ? []
+        : ['Add a database migration for the invoices table and write a test for the migration runner'],
     toolCalls: transcriptFacts.toolCalls,
     steps: [],
     errors: [],
@@ -154,7 +207,16 @@ describe('asking for a draft', () => {
     const result = await service.request('thread-1');
     expect(result.status).toBe('drafted');
     const draft = result.draft!;
-    expect(draft).toMatchObject({ threadId: 'thread-1', name: 'add-a-migration', state: 'pending', scope: 'project', madeBy: 'person', model: 'fake/canned', decidedAt: null, path: null });
+    expect(draft).toMatchObject({
+      threadId: 'thread-1',
+      name: 'add-a-migration',
+      state: 'pending',
+      scope: 'project',
+      madeBy: 'person',
+      model: 'fake/canned',
+      decidedAt: null,
+      path: null,
+    });
     expect(provenanceOf(draft.text)).toEqual({ learnedFrom: 'thread-1', base: BASE, head: HEAD });
     expect(draft.text).toContain('verified: null');
     expect(existsSync(join(project, '.pi'))).toBe(false);
@@ -164,7 +226,9 @@ describe('asking for a draft', () => {
 
   it('opens a learn suggestion for the sidebar chip, with the skill’s name', async () => {
     const { draft } = await service.request('thread-1');
-    expect(attendantRows.openSuggestions('thread-1')).toEqual([expect.objectContaining({ kind: 'learn', target: draft!.id, text: 'add-a-migration' })]);
+    expect(attendantRows.openSuggestions('thread-1')).toEqual([
+      expect.objectContaining({ kind: 'learn', target: draft!.id, text: 'add-a-migration' }),
+    ]);
   });
 
   it('has one draft per thread: asking again returns it and asks the model nothing', async () => {
@@ -174,31 +238,38 @@ describe('asking for a draft', () => {
     expect(completions).toHaveLength(1);
   });
 
-  it.each([false, true])('shares overlapping automatic and manual draft requests (attendant first: %s)', async (attendantFirst) => {
-    let finish!: () => void;
-    let started!: () => void;
-    const waiting = new Promise<void>((resolve) => { started = resolve; });
-    let calls = 0;
-    reply = () => new Promise<Completion>((resolve) => {
-      calls++;
-      started();
-      finish = () => resolve({ ok: true, text: CANNED, model: 'fake/canned', inputTokens: 10, outputTokens: 5, cost: 0.001 });
-    });
-    const first = attendantFirst ? service.autoDraft('thread-1') : service.request('thread-1');
-    await waiting;
-    const second = attendantFirst ? service.request('thread-1') : service.autoDraft('thread-1');
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(calls).toBe(1);
-    finish();
-    const results = await Promise.all([first, second]);
-    const manual = results[attendantFirst ? 1 : 0] as Awaited<ReturnType<LearnService['request']>>;
-    expect(manual.status).toBe('drafted');
-    expect(manual.draft?.id).toBe(drafts.forThread('thread-1')?.id);
-    expect(results[attendantFirst ? 0 : 1]).toBe('drafted');
-    expect(drafts.pending()).toHaveLength(1);
-    expect(completions).toHaveLength(1);
-    expect(attendantRows.openSuggestions('thread-1')).toHaveLength(1);
-  });
+  it.each([false, true])(
+    'shares overlapping automatic and manual draft requests (attendant first: %s)',
+    async (attendantFirst) => {
+      let finish!: () => void;
+      let started!: () => void;
+      const waiting = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      let calls = 0;
+      reply = () =>
+        new Promise<Completion>((resolve) => {
+          calls++;
+          started();
+          finish = () =>
+            resolve({ ok: true, text: CANNED, model: 'fake/canned', inputTokens: 10, outputTokens: 5, cost: 0.001 });
+        });
+      const first = attendantFirst ? service.autoDraft('thread-1') : service.request('thread-1');
+      await waiting;
+      const second = attendantFirst ? service.request('thread-1') : service.autoDraft('thread-1');
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(calls).toBe(1);
+      finish();
+      const results = await Promise.all([first, second]);
+      const manual = results[attendantFirst ? 1 : 0] as Awaited<ReturnType<LearnService['request']>>;
+      expect(manual.status).toBe('drafted');
+      expect(manual.draft?.id).toBe(drafts.forThread('thread-1')?.id);
+      expect(results[attendantFirst ? 0 : 1]).toBe('drafted');
+      expect(drafts.pending()).toHaveLength(1);
+      expect(completions).toHaveLength(1);
+      expect(attendantRows.openSuggestions('thread-1')).toHaveLength(1);
+    },
+  );
 
   it('allows another draft attempt after the shared model call rejects', async () => {
     reply = () => Promise.reject(new Error('model disconnected'));
@@ -235,7 +306,14 @@ describe('asking for a draft', () => {
     reply = () => ({ ok: true, text: 'I do not know', model: 'fake/canned', inputTokens: 1, outputTokens: 1, cost: 0 });
     await expect(service.request('thread-1')).rejects.toThrow(/not a skill/);
     expect(drafts.forThread('thread-1')).toBeUndefined();
-    reply = () => ({ ok: true, text: 'SKIP: too specific', model: 'fake/canned', inputTokens: 1, outputTokens: 1, cost: 0 });
+    reply = () => ({
+      ok: true,
+      text: 'SKIP: too specific',
+      model: 'fake/canned',
+      inputTokens: 1,
+      outputTokens: 1,
+      cost: 0,
+    });
     await expect(service.request('thread-1')).rejects.toThrow(/Nothing in this thread generalises: SKIP: too specific/);
   });
 
@@ -263,7 +341,14 @@ describe('the attendant drafting by itself after an outcome', () => {
   });
 
   it('leaves a thread alone when a skill pi has already covers its prompt', async () => {
-    listed = [{ type: 'skills', name: 'db-migrations', label: 'Project', description: 'Use when adding a database migration or changing a table schema' }];
+    listed = [
+      {
+        type: 'skills',
+        name: 'db-migrations',
+        label: 'Project',
+        description: 'Use when adding a database migration or changing a table schema',
+      },
+    ];
     expect(await service.autoDraft('thread-1')).toBe('not-worth');
     expect(completions).toHaveLength(0);
   });
@@ -311,12 +396,16 @@ describe('the draft’s state machine: pending, then approved or discarded; a di
     expect(() => service.reopen(draft!.id)).toThrow(/open already/);
     service.discard(draft!.id);
     expect(() => service.discard(draft!.id)).toThrow(/discarded already/);
-    await expect(service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text })).rejects.toThrow(/discarded/);
+    await expect(
+      service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text }),
+    ).rejects.toThrow(/discarded/);
     service.reopen(draft!.id);
     await service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text });
     expect(() => service.reopen(draft!.id)).toThrow(/approved/);
     expect(() => service.discard(draft!.id)).toThrow(/approved/);
-    await expect(service.approve(draft!.id, { name: 'other', scope: 'project', text: draft!.text })).rejects.toThrow(/approved already/);
+    await expect(service.approve(draft!.id, { name: 'other', scope: 'project', text: draft!.text })).rejects.toThrow(
+      /approved already/,
+    );
     expect(() => service.discard('nope')).toThrow(/no such draft/);
   });
 });
@@ -325,13 +414,23 @@ describe('approve is the only writer of a skills folder', () => {
   it('writes .pi/skills/<name>/SKILL.md for the project scope, with the person’s edits and the provenance', async () => {
     const { draft } = await service.request('thread-1');
     const edited = draft!.text.replace('2. Run the tests', '2. Run the tests twice');
-    const approved = await service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: edited, verify: true });
+    const approved = await service.approve(draft!.id, {
+      name: 'add-a-migration',
+      scope: 'project',
+      text: edited,
+      verify: true,
+    });
     const file = join(project, '.pi', 'skills', 'add-a-migration', 'SKILL.md');
     expect(approved.path).toBe(file);
     expect(readFileSync(file, 'utf8')).toBe(approved.draft.text);
     expect(readFileSync(file, 'utf8')).toContain('Run the tests twice');
     expect(provenanceOf(readFileSync(file, 'utf8'))).toEqual({ learnedFrom: 'thread-1', base: BASE, head: HEAD });
-    expect(approved.draft).toMatchObject({ state: 'approved', path: file, scope: 'project', verification: { requested: true, state: 'not-run' } });
+    expect(approved.draft).toMatchObject({
+      state: 'approved',
+      path: file,
+      scope: 'project',
+      verification: { requested: true, state: 'not-run' },
+    });
     expect(attendantRows.openSuggestions('thread-1')).toEqual([]);
     expect(reloaded).toContain('thread-1');
     expect(touched.at(-1)).toBe('thread-1');
@@ -347,7 +446,11 @@ describe('approve is the only writer of a skills folder', () => {
 
   it('renames the skill when the person changes the name (the frontmatter follows)', async () => {
     const { draft } = await service.request('thread-1');
-    const approved = await service.approve(draft!.id, { name: 'migrations-with-tests', scope: 'project', text: draft!.text });
+    const approved = await service.approve(draft!.id, {
+      name: 'migrations-with-tests',
+      scope: 'project',
+      text: draft!.text,
+    });
     expect(approved.path).toBe(join(project, '.pi', 'skills', 'migrations-with-tests', 'SKILL.md'));
     expect(parseSkillText(approved.draft.text).name).toBe('migrations-with-tests');
   });
@@ -355,7 +458,10 @@ describe('approve is the only writer of a skills folder', () => {
   it('refuses a name that would leave the skills folder, and writes nothing', async () => {
     const { draft } = await service.request('thread-1');
     for (const name of ['../escape', '..', 'a/b', '/etc/passwd', 'a\\b', 'x/../../y', '.hidden', 'UPPER', '']) {
-      await expect(service.approve(draft!.id, { name: name || ' ', scope: 'project', text: draft!.text }), name).rejects.toThrow();
+      await expect(
+        service.approve(draft!.id, { name: name || ' ', scope: 'project', text: draft!.text }),
+        name,
+      ).rejects.toThrow();
     }
     expect(existsSync(join(project, '.pi'))).toBe(false);
     expect(existsSync(join(base, 'escape'))).toBe(false);
@@ -367,7 +473,9 @@ describe('approve is the only writer of a skills folder', () => {
     mkdirSync(join(project, '.pi', 'skills', 'add-a-migration'), { recursive: true });
     writeFileSync(join(project, '.pi', 'skills', 'add-a-migration', 'SKILL.md'), 'mine');
     const { draft } = await service.request('thread-1');
-    await expect(service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text })).rejects.toThrow(/already exists.*Choose another name/);
+    await expect(
+      service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text }),
+    ).rejects.toThrow(/already exists.*Choose another name/);
     expect(readFileSync(join(project, '.pi', 'skills', 'add-a-migration', 'SKILL.md'), 'utf8')).toBe('mine');
     expect(drafts.get(draft!.id)?.state).toBe('pending');
     const ok = await service.approve(draft!.id, { name: 'add-a-migration-2', scope: 'project', text: draft!.text });
@@ -377,15 +485,31 @@ describe('approve is the only writer of a skills folder', () => {
   it('asks for another name when pi already lists a skill of that name from anywhere', async () => {
     listed = [{ type: 'skills', name: 'add-a-migration', label: 'Package @acme/skills' }];
     const { draft } = await service.request('thread-1');
-    await expect(service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text })).rejects.toThrow(/pi already has a skill named add-a-migration \(Package @acme\/skills\)/);
+    await expect(
+      service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text }),
+    ).rejects.toThrow(/pi already has a skill named add-a-migration \(Package @acme\/skills\)/);
     expect(existsSync(join(project, '.pi'))).toBe(false);
   });
 
   it('refuses a text pi would not load', async () => {
     const { draft } = await service.request('thread-1');
-    await expect(service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: 'just some text' })).rejects.toThrow(/frontmatter/);
-    await expect(service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: '---\nname: add-a-migration\n---\nBody' })).rejects.toThrow(/description/);
-    await expect(service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: '---\nname: add-a-migration\ndescription: d\n---\n' })).rejects.toThrow(/instructions/);
+    await expect(
+      service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: 'just some text' }),
+    ).rejects.toThrow(/frontmatter/);
+    await expect(
+      service.approve(draft!.id, {
+        name: 'add-a-migration',
+        scope: 'project',
+        text: '---\nname: add-a-migration\n---\nBody',
+      }),
+    ).rejects.toThrow(/description/);
+    await expect(
+      service.approve(draft!.id, {
+        name: 'add-a-migration',
+        scope: 'project',
+        text: '---\nname: add-a-migration\ndescription: d\n---\n',
+      }),
+    ).rejects.toThrow(/instructions/);
     expect(existsSync(join(project, '.pi'))).toBe(false);
   });
 
@@ -403,16 +527,18 @@ describe('approve is the only writer of a skills folder', () => {
       for (const name of readdirSync(dir)) {
         const path = join(dir, name);
         if (statSync(path).isDirectory()) walk(path);
-        else if (/\.ts$/.test(name) && !/\.spec\.ts$/.test(name) && /writeFileSync|writeFile\(|appendFile/.test(readFileSync(path, 'utf8')) && /SKILL\.md/.test(readFileSync(path, 'utf8'))) writers.push(path.slice(root.length + 1));
+        else if (
+          /\.ts$/.test(name) &&
+          !/\.spec\.ts$/.test(name) &&
+          /writeFileSync|writeFile\(|appendFile/.test(readFileSync(path, 'utf8')) &&
+          /SKILL\.md/.test(readFileSync(path, 'utf8'))
+        )
+          writers.push(path.slice(root.length + 1));
       }
     };
     walk(root);
-    // Approve is the only code that creates a skill in the project's or the user's skills folder. `learn/skill-files.ts` is the guarded home of the two other writes: the
-    // draft into a scratch worktree of a verification run (it refuses anything that is not a linked worktree under the worktree root), and the `verified` lines of a file Approve wrote.
-    // Both are covered by skill-files.spec.ts; a third writer has to explain itself here. The third is the person's own "+" on Settings › Extensions and skills › Your skills:
-    // `skills/skill-editor.ts` makes a skill folder from the template on that click and saves the editor's text of a SKILL.md in the user's or the project's skills folder, and refuses any
-    // other path (skill-editor.spec.ts); nothing learned or drafted goes through it.
-    expect(writers.sort()).toEqual(['learn/learn.service.ts', 'learn/skill-files.ts', 'skills/skill-editor.ts']);
+    // Approval, guarded verification updates, and user-requested installation own skill writes.
+    expect(writers.sort()).toEqual(['learn/learn.service.ts', 'learn/skill-files.ts', 'skills/skill-installer.ts']);
   });
 
   it('every writer is reached only from a user action: no background path imports a writer module or calls approve / save', () => {
@@ -428,19 +554,32 @@ describe('approve is the only writer of a skills folder', () => {
     walk(root);
     const rel = (path: string) => path.slice(root.length + 1);
     const importersOf = (module: string) =>
-      files.filter((f) => new RegExp(`from '(\\.|\\.\\.)/(?:[a-z-]+/)?${module}'`).test(readFileSync(f, 'utf8'))).map(rel).sort();
-    // The writer modules are imported only by the code behind a route the person calls: approve and save (learn.controller, learned-skills.service for
-    // Edit / Retire / Restore / Re-verify), the verification a person starts (verify.service), the editor's "+" and Save (skills.controller). skill-editor
-    // imports the `isInside` guard from skill-files and nothing that writes.
-    expect(importersOf('skill-files')).toEqual(['learn/learn.service.ts', 'learn/learned-skills.service.ts', 'learn/verify.service.ts', 'skills/skill-editor.ts']);
-    expect(importersOf('skill-editor')).toEqual(['skills/skills.controller.ts']);
+      files
+        .filter((f) => new RegExp(`from '(\\.|\\.\\.)/(?:[a-z-]+/)?${module}'`).test(readFileSync(f, 'utf8')))
+        .map(rel)
+        .sort();
+    // Restrict writers and the managed deletion module to user-facing entry points.
+    expect(importersOf('skill-files')).toEqual([
+      'learn/learn.service.ts',
+      'learn/learned-skills.service.ts',
+      'learn/verify.service.ts',
+      'skills/managed-skills.ts',
+    ]);
+    expect(importersOf('managed-skills')).toEqual(['skills/skills.controller.ts']);
+    expect(importersOf('skill-installer')).toEqual(['skills/skills.controller.ts']);
     // The attendant, the plugin host, the outcome watcher and the pi session layer are the background paths: none of them may import a writer or call the two writing methods.
     const background = /^(attendant|plugins|outcomes|pi|agui|watch)\//;
-    const touchesAWriter = (text: string) => /skill-files'|skill-editor'|\.approve\(|\.saveApproved\(/.test(text);
+    const touchesAWriter = (text: string) =>
+      /skill-files'|managed-skills'|skill-installer'|\.approve\(|\.saveApproved\(/.test(text);
     const offenders = files.filter((f) => background.test(rel(f)) && touchesAWriter(readFileSync(f, 'utf8'))).map(rel);
     expect(offenders, 'a background path reaches a SKILL.md writer').toEqual([]);
     // approve and saveApproved are called from the two user-facing entry points only.
-    const callers = files.filter((f) => /\.approve\(|\.saveApproved\(/.test(readFileSync(f, 'utf8')) && !/learn\/learn\.service\.ts$/.test(f)).map(rel).sort();
+    const callers = files
+      .filter(
+        (f) => /\.approve\(|\.saveApproved\(/.test(readFileSync(f, 'utf8')) && !/learn\/learn\.service\.ts$/.test(f),
+      )
+      .map(rel)
+      .sort();
     expect(callers).toEqual(['learn/learn.controller.ts', 'learn/learned-skills.service.ts']);
   });
 });
@@ -452,8 +591,16 @@ describe('the learn suggestion after an outcome', () => {
 
   it('proposes learning from a merged thread: a pending draft and the learn suggestion for the sidebar chip', async () => {
     outcomeListener?.('thread-1', 'merged', true);
-    await vi.waitFor(() => expect(drafts.forThread('thread-1')).toMatchObject({ state: 'pending', madeBy: 'attendant', name: 'add-a-migration' }));
-    expect(attendantRows.openSuggestions('thread-1')).toEqual([expect.objectContaining({ kind: 'learn', text: 'add-a-migration' })]);
+    await vi.waitFor(() =>
+      expect(drafts.forThread('thread-1')).toMatchObject({
+        state: 'pending',
+        madeBy: 'attendant',
+        name: 'add-a-migration',
+      }),
+    );
+    expect(attendantRows.openSuggestions('thread-1')).toEqual([
+      expect.objectContaining({ kind: 'learn', text: 'add-a-migration' }),
+    ]);
     expect(attendantRows.openSuggestions('thread-2')).toEqual([]);
   });
 
@@ -497,7 +644,9 @@ describe('an approved skill after the fact: edit, retire, restore', () => {
 
   it('saves the edited text over the file, re-stamps the provenance and reloads the idle sessions', async () => {
     const text = readFileSync(skillFile(), 'utf8');
-    const forged = text.replace('learnedFrom: thread-1', 'learnedFrom: elsewhere').replace('2. Run the tests', '2. Run the tests twice');
+    const forged = text
+      .replace('learnedFrom: thread-1', 'learnedFrom: elsewhere')
+      .replace('2. Run the tests', '2. Run the tests twice');
     const saved = await service.saveApproved(id, { text: forged });
     const written = readFileSync(skillFile(), 'utf8');
     expect(written).toBe(saved.text);
@@ -510,17 +659,30 @@ describe('an approved skill after the fact: edit, retire, restore', () => {
 
   it('keeps the name of the folder whatever the text says, and refuses a text pi would not load', async () => {
     const text = readFileSync(skillFile(), 'utf8');
-    const saved = await service.saveApproved(id, { text: text.replace('name: add-a-migration', 'name: something-else') });
+    const saved = await service.saveApproved(id, {
+      text: text.replace('name: add-a-migration', 'name: something-else'),
+    });
     expect(parseSkillText(saved.text).name).toBe('add-a-migration');
     expect(existsSync(skillFile('something-else'))).toBe(false);
     await expect(service.saveApproved(id, { text: 'just words' })).rejects.toThrow(BadRequestException);
-    await expect(service.saveApproved(id, { text: '---\nname: add-a-migration\n---\nBody' })).rejects.toThrow(/description/);
+    await expect(service.saveApproved(id, { text: '---\nname: add-a-migration\n---\nBody' })).rejects.toThrow(
+      /description/,
+    );
     expect(readFileSync(skillFile(), 'utf8')).toBe(saved.text);
   });
 
   it('states a verification only for a replay of exactly the saved text', async () => {
     const text = readFileSync(skillFile(), 'utf8');
-    const verification: SkillVerification = { state: 'done', result: 'pass', finishedAt: Date.UTC(2026, 9, 17, 10), base: BASE, skillHash: skillHash(text), score: 1, files: { reproduced: 2, expected: 2, extra: 0 }, hunks: { matched: 2, expected: 2, actual: 2 } };
+    const verification: SkillVerification = {
+      state: 'done',
+      result: 'pass',
+      finishedAt: Date.UTC(2026, 9, 17, 10),
+      base: BASE,
+      skillHash: skillHash(text),
+      score: 1,
+      files: { reproduced: 2, expected: 2, extra: 0 },
+      hunks: { matched: 2, expected: 2, actual: 2 },
+    };
     drafts.setVerification(id, verification);
     expect(verifiedResultOfText((await service.saveApproved(id, { text })).text)).toBe('pass');
     const edited = await service.saveApproved(id, { text: text.replace('2. Run the tests', '2. Run the tests twice') });
@@ -553,7 +715,11 @@ describe('an approved skill after the fact: edit, retire, restore', () => {
 
   it('retires a user-scope skill into <agent dir>/skills/.retired/', async () => {
     const second = await service.request('thread-2');
-    const approved = await service.approve(second.draft!.id, { name: 'user-skill', scope: 'user', text: second.draft!.text.replace('name: add-a-migration', 'name: user-skill') });
+    const approved = await service.approve(second.draft!.id, {
+      name: 'user-skill',
+      scope: 'user',
+      text: second.draft!.text.replace('name: add-a-migration', 'name: user-skill'),
+    });
     await service.retire(second.draft!.id);
     expect(existsSync(approved.path)).toBe(false);
     expect(existsSync(join(agent, 'skills', '.retired', 'user-skill', 'SKILL.md'))).toBe(true);
@@ -577,7 +743,10 @@ describe('an approved skill after the fact: edit, retire, restore', () => {
   });
 
   it('does not move a folder that is not the skill pi-kit wrote (a replaced file with another origin)', async () => {
-    writeFileSync(skillFile(), readFileSync(skillFile(), 'utf8').replace('learnedFrom: thread-1', 'learnedFrom: thread-9'));
+    writeFileSync(
+      skillFile(),
+      readFileSync(skillFile(), 'utf8').replace('learnedFrom: thread-1', 'learnedFrom: thread-9'),
+    );
     await expect(service.retire(id)).rejects.toThrow(/not where pi-kit wrote it/);
     expect(existsSync(skillFile())).toBe(true);
     expect(drafts.retiredAt(id)).toBeNull();
@@ -607,7 +776,12 @@ describe('verification and the approval', () => {
   it('states the replay in the written file, but only a replay of exactly this text', async () => {
     const { draft } = await service.request('thread-1');
     drafts.setVerification(draft!.id, finished(draft!.text));
-    const approved = await service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text, verify: true });
+    const approved = await service.approve(draft!.id, {
+      name: 'add-a-migration',
+      scope: 'project',
+      text: draft!.text,
+      verify: true,
+    });
     expect(verifiedResultOfText(readFileSync(approved.path, 'utf8'))).toBe('pass');
     expect(readFileSync(approved.path, 'utf8')).toContain('    files: 2/2\n');
     expect(approved.draft.verification).toMatchObject({ state: 'done', result: 'pass', requested: true });
@@ -616,7 +790,11 @@ describe('verification and the approval', () => {
   it('writes verified: null for a text that was edited after the replay', async () => {
     const { draft } = await service.request('thread-1');
     drafts.setVerification(draft!.id, finished(draft!.text));
-    const approved = await service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text.replace('2. Run the tests', '2. Run the tests twice') });
+    const approved = await service.approve(draft!.id, {
+      name: 'add-a-migration',
+      scope: 'project',
+      text: draft!.text.replace('2. Run the tests', '2. Run the tests twice'),
+    });
     expect(readFileSync(approved.path, 'utf8')).toContain('  verified: null');
     expect(verifiedResultOfText(readFileSync(approved.path, 'utf8'))).toBeUndefined();
   });
@@ -630,17 +808,31 @@ describe('verification and the approval', () => {
 
     const second = await service.request('thread-2');
     drafts.setVerification(second.draft!.id, finished(second.draft!.text, { state: 'running', result: undefined }));
-    const other = await service.approve(second.draft!.id, { name: 'second-skill', scope: 'user', text: second.draft!.text });
+    const other = await service.approve(second.draft!.id, {
+      name: 'second-skill',
+      scope: 'user',
+      text: second.draft!.text,
+    });
     expect(readFileSync(other.path, 'utf8')).toContain('  verified: null');
   });
 
   it('the Verify first wish is added to a record that exists, and not in its place', async () => {
     const { draft } = await service.request('thread-1');
     drafts.setVerification(draft!.id, finished(draft!.text, { result: 'partial' }));
-    const approved = await service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text, verify: true });
+    const approved = await service.approve(draft!.id, {
+      name: 'add-a-migration',
+      scope: 'project',
+      text: draft!.text,
+      verify: true,
+    });
     expect(approved.draft.verification).toMatchObject({ requested: true, state: 'done', result: 'partial' });
     const second = await service.request('thread-2');
-    const withoutReplay = await service.approve(second.draft!.id, { name: 'another', scope: 'user', text: second.draft!.text, verify: true });
+    const withoutReplay = await service.approve(second.draft!.id, {
+      name: 'another',
+      scope: 'user',
+      text: second.draft!.text,
+      verify: true,
+    });
     expect(withoutReplay.draft.verification).toEqual({ requested: true, state: 'not-run' });
   });
 
@@ -654,21 +846,40 @@ describe('verification and the approval', () => {
 describe('the plugin API (doc/docs/plugins.md)', () => {
   it('answers a transcript request for the session’s own thread, with the draft it already has', async () => {
     const answer = await service.plugin('thread-1', PLUGIN_CHANNELS.transcript, { requestId: 'r1' });
-    expect(answer).toMatchObject({ requestId: 'r1', ok: true, transcript: { threadId: 'thread-1', toolCalls: 8 }, draft: null });
+    expect(answer).toMatchObject({
+      requestId: 'r1',
+      ok: true,
+      transcript: { threadId: 'thread-1', toolCalls: 8 },
+      draft: null,
+    });
     const { draft } = await service.request('thread-1');
-    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.transcript, { requestId: 'r2' })).toMatchObject({ draft: { id: draft!.id, state: 'pending' } });
+    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.transcript, { requestId: 'r2' })).toMatchObject({
+      draft: { id: draft!.id, state: 'pending' },
+    });
   });
 
   it('finds another thread by the start of its id', async () => {
-    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.transcript, { requestId: 'r', thread: 'thread-2' })).toMatchObject({ ok: true, transcript: { threadId: 'thread-2' } });
-    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.transcript, { requestId: 'r', thread: 'thread-' })).toMatchObject({ ok: false, code: 'not-found' });
-    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.transcript, { requestId: 'r', thread: 'nope' })).toMatchObject({ ok: false, code: 'not-found' });
+    expect(
+      await service.plugin('thread-1', PLUGIN_CHANNELS.transcript, { requestId: 'r', thread: 'thread-2' }),
+    ).toMatchObject({ ok: true, transcript: { threadId: 'thread-2' } });
+    expect(
+      await service.plugin('thread-1', PLUGIN_CHANNELS.transcript, { requestId: 'r', thread: 'thread-' }),
+    ).toMatchObject({ ok: false, code: 'not-found' });
+    expect(
+      await service.plugin('thread-1', PLUGIN_CHANNELS.transcript, { requestId: 'r', thread: 'nope' }),
+    ).toMatchObject({ ok: false, code: 'not-found' });
   });
 
   it('returns the outcome of a thread, or null', async () => {
-    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.outcome, { requestId: 'r' })).toMatchObject({ ok: true, outcome: { kind: 'merged', base: BASE, head: HEAD } });
+    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.outcome, { requestId: 'r' })).toMatchObject({
+      ok: true,
+      outcome: { kind: 'merged', base: BASE, head: HEAD },
+    });
     addThread('thread-3');
-    expect(await service.plugin('thread-3', PLUGIN_CHANNELS.outcome, { requestId: 'r' })).toMatchObject({ ok: true, outcome: null });
+    expect(await service.plugin('thread-3', PLUGIN_CHANNELS.outcome, { requestId: 'r' })).toMatchObject({
+      ok: true,
+      outcome: null,
+    });
   });
 
   it('runs one model call through the attendant with the session’s signal, and asks for consent first while it is off', async () => {
@@ -682,30 +893,59 @@ describe('the plugin API (doc/docs/plugins.md)', () => {
 
     settings.enabled = false;
     const asked = await service.plugin('thread-2', PLUGIN_CHANNELS.attendant, request);
-    expect(asked).toEqual({ requestId: 'r', ok: false, code: 'consent', error: consentSentence('fake/canned'), model: 'fake/canned' });
+    expect(asked).toEqual({
+      requestId: 'r',
+      ok: false,
+      code: 'consent',
+      error: consentSentence('fake/canned'),
+      model: 'fake/canned',
+    });
     expect(completions).toHaveLength(1);
-    expect(await service.plugin('thread-2', PLUGIN_CHANNELS.attendant, { ...request, consent: true })).toMatchObject({ ok: true });
+    expect(await service.plugin('thread-2', PLUGIN_CHANNELS.attendant, { ...request, consent: true })).toMatchObject({
+      ok: true,
+    });
     expect(completions).toHaveLength(2);
   });
 
   it('passes on why a call was refused', async () => {
     reply = () => ({ ok: false, code: 'cap', error: 'rests until tomorrow' });
-    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.attendant, { requestId: 'r', task: 'learn', system: 'S', user: 'U' })).toEqual({ requestId: 'r', ok: false, code: 'cap', error: 'rests until tomorrow' });
+    expect(
+      await service.plugin('thread-1', PLUGIN_CHANNELS.attendant, {
+        requestId: 'r',
+        task: 'learn',
+        system: 'S',
+        user: 'U',
+      }),
+    ).toEqual({ requestId: 'r', ok: false, code: 'cap', error: 'rests until tomorrow' });
   });
 
   it('stores a draft a package hands back as pending, once per thread', async () => {
-    const stored = await service.plugin('thread-1', PLUGIN_CHANNELS.draft, { requestId: 'r', text: CANNED, model: 'fake/canned' });
+    const stored = await service.plugin('thread-1', PLUGIN_CHANNELS.draft, {
+      requestId: 'r',
+      text: CANNED,
+      model: 'fake/canned',
+    });
     expect(stored).toMatchObject({ ok: true, draft: { name: 'add-a-migration', state: 'pending', madeBy: 'person' } });
-    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.draft, { requestId: 'r', text: CANNED })).toMatchObject({ ok: false, code: 'conflict' });
+    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.draft, { requestId: 'r', text: CANNED })).toMatchObject({
+      ok: false,
+      code: 'conflict',
+    });
     expect(existsSync(join(project, '.pi'))).toBe(false);
   });
 
   it('refuses a draft that is not a skill', async () => {
-    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.draft, { requestId: 'r', text: 'no frontmatter here' })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(
+      await service.plugin('thread-1', PLUGIN_CHANNELS.draft, { requestId: 'r', text: 'no frontmatter here' }),
+    ).toMatchObject({ ok: false, code: 'invalid' });
   });
 
   describe('pi-kit:learn:verified', () => {
-    const done: SkillVerification = { state: 'done', result: 'pass', files: { reproduced: 1, expected: 1, extra: 0 }, hunks: { matched: 1, expected: 1, actual: 1 } };
+    const done: SkillVerification = {
+      state: 'done',
+      result: 'pass',
+      files: { reproduced: 1, expected: 1, extra: 0 },
+      hunks: { matched: 1, expected: 1, actual: 1 },
+    };
     let started: { id: string; prompt?: string }[];
     beforeEach(() => {
       started = [];
@@ -723,39 +963,86 @@ describe('the plugin API (doc/docs/plugins.md)', () => {
 
     it('starts the replay, waits for it, and answers with the report', async () => {
       const { draft } = await service.request('thread-1');
-      const answer = await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r', prompt: 'Do it again' });
-      expect(answer).toMatchObject({ requestId: 'r', ok: true, draft: { id: draft!.id, name: 'add-a-migration', state: 'pending' }, verification: { state: 'done', result: 'pass' } });
+      const answer = await service.plugin('thread-1', PLUGIN_CHANNELS.verified, {
+        requestId: 'r',
+        prompt: 'Do it again',
+      });
+      expect(answer).toMatchObject({
+        requestId: 'r',
+        ok: true,
+        draft: { id: draft!.id, name: 'add-a-migration', state: 'pending' },
+        verification: { state: 'done', result: 'pass' },
+      });
       expect(started).toEqual([{ id: draft!.id, prompt: 'Do it again' }]);
     });
 
     it('only reads the last report with start: false', async () => {
       const { draft } = await service.request('thread-1');
-      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r', start: false })).toMatchObject({ ok: true, verification: null });
+      expect(
+        await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r', start: false }),
+      ).toMatchObject({ ok: true, verification: null });
       drafts.setVerification(draft!.id, done);
-      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r', start: false })).toMatchObject({ ok: true, verification: { result: 'pass' } });
+      expect(
+        await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r', start: false }),
+      ).toMatchObject({ ok: true, verification: { result: 'pass' } });
       expect(started).toEqual([]);
     });
 
     it('says so when the thread has no draft, when verification is not there, and why a replay was refused', async () => {
-      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r' })).toMatchObject({ ok: false, code: 'not-found', error: expect.stringContaining('/learn') });
+      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r' })).toMatchObject({
+        ok: false,
+        code: 'not-found',
+        error: expect.stringContaining('/learn'),
+      });
       await service.request('thread-1');
       service.useVerifier(undefined);
-      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r' })).toMatchObject({ ok: false, code: 'off' });
-      service.useVerifier({ start: async () => Promise.reject(new ConflictException('Another skill is being verified.')), whenDone: async () => null });
-      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r' })).toEqual({ requestId: 'r', ok: false, code: 'conflict', error: 'Another skill is being verified.' });
-      service.useVerifier({ start: async () => Promise.reject(new BadRequestException('not a skill')), whenDone: async () => null });
-      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r' })).toMatchObject({ code: 'invalid' });
+      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r' })).toMatchObject({
+        ok: false,
+        code: 'off',
+      });
+      service.useVerifier({
+        start: async () => Promise.reject(new ConflictException('Another skill is being verified.')),
+        whenDone: async () => null,
+      });
+      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r' })).toEqual({
+        requestId: 'r',
+        ok: false,
+        code: 'conflict',
+        error: 'Another skill is being verified.',
+      });
+      service.useVerifier({
+        start: async () => Promise.reject(new BadRequestException('not a skill')),
+        whenDone: async () => null,
+      });
+      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r' })).toMatchObject({
+        code: 'invalid',
+      });
     });
 
     it('rejects an unknown field', async () => {
-      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r', nope: 1 })).toMatchObject({ ok: false, code: 'invalid' });
+      expect(await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r', nope: 1 })).toMatchObject({
+        ok: false,
+        code: 'invalid',
+      });
     });
   });
 
   it('rejects a malformed request with a reason, and answers nothing without a requestId', async () => {
-    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.attendant, { requestId: 'r', task: 'other', system: 'S', user: 'U' })).toMatchObject({ ok: false, code: 'invalid' });
-    expect(await service.plugin('thread-1', PLUGIN_CHANNELS.draft, { requestId: 'r', text: CANNED, extra: 1 })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(
+      await service.plugin('thread-1', PLUGIN_CHANNELS.attendant, {
+        requestId: 'r',
+        task: 'other',
+        system: 'S',
+        user: 'U',
+      }),
+    ).toMatchObject({ ok: false, code: 'invalid' });
+    expect(
+      await service.plugin('thread-1', PLUGIN_CHANNELS.draft, { requestId: 'r', text: CANNED, extra: 1 }),
+    ).toMatchObject({ ok: false, code: 'invalid' });
     expect(await service.plugin('thread-1', PLUGIN_CHANNELS.transcript, {})).toBeUndefined();
-    expect(await service.plugin('thread-1', 'pi-kit:unknown', { requestId: 'r' })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await service.plugin('thread-1', 'pi-kit:unknown', { requestId: 'r' })).toMatchObject({
+      ok: false,
+      code: 'invalid',
+    });
   });
 });

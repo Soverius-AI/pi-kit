@@ -20,12 +20,19 @@ export const PackageBringsSchema = z
     skills: z.number().int(),
     prompts: z.number().int(),
     themes: z.number().int(),
-    names: z.object({ extensions: z.array(z.string()), skills: z.array(z.string()), prompts: z.array(z.string()), themes: z.array(z.string()) }),
+    names: z.object({
+      extensions: z.array(z.string()),
+      skills: z.array(z.string()),
+      prompts: z.array(z.string()),
+      themes: z.array(z.string()),
+    }),
   })
   .meta({ id: 'PackageBrings' });
 export type PackageBrings = z.infer<typeof PackageBringsSchema>;
 
-export const PackageOutdatedSchema = z.object({ current: z.string().optional(), latest: z.string().optional() }).meta({ id: 'PackageOutdated' });
+export const PackageOutdatedSchema = z
+  .object({ current: z.string().optional(), latest: z.string().optional() })
+  .meta({ id: 'PackageOutdated' });
 export type PackageOutdated = z.infer<typeof PackageOutdatedSchema>;
 
 export const PackageItemSchema = z
@@ -77,15 +84,23 @@ export const InstallPackageSchema = z
   .meta({ id: 'InstallPackage' });
 export type InstallPackage = z.infer<typeof InstallPackageSchema>;
 
-export const PackageEnabledRequestSchema = z.object({ enabled: z.boolean() }).strict().meta({ id: 'PackageEnabledRequest' });
+export const PackageEnabledRequestSchema = z
+  .object({ enabled: z.boolean() })
+  .strict()
+  .meta({ id: 'PackageEnabledRequest' });
 
 /** What an install, an update or a removal answers with: the list afterwards, and a sentence for the toast. */
-export const PackageActionResultSchema = z.object({ message: z.string(), overview: PackagesOverviewSchema, reloaded: z.number().int() }).meta({ id: 'PackageActionResult' });
+export const PackageActionResultSchema = z
+  .object({ message: z.string(), overview: PackagesOverviewSchema, reloaded: z.number().int() })
+  .meta({ id: 'PackageActionResult' });
 export type PackageActionResult = z.infer<typeof PackageActionResultSchema>;
 
 export const PackageSearchKindSchema = z.enum(['all', ...PACKAGE_KINDS]);
 export type PackageSearchKind = z.infer<typeof PackageSearchKindSchema>;
-export const PackageSearchQuerySchema = z.object({ q: z.string().max(200).optional(), kind: PackageSearchKindSchema.optional() });
+export const PackageSearchQuerySchema = z.object({
+  q: z.string().max(200).optional(),
+  kind: PackageSearchKindSchema.optional(),
+});
 export type PackageSearchQuery = z.infer<typeof PackageSearchQuerySchema>;
 
 /** One result of the Browse tab: an npm package, or one of the two that ship with pi-kit. */
@@ -107,7 +122,14 @@ export const PackageSearchResultSchema = z
     contains: z.array(PackageKindSchema),
     /** `contains` is a count from the manifest (true) or a guess from keywords (false). */
     exact: z.boolean(),
-    brings: z.object({ extensions: z.number().int(), skills: z.number().int(), prompts: z.number().int(), themes: z.number().int() }).optional(),
+    brings: z
+      .object({
+        extensions: z.number().int(),
+        skills: z.number().int(),
+        prompts: z.number().int(),
+        themes: z.number().int(),
+      })
+      .optional(),
     bundled: z.boolean().optional(),
     /** Already in pi's settings. */
     installed: z.boolean().optional(),
@@ -154,10 +176,7 @@ export const PackageDetailSchema = z
   .meta({ id: 'PackageDetail' });
 export type PackageDetail = z.infer<typeof PackageDetailSchema>;
 
-// ---- a new skill, and the editor for skill files (Settings › Extensions and skills › Your skills)
-
-export const NewSkillSchema = z.object({ name: z.string().min(1).max(64), scope: z.enum(['user', 'project']) }).strict().meta({ id: 'NewSkill' });
-export type NewSkill = z.infer<typeof NewSkillSchema>;
+// ---- skill files and catalog
 
 export const SkillFileSchema = z
   .object({
@@ -172,8 +191,61 @@ export const SkillFileSchema = z
 export type SkillFile = z.infer<typeof SkillFileSchema>;
 
 export const SkillFileQuerySchema = z.object({ path: z.string().min(1), cwd: z.string().optional() });
-export const SkillFilePutSchema = z.object({ text: z.string().max(1_000_000), mtime: z.number() }).strict().meta({ id: 'SkillFilePut' });
-export type SkillFilePut = z.infer<typeof SkillFilePutSchema>;
+export const SkillSearchQuerySchema = z.object({ q: z.string().trim().min(2).max(200) });
+export const SkillSearchResultSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    source: z.string(),
+    installs: z.number().int().nonnegative(),
+    url: z.string(),
+  })
+  .meta({ id: 'SkillSearchResult' });
+export type SkillSearchResult = z.infer<typeof SkillSearchResultSchema>;
+export const SkillSearchResponseSchema = z
+  .object({ results: z.array(SkillSearchResultSchema), error: z.string().optional() })
+  .meta({ id: 'SkillSearchResponse' });
+export type SkillSearchResponse = z.infer<typeof SkillSearchResponseSchema>;
+export const InstallSkillSchema = z
+  .object({
+    source: z.string().trim().min(1).max(300),
+    name: z.string().min(1).max(64),
+    scope: z.enum(['user', 'project']),
+    commit: z
+      .string()
+      .regex(/^[a-f0-9]{40,64}$/)
+      .optional(),
+  })
+  .strict()
+  .meta({ id: 'InstallSkill' });
+export type InstallSkill = z.infer<typeof InstallSkillSchema>;
+export const SkillDetailQuerySchema = z.object({
+  source: z.string().trim().min(1).max(300),
+  name: z.string().min(1).max(64),
+});
+export const SkillDetailSchema = z
+  .object({
+    source: z.string(),
+    name: z.string(),
+    description: z.string(),
+    license: z.string().optional(),
+    compatibility: z.string().optional(),
+    author: z.string().optional(),
+    path: z.string(),
+    commit: z.string(),
+    files: z.number().int().nonnegative(),
+    bytes: z.number().nonnegative(),
+    scripts: z.array(z.string()),
+    content: z.string(),
+    warnings: z.array(z.string()),
+  })
+  .meta({ id: 'SkillDetail' });
+export type SkillDetail = z.infer<typeof SkillDetailSchema>;
+export const DeleteSkillSchema = z.object({ mtime: z.number().nonnegative() }).strict().meta({ id: 'DeleteSkill' });
+export const SkillActionResultSchema = z
+  .object({ message: z.string(), reloaded: z.number().int().nonnegative() })
+  .meta({ id: 'SkillActionResult' });
+export type SkillActionResult = z.infer<typeof SkillActionResultSchema>;
 
 // ---- helpers the renderer and the backend share
 
@@ -193,7 +265,14 @@ export function installCommand(source: string, scope: 'user' | 'project' = 'user
 
 /** "1 extension, 2 skills": the nonzero kinds, singular where it is one; "nothing" for a package that brings none. */
 export function bringsText(brings: Pick<PackageBrings, PackageKind>): string {
-  const word: Record<PackageKind, [string, string]> = { extensions: ['extension', 'extensions'], skills: ['skill', 'skills'], prompts: ['prompt', 'prompts'], themes: ['theme', 'themes'] };
-  const parts = PACKAGE_KINDS.filter((k) => brings[k] > 0).map((k) => `${brings[k]} ${word[k][brings[k] === 1 ? 0 : 1]}`);
+  const word: Record<PackageKind, [string, string]> = {
+    extensions: ['extension', 'extensions'],
+    skills: ['skill', 'skills'],
+    prompts: ['prompt', 'prompts'],
+    themes: ['theme', 'themes'],
+  };
+  const parts = PACKAGE_KINDS.filter((k) => brings[k] > 0).map(
+    (k) => `${brings[k]} ${word[k][brings[k] === 1 ? 0 : 1]}`,
+  );
   return parts.length > 0 ? parts.join(', ') : 'nothing yet';
 }

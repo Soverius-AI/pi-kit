@@ -1,23 +1,23 @@
 import { Language, TranslocoPipe } from '@pi-kit/i18n';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, computed, inject, input, signal, linkedSignal, DestroyRef } from '@angular/core';
 import { ChatStore } from '@pi-kit/chat/api';
-import { UiStore } from '@pi-kit/data-access';
+import { DialogStore, UiStore } from '@pi-kit/data-access';
 import { PkIcon, PkItem, PkScrollArea, PkTabPanel, PkTabs, PkTip } from '@pi-kit/design-system';
-import { type ResourceItem, type SkillScope, isSkillName, skillTextProblems } from '@pi-kit/protocol';
-import { type EditorSource, FileEditorDialog, PackagesStore, PkSetting, SettingsStore } from '@pi-kit/settings/api';
+import { type ResourceItem } from '@pi-kit/protocol';
+import { PackagesStore, PkSetting, SettingsStore } from '@pi-kit/settings/api';
 import { packages } from '@pi-kit/settings/util';
 import { PkContextMenu, type PkMenuItem } from '@pi-kit/ui';
+import { errorMessage } from '@pi-kit/api';
+import { LearnedStore } from '@pi-kit/threads/api';
+import { InstallSkillDialog } from './install-skill-dialog';
+import { DeleteSkillDialog } from './delete-skill-dialog';
 import { AddPackageWizard } from './add-package-wizard';
 import { PkLearnedRetired, PkLearnedSkill } from './learned-skill';
 
-/** Shared resource controls for Settings › Extensions and Settings › Skills. Packages and prompt files
- * stay on Extensions; skill creation, editing, learned skills and slash commands live on Skills.
- */
 @Component({
   selector: 'pk-extensions-section',
   imports: [
     AddPackageWizard,
-    FileEditorDialog,
     PkContextMenu,
     PkItem,
     PkSetting,
@@ -30,29 +30,64 @@ import { PkLearnedRetired, PkLearnedSkill } from './learned-skill';
     TranslocoPipe,
     PkIcon,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './extensions-section.html',
 })
 export class ExtensionsSection {
-  protected readonly tab = signal('');
-  protected readonly i18n = inject(Language);
   readonly section = input<'extensions' | 'skills'>('extensions');
+  protected readonly tab = linkedSignal<string>(() => (this.section() === 'skills' ? 'inventory' : 'packages'));
+  protected readonly i18n = inject(Language);
   protected readonly store = inject(SettingsStore);
   protected readonly pkgs = inject(PackagesStore);
   protected readonly chat = inject(ChatStore);
   private readonly ui = inject(UiStore);
 
   protected readonly menu = signal<{ row: packages.PackageRow; x: number; y: number } | undefined>(undefined);
-  /** The package whose removal is being confirmed, and the one whose contents are shown. */
   protected readonly removing = signal('');
   protected readonly open = signal('');
-  protected readonly newSkill = signal(false);
-  protected readonly newSkillName = signal('');
-  protected readonly newSkillScope = signal<SkillScope>('user');
-  protected readonly newSkillError = signal('');
-  protected readonly creating = signal(false);
+  private readonly learned = inject(LearnedStore);
+  private readonly dialogs = inject(DialogStore);
+  private readonly destroyRef = inject(DestroyRef);
+  protected readonly deleteError = signal('');
+  protected readonly deleteBusy = signal('');
 
-  /** The search words that item text has; with a search active, the items that have all of them (all items if none has). */
+  protected canDeleteSkill(row: ResourceItem): boolean {
+    if (row.type !== 'skills' || row.origin !== 'top-level' || !['local', 'auto'].includes(row.source)) return false;
+    const path = row.path.replace(/\\/g, '/');
+    if (this.learned.live().some((s) => s.path.replace(/\\/g, '/') === path)) return false;
+    const root =
+      row.scope === 'user' ? this.store.settings()?.agentDir : this.pkgs.cwd() ? `${this.pkgs.cwd()}/.pi` : undefined;
+    return !!root && path === `${root.replace(/\\/g, '/').replace(/\/$/, '')}/skills/${row.name}/SKILL.md`;
+  }
+
+  protected async confirmDeleteSkill(row: ResourceItem): Promise<void> {
+    if (!this.canDeleteSkill(row) || this.deleteBusy()) return;
+    this.deleteError.set('');
+    this.deleteBusy.set(row.path);
+    try {
+      // Capture the version before showing confirmation, never immediately before deleting.
+      const file = await this.pkgs.skillFile(row.path);
+      if (this.destroyRef.destroyed) return;
+      this.dialogs.show({
+        kind: 'component',
+        component: DeleteSkillDialog,
+        inputs: { skill: row, mtime: file.mtime },
+        canClose: () => !this.pkgs.busy().has(row.path),
+      });
+    } catch (error) {
+      this.deleteError.set(errorMessage(error));
+    } finally {
+      this.deleteBusy.set('');
+    }
+  }
+
+  protected openInstallSkill(): void {
+    this.dialogs.show({
+      kind: 'component',
+      component: InstallSkillDialog,
+      canClose: () => !this.pkgs.busy().has('skill:+'),
+    });
+  }
+
   private readonly filtered = computed(() => {
     const all = this.store.resources()?.items ?? [];
     const words = this.store.search().toLowerCase().split(/\s+/).filter(Boolean);
@@ -63,11 +98,9 @@ export class ExtensionsSection {
     return hit.length > 0 ? hit : all;
   });
 
-  /** Skills from the user's and the project's skill folders. A skill a package brings is under its package. */
   protected readonly yourSkills = computed(() =>
     this.filtered().filter((i) => i.type === 'skills' && i.origin !== 'package'),
   );
-  /** Extensions and prompt templates that are files of the user's or the project's, and pi's built-in ones. */
   protected readonly yourFiles = computed(() =>
     this.filtered().filter((i) => i.type !== 'skills' && i.origin !== 'package'),
   );
@@ -83,36 +116,6 @@ export class ExtensionsSection {
     packages.packagesOnText.bind(undefined, this.i18n.t)(this.pkgs.packages()),
   );
 
-  /** The skill file the editor dialog works on: its text, its check (the frontmatter pi needs), its save. */
-  protected readonly skillSource = computed<EditorSource | undefined>(() => {
-    const edit = this.pkgs.skillEditor();
-    if (!edit) return undefined;
-    const path = edit.path;
-    return {
-      title: path.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~'),
-      chips: [
-        { text: this.i18n.t('settings.extensionsSection.skillNoun'), tone: 'off' as const },
-        ...(edit.created ? [{ text: this.i18n.t('settings.extensionsSection.new'), tone: 'ok' as const }] : []),
-      ],
-      language: 'markdown',
-      load: async () => {
-        const file = await this.pkgs.skillFile(path);
-        return { text: file.text, mtime: file.mtime };
-      },
-      save: async (text, mtime) => {
-        const file = await this.pkgs.saveSkill(path, { text, mtime });
-        return { text: file.text, mtime: file.mtime };
-      },
-      check: (text) => {
-        const [first] = skillTextProblems(text);
-        return first ? { message: first } : undefined;
-      },
-      valid: () => this.i18n.t('settings.extensionsSection.piCanLoadThisSkillSSaves'),
-      saveLabel: this.i18n.t('settings.extensionsSection.save'),
-      isNew: edit.created === true,
-    };
-  });
-
   protected readonly menuItems = computed<PkMenuItem[]>(() => {
     const row = this.menu()?.row;
     if (!row) return [];
@@ -127,13 +130,6 @@ export class ExtensionsSection {
     return items;
   });
 
-  constructor() {
-    // Showing the section asks for what is installed.
-    effect(() => {
-      if (this.section() === 'extensions') untracked(() => void this.pkgs.load());
-    });
-  }
-
   protected count(items: readonly ResourceItem[]): string {
     return this.i18n.t('settings.extensionsSection.ofOn', {
       value1: items.filter((i) => i.enabled).length,
@@ -145,7 +141,6 @@ export class ExtensionsSection {
     return this.pkgs.busy().has(id) || this.store.resourcesBusy().includes(id);
   }
 
-  /** What a package brings, from the resource list pi gave (the same entries, so one switch is one switch). */
   protected contentsOf(source: string, scope: 'user' | 'project'): ResourceItem[] {
     return (this.store.resources()?.items ?? []).filter(
       (i) => i.origin === 'package' && i.source === source && i.scope === scope,
@@ -164,7 +159,6 @@ export class ExtensionsSection {
     });
   }
 
-  /** The skill or prompt template as a chip in the composer of the open thread; the dialog closes and the composer has the focus. */
   protected addToComposer(item: ResourceItem): void {
     this.chat.addChip({ kind: item.type === 'skills' ? 'skill' : 'prompt', name: item.name, scope: item.scope });
     this.ui.closeSettings();
@@ -187,21 +181,5 @@ export class ExtensionsSection {
   protected async remove(id: string): Promise<void> {
     this.removing.set('');
     await this.pkgs.remove(id);
-  }
-
-  protected async createSkill(event: Event): Promise<void> {
-    event.preventDefault();
-    const name = this.newSkillName().trim();
-    if (!isSkillName(name))
-      return void this.newSkillError.set(
-        this.i18n.t('settings.extensionsSection.useLowercaseLettersDigitsAndSingleHyphens'),
-      );
-    this.creating.set(true);
-    const result = await this.pkgs.newSkill({ name, scope: this.newSkillScope() });
-    this.creating.set(false);
-    if (result.ok) {
-      this.newSkill.set(false);
-      this.newSkillName.set('');
-    } else this.newSkillError.set(result.error);
   }
 }

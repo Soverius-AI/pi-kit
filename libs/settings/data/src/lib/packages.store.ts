@@ -12,21 +12,24 @@ import {
   packagesRemove,
   packagesSearch,
   packagesUpdate,
-  skillsCreate,
   skillsRead,
-  skillsSave,
+  skillsSearch,
+  skillsDetail,
+  skillsInstall,
+  skillsRemove,
   unwrap,
 } from '@pi-kit/api';
 import { ToastStore } from '@pi-kit/data-access';
 import type {
   InstallPackage,
-  NewSkill,
+  InstallSkill,
+  SkillSearchResponse,
+  SkillDetail,
   PackageDetail,
   PackageSearchKind,
   PackageSearchResponse,
   PackagesOverview,
   SkillFile,
-  SkillFilePut,
 } from '@pi-kit/protocol';
 import { ThreadsStore } from '@pi-kit/threads/api';
 
@@ -34,26 +37,13 @@ import { SettingsStore } from './settings.store';
 
 interface PackagesState {
   overview: PackagesOverview | undefined;
-  /** The first read is in flight. */
   loading: boolean;
-  /** “Check for updates” is asking pi and the registry. */
   checking: boolean;
-  /** Ids of packages with an action in flight; `'+'` while an install runs. */
   busy: ReadonlySet<string>;
-  /** The “Add a package” wizard is open. */
   wizard: boolean;
-  /** The editor dialog is open on this skill file (the “+” of Your skills, or Edit on a skill). */
-  skillEditor: { path: string; created?: boolean } | undefined;
-  /** Why the list could not be read. */
   error: string | undefined;
 }
 
-/**
- * Packages and your own skills in Settings › Extensions and Settings › Skills: the installed packages with what each brings, the actions (install, update, remove, on/off,
- * check for updates), the wizard's search and detail, and the new-skill file. The backend does the work through pi's package manager; what changes here is read by the open
- * threads at their next reload, which the backend triggers for installs, updates and removals, and which the banner of Settings offers for the rest. The resource list (`SettingsStore`)
- * is read again after every change, because a package brings extensions, skills and prompts into it.
- */
 export const PackagesStore = signalStore(
   { providedIn: 'root' },
   withState<PackagesState>({
@@ -62,7 +52,6 @@ export const PackagesStore = signalStore(
     checking: false,
     busy: new Set<string>(),
     wizard: false,
-    skillEditor: undefined,
     error: undefined,
   }),
   withComputed(({ overview }) => ({
@@ -84,7 +73,6 @@ export const PackagesStore = signalStore(
         else next.delete(id);
         return { busy: next };
       });
-    /** What changed also changes the resources pi lists (a package brings extensions, skills, prompts). */
     const resourcesChanged = (): void => void settings.loadResources();
 
     const methods = {
@@ -133,7 +121,6 @@ export const PackagesStore = signalStore(
         }
       },
 
-      /** The wizard's Install: true when it went through, otherwise the sentence to show in the wizard. */
       async install(body: InstallPackage): Promise<{ ok: true } | { ok: false; error: string }> {
         setBusy('+', true);
         try {
@@ -222,34 +209,45 @@ export const PackagesStore = signalStore(
         return unwrap(packagesDetail({ client: api.client, query: { source, cwd: cwd() || undefined } }));
       },
 
-      // ---- your own skills
-
-      /** “+” on Your skills: the folder is made from the template and the editor opens on its file. */
-      async newSkill(body: NewSkill): Promise<{ ok: true; file: SkillFile } | { ok: false; error: string }> {
+      searchSkills(q: string, signal?: AbortSignal): Promise<SkillSearchResponse> {
+        return unwrap(skillsSearch({ client: api.client, query: { q }, signal }));
+      },
+      skillDetail(source: string, name: string, signal?: AbortSignal): Promise<SkillDetail> {
+        return unwrap(skillsDetail({ client: api.client, query: { source, name }, signal }));
+      },
+      async installSkill(body: InstallSkill): Promise<{ ok: true } | { ok: false; error: string }> {
+        setBusy('skill:+', true);
         try {
-          const file = await unwrap(skillsCreate({ client: api.client, query: { cwd: cwd() || undefined }, body }));
-          patchState(store, { skillEditor: { path: file.path, created: true } });
+          const result = await unwrap(skillsInstall({ client: api.client, query: { cwd: cwd() || undefined }, body }));
           settings.markReload(translate('settings.packagesStore.extensionsAndSkills'));
           resourcesChanged();
-          return { ok: true, file };
+          toasts.show('success', result.message, 4000);
+          return { ok: true };
         } catch (error) {
           return { ok: false, error: errorMessage(error) };
+        } finally {
+          setBusy('skill:+', false);
         }
       },
-      openSkillEditor(path: string): void {
-        patchState(store, { skillEditor: { path } });
+      async removeSkill(path: string, mtime: number): Promise<{ ok: true } | { ok: false; error: string }> {
+        setBusy(path, true);
+        try {
+          const result = await unwrap(
+            skillsRemove({ client: api.client, query: { path, cwd: cwd() || undefined }, body: { mtime } }),
+          );
+          settings.markReload(translate('settings.packagesStore.extensionsAndSkills'));
+          resourcesChanged();
+          toasts.show('success', result.message, 4000);
+          return { ok: true };
+        } catch (error) {
+          return { ok: false, error: errorMessage(error) };
+        } finally {
+          setBusy(path, false);
+        }
       },
-      closeSkillEditor(): void {
-        patchState(store, { skillEditor: undefined });
-      },
+
       skillFile: (path: string): Promise<SkillFile> =>
         unwrap(skillsRead({ client: api.client, query: { path, cwd: cwd() || undefined } })),
-      async saveSkill(path: string, body: SkillFilePut): Promise<SkillFile> {
-        const file = await unwrap(skillsSave({ client: api.client, query: { path, cwd: cwd() || undefined }, body }));
-        settings.markReload(translate('settings.packagesStore.extensionsAndSkills'));
-        resourcesChanged();
-        return file;
-      },
     };
     return methods;
   }),
