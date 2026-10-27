@@ -77,7 +77,7 @@ export function parseSkillManifest(text: string): SkillManifest {
 }
 
 /** Walk without following links, bounding both repository discovery and the complete copied payload. */
-async function inventory(root: string, maxBytes = MAX_BYTES): Promise<string[]> {
+async function inventory(root: string, maxBytes = MAX_BYTES, strict = true): Promise<string[]> {
   const files: string[] = [];
   let bytes = 0;
   let entries = 0;
@@ -88,8 +88,10 @@ async function inventory(root: string, maxBytes = MAX_BYTES): Promise<string[]> 
       if (++entries > MAX_FILES) throw new Error('Repository file count limit exceeded');
       const path = join(dir, entry.name);
       const stat = await lstat(path);
-      if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile()))
-        throw new Error('Repository contains unsafe links or special files');
+      if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile())) {
+        if (strict) throw new Error('Selected skill contains unsafe links or special files');
+        continue;
+      }
       if (stat.isDirectory()) await visit(path, depth + 1);
       else {
         bytes += stat.size;
@@ -186,6 +188,8 @@ async function withFetchedSkill<T>(
       'submodule.recurse=false',
       '-c',
       'core.attributesFile=/dev/null',
+      '-c',
+      'core.symlinks=false',
     ];
     const git = async (cwd: string, args: string[]): Promise<string> => {
       const result = await run(cwd, [...gitConfig, ...args], { timeoutMs: config.gitTimeoutMs, env });
@@ -207,21 +211,32 @@ async function withFetchedSkill<T>(
     const tree = (await git(repo, ['ls-tree', '-r', '-l', '-z', commit])).split('\0').filter(Boolean);
     let total = 0;
     if (tree.length > MAX_FILES) throw new Error('Repository file count limit exceeded');
+    const unsafeEntries = new Set<string>();
     for (const entry of tree) {
-      const match = /^(\d+) blob [a-f0-9]+\s+(\d+)\t([\s\S]+)$/.exec(entry);
-      if (!match || !['100644', '100755'].includes(match[1]))
-        throw new Error('Repository contains unsafe links or submodules');
-      const parts = match[3].split('/');
+      const match = /^(\d+) (blob|commit) [a-f0-9]+\s+(\d+|-)\t([\s\S]+)$/.exec(entry);
+      if (
+        !match ||
+        !(match[2] === 'blob'
+          ? ['100644', '100755', '120000'].includes(match[1]) && match[3] !== '-'
+          : match[1] === '160000' && match[3] === '-')
+      )
+        throw new Error('Repository contains unsafe tree entries');
+      const parts = match[4].split('/');
       if (
         parts.length > MAX_DEPTH ||
         parts.some((p) => !p || p === '.' || p === '..' || p.toLowerCase() === '.git' || p.includes('\\'))
       )
         throw new Error('Unsafe repository path');
-      total += Number(match[2]);
+      if (match[1] === '120000' || match[1] === '160000') unsafeEntries.add(match[4]);
+      total += match[3] === '-' ? 0 : Number(match[3]);
       if (total > MAX_REPOSITORY_BYTES) throw new Error('Repository exceeds the 1 GB size limit');
     }
+    // Materialize symlinks as inert regular files, and never initialize submodules.
+    // Keep their tree identities so neither discovery nor payload copying treats them as files.
     await git(repo, ['checkout', '--force', '--detach', commit]);
-    const files = await inventory(repo, MAX_REPOSITORY_BYTES);
+    const files = (await inventory(repo, MAX_REPOSITORY_BYTES, false)).filter(
+      (file) => !unsafeEntries.has(file.split(sep).join('/')),
+    );
     const candidates: string[] = [];
     for (const file of files.filter((f) => basename(f) === 'SKILL.md')) {
       const folder = dirname(file);
@@ -250,6 +265,9 @@ async function withFetchedSkill<T>(
     if (!candidates.length) throw new Error('Selected skill not found');
     const selected = candidates[0];
     const selectedRoot = join(repo, selected);
+    const selectedPath = selected.split(sep).join('/');
+    if ([...unsafeEntries].some((path) => selected === '.' || path.startsWith(`${selectedPath}/`)))
+      throw new Error('Selected skill contains unsafe links or submodules');
     const payload = await inventory(selectedRoot);
     if (payload.includes(INSTALL_METADATA)) throw new Error('Repository uses reserved installer metadata filename');
     const licenses =

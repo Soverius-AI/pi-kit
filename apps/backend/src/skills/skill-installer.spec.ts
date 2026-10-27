@@ -172,12 +172,13 @@ describe('skill-only GitHub installer', () => {
     await symlink('/etc/passwd', join(fixture, 'unsafe'));
     await expect(installSkill(input())).rejects.toThrow('unsafe');
   });
-  it('rejects unsafe git tree modes and oversized objects before checkout', async () => {
+  it('rejects unsupported git tree modes and unsafe paths and oversized objects before checkout', async () => {
     for (const tree of [
-      `120000 blob ${commit} 10\tlink\0`,
-      `160000 commit ${commit} -\tsubmodule\0`,
+      `100600 blob ${commit} 10\tfile\0`,
       `100644 blob ${commit} 1073741825\tlarge\0`,
       `100644 blob ${commit} 1\t../escape\0`,
+      `120000 blob ${commit} 1\tbad\\path\0`,
+      `160000 commit ${commit} -\t.git/module\0`,
     ]) {
       vi.mocked(run).mockImplementation(async (dir, args) => {
         if (args.includes('clone')) {
@@ -195,6 +196,59 @@ describe('skill-only GitHub installer', () => {
     }
     expect(vi.mocked(run).mock.calls.some(([, args]) => args.includes('checkout'))).toBe(false);
   });
+  it('previews and installs angular-style payloads with unrelated symlinks and submodules', async () => {
+    const selected = 'skills/dev-skills/angular-developer';
+    const text = manifest('angular-developer');
+    await file(`${selected}/SKILL.md`, text);
+    await file(`${selected}/references/guide.md`, 'Angular guide');
+    await mkdir(join(fixture, '.agent/rules'), { recursive: true });
+    // A directory link containing a duplicate manifest must never be followed during discovery.
+    await symlink(join(fixture, 'skills/dev-skills'), join(fixture, '.agent/rules/agents.md'));
+    await mkdir(join(fixture, 'vendor/submodule'), { recursive: true });
+    const original = vi.mocked(run).getMockImplementation()!;
+    vi.mocked(run).mockImplementation(async (dir, args, options) => {
+      const result = await original(dir, args, options);
+      if (args.includes('ls-tree'))
+        result.stdout =
+          `100644 blob ${commit} 10\t${selected}/SKILL.md\0` +
+          `100644 blob ${commit} 10\t${selected}/references/guide.md\0` +
+          `120000 blob ${commit} 10\t.agent/rules/agents.md\0` +
+          `160000 commit ${commit} -\tvendor/submodule\0`;
+      return result;
+    });
+    const request = { ...input(), source: 'angular/angular', name: 'angular-developer' };
+    await expect(previewSkill(request)).resolves.toMatchObject({ path: selected, files: 2, content: text });
+    await installSkill(request);
+    const installed = join(agentDir, 'skills/angular-developer');
+    expect(await readFile(join(installed, 'SKILL.md'), 'utf8')).toBe(text);
+    expect(await readdir(installed)).toEqual([INSTALL_METADATA, 'SKILL.md', 'references']);
+    expect(vi.mocked(run).mock.calls.every(([, args]) => args.includes('core.symlinks=false'))).toBe(true);
+    await expect(lstat(fetchDir)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each(['symlink', 'submodule'])(
+    'rejects a selected payload containing a %s in preview and install',
+    async (kind) => {
+      await file('skills/example/SKILL.md', manifest());
+      const original = vi.mocked(run).getMockImplementation()!;
+      vi.mocked(run).mockImplementation(async (dir, args, options) => {
+        const result = await original(dir, args, options);
+        if (args.includes('ls-tree'))
+          result.stdout =
+            `100644 blob ${commit} 10\tskills/example/SKILL.md\0` +
+            (kind === 'symlink'
+              ? `120000 blob ${commit} 10\tskills/example/link\0`
+              : `160000 commit ${commit} -\tskills/example/module\0`);
+        return result;
+      });
+      const request = { ...input(), source: `owner/selected-${kind}` };
+      await expect(previewSkill(request)).rejects.toThrow('unsafe links or submodules');
+      await expect(installSkill(request)).rejects.toThrow('unsafe links or submodules');
+      expect(await readdir(join(agentDir, 'skills'))).toEqual([]);
+      await expect(lstat(fetchDir)).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
+
   it('accepts a collection over the old 100 MB limit when the selected skill is small', async () => {
     await file('skills/example/SKILL.md', manifest());
     const original = vi.mocked(run).getMockImplementation()!;
