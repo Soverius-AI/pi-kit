@@ -2,7 +2,7 @@ import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
 import { ApiClient, sessionAbortBash, unwrap } from '@pi-kit/api';
-import { PkActivityRow } from '@pi-kit/design-system';
+import { PkActivityRow, PkAnsiText } from '@pi-kit/design-system';
 import type { PiActivityContent } from '@pi-kit/protocol';
 
 import { ChatStore } from '@pi-kit/chat/data';
@@ -11,7 +11,7 @@ import { firstLine, tail } from './tool-row-base';
 /** A `!command` the user ran: the command, its streaming output and a Stop that reaches `abort-bash`. */
 @Component({
   selector: 'pk-shell-row',
-  imports: [PkActivityRow, TranslocoPipe],
+  imports: [PkActivityRow, PkAnsiText, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'contents' },
   template: `
@@ -35,7 +35,7 @@ import { firstLine, tail } from './tool-row-base';
           @if (output().omitted > 0) {
             <div class="meta">{{ 'chat.shellRow.earlierLinesNotShown' | transloco: { value1: output().omitted } }}</div>
           }
-          <pre>{{ output().text }}@if (running()) {<span class="animate-pulse">▌</span>}</pre>
+          <pre><pk-ansi-text [text]="output().text" />@if (running()) {<span class="animate-pulse">▌</span>}</pre>
         </div>
       }
     </pk-activity-row>

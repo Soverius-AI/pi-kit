@@ -1,7 +1,7 @@
 import { TranslocoPipe } from '@pi-kit/i18n';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { ApiClient } from '@pi-kit/api';
-import { PkActivityRow } from '@pi-kit/design-system';
+import { PkActivityRow, PkAnsiText } from '@pi-kit/design-system';
 import type { PiActivityContent } from '@pi-kit/protocol';
 
 import { ToolRowBase, firstLine, tail } from './tool-row-base';
@@ -13,7 +13,7 @@ import { ToolRowBase, firstLine, tail } from './tool-row-base';
  */
 @Component({
   selector: 'pk-bash-tool-row',
-  imports: [PkActivityRow, TranslocoPipe],
+  imports: [PkActivityRow, PkAnsiText, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'contents' },
   template: `
@@ -39,7 +39,7 @@ import { ToolRowBase, firstLine, tail } from './tool-row-base';
               {{ 'chat.bashToolRow.earlierLinesNotShown' | transloco: { value1: output().omitted } }}
             </div>
           }
-          <pre>{{ output().text }}@if (running()) {<span class="animate-pulse">▌</span>}</pre>
+          <pre><pk-ansi-text [text]="output().text" />@if (running()) {<span class="animate-pulse">▌</span>}</pre>
         </div>
       }
     </pk-activity-row>
