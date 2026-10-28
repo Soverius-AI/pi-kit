@@ -1,5 +1,14 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -10,7 +19,10 @@ import { FsService } from './fs.service';
 /** A scratch repository: the state of the exit criterion (added, modified, deleted, untracked, renamed). */
 let cwd: string;
 const git = (...args: string[]) => {
-  const result = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd, encoding: 'utf8' });
+  const result = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
+    cwd,
+    encoding: 'utf8',
+  });
   if (result.status !== 0) throw new Error(`git ${args.join(' ')}: ${result.stderr}`);
 };
 
@@ -21,7 +33,10 @@ beforeAll(() => {
   writeFileSync(join(cwd, 'src', 'edit.ts'), 'one\n');
   writeFileSync(join(cwd, 'src', 'lib', 'gone.ts'), 'gone\n');
   writeFileSync(join(cwd, 'src', 'lib', 'staged-gone.ts'), 'gone too\n');
-  writeFileSync(join(cwd, 'src', 'before.ts'), 'the same long enough content to be seen as a rename\nline two\nline three\n');
+  writeFileSync(
+    join(cwd, 'src', 'before.ts'),
+    'the same long enough content to be seen as a rename\nline two\nline three\n',
+  );
   writeFileSync(join(cwd, '.gitignore'), 'dist/\n.env\n');
   git('init', '-q');
   git('add', '-A');
@@ -58,17 +73,43 @@ describe('FilesService in a repository', () => {
   const files = new FilesService();
   it('keeps a deleted file in the tree, marked missing, whether or not the deletion is staged', async () => {
     const lib = await files.children(cwd, 'src/lib');
-    expect(lib.map((n) => [n.name, n.missing ?? false])).toEqual([['gone.ts', true], ['staged-gone.ts', true]]);
+    expect(lib.map((n) => [n.name, n.missing ?? false])).toEqual([
+      ['gone.ts', true],
+      ['staged-gone.ts', true],
+    ]);
     const src = await files.children(cwd, 'src');
     expect(src.find((n) => n.name === 'edit.ts')).toMatchObject({ size: 8 });
     expect(src.find((n) => n.name === 'edit.ts')?.missing).toBeUndefined();
   });
+  it('lists a file created right after an earlier read: nothing watches the folder, so the tree reads it again', async () => {
+    await files.children(cwd, 'src');
+    writeFileSync(join(cwd, 'src', 'created-now.ts'), 'x');
+    try {
+      expect((await files.children(cwd, 'src')).map((n) => n.name)).toContain('created-now.ts');
+    } finally {
+      rmSync(join(cwd, 'src', 'created-now.ts'), { force: true });
+    }
+  });
   it('hides what git ignores and lists it, greyed, with "show ignored"', async () => {
     expect((await files.children(cwd)).map((n) => n.name)).not.toContain('dist');
     const shown = await files.children(cwd, '', { showIgnored: true });
-    expect(shown.filter((n) => n.ignored).map((n) => n.name).sort()).toEqual(['.env', 'dist']);
+    expect(
+      shown
+        .filter((n) => n.ignored)
+        .map((n) => n.name)
+        .sort(),
+    ).toEqual(['.env', 'dist']);
     const inside = await files.children(cwd, 'dist', { showIgnored: true });
     expect(inside).toMatchObject([{ name: 'out.js', ignored: true }]);
+  });
+  it('lists an ignored file written a moment after the last read (a run just ended)', async () => {
+    rmSync(join(cwd, '.env'));
+    try {
+      expect((await files.children(cwd, '', { showIgnored: true })).map((n) => n.name)).not.toContain('.env');
+    } finally {
+      writeFileSync(join(cwd, '.env'), 'SECRET=1\n');
+    }
+    expect((await files.children(cwd, '', { showIgnored: true })).map((n) => n.name)).toContain('.env');
   });
   it('shows a folder with nothing in it (just made) but not a folder that holds only ignored files', async () => {
     mkdirSync(join(cwd, 'src', 'empty', 'deeper'), { recursive: true });
@@ -78,11 +119,12 @@ describe('FilesService in a repository', () => {
     expect((await files.children(cwd)).map((n) => n.name)).not.toContain('dist');
     rmSync(join(cwd, 'src', 'empty'), { recursive: true });
   });
-  it('forgets its list when told the folder changed', async () => {
+  it('keeps the @ completion list for a moment, and forgets it when told the folder changed', async () => {
+    await files.search(cwd, 'later');
     writeFileSync(join(cwd, 'later.txt'), 'x');
-    expect((await files.children(cwd)).map((n) => n.name)).not.toContain('later.txt');
+    expect((await files.search(cwd, 'later')).map((m) => m.path)).not.toContain('later.txt');
     files.refresh(cwd);
-    expect((await files.children(cwd)).map((n) => n.name)).toContain('later.txt');
+    expect((await files.search(cwd, 'later')).map((m) => m.path)).toContain('later.txt');
     rmSync(join(cwd, 'later.txt'));
     files.refresh(cwd);
   });
@@ -119,28 +161,31 @@ describe('FsService', () => {
     expect(readFileSync(join(cwd, 'notes.md'), 'utf8')).toBe('untracked\n');
   });
 
-  it.each(['create', 'rename-source', 'rename-target', 'delete'] as const)('rejects normalized protected paths for %s', (operation) => {
-    for (const path of ['src/..', 'src/../.git', 'src/../.git/config']) {
-      const root = mkdtempSync(join(tmpdir(), 'pk-fs-protected-'));
-      try {
-        mkdirSync(join(root, 'src'));
-        mkdirSync(join(root, '.git'));
-        writeFileSync(join(root, '.git', 'config'), 'repository config');
-        writeFileSync(join(root, 'notes.md'), 'notes');
-        const mutate = () => {
-          if (operation === 'create') fs.create(root, path, false);
-          else if (operation === 'rename-source') fs.rename(root, path, 'moved');
-          else if (operation === 'rename-target') fs.rename(root, 'notes.md', path);
-          else fs.delete(root, path);
-        };
-        expect(mutate).toThrow(path === 'src/..' ? /inside the workspace/ : /git’s own/);
-        expect(readFileSync(join(root, '.git', 'config'), 'utf8')).toBe('repository config');
-        expect(readFileSync(join(root, 'notes.md'), 'utf8')).toBe('notes');
-      } finally {
-        rmSync(root, { recursive: true, force: true });
+  it.each(['create', 'rename-source', 'rename-target', 'delete'] as const)(
+    'rejects normalized protected paths for %s',
+    (operation) => {
+      for (const path of ['src/..', 'src/../.git', 'src/../.git/config']) {
+        const root = mkdtempSync(join(tmpdir(), 'pk-fs-protected-'));
+        try {
+          mkdirSync(join(root, 'src'));
+          mkdirSync(join(root, '.git'));
+          writeFileSync(join(root, '.git', 'config'), 'repository config');
+          writeFileSync(join(root, 'notes.md'), 'notes');
+          const mutate = () => {
+            if (operation === 'create') fs.create(root, path, false);
+            else if (operation === 'rename-source') fs.rename(root, path, 'moved');
+            else if (operation === 'rename-target') fs.rename(root, 'notes.md', path);
+            else fs.delete(root, path);
+          };
+          expect(mutate).toThrow(path === 'src/..' ? /inside the workspace/ : /git’s own/);
+          expect(readFileSync(join(root, '.git', 'config'), 'utf8')).toBe('repository config');
+          expect(readFileSync(join(root, 'notes.md'), 'utf8')).toBe('notes');
+        } finally {
+          rmSync(root, { recursive: true, force: true });
+        }
       }
-    }
-  });
+    },
+  );
 
   it('rejects mutations through symlink aliases of protected targets', () => {
     const root = mkdtempSync(join(tmpdir(), 'pk-fs-alias-'));

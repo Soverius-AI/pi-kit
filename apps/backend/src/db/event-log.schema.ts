@@ -17,4 +17,9 @@ export const runRecords = sqliteTable('runs', {
   status: text('status', { enum: ['running', 'finished', 'error', 'aborted'] }).notNull(),
   startedAt: integer('started_at').notNull(),
   endedAt: integer('ended_at'),
+  folder: text('folder'),
+  shadowDir: text('shadow_dir'),
+  shadowPrefix: text('shadow_prefix'),
+  startTree: text('start_tree'),
+  endTree: text('end_tree'),
 });

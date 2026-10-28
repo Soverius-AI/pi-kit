@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
 import { PiModule } from '../pi/pi.module';
 import { ThreadsModule } from '../threads/threads.module';
-import { WatchModule } from '../watch/watch.module';
+import { FolderChangesModule } from '../folder-changes/folder-changes.module';
 import { CommandsService } from './commands.service';
 import { ComposerController } from './composer.controller';
 import { FilesService } from './files.service';
@@ -15,7 +15,7 @@ import { SessionController } from './session.controller';
  * and files.
  */
 @Module({
-  imports: [DbModule, PiModule, ThreadsModule, WatchModule],
+  imports: [DbModule, PiModule, ThreadsModule, FolderChangesModule],
   controllers: [SessionController, ComposerController, QueueController],
   providers: [CommandsService, FilesService, FsService],
 })

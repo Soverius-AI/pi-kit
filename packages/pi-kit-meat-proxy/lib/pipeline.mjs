@@ -4,7 +4,6 @@
 //   host.outcome()      -> pi-kit:thread:outcome  { diff: true, annotations: true }   { ok, outcome, diff, annotations }
 //   host.transcript()   -> pi-kit:thread:transcript                                    { ok, transcript }
 //   host.baselines()    -> pi-kit:thread:baselines                                     { ok, files }
-//   host.outsideEdits() -> pi-kit:thread:outside-edits                                 { ok, edits }
 //   host.run(prompt, progress) -> pi-kit:attendant:run { task: 'score', system, user }  { ok, text, model } | { ok: false, code: 'consent', error, model }
 //                          progress is { batch, batches } (1-based): a long diff is labelled in several model calls, and the host can say which one this is.
 //   host.annotate(body) -> pi-kit:thread:annotate { base, head, labels, scores, model }
@@ -25,14 +24,18 @@ const fail = (code, error, extra = {}) => ({ ok: false, code, error, ...extra })
 export async function scoreThread(host) {
   const found = await host.outcome();
   if (!found.ok) return found;
-  if (!found.outcome) return fail('not-found', 'This thread has no outcome yet, so there is nothing to score. It gets one when its worktree is merged back, a pull request is opened, or a commit contains files it changed.');
+  if (!found.outcome)
+    return fail(
+      'not-found',
+      'This thread has no outcome yet, so there is nothing to score. It gets one when its worktree is merged back, a pull request is opened, or a commit contains files it changed.',
+    );
   const hunks = splitDiff(found.diff ?? '');
   if (hunks.length === 0) return fail('invalid', 'The outcome changed no text file, so there is nothing to weigh.');
 
-  const [transcript, baselines, outside] = await Promise.all([host.transcript(), host.baselines(), host.outsideEdits()]);
-  for (const reply of [transcript, baselines, outside]) if (!reply.ok) return reply;
+  const [transcript, baselines] = await Promise.all([host.transcript(), host.baselines()]);
+  for (const reply of [transcript, baselines]) if (!reply.ok) return reply;
 
-  const ledger = buildLedger({ transcript: transcript.transcript, baselines: baselines.files, outsideEdits: outside.edits, hunks });
+  const ledger = buildLedger({ transcript: transcript.transcript, baselines: baselines.files, hunks });
   let model = null;
   const labels = [];
   // One model call per batch, in diff order; a failed or cancelled call stops here, and nothing of the earlier batches is written.
@@ -42,11 +45,19 @@ export async function scoreThread(host) {
     const keys = prompt.plan.shown.map((shown) => shown.key);
     let parsed = { labels: new Map(), missing: [], unknown: [] };
     if (keys.length > 0) {
-      const answer = await host.run({ system: prompt.system, user: prompt.user }, { batch: index + 1, batches: batches.length });
+      const answer = await host.run(
+        { system: prompt.system, user: prompt.user },
+        { batch: index + 1, batches: batches.length },
+      );
       if (!answer.ok) return answer;
       model = answer.model ?? null;
       parsed = parseAttribution(answer.text, keys);
-      if (parsed.missing.length) return fail('failed', `The model did not label ${parsed.missing.length} of ${keys.length} hunks in this batch. No new score was saved.`, { model });
+      if (parsed.missing.length)
+        return fail(
+          'failed',
+          `The model did not label ${parsed.missing.length} of ${keys.length} hunks in this batch. No new score was saved.`,
+          { model },
+        );
     }
     labels.push(...buildLabelEntries({ plan: prompt.plan, parsed, ledger, hunks: batch }));
   }

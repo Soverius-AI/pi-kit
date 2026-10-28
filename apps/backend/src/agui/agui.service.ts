@@ -43,6 +43,7 @@ export class AguiService {
       carry: new Map(),
       relayMcp: (threadId, request, signal) => mcp.relay(threadId, request, signal),
       reviewRecorded: (threadId) => changes.clearComments(threadId),
+      beforePrompt: (threadId) => runner.beforePrompt(threadId),
     });
     // Turns pi starts by itself run through the same agent, so they stream and replay like any other.
     runner.useAgent(() => this.agent.clone());
@@ -67,7 +68,11 @@ export class AguiService {
    * A run of the thread that no browser started (a verification replays a skill in a scratch worktree). It takes the same road as a run from the composer
    * (the runner's lock and log, the status stream, the skill chips), so the thread is a normal thread while it works: visible and stoppable. Resolves when the run is over.
    */
-  runHeadless(threadId: string, text: string, options: { cwd: string; chips?: readonly ComposerChip[] }): Promise<HeadlessRun> {
+  runHeadless(
+    threadId: string,
+    text: string,
+    options: { cwd: string; chips?: readonly ComposerChip[] },
+  ): Promise<HeadlessRun> {
     const runId = `headless-${randomUUID()}`;
     const input: RunAgentInput = {
       threadId,
@@ -76,21 +81,31 @@ export class AguiService {
       messages: [{ id: randomUUID(), role: 'user', content: text }],
       tools: [],
       context: [],
-      forwardedProps: { cwd: options.cwd, ...(options.chips && options.chips.length > 0 ? { skills: options.chips } : {}) },
+      forwardedProps: {
+        cwd: options.cwd,
+        ...(options.chips && options.chips.length > 0 ? { skills: options.chips } : {}),
+      },
     };
     return new Promise<HeadlessRun>((resolve) => {
       let result: HeadlessRun = { status: 'error', error: 'The run ended without a result.' };
       const note = (event: BaseEvent): void => {
         if (event.type === EventType.RUN_ERROR) {
-          result = isAborted(event) ? { status: 'aborted' } : { status: 'error', error: String((event as { message?: unknown }).message ?? 'The run failed.') };
+          result = isAborted(event)
+            ? { status: 'aborted' }
+            : { status: 'error', error: String((event as { message?: unknown }).message ?? 'The run failed.') };
         } else if (event.type === EventType.RUN_FINISHED) {
-          result = isInterrupt(event) ? { status: 'interrupted' } : isAborted(event) ? { status: 'aborted' } : { status: 'finished' };
+          result = isInterrupt(event)
+            ? { status: 'interrupted' }
+            : isAborted(event)
+              ? { status: 'aborted' }
+              : { status: 'finished' };
         }
       };
       try {
         this.runner.run({ threadId, agent: this.agent.clone(), input }).subscribe({
           next: note,
-          error: (error: unknown) => resolve({ status: 'error', error: error instanceof Error ? error.message : String(error) }),
+          error: (error: unknown) =>
+            resolve({ status: 'error', error: error instanceof Error ? error.message : String(error) }),
           complete: () => resolve(result),
         });
       } catch (error) {

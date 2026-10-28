@@ -1,11 +1,10 @@
-import { DestroyRef, computed, effect, inject, untracked } from '@angular/core';
+import { DestroyRef, computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withProps, withState } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import {
   ApiClient,
   appSettingsSetSetting,
   appSettingsSettings,
-  sessionWatchWorkspace,
   threadsClone,
   threadsCreate,
   threadsEvents,
@@ -30,7 +29,6 @@ import type {
   ThreadState,
   ThreadSummary,
   ThreadsEvent,
-  WatchEvent,
   Workspace,
   WorktreeKeep,
 } from '@pi-kit/protocol';
@@ -42,9 +40,10 @@ import {
   type ProjectCounts,
   type StateKind,
 } from '@pi-kit/threads/util';
-import { EMPTY, pipe, switchMap, tap } from 'rxjs';
+import { pipe, switchMap, tap } from 'rxjs';
 import { reconnectingEvents, type Dropped } from './reconnecting-events';
 import { THREADS_POLICY } from './threads-policy';
+import { withFolderChanges } from './with-folder-changes';
 import { TrustStore } from './trust.store';
 
 interface ThreadsState {
@@ -57,20 +56,7 @@ interface ThreadsState {
   showArchived: boolean;
   /** The status channel (`GET /api/threads/events`) is connected: thread states arrive pushed, so the list is not polled. */
   statusConnected: boolean;
-  // ---- the live refresh stream of the folder
-  /** Panels that want the stream, by name (`files`, `changes`). */
-  watchers: readonly string[];
-  /** True while a panel wants the stream, and for a few seconds after the last one lets go (switching from Files to Changes keeps one stream and one watcher). */
-  watchHeld: boolean;
-  /** Bumped on `ready` and on every `change`. */
-  watchTick: number;
-  /** The paths of the newest change, for panels that reload only the folders it touched. */
-  watchLast: { paths: readonly string[]; overflow: boolean } | undefined;
-  watchConnected: boolean;
 }
-
-/** What the watch observable emits besides the backend's events: the stream dropped. */
-type WatchSignal = WatchEvent | Dropped;
 
 /** A project of the sidebar with its threads in sidebar order and what a collapsed group shows. */
 export interface Project {
@@ -98,11 +84,7 @@ const withThreadState = (thread: ThreadSummary, state: ThreadState): ThreadSumma
  * question, context share, unread, cli, the attendant's summary) arrive pushed over the status channel, one connection that is opened again
  * after a drop; the list itself is read again when the channel says it changed, and only as a slow safety net otherwise. The selected thread and
  * project are remembered in the backend's `settings`.
- *
- * It also owns the live refresh of the workspace panels: one stream of `GET /api/workspaces/:id/watch` while any panel wants
- * it, shared by the Files and the Changes panel. The backend debounces by 300 ms; here each `change` (and `ready`, which covers
- * the gap while the watcher started) bumps `watchTick`, and `watchLast` holds the paths of the newest change. A dropped stream is opened again with
- * a growing delay. The stream is an `rxMethod` fed by the folder and the hold.
+ * The live refresh of the folder the panels work in is its own feature, `withFolderChanges`.
  */
 export const ThreadsStore = signalStore(
   { providedIn: 'root' },
@@ -112,11 +94,6 @@ export const ThreadsStore = signalStore(
     threads: [],
     showArchived: false,
     statusConnected: false,
-    watchers: [],
-    watchHeld: false,
-    watchTick: 0,
-    watchLast: undefined,
-    watchConnected: false,
   }),
   withProps(() => ({ _policy: inject(THREADS_POLICY) })),
   withRequestStatus(),
@@ -159,6 +136,7 @@ export const ThreadsStore = signalStore(
       hiddenProjects: computed(() => projects().filter((p) => p.workspace.hidden)),
     };
   }),
+  withFolderChanges(),
   withMethods((store) => {
     const api = inject(ApiClient);
     const trust = inject(TrustStore);
@@ -505,14 +483,6 @@ export const ThreadsStore = signalStore(
         const next = at < 0 ? (offset > 0 ? 0 : ids.length - 1) : Math.min(ids.length - 1, Math.max(0, at + offset));
         if (ids[next] && ids[next] !== store.selectedId()) methods.select(ids[next]);
       },
-
-      /** A panel says whether it needs the live refresh stream right now. */
-      want(owner: string, on: boolean): void {
-        patchState(store, (s) => {
-          if (s.watchers.includes(owner) === on) return s;
-          return { watchers: on ? [...s.watchers, owner] : s.watchers.filter((w) => w !== owner) };
-        });
-      },
     };
 
     // ---- the status channel
@@ -566,38 +536,6 @@ export const ThreadsStore = signalStore(
 
     const followStatus = rxMethod<true>(pipe(switchMap(() => statusEvents().pipe(tap(onStatus)))));
 
-    // ---- the watch stream
-
-    const watchEvents = (cwd: string) =>
-      reconnectingEvents<WatchEvent>(
-        (signal, onEvent) =>
-          api.stream(
-            sessionWatchWorkspace({ client: api.client, path: { id: cwd }, signal, parseAs: 'stream' }),
-            onEvent,
-          ),
-        store._policy.retryMs,
-        false,
-      );
-
-    const onWatch = (event: WatchSignal): void => {
-      if (event.type === 'ready')
-        patchState(store, (s) => ({
-          watchConnected: true,
-          watchLast: { paths: [], overflow: true },
-          watchTick: s.watchTick + 1,
-        }));
-      else if (event.type === 'change')
-        patchState(store, (s) => ({
-          watchLast: { paths: event.paths, overflow: event.overflow },
-          watchTick: s.watchTick + 1,
-        }));
-      else if (event.type === 'dropped') patchState(store, { watchConnected: false });
-    };
-
-    const follow = rxMethod<string | undefined>(
-      pipe(switchMap((cwd) => (cwd ? watchEvents(cwd).pipe(tap(onWatch)) : EMPTY))),
-    );
-
     return {
       ...methods,
       /** Every line of the status channel, for stores of other domains that live on it (the agents of a thread). */
@@ -605,22 +543,12 @@ export const ThreadsStore = signalStore(
         statusListeners.add(listener);
         return () => statusListeners.delete(listener);
       },
-      _follow: follow,
       _followStatus: followStatus,
     };
   }),
   withHooks({
     onInit(store) {
-      // The hold: on while a panel wants the stream, off a few seconds after the last one lets go.
-      effect((onCleanup) => {
-        if (store.watchers().length > 0) {
-          untracked(() => patchState(store, { watchHeld: true }));
-          return;
-        }
-        const timer = setTimeout(() => patchState(store, { watchHeld: false }), store._policy.watchGraceMs);
-        onCleanup(() => clearTimeout(timer));
-      });
-      store._follow(computed(() => (store.watchHeld() ? store.folder() : undefined)));
+      store._followFolder(store.folder);
       store._followStatus(true);
     },
   }),

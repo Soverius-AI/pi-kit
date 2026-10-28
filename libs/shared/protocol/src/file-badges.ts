@@ -21,19 +21,24 @@ export const FileStatusEntrySchema = z.object({
 export type FileStatusEntry = z.infer<typeof FileStatusEntrySchema>;
 
 /** `GET /api/workspaces/:id/status`: git's view of the folder, and the files pi changed in the thread. */
-export const WorkspaceStatusSchema = z.object({
-  /** The folder is inside a git work tree (otherwise `entries` is empty and only the thread marker exists). */
-  git: z.boolean(),
-  entries: z.array(FileStatusEntrySchema),
-  /** Files pi edited or wrote in the thread (the "changed in this thread" marker, from `change_baselines` and the session), relative paths. */
-  thread: z.array(z.string()),
-  /** More files changed than the list carries. */
-  truncated: z.boolean().optional(),
-}).meta({ id: 'WorkspaceStatus' });
+export const WorkspaceStatusSchema = z
+  .object({
+    /** The folder is inside a git work tree (otherwise `entries` is empty and only the thread marker exists). */
+    git: z.boolean(),
+    entries: z.array(FileStatusEntrySchema),
+    /** Files pi edited or wrote in the thread (the "changed in this thread" marker, from `change_baselines` and the session), relative paths. */
+    thread: z.array(z.string()),
+    /** More files changed than the list carries. */
+    truncated: z.boolean().optional(),
+  })
+  .meta({ id: 'WorkspaceStatus' });
 export type WorkspaceStatus = z.infer<typeof WorkspaceStatusSchema>;
 
 /** What the badge letter stands for, its tint (a daisyUI colour name) and its order when a folder has to pick one. */
-export const GIT_BADGES: Record<GitBadge, { label: string; tone: 'success' | 'warning' | 'error' | 'info'; severity: number }> = {
+export const GIT_BADGES: Record<
+  GitBadge,
+  { label: string; tone: 'success' | 'warning' | 'error' | 'info'; severity: number }
+> = {
   C: { label: 'Conflict', tone: 'error', severity: 6 },
   D: { label: 'Deleted', tone: 'error', severity: 5 },
   M: { label: 'Modified', tone: 'warning', severity: 4 },
@@ -71,7 +76,8 @@ export function parseStatusZ(output: string, prefix = ''): FileStatusEntry[] {
     if (x === '!' && y === '!') continue;
     const path = item.slice(3);
     if (prefix && !path.startsWith(prefix)) continue;
-    const origin = from === undefined ? undefined : prefix && from.startsWith(prefix) ? from.slice(prefix.length) : from;
+    const origin =
+      from === undefined ? undefined : prefix && from.startsWith(prefix) ? from.slice(prefix.length) : from;
     entries.push({
       path: path.slice(prefix.length),
       badge: badgeOf(x, y),
@@ -112,28 +118,45 @@ export function folderBadges(entries: readonly FileStatusEntry[]): Map<string, G
   return out;
 }
 
-// ---- the live refresh stream (chokidar)
+// ---- the live refresh stream (polled from git)
 
 /** One line of `GET /api/workspaces/:id/watch` (newline-delimited JSON). */
-export const WatchEventSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('ready') }),
-  z.object({
-    type: z.literal('change'),
-    /** Paths (relative to the folder) that changed in the debounce window, capped; `overflow` when more changed than are listed. */
-    paths: z.array(z.string()),
-    overflow: z.boolean(),
-    at: z.number(),
-  }),
-  z.object({ type: z.literal('ping') }),
-]).meta({ id: 'WatchEvent' });
+export const WatchEventSchema = z
+  .discriminatedUnion('type', [
+    z.object({ type: z.literal('ready') }),
+    z.object({
+      type: z.literal('change'),
+      /** Paths (relative to the folder) that changed, capped; `overflow` when more changed than are listed (read everything again). */
+      paths: z.array(z.string()),
+      overflow: z.boolean(),
+      /** git's `HEAD` moved (a commit, checkout or reset): the git state of any file may differ. */
+      headMoved: z.boolean(),
+      at: z.number(),
+    }),
+    z.object({ type: z.literal('ping') }),
+  ])
+  .meta({ id: 'WatchEvent' });
 export type WatchEvent = z.infer<typeof WatchEventSchema>;
+
+/** `POST /api/workspaces/:id/git-init`: the folder is a git work tree now. */
+export const GitInitResultSchema = z.object({ git: z.boolean() }).meta({ id: 'GitInitResult' });
+export type GitInitResult = z.infer<typeof GitInitResultSchema>;
 
 // ---- file operations of the context menu
 
-export const FsCreateSchema = z.object({ path: z.string().min(1), dir: z.boolean() }).strict().meta({ id: 'FsCreate' });
-export const FsRenameSchema = z.object({ from: z.string().min(1), to: z.string().min(1) }).strict().meta({ id: 'FsRename' });
+export const FsCreateSchema = z
+  .object({ path: z.string().min(1), dir: z.boolean() })
+  .strict()
+  .meta({ id: 'FsCreate' });
+export const FsRenameSchema = z
+  .object({ from: z.string().min(1), to: z.string().min(1) })
+  .strict()
+  .meta({ id: 'FsRename' });
 /** Asks for `confirm: true`: this removes the file or folder from the disk. */
-export const FsDeleteSchema = z.object({ path: z.string().min(1), confirm: z.literal(true) }).strict().meta({ id: 'FsDelete' });
+export const FsDeleteSchema = z
+  .object({ path: z.string().min(1), confirm: z.literal(true) })
+  .strict()
+  .meta({ id: 'FsDelete' });
 export type FsCreate = z.infer<typeof FsCreateSchema>;
 export type FsRename = z.infer<typeof FsRenameSchema>;
 

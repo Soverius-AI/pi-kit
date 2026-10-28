@@ -10,3 +10,4 @@ export { withRequestStatus, type RequestStatus } from './with-request-status';
 export { withSelection } from './with-selection';
 export { withLatestRequest, type LatestRequestOptions, type LatestRequestState } from './with-latest-request';
 export { withPolling, type PollingOptions } from './with-polling';
+export { coalescedRunner } from './coalesced-runner';

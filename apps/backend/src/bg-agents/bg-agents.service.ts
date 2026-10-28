@@ -24,13 +24,20 @@ import { REPORT_MESSAGE, THREAD_HOST, type ThreadHost } from './thread-host';
 
 const ctx: Context = BACKGROUND_CONTEXT;
 
-/** A tool call of an agent about to run, as the Changes baseline and the coordination lease take it (the shape of `ToolStart`). */
+/** A tool call of an agent about to run, as the coordination lease takes it (the shape of `ToolStart`). */
 export interface AgentToolStart {
   threadId: string;
   cwd: string;
   toolName: string;
   args: Record<string, unknown>;
 }
+/** What is told about an agent's work in its thread's folder: `started` is awaited before the agent gets the work. */
+export interface AgentWorkWatch {
+  started(agentId: string, threadId: string, folder: string): Promise<void>;
+  ended(agentId: string): void;
+}
+/** The statuses of an agent that does no work: a stretch of its work ends with one of them. */
+const STOPPED: ReadonlySet<AgentStatus> = new Set(['done', 'failed', 'stopped']);
 /** pi-durable's ids are branded numbers; `bg_agents` keeps them as text. */
 const conversationId = (id: string): ConversationId => Number(id) as ConversationId;
 const submissionId = (id: string): SubmissionId => Number(id) as SubmissionId;
@@ -72,6 +79,8 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
   /** Each agent's record, as last read or written (its counts, its worktree). */
   private readonly records = new Map<string, AgentRecord>();
   private readonly toolListeners = new Set<(start: AgentToolStart) => void>();
+  /** Told when an agent sets to work in its thread's folder and when it stops (the snapshots around its work); see `watchWork`. */
+  private work: AgentWorkWatch | undefined;
   /** `<agentId>/<ref>` of the synthetic reports already handed over by this process. */
   private readonly endings = new Set<string>();
 
@@ -209,10 +218,18 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     return !!this.harness;
   }
 
-  /** Told before a tool of an agent runs: the Changes view keeps its baseline, the coordination lease is taken. */
+  /** Told before a tool of an agent runs: the coordination lease is taken. */
   onToolStart(listener: (start: AgentToolStart) => void): () => void {
     this.toolListeners.add(listener);
     return () => this.toolListeners.delete(listener);
+  }
+
+  /**
+   * Told when an agent is about to work in its thread's folder (awaited: the folder is snapshotted before the agent gets the work) and when it
+   * stops (done, failed or stopped). An agent in a worktree of its own is not told about: what it changes comes back with the merge.
+   */
+  watchWork(work: AgentWorkWatch): void {
+    this.work = work;
   }
 
   /**
@@ -245,6 +262,7 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     );
     this.records.set(id, record);
     if (permission === 'isolated') await this.writeRecord(id, { worktree: await this.threads.isolate(input.threadId, id, input.name) });
+    await this.settingToWork(id, input.threadId);
     const submission = await conversation.submit({ type: 'input', content: input.brief, requestId: `spawn:${id}` }, ctx);
     this.patch(id, { submissionId: String(submission.id) });
     await this.attach(id);
@@ -260,9 +278,15 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     if (row.status === 'stopped' || row.status === 'failed') throw new Error(`Agent ${id} is ${row.status}; start another.`);
     // A finished agent that gets more to do is at work again: followed into its log before the input lands, and active in the panel.
     if (!this.runner.liveOf(id)) await this.attach(id);
+    if (row.status === 'done') {
+      await this.settingToWork(id, row.threadId);
+      // Deleted or stopped during the snapshot: it gets no more work.
+      const now = this.agents.get(id)?.status;
+      if (!now || now === 'stopped' || now === 'failed') throw new Error(`Agent ${id} was stopped or deleted.`);
+    }
     const submission = await conversation.submit({ type: 'input', content: text, whenBusy: mode, requestId }, ctx);
     // Its old report answered the old task: cleared, so a follow-up that ends without one is told to the main agent too.
-    if (row.status === 'done') this.patch(id, { status: 'active', finishedAt: null, report: null });
+    if (this.agents.get(id)?.status === 'done') this.patch(id, { status: 'active', finishedAt: null, report: null });
     this.follow(id, submission);
   }
 
@@ -445,9 +469,20 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     return this.harness;
   }
 
+  /** The agent gets work in its thread's folder: the watcher snapshots the folder first. */
+  private async settingToWork(id: string, threadId: string): Promise<void> {
+    const folder = this.folderOf(threadId);
+    if (!this.work || !folder || (await this.recordOf(id)).worktree) return;
+    await this.work
+      .started(id, threadId, folder)
+      .catch((error: unknown) => this.logger.warn(`The snapshot before agent ${id} failed: ${error instanceof Error ? error.message : String(error)}`));
+  }
+
   private patch(id: string, patch: Parameters<BgAgentsRepository['update']>[2]): void {
+    const was = this.agents.get(id)?.status;
     if (!this.agents.update(id, this.epoch, patch)) this.logger.warn(`A newer backend owns agent ${id}; this write was dropped.`);
     if (patch.status !== undefined || patch.report !== undefined || patch.cost !== undefined || patch.permission !== undefined) this.changed(id);
+    if (patch.status && STOPPED.has(patch.status) && was && !STOPPED.has(was)) this.work?.ended(id);
   }
 
   private changed(id: string, threadId = this.agents.get(id)?.threadId): void {

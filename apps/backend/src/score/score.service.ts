@@ -1,4 +1,12 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import {
   AnnotateRequestSchema,
   AttendantRunRequestSchema,
@@ -7,7 +15,6 @@ import {
   type HunkLabel,
   type OutcomeScoreView,
   OutcomeRequestSchema,
-  OutsideEditsRequestSchema,
   PLUGIN_CHANNELS,
   type PluginFailure,
   type PluginFailureCode,
@@ -20,23 +27,31 @@ import {
 import { AttendantService } from '../attendant/attendant.service';
 import { branchOf } from '../attendant/attendant-text';
 import { collectTouched } from '../changes/touched';
-import { ChangesRepository } from '../db/changes.repository';
 import { MetaRepository } from '../db/meta.repository';
 import { type OutcomeRow, OutcomesRepository } from '../db/outcomes.repository';
-import { SignalsRepository } from '../db/signals.repository';
 import { type ThreadRow, ThreadsRepository } from '../db/threads.repository';
 import { LearnService } from '../learn/learn.service';
 import { type PluginReplyShape, PiPluginService } from '../pi/pi-plugin.service';
+import { RunSnapshotsService } from '../snapshots/run-snapshots.service';
 import { OutcomesService } from '../threads/outcomes.service';
 import { ThreadStatusService } from '../threads/thread-status.service';
 import { ThreadsService } from '../threads/threads.service';
 import * as git from '../worktree/worktree-git';
 import { type HostFailure, MeatProxyPackage, type ScoringHost, type ScoringResult } from './meat-proxy-package';
-import { type ScoredThread, mergeLabels, parseLabelsStore, parseScores, projectScores, relabelHunk, scoreBadgeOf } from './score-rules';
+import {
+  type ScoredThread,
+  mergeLabels,
+  parseLabelsStore,
+  parseScores,
+  projectScores,
+  relabelHunk,
+  scoreBadgeOf,
+} from './score-rules';
 
 const CONSENT_SETTING = 'score-consent';
 const CONSENT_KEEP = 500;
-const NOT_INSTALLED = 'The @pi-kit/meat-proxy package is not installed in pi (pi install <path to packages/pi-kit-meat-proxy>), so there is no score.';
+const NOT_INSTALLED =
+  'The @pi-kit/meat-proxy package is not installed in pi (pi install <path to packages/pi-kit-meat-proxy>), so there is no score.';
 
 export const scoreConsentSentence = (model: string): string =>
   `This sends the thread’s transcript (prompts, tool calls, review comments, the final diff and the files you changed by hand, with secrets masked) to ${model} to attribute each change to what you did. The attendant is off, so nothing else is ever sent for this thread.`;
@@ -59,26 +74,36 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
     private readonly threadRows: ThreadsRepository,
     private readonly threads: ThreadsService,
     private readonly learn: LearnService,
-    private readonly signals: SignalsRepository,
-    private readonly changes: ChangesRepository,
     private readonly attendant: AttendantService,
     private readonly plugins: PiPluginService,
     private readonly status: ThreadStatusService,
     private readonly meta: MetaRepository,
     private readonly pkg: MeatProxyPackage,
+    private readonly snapshots: RunSnapshotsService,
   ) {}
 
   onModuleInit(): void {
-    const channels = [PLUGIN_CHANNELS.baselines, PLUGIN_CHANNELS.outsideEdits, PLUGIN_CHANNELS.annotate, PLUGIN_CHANNELS.outcome, PLUGIN_CHANNELS.attendant];
+    const channels = [
+      PLUGIN_CHANNELS.baselines,
+      PLUGIN_CHANNELS.annotate,
+      PLUGIN_CHANNELS.outcome,
+      PLUGIN_CHANNELS.attendant,
+    ];
     this.offs.push(
-      this.plugins.register(channels, (threadId, channel, payload, signal) => this.plugin(threadId, channel, payload, signal)),
+      this.plugins.register(channels, (threadId, channel, payload, signal) =>
+        this.plugin(threadId, channel, payload, signal),
+      ),
       this.outcomes.onOutcome((threadId) => this.onOutcome(threadId)),
       this.pkg.onInstalledChange(() => this.status.touchAll()),
     );
     this.status.setScoreBadge((row) => this.badgeOf(row));
     void this.pkg
       .ensureInstalled()
-      .catch((error: unknown) => this.logger.warn(`Could not install the meat-proxy package: ${error instanceof Error ? error.message : String(error)}`))
+      .catch((error: unknown) =>
+        this.logger.warn(
+          `Could not install the meat-proxy package: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      )
       .then(() => this.pkg.refresh())
       .then(() => this.status.touchAll())
       .catch(() => undefined);
@@ -97,13 +122,17 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
 
   private badgeOf(row: OutcomeRow) {
     if (!this.pkg.installedNow()) return undefined;
-    return scoreBadgeOf(parseScores(row.scores), parseLabelsStore(row.hunkLabels), { base: row.baseCommit, head: row.headCommit });
+    return scoreBadgeOf(parseScores(row.scores), parseLabelsStore(row.hunkLabels), {
+      base: row.baseCommit,
+      head: row.headCommit,
+    });
   }
 
   /** The score of a thread's outcome with the label of every hunk, as they stand; 404 while there is none (or the package is gone: then nothing of it is drawn). */
   view(threadId: string): OutcomeScoreView {
     this.threads.assertExists(threadId);
-    if (!this.pkg.installedNow()) throw new NotFoundException('There is no score: the meat-proxy package is not installed.');
+    if (!this.pkg.installedNow())
+      throw new NotFoundException('There is no score: the meat-proxy package is not installed.');
     const row = this.outcomeRows.get(threadId);
     const store = parseLabelsStore(row?.hunkLabels);
     const scores = parseScores(row?.scores);
@@ -142,10 +171,17 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
    * Score the thread now (the badge menu): with the attendant off, the first request answers `consent`; send it again with `consent: true` once the person agreed.
    * `signal` is the request's own life: when it aborts (the client closed the connection), the model call in flight is aborted, no further batch is sent and nothing is stored.
    */
-  async request(threadId: string, options: { consent?: boolean } = {}, signal?: AbortSignal): Promise<ScoreRequestResult> {
+  async request(
+    threadId: string,
+    options: { consent?: boolean } = {},
+    signal?: AbortSignal,
+  ): Promise<ScoreRequestResult> {
     const row = this.require(threadId);
     if (!(await this.pkg.refresh())) throw new ConflictException(NOT_INSTALLED);
-    if (!this.outcomes.get(threadId)) throw new ConflictException('This thread has no outcome yet, so there is nothing to score. It gets one when its worktree is merged back, a pull request is opened, or a commit contains files it changed.');
+    if (!this.outcomes.get(threadId))
+      throw new ConflictException(
+        'This thread has no outcome yet, so there is nothing to score. It gets one when its worktree is merged back, a pull request is opened, or a commit contains files it changed.',
+      );
     const needed = await this.consentNeeded(threadId, options.consent === true);
     if (needed) return { status: 'consent', model: needed.model, message: needed.message };
     const result = await this.score(row, 'person', signal);
@@ -188,13 +224,22 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
       outcome: async () => ({ ok: true, ...(await this.outcomeReply(row, true)) }),
       transcript: async () => ({ ok: true, transcript: await this.learn.transcriptOf(id) }),
       baselines: async () => ({ ok: true, files: await this.baselinesOf(row) }),
-      outsideEdits: async () => ({ ok: true, edits: this.signals.outsideEdits(id) }),
       // Every batch is its own capped call in the attendant's activity: a long diff shows its progress there, and switching the attendant off stops the next one.
       // The caller's signal rides along: an aborted one makes the call in flight fail and the next one answer `failed` before any model is asked, and the pipeline stops there without storing.
       run: async (prompt, { batch, batches }) => {
-        const text = batches > 1 ? `Attributed the outcome’s hunks to what you did (batch ${batch} of ${batches})` : 'Attributed the outcome’s hunks to what you did';
-        const completion = await this.attendant.complete(row, prompt, { kind: 'score', initiative, signal, describe: () => ({ status: 'done', text }) });
-        return completion.ok ? { ok: true, text: completion.text, model: completion.model } : { ok: false, code: completion.code, error: completion.error };
+        const text =
+          batches > 1
+            ? `Attributed the outcome’s hunks to what you did (batch ${batch} of ${batches})`
+            : 'Attributed the outcome’s hunks to what you did';
+        const completion = await this.attendant.complete(row, prompt, {
+          kind: 'score',
+          initiative,
+          signal,
+          describe: () => ({ status: 'done', text }),
+        });
+        return completion.ok
+          ? { ok: true, text: completion.text, model: completion.model }
+          : { ok: false, code: completion.code, error: completion.error };
       },
       // The same signal guards the write: a cancellation that lands after the last model reply, or before a scoring that needs no model, stores nothing either.
       annotate: async (body) => this.store(id, { requestId: 'pi-kit', ...body }, signal),
@@ -223,7 +268,8 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
       return 'scored';
     }
     // The cap and a missing model are listed by the attendant itself; what is left is the thread's own reason.
-    if (result.code === 'invalid' || result.code === 'not-found') this.attendant.note('score', row, result.error, 'skipped');
+    if (result.code === 'invalid' || result.code === 'not-found')
+      this.attendant.note('score', row, result.error, 'skipped');
     else this.logger.debug(`No score for ${threadId}: ${result.error}`);
     return 'skipped';
   }
@@ -234,27 +280,36 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
    * One `pi-kit:*` request of an extension that is about scoring (or that learn's host hands over because it carries `annotations` or the task `score`).
    * `signal` is the session's binding (`PiPluginService`): when the session closes, the model call it asked for is aborted and nothing is stored for it.
    */
-  async plugin(sessionThread: string, channel: string, payload: unknown, signal?: AbortSignal): Promise<PluginReplyShape | undefined> {
+  async plugin(
+    sessionThread: string,
+    channel: string,
+    payload: unknown,
+    signal?: AbortSignal,
+  ): Promise<PluginReplyShape | undefined> {
     const requestId = (payload as { requestId?: unknown } | null | undefined)?.requestId;
     if (typeof requestId !== 'string' || !requestId) return undefined;
-    const fail = (code: PluginFailureCode, error: string, extra: { model?: string } = {}): PluginFailure => ({ requestId, ok: false, code, error, ...extra });
+    const fail = (code: PluginFailureCode, error: string, extra: { model?: string } = {}): PluginFailure => ({
+      requestId,
+      ok: false,
+      code,
+      error,
+      ...extra,
+    });
     const raw = payload as Record<string, unknown>;
     // Everything the learn plugin already used stays learn's: only the new ways of asking are answered here.
-    if (channel === PLUGIN_CHANNELS.outcome && raw['annotations'] !== true) return this.learn.plugin(sessionThread, channel, payload, signal);
-    if (channel === PLUGIN_CHANNELS.attendant && raw['task'] !== 'score') return this.learn.plugin(sessionThread, channel, payload, signal);
+    if (channel === PLUGIN_CHANNELS.outcome && raw['annotations'] !== true)
+      return this.learn.plugin(sessionThread, channel, payload, signal);
+    if (channel === PLUGIN_CHANNELS.attendant && raw['task'] !== 'score')
+      return this.learn.plugin(sessionThread, channel, payload, signal);
     try {
       switch (channel) {
         case PLUGIN_CHANNELS.baselines: {
           const request = BaselinesRequestSchema.safeParse(payload);
           if (!request.success) return fail('invalid', request.error.issues.map((i) => i.message).join('; '));
           const row = this.lookup(request.data.thread ?? sessionThread);
-          return row ? { requestId, ok: true, files: await this.baselinesOf(row) } : fail('not-found', 'There is no such thread.');
-        }
-        case PLUGIN_CHANNELS.outsideEdits: {
-          const request = OutsideEditsRequestSchema.safeParse(payload);
-          if (!request.success) return fail('invalid', request.error.issues.map((i) => i.message).join('; '));
-          const row = this.lookup(request.data.thread ?? sessionThread);
-          return row ? { requestId, ok: true, edits: this.signals.outsideEdits(row.id) } : fail('not-found', 'There is no such thread.');
+          return row
+            ? { requestId, ok: true, files: await this.baselinesOf(row) }
+            : fail('not-found', 'There is no such thread.');
         }
         case PLUGIN_CHANNELS.annotate: {
           const request = AnnotateRequestSchema.safeParse(payload);
@@ -270,7 +325,13 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
           const row = this.lookup(request.data.thread ?? sessionThread);
           if (!row) return fail('not-found', 'There is no such thread.');
           const reply = await this.outcomeReply(row, request.data.diff === true);
-          return { requestId, ok: true, outcome: reply.outcome, ...(request.data.diff ? { diff: reply.diff } : {}), annotations: reply.annotations };
+          return {
+            requestId,
+            ok: true,
+            outcome: reply.outcome,
+            ...(request.data.diff ? { diff: reply.diff } : {}),
+            annotations: reply.annotations,
+          };
         }
         case PLUGIN_CHANNELS.attendant: {
           const request = AttendantRunRequestSchema.safeParse(payload);
@@ -279,9 +340,26 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
           if (!row) return fail('not-found', 'There is no such thread.');
           const needed = await this.consentNeeded(row.id, request.data.consent === true);
           if (needed) return fail('consent', needed.message, { model: needed.model });
-          const completion = await this.attendant.complete(row, { system: request.data.system, user: request.data.user }, { kind: 'score', initiative: 'person', signal, describe: () => ({ status: 'done', text: 'Attributed the outcome’s hunks for /score' }) });
+          const completion = await this.attendant.complete(
+            row,
+            { system: request.data.system, user: request.data.user },
+            {
+              kind: 'score',
+              initiative: 'person',
+              signal,
+              describe: () => ({ status: 'done', text: 'Attributed the outcome’s hunks for /score' }),
+            },
+          );
           if (!completion.ok) return fail(completion.code, completion.error);
-          return { requestId, ok: true, text: completion.text, model: completion.model, inputTokens: completion.inputTokens, outputTokens: completion.outputTokens, cost: completion.cost };
+          return {
+            requestId,
+            ok: true,
+            text: completion.text,
+            model: completion.model,
+            inputTokens: completion.inputTokens,
+            outputTokens: completion.outputTokens,
+            cost: completion.cost,
+          };
         }
         default:
           return fail('invalid', `pi-kit has no event named ${channel}.`);
@@ -295,9 +373,14 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
    * Stores what a plugin annotated; the person's corrections stay, and with any of them the score is computed again over the labels as they stand.
    * `signal` is the scoring's life (the request's, or the session's): one that is aborted by the time the write would happen stores nothing. The write itself is one call.
    */
-  private async store(threadId: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<{ ok: true } | HostFailure> {
+  private async store(
+    threadId: string,
+    body: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<{ ok: true } | HostFailure> {
     const request = AnnotateRequestSchema.safeParse(body);
-    if (!request.success) return { ok: false, code: 'invalid', error: request.error.issues.map((i) => i.message).join('; ') };
+    if (!request.success)
+      return { ok: false, code: 'invalid', error: request.error.issues.map((i) => i.message).join('; ') };
     const row = this.outcomeRows.get(threadId);
     if (!row) return { ok: false, code: 'not-found', error: 'This thread has no outcome to annotate.' };
     const labels = mergeLabels(parseLabelsStore(row.hunkLabels), request.data, Date.now());
@@ -313,34 +396,70 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The outcome of a thread, its diff against the base (`--relative`, so the paths are the ones the Outcome view shows), and what plugins stored with it. */
-  private async outcomeReply(row: ThreadRow, withDiff: boolean): Promise<{ outcome: ThreadOutcome | null; diff: string | null; annotations: { hunkLabels: unknown; scores: unknown } }> {
+  private async outcomeReply(
+    row: ThreadRow,
+    withDiff: boolean,
+  ): Promise<{
+    outcome: ThreadOutcome | null;
+    diff: string | null;
+    annotations: { hunkLabels: unknown; scores: unknown };
+  }> {
     const outcome = this.outcomes.get(row.id) ?? null;
     const stored = this.outcomeRows.get(row.id);
     let diff: string | null = null;
     if (withDiff && outcome) {
       // The project's folder, not the worktree's: the commits are in the shared repository, and the worktree may be removed any moment.
-      const result = await git.run(row.cwd, ['diff', '--no-renames', '--relative', '-U3', `${outcome.base}..${outcome.head}`]);
+      const result = await git.run(row.cwd, [
+        'diff',
+        '--no-renames',
+        '--relative',
+        '-U3',
+        `${outcome.base}..${outcome.head}`,
+      ]);
       diff = result.ok ? result.stdout : null;
     }
     return { outcome, diff, annotations: { hunkLabels: stored?.hunkLabels ?? null, scores: stored?.scores ?? null } };
   }
 
-  /** The files pi edited or wrote in the thread, with when and in which message it first touched each: never their content. */
+  /**
+   * The files the thread's runs changed, with when and in which message pi first touched each: never their content. A file pi's session says it
+   * edited counts too when no snapshot recorded it (a run without a "before", or one older than its snapshots): it is pi's, not the user's.
+   */
   async baselinesOf(row: ThreadRow): Promise<BaselineFile[]> {
+    // Each run in the folder it worked in: a worktree merged back and removed keeps what its runs changed.
+    const changed = await this.snapshots.runChanges(row.id);
     const source = await this.threads.treeSource(row.id);
-    const touched = new Map(collectTouched(branchOf(source.entries, source.leafId), row.sessionCwd || row.cwd).map((f) => [f.path, f] as const));
-    return this.changes.touchedPaths(row.id).map(({ path, at }) => ({
-      path,
-      existed: this.changes.baseline(row.id, path)?.existed ?? true,
-      at,
-      turn: touched.get(path)?.turn ?? null,
-      edits: touched.get(path)?.steps.length ?? 0,
-    }));
+    const touched = collectTouched(branchOf(source.entries, source.leafId), row.sessionCwd || row.cwd);
+    const byPath = new Map(touched.map((f) => [f.path, f] as const));
+    const recorded = new Set(changed.map((file) => file.path));
+    const firstRun = Math.min(row.createdAt, ...changed.map((file) => file.at));
+    return [
+      ...changed.map((file) => ({
+        path: file.path,
+        existed: file.status !== 'A',
+        at: file.at,
+        turn: byPath.get(file.path)?.turn ?? null,
+        edits: byPath.get(file.path)?.steps.length ?? 0,
+      })),
+      ...touched
+        .filter((file) => !recorded.has(file.path))
+        .map((file) => ({
+          path: file.path,
+          // Without a snapshot, only an `edit` first says the file was there: a `write` may have made it.
+          existed: file.steps[0]?.tool === 'edit',
+          at: firstRun,
+          turn: file.turn,
+          edits: file.steps.length,
+        })),
+    ].sort((a, b) => a.path.localeCompare(b.path));
   }
 
   // ---- consent (the attendant is off)
 
-  private async consentNeeded(threadId: string, consent: boolean): Promise<{ model: string; message: string } | undefined> {
+  private async consentNeeded(
+    threadId: string,
+    consent: boolean,
+  ): Promise<{ model: string; message: string } | undefined> {
     if (this.attendant.settings().enabled || this.hasConsent(threadId)) return undefined;
     if (consent) {
       this.giveConsent(threadId);

@@ -41,7 +41,9 @@ import {
 } from '@pi-kit/files/util';
 import type { FileNode, WorkspaceStatus } from '@pi-kit/protocol';
 import { ChangesStore } from '@pi-kit/review/api';
-import { ThreadsStore } from '@pi-kit/threads/api';
+import { type FolderChange, ThreadsStore } from '@pi-kit/threads/api';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
+import { tap } from 'rxjs';
 import { FILES_POLICY } from './files-policy';
 
 const IGNORED_KEY = 'pk.files.showIgnored';
@@ -81,6 +83,7 @@ interface FilesState {
  * menu and the file actions, the keyboard (arrows, type-ahead, F2, Delete). It follows the folder live through the threads store's one watch stream,
  * shared with the Changes panel. The panel renders these signals and forwards intent; the one DOM job left to it is moving the focus.
  */
+
 export const FilesStore = signalStore(
   { providedIn: 'root' },
   withState<FilesState>({
@@ -214,6 +217,12 @@ export const FilesStore = signalStore(
           },
         },
       );
+    };
+
+    /** Every open folder again (the root when none is loaded yet). */
+    const reloadLoaded = async (): Promise<void> => {
+      const loaded = [...store.children().keys()];
+      await Promise.all((loaded.length ? loaded : ['']).map((dir) => load(dir)));
     };
 
     /** After an action of this panel: the folder and the badges, without waiting for the watcher. */
@@ -411,19 +420,15 @@ export const FilesStore = signalStore(
         void store.persist({ showIgnored: on });
       },
 
-      async reloadLoaded(): Promise<void> {
-        const loaded = [...store.children().keys()];
-        await Promise.all((loaded.length ? loaded : ['']).map((dir) => load(dir)));
-      },
+      reloadLoaded,
 
-      /** The folder changed (or the stream just opened): reload the folders it touched, and the badges. */
+      /**
+       * The folder changed: a run or an agent ended, `HEAD` moved, the stream opened, the window got the focus back. Every open folder is read
+       * again, and the badges: a change is rare now (no file watcher), the reads share one index, and a batch never names everything that
+       * changes rows (a new or deleted folder, an empty one, ignored files).
+       */
       async onChange(): Promise<void> {
-        const last = threads.watchLast();
-        const loaded = [...store.children().keys()];
-        // A commit, checkout or `git add` (`.git/index`, `.git/HEAD`) can add or remove rows anywhere (a deleted file's row goes).
-        const everything = !last || last.overflow || last.paths.some((p) => p.startsWith('.git/'));
-        const touched = everything ? new Set(loaded) : new Set(last.paths.map(parentOf));
-        await Promise.all([loadStatus(), ...loaded.filter((dir) => touched.has(dir)).map((dir) => load(dir))]);
+        await Promise.all([loadStatus(), reloadLoaded()]);
       },
 
       setQuery(query: string): void {
@@ -661,7 +666,6 @@ export const FilesStore = signalStore(
       const threads = inject(ThreadsStore);
       const chat = inject(ChatStore);
       let lastThread: string | undefined;
-      let seenTick = 0;
       let seenIgnored = store.showIgnored();
       let wasRunning = false;
 
@@ -672,7 +676,6 @@ export const FilesStore = signalStore(
         void cwd;
         untracked(() => {
           lastThread = threads.selectedId();
-          seenTick = threads.watchTick();
           seenIgnored = store.showIgnored();
           wasRunning = chat.running();
           store.resetFolder();
@@ -685,20 +688,19 @@ export const FilesStore = signalStore(
         lastThread = id;
         untracked(() => void store.loadStatus());
       });
-      // When pi's run ends, its edits are on disk and in the session.
+      // When pi's run ends, its edits are on disk and in the session (the open folders follow with the run's change).
       effect(() => {
         const running = chat.running();
         if (!store.active()) return;
         if (wasRunning && !running) untracked(() => void store.loadStatus());
         wasRunning = running;
       });
-      // The folder changed (or the stream just opened): reload the folders it touched, and the badges.
-      effect(() => {
-        const tick = threads.watchTick();
-        if (!store.active() || tick === seenTick) return;
-        seenTick = tick;
-        untracked(() => void store.onChange());
-      });
+      // The folder changed (or the stream just opened).
+      rxMethod<FolderChange>(
+        tap(() => {
+          if (store.active()) void store.onChange();
+        }),
+      )(threads.folderChanges);
       // "Show ignored" changes what every open folder lists.
       effect(() => {
         const on = store.showIgnored();

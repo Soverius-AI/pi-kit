@@ -3,15 +3,15 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ChangesRepository } from '../db/changes.repository';
 import { DatabaseService } from '../db/database.service';
 import { EventLogRepository } from '../db/event-log.repository';
 import { MetaRepository } from '../db/meta.repository';
 import { OutcomesRepository } from '../db/outcomes.repository';
 import { type ThreadRow, ThreadsRepository } from '../db/threads.repository';
 import type { PiSessionService } from '../pi/pi-session.service';
-import type { PathBatch } from '../watch/batcher';
-import type { WatchService } from '../watch/watch.service';
+import type { RunSnapshotsService } from '../snapshots/run-snapshots.service';
+import type { FolderChangesService, PathBatch } from '../folder-changes/folder-changes.service';
+import { HeadWatcher } from './head-watcher';
 import { OutcomesService } from './outcomes.service';
 import type { ThreadStatusService } from './thread-status.service';
 
@@ -20,16 +20,18 @@ let repo: string;
 let db: DatabaseService;
 let threads: ThreadsRepository;
 let outcomes: OutcomesRepository;
-let changes: ChangesRepository;
+/** What each thread's runs changed, and when: the snapshots' answer. */
+let edited: Map<string, { path: string; at: number }[]>;
+let published: PathBatch[];
 let events: EventLogRepository;
 let service: OutcomesService;
 let open: Set<string>;
-let batchListener: ((cwd: string, batch: PathBatch) => void) | undefined;
 let touched: string[];
-const unsubscribed = vi.fn();
 
 const sh = (cwd: string, ...args: string[]): string =>
-  execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { encoding: 'utf8' }).trim();
+  execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
+    encoding: 'utf8',
+  }).trim();
 
 function write(folder: string, rel: string, text: string): void {
   mkdirSync(join(folder, rel, '..'), { recursive: true });
@@ -40,24 +42,37 @@ function write(folder: string, rel: string, text: string): void {
 function commit(folder: string, files: Record<string, string>, message: string, date?: string): string {
   for (const [rel, text] of Object.entries(files)) write(folder, rel, text);
   sh(folder, 'add', '-A');
-  execFileSync('git', ['-C', folder, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', message], {
-    env: { ...process.env, ...(date ? { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } : {}) },
-  });
+  execFileSync(
+    'git',
+    ['-C', folder, '-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '-m', message],
+    {
+      env: { ...process.env, ...(date ? { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } : {}) },
+    },
+  );
   return sh(folder, 'rev-parse', 'HEAD');
 }
 
-/** A thread in `repo`; its change baselines are the files pi "edited" in it. */
+/** A thread in `repo`; `edited` are the files its runs changed. */
 function addThread(id: string, edited: string[], over: { cwd?: string; messageCount?: number } = {}): ThreadRow {
   const path = join(base, `${id}.jsonl`);
   writeFileSync(path, '{}\n');
-  threads.insertDraft({ id, sessionPath: path, cwd: over.cwd ?? repo, baseCommit: sh(over.cwd ?? repo, 'rev-parse', 'HEAD') });
-  for (const file of edited) changes.putBaseline(id, file, { existed: true, content: 'before' });
+  threads.insertDraft({
+    id,
+    sessionPath: path,
+    cwd: over.cwd ?? repo,
+    baseCommit: sh(over.cwd ?? repo, 'rev-parse', 'HEAD'),
+  });
+  editedBy(id, edited);
   return threads.get(id) as ThreadRow;
 }
 
-/** What the folder watcher delivers after a commit in a terminal. */
+function editedBy(id: string, paths: string[], at = Date.now()): void {
+  edited.set(id, [...(edited.get(id) ?? []), ...paths.map((path) => ({ path, at }))]);
+}
+
+/** The folder is looked at again (a thread of it opened or ran): a commit made since is found. */
 async function commitSeen(folder: string): Promise<void> {
-  batchListener?.(folder, { paths: ['.git/logs/HEAD', '.git/refs/heads/main'], overflow: false });
+  await service.track(folder);
   await service.idle();
 }
 
@@ -71,23 +86,21 @@ beforeEach(async () => {
   new MetaRepository(db).touchWorkspace(repo);
   threads = new ThreadsRepository(db);
   outcomes = new OutcomesRepository(db);
-  changes = new ChangesRepository(db);
+  edited = new Map();
+  published = [];
   events = new EventLogRepository(db);
   open = new Set();
   touched = [];
-  batchListener = undefined;
   const watch = {
-    subscribe: () => unsubscribed,
-    onBatch: (listener: (cwd: string, batch: PathBatch) => void) => {
-      batchListener = listener;
-      return () => undefined;
-    },
-  } as unknown as WatchService;
+    publish: (_cwd: string, batch: PathBatch) => published.push(batch),
+  } as unknown as FolderChangesService;
+  const snapshots = {
+    runChanges: async (id: string) => edited.get(id) ?? [],
+  } as unknown as RunSnapshotsService;
   const sessions = { has: (id: string) => open.has(id) } as unknown as PiSessionService;
   const status = { touch: (id: string) => touched.push(id) } as unknown as ThreadStatusService;
-  service = new OutcomesService(threads, outcomes, changes, events, sessions, watch, status);
+  service = new OutcomesService(threads, outcomes, events, sessions, watch, status, snapshots);
   service.onModuleInit();
-  unsubscribed.mockClear();
 });
 
 afterEach(() => {
@@ -135,7 +148,17 @@ describe('the base commit', () => {
     // A thread the pi command line made in February: the row has no base and has not been looked at.
     const path = join(base, 'old.jsonl');
     writeFileSync(path, '{}\n');
-    threads.upsertFromSession({ id: 'old', sessionPath: path, cwd: repo, title: undefined, preview: 'x', parentSessionPath: undefined, messageCount: 2, createdAt: Date.parse('2026-02-01T00:00:00Z'), updatedAt: Date.now() });
+    threads.upsertFromSession({
+      id: 'old',
+      sessionPath: path,
+      cwd: repo,
+      title: undefined,
+      preview: 'x',
+      parentSessionPath: undefined,
+      messageCount: 2,
+      createdAt: Date.parse('2026-02-01T00:00:00Z'),
+      updatedAt: Date.now(),
+    });
     expect(threads.get('old')).toMatchObject({ baseCommit: null, baseSource: null });
     await service.estimateBases();
     expect(threads.get('old')).toMatchObject({ baseCommit: early, baseSource: 'estimated' });
@@ -151,7 +174,17 @@ describe('the base commit', () => {
     const make = (id: string, cwd: string, createdAt: number) => {
       const path = join(base, `${id}.jsonl`);
       writeFileSync(path, '{}\n');
-      threads.upsertFromSession({ id, sessionPath: path, cwd, title: undefined, preview: 'x', parentSessionPath: undefined, messageCount: 1, createdAt, updatedAt: Date.now() });
+      threads.upsertFromSession({
+        id,
+        sessionPath: path,
+        cwd,
+        title: undefined,
+        preview: 'x',
+        parentSessionPath: undefined,
+        messageCount: 1,
+        createdAt,
+        updatedAt: Date.now(),
+      });
     };
     make('plain', plain, Date.now());
     make('ancient', repo, Date.parse('2000-01-01T00:00:00Z'));
@@ -171,10 +204,19 @@ describe('committed: a commit made in the thread folder', () => {
     const head = commit(repo, { 'a.ts': 'two\n', 'other.ts': 'x\n' }, 'Change a');
     await commitSeen(repo);
     const outcome = outcomes.get('t1');
-    expect(outcome).toMatchObject({ kind: 'committed', headCommit: head, baseCommit: (threads.get('t1') as ThreadRow).baseCommit });
+    expect(outcome).toMatchObject({
+      kind: 'committed',
+      headCommit: head,
+      baseCommit: (threads.get('t1') as ThreadRow).baseCommit,
+    });
     expect(outcome?.files).toEqual(['a.ts', 'other.ts']);
     expect(touched).toContain('t1');
-    expect(service.get('t1')).toMatchObject({ kind: 'committed', head, files: ['a.ts', 'other.ts'], baseSource: 'start' });
+    expect(service.get('t1')).toMatchObject({
+      kind: 'committed',
+      head,
+      files: ['a.ts', 'other.ts'],
+      baseSource: 'start',
+    });
     expect(service.range('t1')).toEqual({ base: (threads.get('t1') as ThreadRow).baseCommit, head });
   });
 
@@ -216,7 +258,7 @@ describe('committed: a commit made in the thread folder', () => {
     expect(heard).toHaveLength(2);
   });
 
-  it('is nobody\'s when no thread changed any committed file', async () => {
+  it("is nobody's when no thread changed any committed file", async () => {
     addThread('t1', ['a.ts']);
     open.add('t1');
     await service.track(repo);
@@ -238,7 +280,11 @@ describe('committed: a commit made in the thread folder', () => {
     const second = commit(repo, { 'b.ts': 'three\n', 'c.ts': 'two\n' }, 'Change b and c');
     await commitSeen(repo);
     const extended = outcomes.get('many');
-    expect(extended).toMatchObject({ kind: 'committed', headCommit: second, baseCommit: (threads.get('many') as ThreadRow).baseCommit });
+    expect(extended).toMatchObject({
+      kind: 'committed',
+      headCommit: second,
+      baseCommit: (threads.get('many') as ThreadRow).baseCommit,
+    });
     expect(extended?.files).toEqual(['a.ts', 'b.ts', 'c.ts']);
   });
 
@@ -285,8 +331,8 @@ describe('committed: a commit made in the thread folder', () => {
     await service.track(repo);
     commit(repo, { 'a.ts': 'two\n' }, 'Change a', '2026-01-01T10:00:00Z');
     // The thread's baseline of a.ts is from now, years after that commit's date.
-    changes.putBaseline('t1', 'a.ts', { existed: true, content: 'x' });
-    batchListener?.(repo, { paths: ['.git/logs/HEAD'], overflow: false });
+    editedBy('t1', ['a.ts']);
+    await service.track(repo);
     await service.idle();
     expect(outcomes.get('t1')).toBeUndefined();
   });
@@ -296,16 +342,25 @@ describe('committed: a commit made in the thread folder', () => {
     open.add('t1');
     await service.track(repo);
     sh(repo, 'checkout', '-q', '-b', 'feature');
-    batchListener?.(repo, { paths: ['.git/HEAD', '.git/logs/HEAD'], overflow: false });
+    await service.track(repo);
     await service.idle();
     write(repo, 'a.ts', 'dirty\n');
-    batchListener?.(repo, { paths: ['a.ts'], overflow: false });
+    await service.track(repo);
     await service.idle();
     expect(outcomes.get('t1')).toBeUndefined();
     // A merge or pull request the thread already has stays.
-    outcomes.put({ threadId: 't1', kind: 'pr', baseCommit: 'b', headCommit: 'h', mergeCommit: null, prUrl: 'https://example.test/pr/1', at: 1, files: [] });
+    outcomes.put({
+      threadId: 't1',
+      kind: 'pr',
+      baseCommit: 'b',
+      headCommit: 'h',
+      mergeCommit: null,
+      prUrl: 'https://example.test/pr/1',
+      at: 1,
+      files: [],
+    });
     commit(repo, { 'a.ts': 'committed\n' }, 'Change a on the branch');
-    batchListener?.(repo, { paths: ['.git/logs/HEAD'], overflow: false });
+    await service.track(repo);
     await service.idle();
     expect(outcomes.get('t1')).toMatchObject({ kind: 'pr', headCommit: 'h' });
   });
@@ -321,27 +376,74 @@ describe('committed: a commit made in the thread folder', () => {
     expect(outcomes.get('t1')?.files).toEqual(['a.ts', 'b.ts']);
   });
 
-  it('catches up with commits made while the folder was not watched, when it is tracked again', async () => {
+  it('finds a commit made while nobody looked when a thread of the folder runs, and tells the panels', async () => {
+    addThread('t1', ['a.ts']);
+    open.add('t1');
+    await service.track(join(base, 'missing'));
+    events.beginRun('t1', 'r0');
+    events.endRun('r0', 'finished');
+    await service.idle();
+    const head = commit(repo, { 'a.ts': 'two\n' }, 'Change a');
+    events.beginRun('t1', 'r1');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await service.idle();
+    expect(outcomes.get('t1')).toMatchObject({ headCommit: head });
+    expect(published).toContainEqual(expect.objectContaining({ headMoved: true }));
+  });
+
+  it('sees a commit through the one watched reflog of the folder opened last', async () => {
     addThread('t1', ['a.ts']);
     open.add('t1');
     await service.track(repo);
-    // The hold is released (the sweep) and a commit is made in a terminal nobody was watching.
-    service['held'].get(repo)?.off();
-    service['held'].delete(repo);
     const head = commit(repo, { 'a.ts': 'two\n' }, 'Change a');
-    await service.track(repo);
-    await service.idle();
+    for (let i = 0; i < 100 && !outcomes.get('t1'); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await service.idle();
+    }
     expect(outcomes.get('t1')).toMatchObject({ headCommit: head });
   });
 
-  it('watches a repository root, not a worktree or a folder without .git', async () => {
+  it('watches no reflog for a worktree or a folder without .git: their threads get their outcome from the merge back', async () => {
+    const watch = vi.spyOn(HeadWatcher.prototype, 'watch');
     await service.track(join(base, 'missing'));
-    expect(service['held'].size).toBe(0);
     sh(repo, 'worktree', 'add', '-q', join(base, 'wt'), '-b', 'wt-branch');
     await service.track(join(base, 'wt'));
-    expect(service['held'].size).toBe(0);
+    expect(watch).not.toHaveBeenCalled();
     await service.track(repo);
-    expect(service['held'].size).toBe(1);
+    expect(watch).toHaveBeenCalledWith(repo);
+    watch.mockRestore();
+  });
+
+  it('sees the first commit of a repository that was just initialised, and attributes it', async () => {
+    const fresh = join(base, 'initialised');
+    mkdirSync(fresh);
+    sh(fresh, 'init', '-q', '-b', 'main');
+    const path = join(base, 'first.jsonl');
+    writeFileSync(path, '{}\n');
+    threads.insertDraft({ id: 'first', sessionPath: path, cwd: fresh });
+    editedBy('first', ['a.ts']);
+    open.add('first');
+    // Opened before any commit exists: the folder is known without a HEAD.
+    await service.track(fresh);
+    const root = commit(fresh, { 'a.ts': 'one\n' }, 'first');
+    await commitSeen(fresh);
+    expect(outcomes.get('first')).toMatchObject({ kind: 'committed', headCommit: root });
+  });
+
+  it('watches the folder opened last, even when an earlier one takes longer to look at', async () => {
+    const slow = join(base, 'slow');
+    mkdirSync(slow);
+    sh(slow, 'init', '-q', '-b', 'main');
+    await service.track(repo);
+    const watched = vi.spyOn(
+      (service as unknown as { headWatcher: { watch(folder: string): void } }).headWatcher,
+      'watch',
+    );
+    // The slow one reads its HEAD first; the repository already known is ready at once.
+    const first = service.track(slow);
+    await service.track(repo);
+    await first;
+    expect(watched.mock.calls.map(([folder]) => folder)).toEqual([repo]);
   });
 
   it('names the empty tree as the base of a root commit for a thread without a base', async () => {
@@ -351,16 +453,20 @@ describe('committed: a commit made in the thread folder', () => {
     const path = join(base, 'nb.jsonl');
     writeFileSync(path, '{}\n');
     threads.insertDraft({ id: 'nb', sessionPath: path, cwd: fresh });
-    changes.putBaseline('nb', 'a.ts', { existed: false, content: '' });
+    editedBy('nb', ['a.ts']);
     open.add('nb');
     const root = commit(fresh, { 'a.ts': 'one\n' }, 'first');
     await service.attributeCommit(fresh, root);
-    expect(outcomes.get('nb')).toMatchObject({ kind: 'committed', headCommit: root, baseCommit: '4b825dc642cb6eb9a060e54bf8d69288fbee4904' });
+    expect(outcomes.get('nb')).toMatchObject({
+      kind: 'committed',
+      headCommit: root,
+      baseCommit: '4b825dc642cb6eb9a060e54bf8d69288fbee4904',
+    });
   });
 });
 
 describe('merged and pr', () => {
-  it('the merge commit is the outcome, the base is the tip it landed on, and the files are the merge\'s', async () => {
+  it("the merge commit is the outcome, the base is the tip it landed on, and the files are the merge's", async () => {
     const thread = addThread('t1', []);
     const base0 = sh(repo, 'rev-parse', 'HEAD');
     sh(repo, 'checkout', '-q', '-b', 'pi-kit/work');
@@ -369,11 +475,19 @@ describe('merged and pr', () => {
     sh(repo, 'merge', '--no-ff', '-q', '-m', 'Merge pi-kit/work into main', 'pi-kit/work');
     const merge = sh(repo, 'rev-parse', 'HEAD');
     await service.recordMerged(thread, sh(repo, 'rev-parse', '--short', 'HEAD'));
-    expect(outcomes.get('t1')).toMatchObject({ kind: 'merged', baseCommit: base0, headCommit: merge, mergeCommit: merge });
+    expect(outcomes.get('t1')).toMatchObject({
+      kind: 'merged',
+      baseCommit: base0,
+      headCommit: merge,
+      mergeCommit: merge,
+    });
     expect(outcomes.get('t1')?.files).toEqual(['a.ts', 'new.ts']);
     // The diff the Outcome source shows is exactly git's.
     const range = service.range('t1');
-    expect(sh(repo, 'diff', '--name-only', `${range?.base}..${range?.head}`).split('\n').sort()).toEqual(['a.ts', 'new.ts']);
+    expect(sh(repo, 'diff', '--name-only', `${range?.base}..${range?.head}`).split('\n').sort()).toEqual([
+      'a.ts',
+      'new.ts',
+    ]);
     // The watcher seeing the merge afterwards does not turn it into somebody's commit.
     open.add('t1');
     await service.track(repo);
@@ -388,7 +502,12 @@ describe('merged and pr', () => {
     sh(repo, 'checkout', '-q', '-b', 'pi-kit/pr');
     const tip = commit(repo, { 'p.ts': 'p\n' }, 'pr work');
     await service.recordPullRequest(thread, repo, 'https://example.test/pr/7');
-    expect(outcomes.get('t1')).toMatchObject({ kind: 'pr', baseCommit: base0, headCommit: tip, prUrl: 'https://example.test/pr/7' });
+    expect(outcomes.get('t1')).toMatchObject({
+      kind: 'pr',
+      baseCommit: base0,
+      headCommit: tip,
+      prUrl: 'https://example.test/pr/7',
+    });
     expect(outcomes.get('t1')?.files).toEqual(['p.ts']);
   });
 });

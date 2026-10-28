@@ -37,29 +37,20 @@ export type DiffHunkModel = z.infer<typeof DiffHunkModelSchema>;
 export const FileStatusSchema = z.enum(['M', 'A', 'D']);
 export type FileStatus = z.infer<typeof FileStatusSchema>;
 
-/**
- * Where the "before" side of a "This thread" diff came:
- * - `captured`: the file as it was when the first `edit` / `write` of the thread started (the backend read it);
- * - `reconstructed`: rebuilt from the `edit` patches stored in the session file, by undoing them on the file;
- * - `git-head`: the backend has no copy from before pi's edit, so the file is compared with git's `HEAD` instead;
- * - `empty`: no copy and no git, so the whole file is shown as added.
- */
-export const BaselineSchema = z.enum(['captured', 'reconstructed', 'git-head', 'empty']);
-export type Baseline = z.infer<typeof BaselineSchema>;
-
-export const DiffModelSchema = z.object({
-  path: z.string(),
-  status: FileStatusSchema,
-  added: z.number().int(),
-  removed: z.number().int(),
-  binary: z.boolean(),
-  /** The file is too big to diff here; `hunks` is empty. */
-  tooLarge: z.boolean(),
-  hunks: z.array(DiffHunkModelSchema),
-  baseline: BaselineSchema.optional(),
-  /** Said to the user above the diff (a fallback, a binary file, a file that is gone). */
-  note: z.string().optional(),
-}).meta({ id: 'DiffModel' });
+export const DiffModelSchema = z
+  .object({
+    path: z.string(),
+    status: FileStatusSchema,
+    added: z.number().int(),
+    removed: z.number().int(),
+    binary: z.boolean(),
+    /** The file is too big to diff here; `hunks` is empty. */
+    tooLarge: z.boolean(),
+    hunks: z.array(DiffHunkModelSchema),
+    /** Said to the user above the diff (a fallback, a binary file, a file that is gone). */
+    note: z.string().optional(),
+  })
+  .meta({ id: 'DiffModel' });
 export type DiffModel = z.infer<typeof DiffModelSchema>;
 
 /** Rows for one hunk: numbers the lines from the hunk header and pairs removed lines with the added ones for the split view. */

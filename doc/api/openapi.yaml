@@ -2133,7 +2133,7 @@ paths:
         - files
   /api/workspaces/{id}/watch:
     get:
-      description: 'Keeps the connection open and sends newline-delimited JSON: `ready` once the folder is watched, one `change` with the changed paths per 300 millisecond window, and a `ping` every 20 seconds.'
+      description: 'Keeps the connection open and sends newline-delimited JSON: `ready` at once, a `change` with the changed paths when a run in the folder ends or its git HEAD moves, and a `ping` every 20 seconds.'
       operationId: Session_watchWorkspace
       parameters:
         - name: id
@@ -2991,6 +2991,39 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
       summary: Get a folder's git status
+      tags:
+        - files
+  /api/workspaces/{id}/git-init:
+    post:
+      description: Runs `git init` in the project folder if it is not in a git work tree yet. Diffs and the live refresh of the Files and Changes panels are built from git.
+      operationId: WorkspaceStatus_initGit
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: The project's folder, URL-encoded (a project has no other id).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitInitResult'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: The folder is not a known project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Initialise git
       tags:
         - files
   /api/threads/{id}/coordination:
@@ -9541,17 +9574,10 @@ components:
           maximum: 9007199254740991
         binary:
           type: boolean
-        turn:
+        run:
           type: integer
           minimum: -9007199254740991
           maximum: 9007199254740991
-        baseline:
-          type: string
-          enum:
-            - captured
-            - reconstructed
-            - git-head
-            - empty
         conflict:
           type: boolean
       required:
@@ -10598,13 +10624,6 @@ components:
               - lines
               - split
             additionalProperties: false
-        baseline:
-          type: string
-          enum:
-            - captured
-            - reconstructed
-            - git-head
-            - empty
         note:
           type: string
       required:
@@ -10794,6 +10813,14 @@ components:
       required:
         - from
         - to
+      additionalProperties: false
+    GitInitResult:
+      type: object
+      properties:
+        git:
+          type: boolean
+      required:
+        - git
       additionalProperties: false
     Health:
       type: object
@@ -17577,12 +17604,15 @@ components:
                 type: string
             overflow:
               type: boolean
+            headMoved:
+              type: boolean
             at:
               type: number
           required:
             - type
             - paths
             - overflow
+            - headMoved
             - at
           additionalProperties: false
         - type: object

@@ -79,6 +79,5 @@
     { "path": "notes/alpha.md", "existed": false, "at": 1792000010000, "turn": 1, "edits": 2 },
     { "path": "notes/beta.md", "existed": false, "at": 1792000020000, "turn": 1, "edits": 1 },
     { "path": "src/map.ts", "existed": true, "at": 1792000130000, "turn": 2, "edits": 1 }
-  ],
-  "outsideEdits": [{ "path": "notes/gamma.md", "firstAt": 1792000300000, "lastAt": 1792000320000, "count": 3 }]
+  ]
 }

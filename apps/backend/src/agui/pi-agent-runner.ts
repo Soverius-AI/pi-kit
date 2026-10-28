@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { type AbstractAgent, type BaseEvent, EventType, type RunAgentInput } from '@ag-ui/client';
 import {
   AgentRunner,
@@ -7,7 +7,16 @@ import {
   type AgentRunnerRunRequest,
   type AgentRunnerStopRequest,
 } from '@copilotkit/runtime/v2';
-import { type ComposerRegistration, isProxiedMcpRun, parseAgentQuestionId, REPLAY_CURSOR_HEADER, REPLAY_CURSOR_METADATA, REPLAY_RESET_EVENT, THREAD_HYDRATION_HEADER, THREAD_HYDRATION_EVENT } from '@pi-kit/protocol';
+import {
+  type ComposerRegistration,
+  isProxiedMcpRun,
+  parseAgentQuestionId,
+  REPLAY_CURSOR_HEADER,
+  REPLAY_CURSOR_METADATA,
+  REPLAY_RESET_EVENT,
+  THREAD_HYDRATION_HEADER,
+  THREAD_HYDRATION_EVENT,
+} from '@pi-kit/protocol';
 import {
   closeRun,
   isAborted,
@@ -19,11 +28,12 @@ import {
   type PiUiEvent,
   sessionToMessages,
 } from '@pi-kit/pi-adapter';
-import { Observable, ReplaySubject, Subject, type Subscription } from 'rxjs';
+import { defer, Observable, of, ReplaySubject, Subject, type Subscription, switchMap } from 'rxjs';
 import { randomUUID } from 'node:crypto';
 import { EventLogRepository } from '../db/event-log.repository';
 import { ThreadsRepository } from '../db/threads.repository';
 import { PiSessionService } from '../pi/pi-session.service';
+import { RunSnapshotsService } from '../snapshots/run-snapshots.service';
 import { sessionMtime } from '../threads/session-files';
 import { lastAssistantLine } from '../threads/thread-context';
 import { newestUserMessage, streamingBehavior } from './pi-agent';
@@ -36,6 +46,8 @@ const logger = new Logger('PiAgentRunner');
 
 /** How long registrations wait for others before they are written. */
 const COMPOSER_BATCH_MS = 20;
+/** How often a queued message looks whether pi took the prompt of the run before it. */
+const PROMPT_LOOK_MS = 20;
 
 const RESTART_MESSAGE = 'The app was closed while this run was in progress.';
 
@@ -49,6 +61,8 @@ interface ActiveRun {
   /** Writes an event into this run's log and feeds it to the followers and the run's own stream. */
   emit?: (event: BaseEvent) => void;
   close?: () => void;
+  /** Stop was pressed: a run that has not handed pi its prompt yet (it waits for the folder's snapshot) never does, nor do messages queued behind it. */
+  stopped?: boolean;
 }
 
 /**
@@ -71,17 +85,25 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
   private readonly listeners: (() => void)[] = [];
   private destroyed = false;
   /** Toolbar registrations that came while no run listened, waiting a moment so ones that arrive together are written together. */
-  private readonly pendingComposer = new Map<string, { timer: NodeJS.Timeout; registrations: ComposerRegistration[] }>();
+  private readonly pendingComposer = new Map<
+    string,
+    { timer: NodeJS.Timeout; registrations: ComposerRegistration[] }
+  >();
   private readonly compactor: LogCompactor;
   /** The agent a run of a turn pi started by itself attaches with (`AguiService` hands over the registered `PiAgent`). */
   private followAgent?: () => AbstractAgent;
   /** The runner of the agent `pi-bg`, whose requests the runtime sends here like every other agent's. */
-  private background?: Pick<PiAgentRunner, 'run' | 'connect' | 'stop'> & { isRunning(threadId: string): boolean; owns(threadId: string): boolean };
+  private background?: Pick<PiAgentRunner, 'run' | 'connect' | 'stop'> & {
+    isRunning(threadId: string): boolean;
+    owns(threadId: string): boolean;
+  };
 
   constructor(
     private readonly log: EventLogRepository,
     private readonly threads: ThreadsRepository,
     private readonly sessions: PiSessionService,
+    /** The snapshot of the folder is taken before pi gets the prompt (`beforePrompt`); absent in tests that do not care. */
+    @Optional() private readonly snapshots?: RunSnapshotsService,
   ) {
     super();
     this.compactor = new LogCompactor(log);
@@ -122,8 +144,11 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     const runs = [...this.active.values()];
     this.active.clear();
     for (const run of runs) {
-      try { run.upstream?.unsubscribe(); }
-      catch (error) { logger.warn(`Unsubscribing run ${run.runId} during shutdown failed: ${String(error)}`); }
+      try {
+        run.upstream?.unsubscribe();
+      } catch (error) {
+        logger.warn(`Unsubscribing run ${run.runId} during shutdown failed: ${String(error)}`);
+      }
       run.close?.();
     }
   }
@@ -138,7 +163,10 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
 
   /** A request of `pi-bg`: by its agent id where the runtime says it, else by the thread id, which is then an agent's. */
   private isBackground(request: { threadId: string; agent?: AbstractAgent; agentId?: string }): boolean {
-    return !!this.background && (request.agent?.agentId === 'pi-bg' || request.agentId === 'pi-bg' || this.background.owns(request.threadId));
+    return (
+      !!this.background &&
+      (request.agent?.agentId === 'pi-bg' || request.agentId === 'pi-bg' || this.background.owns(request.threadId))
+    );
   }
 
   /**
@@ -155,11 +183,21 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       return;
     }
     const runId = `turn-${randomUUID()}`;
-    const input: RunAgentInput = { threadId, runId, state: {}, messages: [], tools: [], context: [], forwardedProps: { followTurn: true } };
+    const input: RunAgentInput = {
+      threadId,
+      runId,
+      state: {},
+      messages: [],
+      tools: [],
+      context: [],
+      forwardedProps: { followTurn: true },
+    };
     try {
       this.run({ threadId, agent: this.followAgent(), input }).subscribe({ error: () => undefined });
     } catch (error) {
-      logger.warn(`Could not follow the turn pi started in ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(
+        `Could not follow the turn pi started in ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -183,15 +221,30 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     const runId = input.runId;
     // Steering and follow-ups go to the run that is going; they are neither a run of their own
     // nor part of the log (the message appears when pi delivers it, through that run's stream).
-    if (streamingBehavior(input) && (this.active.has(threadId) || (this.sessions.has(threadId) && this.sessions.isStreaming(threadId)))) {
-      return runWithMiddleware(agent, input);
+    if (
+      streamingBehavior(input) &&
+      (this.active.has(threadId) || (this.sessions.has(threadId) && this.sessions.isStreaming(threadId)))
+    ) {
+      // The run going on may not have handed pi its prompt yet (it waits for the folder's snapshot, then prepares the session): this message
+      // would reach an idle pi first and start as a prompt of its own. It waits until pi works on that prompt, or the run is over; a run that
+      // was stopped meanwhile takes its queued messages with it. Otherwise the message is routed again: queued while pi works, else (the run
+      // ended without pi working: its prompt failed) a run of its own, with the lock, the log and the snapshots.
+      const active = this.active.get(threadId);
+      if (!active || this.piWorks(threadId)) return runWithMiddleware(agent, input);
+      return defer(() => this.untilPiTakesPrompt(threadId, active)).pipe(
+        switchMap(() => (active.stopped ? stoppedRun(threadId, input.runId) : this.run(request))),
+      );
     }
     // An MCP App asking for its resource or calling a tool is a relay, not a run: it takes no lock (the
     // widget waits for the agent to be idle anyway), writes nothing to the log (resources are whole HTML pages) and
     // never touches pi's session. Its answer is the `RUN_FINISHED.result` of the stream it gets back.
     if (isProxiedMcpRun(input.forwardedProps)) return runWithMiddleware(agent, input);
     // The user's answer to a background agent's question is a relay too: the agents settle it, nothing of pi's changes.
-    if (input.resume?.length && input.resume.every((entry) => parseAgentQuestionId((entry as { interruptId?: string }).interruptId))) return runWithMiddleware(agent, input);
+    if (
+      input.resume?.length &&
+      input.resume.every((entry) => parseAgentQuestionId((entry as { interruptId?: string }).interruptId))
+    )
+      return runWithMiddleware(agent, input);
     if (this.active.has(threadId)) throw new Error('Thread already running');
     try {
       this.log.beginRun(threadId, runId);
@@ -202,7 +255,10 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     const active: ActiveRun = { runId, events: [], live: new Subject() };
     this.active.set(threadId, active);
     const out = new ReplaySubject<BaseEvent>(Infinity);
-    active.close = () => { out.complete(); active.live.complete(); };
+    active.close = () => {
+      out.complete();
+      active.live.complete();
+    };
 
     const emit = (event: BaseEvent): void => {
       const seq = this.log.append(threadId, runId, event);
@@ -220,14 +276,27 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     const storageFailed = (error: unknown): void => {
       if (this.active.get(threadId) !== active) return;
       this.active.delete(threadId);
-      logger.error(`Writing run ${runId} of thread ${threadId} failed: ${error instanceof Error ? error.stack : String(error)}`);
-      try { this.log.endRun(runId, 'error'); }
-      catch (endError) { logger.error(`Releasing run ${runId} failed: ${String(endError)}`); }
-      try { active.upstream?.unsubscribe(); }
-      catch (stopError) { logger.warn(`Unsubscribing run ${runId} failed: ${String(stopError)}`); }
+      logger.error(
+        `Writing run ${runId} of thread ${threadId} failed: ${error instanceof Error ? error.stack : String(error)}`,
+      );
+      try {
+        this.log.endRun(runId, 'error');
+      } catch (endError) {
+        logger.error(`Releasing run ${runId} failed: ${String(endError)}`);
+      }
+      try {
+        active.upstream?.unsubscribe();
+      } catch (stopError) {
+        logger.warn(`Unsubscribing run ${runId} failed: ${String(stopError)}`);
+      }
       // Dispatch cancellation before clients see the error and can start a replacement run.
-      void this.sessions.abort(threadId).catch((abortError: unknown) => logger.warn(`Stopping run ${runId} failed: ${String(abortError)}`));
-      for (const event of closeRun(active.events, { message: 'The run stopped because its events could not be saved.', code: 'EVENT_LOG_ERROR' })) {
+      void this.sessions
+        .abort(threadId)
+        .catch((abortError: unknown) => logger.warn(`Stopping run ${runId} failed: ${String(abortError)}`));
+      for (const event of closeRun(active.events, {
+        message: 'The run stopped because its events could not be saved.',
+        code: 'EVENT_LOG_ERROR',
+      })) {
         // These events have no durable cursor. A reconnect resumes from the last successful write.
         active.live.next({ event });
         out.next(event);
@@ -236,8 +305,12 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     };
     active.emit = (event) => {
       if (this.active.get(threadId) !== active) return;
-      try { if (started) emit(event); else beforeStart.push(event); }
-      catch (error) { storageFailed(error); }
+      try {
+        if (started) emit(event);
+        else beforeStart.push(event);
+      } catch (error) {
+        storageFailed(error);
+      }
     };
     const finish = (terminal: BaseEvent): void => {
       if (this.active.get(threadId) !== active) return; // already ended
@@ -254,11 +327,15 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
         const terminal = closing.pop() as BaseEvent;
         closing.forEach(emit);
         finish(terminal);
-      } catch (error) { storageFailed(error); }
+      } catch (error) {
+        storageFailed(error);
+      }
     };
 
     try {
-      active.upstream = runWithMiddleware(agent, input).subscribe({
+      // pi gets the prompt once the folder's snapshot is taken: what the run changes is measured from it.
+      const upstream = runWithMiddleware(agent, input);
+      active.upstream = upstream.subscribe({
         next: (event) => {
           if (this.active.get(threadId) !== active) return;
           try {
@@ -269,7 +346,9 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
               beforeStart.splice(0).forEach(emit);
               this.flushComposer(threadId);
             }
-          } catch (error) { storageFailed(error); }
+          } catch (error) {
+            storageFailed(error);
+          }
         },
         error: (error) => fail(error instanceof Error ? error.message : String(error), 'error'),
         complete: () => fail('The run ended without a result.', 'INCOMPLETE_STREAM'),
@@ -303,8 +382,11 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
         // stored log and the live feed.
         const after = this.log.resolveCursor(threadId, request.headers?.[REPLAY_CURSOR_HEADER]);
         const run = this.active.get(threadId);
-        subscriber.next({ type: EventType.CUSTOM, name: REPLAY_RESET_EVENT,
-          value: { reset: after === undefined, ...(hydrate ? { running: !!run } : {}) } } as BaseEvent);
+        subscriber.next({
+          type: EventType.CUSTOM,
+          name: REPLAY_RESET_EVENT,
+          value: { reset: after === undefined, ...(hydrate ? { running: !!run } : {}) },
+        } as BaseEvent);
         const stored = after === undefined ? this.log.read(threadId) : this.log.readAfter(threadId, after);
         if (hydrate && (after === undefined || stored.length > 0)) {
           // This is a state transfer, not a replay. Keep the durable AG-UI log unchanged, including
@@ -315,17 +397,31 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
           subscriber.next({ type: EventType.RUN_STARTED, threadId, runId } as BaseEvent);
           const value = hydrateThread(history.map((row) => row.event));
           value.view.promptActive = this.hasLivePrompt(threadId);
-          const snapshot = { type: EventType.CUSTOM, name: THREAD_HYDRATION_EVENT,
-            value: { ...value, running: !!run } } as BaseEvent;
+          const snapshot = {
+            type: EventType.CUSTOM,
+            name: THREAD_HYDRATION_EVENT,
+            value: { ...value, running: !!run },
+          } as BaseEvent;
           subscriber.next(this.withCursor(threadId, seq, snapshot));
           if (!run) {
             const terminal = [...history].reverse().find((row) => isTerminal(row.event))?.event;
-            const outcome = terminal?.type === EventType.RUN_FINISHED
-              ? (terminal as { outcome?: unknown }).outcome : { type: 'success' };
-            subscriber.next(this.withCursor(threadId, seq, {
-              type: EventType.RUN_FINISHED, threadId, runId, outcome,
-              result: { aborted: terminal?.type === EventType.RUN_FINISHED && (terminal as { result?: { aborted?: boolean } }).result?.aborted === true },
-            } as BaseEvent));
+            const outcome =
+              terminal?.type === EventType.RUN_FINISHED
+                ? (terminal as { outcome?: unknown }).outcome
+                : { type: 'success' };
+            subscriber.next(
+              this.withCursor(threadId, seq, {
+                type: EventType.RUN_FINISHED,
+                threadId,
+                runId,
+                outcome,
+                result: {
+                  aborted:
+                    terminal?.type === EventType.RUN_FINISHED &&
+                    (terminal as { result?: { aborted?: boolean } }).result?.aborted === true,
+                },
+              } as BaseEvent),
+            );
           }
         } else if (!hydrate) {
           for (const { seq, event } of stored) subscriber.next(this.withCursor(threadId, seq, event));
@@ -350,7 +446,8 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
   }
 
   isRunning(request: AgentRunnerIsRunningRequest): Promise<boolean> {
-    if (this.isBackground(request)) return Promise.resolve((this.background as NonNullable<typeof this.background>).isRunning(request.threadId));
+    if (this.isBackground(request))
+      return Promise.resolve((this.background as NonNullable<typeof this.background>).isRunning(request.threadId));
     return Promise.resolve(this.active.has(request.threadId));
   }
 
@@ -369,8 +466,33 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       return true;
     }
     if (request.runId !== undefined && request.runId !== run.runId) return false;
+    run.stopped = true;
     await this.sessions.abort(request.threadId);
     return true;
+  }
+
+  /**
+   * The agent asks this just before pi gets a prompt (the thread is prepared, nothing written yet): the folder's snapshot is taken first, so the
+   * run has its "before". `false` when the run was stopped meanwhile: pi never gets the prompt.
+   */
+  async beforePrompt(threadId: string): Promise<boolean> {
+    await this.snapshots?.whenStarted(threadId);
+    return !this.active.get(threadId)?.stopped;
+  }
+
+  private piWorks(threadId: string): boolean {
+    return this.sessions.has(threadId) && this.sessions.isStreaming(threadId);
+  }
+
+  /** Resolves once pi works on a prompt of the thread, or `active` is no longer the thread's run (it ended), or it was stopped. */
+  private untilPiTakesPrompt(threadId: string, active: ActiveRun): Promise<void> {
+    return new Promise((resolve) => {
+      const look = (): void => {
+        if (this.active.get(threadId) !== active || active.stopped || this.piWorks(threadId)) return resolve();
+        setTimeout(look, PROMPT_LOOK_MS).unref();
+      };
+      look();
+    });
   }
 
   /**
@@ -395,7 +517,9 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     try {
       this.compact(threadId);
     } catch (error) {
-      logger.warn(`Compacting the log of ${threadId} failed: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(
+        `Compacting the log of ${threadId} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     this.recordTree(threadId);
   }
@@ -413,8 +537,11 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       return;
     }
     const timer = setTimeout(() => {
-      try { this.flushComposer(threadId); }
-      catch (error) { logger.error(`Writing toolbar registrations for ${threadId} failed: ${String(error)}`); }
+      try {
+        this.flushComposer(threadId);
+      } catch (error) {
+        logger.error(`Writing toolbar registrations for ${threadId} failed: ${String(error)}`);
+      }
     }, COMPOSER_BATCH_MS);
     timer.unref();
     this.pendingComposer.set(threadId, { timer, registrations: [event.registration] });
@@ -496,11 +623,16 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     }
     emit(terminal);
 
-    this.log.endRun(active.runId, isAborted(terminal) ? 'aborted' : terminal.type === EventType.RUN_FINISHED ? 'finished' : 'error');
+    this.log.endRun(
+      active.runId,
+      isAborted(terminal) ? 'aborted' : terminal.type === EventType.RUN_FINISHED ? 'finished' : 'error',
+    );
     try {
       this.compact(threadId);
     } catch (error) {
-      logger.warn(`Compacting the log of ${threadId} failed: ${error instanceof Error ? error.message : String(error)}`);
+      logger.warn(
+        `Compacting the log of ${threadId} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     const row = this.threads.get(threadId);
     if (row) {
@@ -595,13 +727,23 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
 
   /** A suspended AG-UI run still belongs to pi's live prompt. Its stream contains control state absent from the session file. */
   private hasLivePrompt(threadId: string): boolean {
-    return this.active.has(threadId)
-      || this.sessions.pendingDialogs(threadId).length > 0
-      || (this.sessions.has(threadId) && this.sessions.isStreaming(threadId));
+    return (
+      this.active.has(threadId) ||
+      this.sessions.pendingDialogs(threadId).length > 0 ||
+      (this.sessions.has(threadId) && this.sessions.isStreaming(threadId))
+    );
   }
 }
 
 /** The stored `RUN_STARTED` carries the prompt, because a connecting client has not got the user's message otherwise. */
+/** What a run that was stopped before pi got it says: it started, and it was stopped. */
+function stoppedRun(threadId: string, runId: string) {
+  return of(
+    { type: EventType.RUN_STARTED, threadId, runId } as BaseEvent,
+    { type: EventType.RUN_FINISHED, threadId, runId, result: { aborted: true } } as BaseEvent,
+  );
+}
+
 function withInput(event: BaseEvent, input: RunAgentInput): BaseEvent {
   const prompt = newestUserMessage(input.messages);
   return {

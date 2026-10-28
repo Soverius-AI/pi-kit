@@ -2,8 +2,28 @@ import { existsSync, statSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 import { AbstractAgent } from '@ag-ui/client';
 import { type AgentCapabilities, type BaseEvent, EventType, type Message, type RunAgentInput } from '@ag-ui/core';
-import { closeOpenBlocks, createMapContext, interruptFinished, type MapContext, mapEvent, mapUiEvent, type PiEvent, reviewActivity, skillsActivity, subagentRunIdOf } from '@pi-kit/pi-adapter';
-import { A2UI_EVENT_TOOL_NAME, isProxiedMcpRun, parseAgentQuestionId, type PiDialogAnswer, type ProxiedMcpRequest, proxiedMcpRequestOf, reviewBatchOf, skillChipsOf } from '@pi-kit/protocol';
+import {
+  closeOpenBlocks,
+  createMapContext,
+  interruptFinished,
+  type MapContext,
+  mapEvent,
+  mapUiEvent,
+  type PiEvent,
+  reviewActivity,
+  skillsActivity,
+  subagentRunIdOf,
+} from '@pi-kit/pi-adapter';
+import {
+  A2UI_EVENT_TOOL_NAME,
+  isProxiedMcpRun,
+  parseAgentQuestionId,
+  type PiDialogAnswer,
+  type ProxiedMcpRequest,
+  proxiedMcpRequestOf,
+  reviewBatchOf,
+  skillChipsOf,
+} from '@pi-kit/protocol';
 import { Logger } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { ResumeEntrySchema } from '@ag-ui/core/schemas';
@@ -15,7 +35,10 @@ import { expandFileRefs, fileRefsOf } from './file-refs';
 
 /** Where a thread's pi session lives; implemented by `ThreadsService` (thread id == session id). */
 export interface ThreadResolver {
-  prepareRun(threadId: string, cwdHint: string): Promise<{ cwd: string; sessionPath: string; title: string | undefined; leafId?: string; inWorktree?: boolean }>;
+  prepareRun(
+    threadId: string,
+    cwdHint: string,
+  ): Promise<{ cwd: string; sessionPath: string; title: string | undefined; leafId?: string; inWorktree?: boolean }>;
   sessionOpened(threadId: string, info: PiThreadInfo): void;
 }
 
@@ -32,6 +55,11 @@ export interface PiAgentOptions {
   relayMcp: (threadId: string, request: ProxiedMcpRequest, signal?: AbortSignal) => Promise<unknown>;
   /** Called once a review batch is recorded in the session: the pending comments of the thread are sent, so they are dropped. */
   reviewRecorded?: (threadId: string) => void;
+  /**
+   * Called when the thread is ready and pi is about to get a prompt (nothing written to the session yet): the folder's snapshot is taken first,
+   * so the run has its "before". `false`: the run was stopped meanwhile, and pi never gets the prompt.
+   */
+  beforePrompt?: (threadId: string) => Promise<boolean>;
 }
 
 const logger = new Logger('PiAgent');
@@ -93,7 +121,9 @@ export class PiAgent extends AbstractAgent {
   private emitTree(threadId: string, emit: (events: BaseEvent[]) => void): void {
     try {
       const leafId = this.sessions.leafId(threadId);
-      emit([{ type: EventType.CUSTOM, name: 'pi.tree', value: { leafId, changed: leafId ? [leafId] : [] } } as BaseEvent]);
+      emit([
+        { type: EventType.CUSTOM, name: 'pi.tree', value: { leafId, changed: leafId ? [leafId] : [] } } as BaseEvent,
+      ]);
     } catch {
       // The session was closed in the meantime; there is no tree to announce.
     }
@@ -135,7 +165,10 @@ export class PiAgent extends AbstractAgent {
       const stillWaiting = (before: BaseEvent[] = []): boolean => {
         const pending = this.sessions.pendingDialogs(threadId);
         if (pending.length === 0) return false;
-        this.sessions.markDialogsReported(threadId, pending.map((d) => d.id));
+        this.sessions.markDialogsReported(
+          threadId,
+          pending.map((d) => d.id),
+        );
         interrupted = true;
         const ctx = this.options.carry.get(threadId) ?? createMapContext({ threadId, runId, skipUserMessages: 0 });
         ctx.runId = runId;
@@ -154,7 +187,10 @@ export class PiAgent extends AbstractAgent {
           timer = undefined;
           const dialogs = this.sessions.pendingDialogs(threadId, true);
           if (finished || dialogs.length === 0) return;
-          this.sessions.markDialogsReported(threadId, dialogs.map((d) => d.id));
+          this.sessions.markDialogsReported(
+            threadId,
+            dialogs.map((d) => d.id),
+          );
           interrupted = true;
           this.options.carry.set(threadId, ctx);
           emit([...closeOpenBlocks(ctx), interruptFinished(threadId, runId, dialogs)]);
@@ -188,7 +224,11 @@ export class PiAgent extends AbstractAgent {
       };
 
       /** Waits for the prompt to end or for an extension to ask something; ends the run in the first case. */
-      const settle = async (ctx: MapContext, prompt: Promise<void> | undefined, interrupt: Promise<void>): Promise<void> => {
+      const settle = async (
+        ctx: MapContext,
+        prompt: Promise<void> | undefined,
+        interrupt: Promise<void>,
+      ): Promise<void> => {
         if (!prompt) {
           if (!interrupted) await Promise.race([interrupt, nextTick()]);
           if (interrupted) return;
@@ -196,7 +236,10 @@ export class PiAgent extends AbstractAgent {
         }
         // If the run ends in an interrupt first, the prompt's own outcome belongs to the run that resumes it.
         prompt.catch(() => undefined);
-        const result = await Promise.race([prompt.then(() => 'done' as const), interrupt.then(() => 'interrupted' as const)]);
+        const result = await Promise.race([
+          prompt.then(() => 'done' as const),
+          interrupt.then(() => 'interrupted' as const),
+        ]);
         if (result === 'interrupted' || finished) return;
         // A prompt an extension handled itself starts no run, so pi never settles.
         if (!ctx.state.finished) emit(mapEvent({ type: 'agent_settled', aborted: false }, ctx));
@@ -215,9 +258,11 @@ export class PiAgent extends AbstractAgent {
         } else {
           const aborter = new AbortController();
           unsubscribers.push(() => aborter.abort());
-          this.options.relayMcp(threadId, request, aborter.signal).then(answer, (error: unknown) =>
-            answer({ error: error instanceof Error ? error.message : String(error) }),
-          );
+          this.options
+            .relayMcp(threadId, request, aborter.signal)
+            .then(answer, (error: unknown) =>
+              answer({ error: error instanceof Error ? error.message : String(error) }),
+            );
         }
         return () => {
           for (const unsubscribe of unsubscribers) unsubscribe();
@@ -233,8 +278,14 @@ export class PiAgent extends AbstractAgent {
             if (!this.sessions.has(threadId)) return fail('The session is not open.', 'expired');
             const stats = this.sessions.stats(threadId);
             const mcpApp = this.sessions.mcpAppLookup(threadId);
-            const ctx = createMapContext({ threadId, runId, skipUserMessages: 0, thinkingLevel: stats.thinkingLevel,
-              ...(stats.model ? { model: { provider: stats.model.provider, modelId: stats.model.id } } : {}), ...(mcpApp ? { mcpApp } : {}) });
+            const ctx = createMapContext({
+              threadId,
+              runId,
+              skipUserMessages: 0,
+              thinkingLevel: stats.thinkingLevel,
+              ...(stats.model ? { model: { provider: stats.model.provider, modelId: stats.model.id } } : {}),
+              ...(mcpApp ? { mcpApp } : {}),
+            });
             const interrupt = attach(ctx);
             return await settle(ctx, this.sessions.whenPromptDone(threadId), interrupt);
           }
@@ -243,12 +294,18 @@ export class PiAgent extends AbstractAgent {
             if (input.resume.every((entry) => parseAgentQuestionId((entry as { interruptId?: string }).interruptId))) {
               for (const raw of input.resume) {
                 const entry = ResumeEntrySchema.parse(raw);
-                const answered = await this.sessions.answerAgentQuestion(entry.interruptId, entry.status === 'cancelled' ? 'cancelled' : (entry.payload as PiDialogAnswer));
-                if (!answered) return refuse(`${entry.interruptId} is not a question of a background agent of this thread.`);
+                const answered = await this.sessions.answerAgentQuestion(
+                  entry.interruptId,
+                  entry.status === 'cancelled' ? 'cancelled' : (entry.payload as PiDialogAnswer),
+                );
+                if (!answered)
+                  return refuse(`${entry.interruptId} is not a question of a background agent of this thread.`);
               }
               // pi may be waiting on a dialog of its own at the same time: the thread stays suspended at it, with the context it resumes from.
               if (stillWaiting()) return;
-              return emit([{ type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: 'success' } } as BaseEvent]);
+              return emit([
+                { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: 'success' } } as BaseEvent,
+              ]);
             }
             const ctx = this.options.carry.get(threadId) ?? createMapContext({ threadId, runId, skipUserMessages: 0 });
             ctx.runId = runId;
@@ -267,7 +324,11 @@ export class PiAgent extends AbstractAgent {
                 seen.add(entry.interruptId);
                 const dialog = pending.find((dialog) => dialog.id === entry.interruptId);
                 if (!dialog && pending.length) throw new Error('The interrupt is no longer pending.');
-                return { id: entry.interruptId, answer: entry.status === 'cancelled' ? { status: 'cancelled' } : toAnswer(entry.payload, dialog?.request) };
+                return {
+                  id: entry.interruptId,
+                  answer:
+                    entry.status === 'cancelled' ? { status: 'cancelled' } : toAnswer(entry.payload, dialog?.request),
+                };
               });
             } catch (error) {
               return refuse(error instanceof Error ? error.message : 'Invalid interrupt answer.');
@@ -309,10 +370,21 @@ export class PiAgent extends AbstractAgent {
             const queue = behavior === 'steer' ? this.sessions.steer : this.sessions.followUp;
             // Chips are expanded here too: pi expands only a leading `/skill:`, and the message is queued as text. A queued message
             // is not recorded as a `pi-kit.skills` entry (it would sit before the wrong prompt), so it reads as `/skill:name …` after a reload.
-            const queued = chips.length > 0 ? expandChips(chips, prompt.text, await this.sessions.chipResources(threadId)) : prompt.text;
-            await queue.call(this.sessions, threadId, expandFileRefs(info.cwd, fileRefsOf(input)) + queued, prompt.images);
+            const queued =
+              chips.length > 0
+                ? expandChips(chips, prompt.text, await this.sessions.chipResources(threadId))
+                : prompt.text;
+            await queue.call(
+              this.sessions,
+              threadId,
+              expandFileRefs(info.cwd, fileRefsOf(input)) + queued,
+              prompt.images,
+            );
             return emit([finishedEvent(threadId, runId)]);
           }
+
+          if (this.options.beforePrompt && !(await this.options.beforePrompt(threadId)))
+            return emit([finishedEvent(threadId, runId, true)]);
 
           // Review comments: the structured batch goes into the session first, as a `custom` entry that pi
           // never sends to the model; the prompt carries the same comments as text. The transcript shows the batch as a chip.
@@ -323,7 +395,9 @@ export class PiAgent extends AbstractAgent {
               emit([reviewActivity(entryId, review.comments)]);
               this.options.reviewRecorded?.(threadId);
             } catch (error) {
-              logger.warn(`Could not record the review batch of thread ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+              logger.warn(
+                `Could not record the review batch of thread ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
+              );
             }
           }
 
@@ -338,7 +412,9 @@ export class PiAgent extends AbstractAgent {
                 const entryId = this.sessions.appendSkills(threadId, { chips, text: prompt.text.trim() });
                 emit([skillsActivity(entryId, chips)]);
               } catch (error) {
-                logger.warn(`Could not record the chips of thread ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+                logger.warn(
+                  `Could not record the chips of thread ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
+                );
               }
             }
           }
@@ -346,7 +422,14 @@ export class PiAgent extends AbstractAgent {
           const text = expandFileRefs(info.cwd, fileRefsOf(input)) + body;
           const mcpApp = this.sessions.mcpAppLookup(threadId);
           // The client already has what the user typed; a click on a surface made a prompt it has not seen, so pi's echo of it is shown.
-          const ctx = createMapContext({ threadId, runId, model: info.model, thinkingLevel: info.thinkingLevel, skipUserMessages: typed ? 1 : 0, ...(mcpApp ? { mcpApp } : {}) });
+          const ctx = createMapContext({
+            threadId,
+            runId,
+            model: info.model,
+            thinkingLevel: info.thinkingLevel,
+            skipUserMessages: typed ? 1 : 0,
+            ...(mcpApp ? { mcpApp } : {}),
+          });
           const interrupt = attach(ctx);
           await settle(ctx, this.sessions.prompt(threadId, text, { images: prompt.images }), interrupt);
         } catch (error) {
@@ -371,19 +454,35 @@ export class PiAgent extends AbstractAgent {
  * (`sessionToMessages` gives a stored message the same id).
  */
 export function subagentEnvelope(event: PiEvent, events: BaseEvent[]): BaseEvent[] {
-  const wrap = (subagentRunId: string, name: string, description: string, attributed: BaseEvent[], extra: Record<string, unknown> = {}): BaseEvent[] => [
+  const wrap = (
+    subagentRunId: string,
+    name: string,
+    description: string,
+    attributed: BaseEvent[],
+    extra: Record<string, unknown> = {},
+  ): BaseEvent[] => [
     { type: EventType.SUBAGENT_STARTED, subagentRunId, name, description, ...extra } as BaseEvent,
     ...attributed,
     { type: EventType.SUBAGENT_FINISHED, subagentRunId, outcome: { type: 'success' } } as BaseEvent,
   ];
   if (event.type === 'tool_execution_end' && event['toolName'] === 'agent_spawn' && event['isError'] !== true) {
-    const details = (event['result'] as { details?: { agentId?: string; name?: string; role?: string } } | undefined)?.details;
-    if (details?.agentId && details.name) return wrap(`${details.agentId}/spawn`, details.name, details.role ?? '', events, { parentToolCallId: String(event['toolCallId']) });
+    const details = (event['result'] as { details?: { agentId?: string; name?: string; role?: string } } | undefined)
+      ?.details;
+    if (details?.agentId && details.name)
+      return wrap(`${details.agentId}/spawn`, details.name, details.role ?? '', events, {
+        parentToolCallId: String(event['toolCallId']),
+      });
   }
   if (event.type === 'message_end') {
     const message = event['message'] as { role?: string; customType?: string; details?: { name?: string } } | undefined;
     const subagentRunId = message?.role === 'custom' ? subagentRunIdOf(message.customType, message.details) : undefined;
-    if (subagentRunId && message?.details?.name) return wrap(subagentRunId, message.details.name, message.customType?.slice('pikit.agent-'.length) ?? '', events.map((e) => ({ ...e, subagentRunId })));
+    if (subagentRunId && message?.details?.name)
+      return wrap(
+        subagentRunId,
+        message.details.name,
+        message.customType?.slice('pikit.agent-'.length) ?? '',
+        events.map((e) => ({ ...e, subagentRunId })),
+      );
   }
   return events;
 }
@@ -421,9 +520,11 @@ function toAnswer(payload: unknown, request?: PiDialogRequest): DialogAnswer {
   const p = (payload ?? {}) as { confirmed?: unknown; value?: unknown };
   const confirmed = typeof payload === 'boolean' ? payload : p.confirmed;
   const value = typeof payload === 'string' ? payload : p.value;
-  if ((!request || request.method === 'confirm') && typeof confirmed === 'boolean') return { status: 'resolved', confirmed };
+  if ((!request || request.method === 'confirm') && typeof confirmed === 'boolean')
+    return { status: 'resolved', confirmed };
   if ((!request || request.method !== 'confirm') && typeof value === 'string') {
-    if (request?.method === 'select' && !request.options?.includes(value)) throw new Error('Select an available option.');
+    if (request?.method === 'select' && !request.options?.includes(value))
+      throw new Error('Select an available option.');
     return { status: 'resolved', value };
   }
   throw new Error('The resume payload does not answer this dialog.');
@@ -449,7 +550,11 @@ interface UserPrompt {
 export function a2uiEventPrompt(messages: Message[]): UserPrompt | undefined {
   const last = messages.at(-1);
   if (last?.role !== 'tool') return undefined;
-  const call = messages.find((m) => m.role === 'assistant' && m.toolCalls?.some((c) => c.id === last.toolCallId && c.function.name === A2UI_EVENT_TOOL_NAME));
+  const call = messages.find(
+    (m) =>
+      m.role === 'assistant' &&
+      m.toolCalls?.some((c) => c.id === last.toolCallId && c.function.name === A2UI_EVENT_TOOL_NAME),
+  );
   if (!call || typeof last.content !== 'string' || !last.content.trim()) return undefined;
   return { text: `The user used the interface you showed them. ${last.content.trim()}`, images: [] };
 }

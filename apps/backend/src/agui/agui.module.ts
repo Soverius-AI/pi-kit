@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
 import { McpModule } from '../mcp/mcp.module';
 import { PiModule } from '../pi/pi.module';
+import { SnapshotsModule } from '../snapshots/snapshots.module';
 import { ThreadsModule } from '../threads/threads.module';
 import { AguiController } from './agui.controller';
 import { AguiService } from './agui.service';
@@ -14,7 +15,7 @@ import { GenUiSandboxController } from './genui-sandbox.controller';
  * without a browser.
  */
 @Module({
-  imports: [PiModule, DbModule, ThreadsModule, McpModule],
+  imports: [PiModule, DbModule, ThreadsModule, McpModule, SnapshotsModule],
   controllers: [AguiController, GenUiSandboxController],
   providers: [AguiService, PiAgentRunner],
   // `AguiService.runHeadless` starts a run without a browser (a skill verification thread); the runner takes the `pi-bg` agent's runner.

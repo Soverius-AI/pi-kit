@@ -16,7 +16,6 @@ export const PLUGIN_CHANNELS = {
   attendant: 'pi-kit:attendant:run',
   draft: 'pi-kit:learn:draft',
   baselines: 'pi-kit:thread:baselines',
-  outsideEdits: 'pi-kit:thread:outside-edits',
   annotate: 'pi-kit:thread:annotate',
   verified: 'pi-kit:learn:verified',
 } as const;
@@ -116,33 +115,35 @@ export const TranscriptTurnSchema = z.object({
 export type TranscriptTurn = z.infer<typeof TranscriptTurnSchema>;
 
 /** The thread as the analysis sees it: reduced, and redacted before it leaves the backend. */
-export const ThreadTranscriptSchema = z.object({
-  threadId: z.string(),
-  title: z.string().nullable(),
-  /** The project folder. */
-  cwd: z.string(),
-  /** What the person asked, in order (the first one is the thread's reason for being). */
-  prompts: z.array(z.string()),
-  /** How many tool calls the thread made (the steps list can be shorter when it was cut). */
-  toolCalls: z.number().int().nonnegative(),
-  steps: z.array(TranscriptStepSchema),
-  errors: z.array(TranscriptErrorSchema),
-  checks: z.array(TranscriptCheckSchema),
-  /** The outcome's final diff (`git diff base..head`), cut to a size a model can read; null without an outcome. */
-  diff: z.string().nullable(),
-  /** Lines added and removed in the outcome. */
-  changedLines: z.number().int().nonnegative(),
-  /** The commit message of the outcome's head. */
-  commitMessage: z.string().nullable(),
-  base: z.string().nullable(),
-  head: z.string().nullable(),
-  /** One entry per user message with its timing, tool calls, chips, review comments and dialog answers; `prompts` is the same messages as plain text. pi-kit always sets it; a transcript built without it (a test fixture) has the prompts alone. */
-  turns: z.array(TranscriptTurnSchema).optional(),
-  /** Something was cut to fit (many steps, a long diff). */
-  truncated: z.boolean(),
-  /** Secrets masked by the redaction pass. */
-  redactions: z.number().int().nonnegative(),
-}).meta({ id: 'ThreadTranscript' });
+export const ThreadTranscriptSchema = z
+  .object({
+    threadId: z.string(),
+    title: z.string().nullable(),
+    /** The project folder. */
+    cwd: z.string(),
+    /** What the person asked, in order (the first one is the thread's reason for being). */
+    prompts: z.array(z.string()),
+    /** How many tool calls the thread made (the steps list can be shorter when it was cut). */
+    toolCalls: z.number().int().nonnegative(),
+    steps: z.array(TranscriptStepSchema),
+    errors: z.array(TranscriptErrorSchema),
+    checks: z.array(TranscriptCheckSchema),
+    /** The outcome's final diff (`git diff base..head`), cut to a size a model can read; null without an outcome. */
+    diff: z.string().nullable(),
+    /** Lines added and removed in the outcome. */
+    changedLines: z.number().int().nonnegative(),
+    /** The commit message of the outcome's head. */
+    commitMessage: z.string().nullable(),
+    base: z.string().nullable(),
+    head: z.string().nullable(),
+    /** One entry per user message with its timing, tool calls, chips, review comments and dialog answers; `prompts` is the same messages as plain text. pi-kit always sets it; a transcript built without it (a test fixture) has the prompts alone. */
+    turns: z.array(TranscriptTurnSchema).optional(),
+    /** Something was cut to fit (many steps, a long diff). */
+    truncated: z.boolean(),
+    /** Secrets masked by the redaction pass. */
+    redactions: z.number().int().nonnegative(),
+  })
+  .meta({ id: 'ThreadTranscript' });
 export type ThreadTranscript = z.infer<typeof ThreadTranscriptSchema>;
 
 export const TranscriptRequestSchema = RequestBase.strict();
@@ -199,12 +200,12 @@ export const DraftResultSchema = z.object({ draft: SkillDraftSchema });
 
 export const BaselinesRequestSchema = RequestBase.strict();
 export type BaselinesRequest = z.infer<typeof BaselinesRequestSchema>;
-/** A file pi edited or wrote in the thread: never its content, which may be large or private. */
+/** A file the thread's runs changed: never its content, which may be large or private. */
 export const BaselineFileSchema = z.object({
   path: z.string(),
-  /** The file existed before pi's first edit (false: pi created it). */
+  /** The file existed before the thread's first run that changed it (false: the thread created it). */
   existed: z.boolean(),
-  /** When pi first touched it (epoch ms). */
+  /** When the run that first changed it started (epoch ms). */
   at: z.number(),
   /** The 1-based message in which pi first touched it; null when the session does not say. */
   turn: z.number().int().positive().nullable(),
@@ -212,20 +213,6 @@ export const BaselineFileSchema = z.object({
   edits: z.number().int().nonnegative(),
 });
 export type BaselineFile = z.infer<typeof BaselineFileSchema>;
-
-// ---- pi-kit:thread:outside-edits
-
-export const OutsideEditsRequestSchema = RequestBase.strict();
-export type OutsideEditsRequest = z.infer<typeof OutsideEditsRequestSchema>;
-/** A file of the thread's folder that changed while no run of pi was writing, seen by the folder watcher: a change by hand. */
-export const OutsideEditSchema = z.object({
-  path: z.string(),
-  firstAt: z.number(),
-  lastAt: z.number(),
-  /** Watcher batches that reported the file. */
-  count: z.number().int().positive(),
-});
-export type OutsideEdit = z.infer<typeof OutsideEditSchema>;
 
 // ---- pi-kit:thread:annotate
 
@@ -260,7 +247,16 @@ export const VerifiedResultSchema = z.object({
 });
 
 /** Why a request failed, for the caller's decision: `consent` means ask the person and send it again with `consent: true`. */
-export const PluginFailureCodeSchema = z.enum(['invalid', 'not-found', 'consent', 'off', 'cap', 'no-model', 'conflict', 'failed']);
+export const PluginFailureCodeSchema = z.enum([
+  'invalid',
+  'not-found',
+  'consent',
+  'off',
+  'cap',
+  'no-model',
+  'conflict',
+  'failed',
+]);
 export type PluginFailureCode = z.infer<typeof PluginFailureCodeSchema>;
 
 export type PluginFailure = {

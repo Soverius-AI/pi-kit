@@ -208,6 +208,41 @@ describe('BgAgentsService', () => {
     expect(service.get(row.id)).toMatchObject({ model: 'router/org/model-x', report: 'Ran on org/model-x.' });
   });
 
+  it('tells the work watcher before an agent gets work in the thread’s folder, and when it stops, each time it works', async () => {
+    const { models, model } = faux([
+      fauxAssistantMessage([fauxToolCall('write', { path: 'made.md', content: 'x' })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage('Done.'),
+      fauxAssistantMessage('Again.'),
+    ]);
+    await service.open(models);
+    const told: string[] = [];
+    service.watchWork({
+      started: async (_id, threadId, folder) =>
+        void told.push(`started ${threadId}, made.md ${existsSync(join(folder, 'made.md')) ? 'there' : 'not there'}`),
+      ended: () => void told.push('ended'),
+    });
+    const row = await service.spawn({ threadId: 't1', name: 'writer', role: 'writer', brief: 'Write.', permission: 'edit', model });
+    await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
+    await service.send(row.id, 'More.', 'followUp', 'more-1');
+    await until(() => told.length === 4, 'the second stretch of work to end');
+    expect(told).toEqual(['started t1, made.md not there', 'ended', 'started t1, made.md there', 'ended']);
+  });
+
+  it('gives no more work to an agent deleted while the folder was snapshotted for it', async () => {
+    const { models, model } = faux([fauxAssistantMessage('Done.'), fauxAssistantMessage('Never.')]);
+    await service.open(models);
+    let starts = 0;
+    service.watchWork({
+      started: async (id) => {
+        if (++starts === 2) await service.deleteAgent(id);
+      },
+      ended: () => undefined,
+    });
+    const row = await service.spawn({ threadId: 't1', name: 'gone', role: 'r', brief: 'Work.', permission: 'edit', model });
+    await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
+    await expect(service.send(row.id, 'More.', 'followUp', 'more-1')).rejects.toThrow('stopped or deleted');
+  });
+
   it('stop aborts a running command and leaves the agent in History as stopped', async () => {
     const { models, model } = faux([fauxAssistantMessage([fauxToolCall('bash', { command: 'sleep 30' })], { stopReason: 'toolUse' }), fauxAssistantMessage('Never.')]);
     await service.open(models);

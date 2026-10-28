@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import { Subject } from 'rxjs';
 import type { SessionTree, ThreadsEvent, ThreadSummary, TreeRow } from '@pi-kit/protocol';
 
 /** A graph row with sensible defaults; override what the test is about. */
@@ -85,8 +86,7 @@ export function fakeThreads(initial: { selected?: ThreadSummary; workspace?: str
     workspaceName: () => workspace()?.slice(1),
     workspaces: signal([]),
     threads: signal<ThreadSummary[]>([]),
-    watchTick: signal(0),
-    watchLast: signal<{ paths: readonly string[]; overflow: boolean } | undefined>(undefined),
+    folderChanges: new Subject<{ paths: readonly string[]; overflow: boolean; headMoved: boolean }>(),
     refresh: vi.fn(async () => undefined),
     select: vi.fn(),
     stepThread: vi.fn(),

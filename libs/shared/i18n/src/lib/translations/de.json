@@ -437,7 +437,7 @@
       "fromThisThread": "aus diesem Chat",
       "inTheWorkingTree": "im Working Tree",
       "againstGitHEAD": "gegen git HEAD",
-      "editedInTurn": "in der Reihe in {{value1}} bearbeitet",
+      "changedInRun": "in Lauf {{value1}} geändert",
       "yourCommentsCouldNotBeSaved": "Deine Kommentare konnten nicht gespeichert werden: {{value1}}",
       "reverting": "Rückgängigmachen von {{value1}}",
       "reverted": "{{value1}}{{value2}} wurde rückgängiggemacht.",

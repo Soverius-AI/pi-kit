@@ -1,3 +1,4 @@
+import { Subject } from 'rxjs';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { coordinationGet, provideMockApi } from '@pi-kit/api';
@@ -11,7 +12,7 @@ const lease = (path: string, title = 'Fix e2e') => ({ path, threadId: 'o1', titl
 describe('CoordinationStore', () => {
   let answer: Coordination;
   let selectedId: ReturnType<typeof signal<string | undefined>>;
-  let watchTick: ReturnType<typeof signal<number>>;
+  let folderChanges: Subject<{ paths: readonly string[]; overflow: boolean; headMoved: boolean }>;
   const api = { coordination: vi.fn(async () => answer) };
 
   const make = () => TestBed.inject(CoordinationStore);
@@ -23,12 +24,12 @@ describe('CoordinationStore', () => {
       others: [{ title: 'Fix e2e', state: 'running', relation: 'same-folder' }],
     };
     selectedId = signal<string | undefined>('t1');
-    watchTick = signal(0);
+    folderChanges = new Subject();
     api.coordination.mockClear();
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
-        { provide: ThreadsStore, useValue: { selectedId: () => selectedId(), watchTick: () => watchTick() } },
+        { provide: ThreadsStore, useValue: { selectedId: () => selectedId(), folderChanges } },
         ...provideMockApi([[coordinationGet, api.coordination, (o) => [o.path?.['id'], o.signal]]]),
       ],
     });
@@ -71,7 +72,7 @@ describe('CoordinationStore', () => {
     TestBed.tick();
     await vi.advanceTimersByTimeAsync(0);
     api.coordination.mockClear();
-    watchTick.set(1);
+    folderChanges.next({ paths: [], overflow: true, headMoved: false });
     TestBed.tick();
     await vi.advanceTimersByTimeAsync(0);
     expect(api.coordination).toHaveBeenCalledTimes(1);

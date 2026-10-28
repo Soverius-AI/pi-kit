@@ -2,7 +2,7 @@
 
 A pi-kit plugin is a **pi package** that talks to pi-kit through events on pi's shared bus. There is no second extension system: the package is a normal pi package (`pi install`, `pi list`, `pi remove`, `pi config`), its extension is a normal pi extension, and the events are how it asks pi-kit for what only pi-kit has: a thread's transcript and outcome, a model call under the attendant's cost cap, a place to hand a result back. The first plugin is [`@pi-kit/learn`](https://github.com/wolfmanfx/pi-kit/tree/main/packages/pi-kit-learn) ([ADR-0028](adr/0028-learning-from-finished-threads.md)); the second is `@pi-kit/meat-proxy`. This page is the contract; the schemas are in [`libs/shared/protocol/src/plugins.ts`](https://github.com/wolfmanfx/pi-kit/blob/main/libs/shared/protocol/src/plugins.ts) and every request is validated against them.
 
-Status: built for `@pi-kit/learn` (with `pi-kit:learn:verified`) and extended for `@pi-kit/meat-proxy` (`thread:baselines`, `thread:outside-edits`, `thread:annotate`, the transcript `turns`, the `score` task). Nothing is reserved any more.
+Status: built for `@pi-kit/learn` (with `pi-kit:learn:verified`) and extended for `@pi-kit/meat-proxy` (`thread:baselines`, `thread:annotate`, the transcript `turns`, the `score` task). Nothing is reserved any more.
 
 ## The shape of a call
 
@@ -92,17 +92,10 @@ Hands a draft skill back. pi-kit validates it, adds the provenance (`x-pi-kit`: 
 
 ### `pi-kit:thread:baselines`
 
-The files pi edited or wrote in the thread (the change baselines of [ADR-0012](adr/0012-panels-review-settings-and-trust.md)), never their content (which may be large or private).
+The files the thread's runs changed, read from the snapshots pi-kit takes of the thread's folder before and after each run (trees in a private git repository outside the project), never their content (which may be large or private). A file of the outcome that is not among them was changed outside pi. Empty for a folder outside a git work tree.
 
 - Request: `{ requestId, thread? }`.
-- Reply: `{ ok: true, files }`, each `{ path, existed, at, turn, edits }`: relative to the project; `existed` false when pi created the file; `at` when pi first touched it (epoch ms); `turn` the 1-based message in which it did, or null; `edits` how many `edit` and `write` calls touched it.
-
-### `pi-kit:thread:outside-edits`
-
-The files of the thread's folder that changed while no run of pi was writing there, as the folder watcher ([ADR-0014](adr/0014-files-decoration-and-graph-v2.md)) saw them: changes by hand. pi-kit keeps the record itself (`thread_outside_edits`; there was none before): while a thread runs, pi-kit holds its folder (the thread's worktree, or the project) and for two hours after the last run; a watcher batch is noted for the threads of that folder that ran lately unless a run is going on in the folder, a run ended in the last 2.5 s (the batch is debounced), or the batch moves `HEAD` (a checkout, a pull, a merge: git changed the files). `.git` is never a hand. What it cannot see: an edit made while pi was running in the same folder, and a change made while pi-kit was not running.
-
-- Request: `{ requestId, thread? }`.
-- Reply: `{ ok: true, edits }`, each `{ path, firstAt, lastAt, count }` (`count` is the number of watcher batches that reported the file; at most 500 files per thread).
+- Reply: `{ ok: true, files }`, each `{ path, existed, at, turn, edits }`: relative to the project; `existed` false when the thread created the file; `at` when the run that first changed it started (epoch ms); `turn` the 1-based message in which pi first touched it, or null when the session does not say (a background agent's write); `edits` how many `edit` and `write` calls touched it.
 
 ### `pi-kit:thread:annotate`
 
@@ -170,13 +163,13 @@ packages/pi-kit-meat-proxy/
 
 `/score` in the composer (or `pi` with pi-kit running):
 
-1. `pi-kit:thread:outcome` with `diff: true, annotations: true`, then `pi-kit:thread:transcript` (its `turns`), `pi-kit:thread:baselines` and `pi-kit:thread:outside-edits`;
+1. `pi-kit:thread:outcome` with `diff: true, annotations: true`, then `pi-kit:thread:transcript` (its `turns`), and `pi-kit:thread:baselines`;
 2. `splitDiff(diff)` and `buildLedger(...)`: per message its specificity (named files, line numbers, commands, code), whether it corrects (a small rule set: "no", "not that", "instead", "undo", "revert", quoting pi's own words, a review comment), its chips, answers, tool calls and time; per file what led to it; the files only the person's hand changed, which are `manual` by rule and never shown to the model;
 3. `pi-kit:attendant:run` with `task: 'score'` and the prompt (asking `ctx.ui.confirm` on a `consent` answer): the model labels every other hunk `specified | corrected | autonomous | manual` with the input it traces to (`prompt N`, `review N`, `hand`, `dialog`, `chip`, `none`), one line each; large outcomes are processed in batches; an incomplete model answer fails without replacing the stored score;
 4. `computeScores(labels)`: Meat Proxy = the share of changed lines in specified, corrected and manual hunks, Vibe = 100 − that, with the sentence that says what it is made of ("62 % steered: 14 of 23 hunks, 9 by the first prompt, 3 by review comments, 2 by hand");
 5. `pi-kit:thread:annotate` with the labels and the scores; then `ctx.ui.notify` says the sentence.
 
-`lib/pipeline.mjs` is written once against a `host` (`outcome()`, `transcript()`, `baselines()`, `outsideEdits()`, `run(prompt, progress)`, `annotate(body)`): the extension's host asks over the event bus; pi-kit's backend, which scores after an outcome lands (the attendant on) and from the badge menu without a pi session, loads the same file from the installed package and answers the same questions from its own records. `progress` identifies the current batch and total batch count; the backend records that activity for each model call. The person's relabelling in the Outcome view does not call the model: pi-kit loads `computeScores` and `effectiveLabels` from the package and recomputes.
+`lib/pipeline.mjs` is written once against a `host` (`outcome()`, `transcript()`, `baselines()`, `run(prompt, progress)`, `annotate(body)`): the extension's host asks over the event bus; pi-kit's backend, which scores after an outcome lands (the attendant on) and from the badge menu without a pi session, loads the same file from the installed package and answers the same questions from its own records. `progress` identifies the current batch and total batch count; the backend records that activity for each model call. The person's relabelling in the Outcome view does not call the model: pi-kit loads `computeScores` and `effectiveLabels` from the package and recomputes.
 
 ## Removable without a trace
 
@@ -192,5 +185,5 @@ What a plugin may rely on:
 - **Redaction first.** A transcript is masked before it leaves pi-kit's backend, whatever the plugin asks.
 - **Cost is capped.** A model call is the attendant's, listed with its cost; at the day's cap the call answers `cap`.
 - **Consent while the attendant is off.** The transcript goes to a model only after the person agreed for that thread.
-- **Hand edits are seen, not guessed.** `pi-kit:thread:outside-edits` lists only what the folder watcher saw while no run was writing; a plugin must treat its absence as "not seen", not as "not edited".
-- **A plugin never reaches into pi-kit's database.** What it lacks is added to the events and documented here (added `baselines`, `outside-edits`, `annotate`, the transcript's `turns` and the outcome's `annotations` for this reason).
+- **Outside pi is derived, not tracked.** A file of the outcome that no run of the thread changed (`pi-kit:thread:baselines` does not list it) was changed outside pi; an edit made by hand during a run counts as the run's.
+- **A plugin never reaches into pi-kit's database.** What it lacks is added to the events and documented here (added `baselines`, `annotate`, the transcript's `turns` and the outcome's `annotations` for this reason).

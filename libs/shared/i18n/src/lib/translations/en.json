@@ -437,7 +437,7 @@
       "fromThisThread": "from this thread",
       "inTheWorkingTree": "in the working tree",
       "againstGitHEAD": "against git HEAD",
-      "editedInTurn": "edited in turn {{value1}}",
+      "changedInRun": "changed in run {{value1}}",
       "yourCommentsCouldNotBeSaved": "Your comments could not be saved: {{value1}}",
       "reverting": "Reverting {{value1}}",
       "reverted": "Reverted {{value1}}{{value2}}.",

@@ -18,7 +18,7 @@ const resources: ChipResources = {
 };
 
 /** The pi session a run talks to, as far as a prompt needs it; it records what pi was given. */
-function world(streaming = false) {
+function world(streaming = false, beforePrompt?: (threadId: string) => Promise<boolean>) {
   const prompts: string[] = [];
   const queued: string[] = [];
   const entries: { chips: unknown[]; text: string }[] = [];
@@ -43,10 +43,31 @@ function world(streaming = false) {
     leafId: () => 'l1',
     abort: vi.fn(),
   } as unknown as PiSessionService;
-  const threads = { prepareRun: async () => ({ cwd: '/work', sessionPath: '/s.jsonl', title: undefined }), sessionOpened: () => undefined };
-  const agent = new PiAgent(sessions, { defaultCwd: '/work', threads: threads as never, carry: new Map(), relayMcp: (async () => undefined) as never });
+  const threads = {
+    prepareRun: async () => ({ cwd: '/work', sessionPath: '/s.jsonl', title: undefined }),
+    sessionOpened: () => undefined,
+  };
+  const agent = new PiAgent(sessions, {
+    defaultCwd: '/work',
+    threads: threads as never,
+    carry: new Map(),
+    relayMcp: (async () => undefined) as never,
+    beforePrompt,
+  });
   const run = (text: string, forwardedProps: unknown): Promise<BaseEvent[]> =>
-    firstValueFrom(agent.run({ threadId: 't1', runId: 'r1', messages: [{ id: 'u1', role: 'user', content: text } as Message], tools: [], context: [], state: {}, forwardedProps } as RunAgentInput).pipe(toArray()));
+    firstValueFrom(
+      agent
+        .run({
+          threadId: 't1',
+          runId: 'r1',
+          messages: [{ id: 'u1', role: 'user', content: text } as Message],
+          tools: [],
+          context: [],
+          state: {},
+          forwardedProps,
+        } as RunAgentInput)
+        .pipe(toArray()),
+    );
   return { prompts, queued, entries, run };
 }
 
@@ -61,15 +82,31 @@ describe('PiAgent: skill and prompt-template chips', () => {
     expect(prompt.indexOf('<skill name="alpha"')).toBe(0);
     expect(prompt.indexOf('<skill name="beta"')).toBeGreaterThan(prompt.indexOf('</skill>'));
     expect(prompt.endsWith('</skill>\n\ncheck the parser')).toBe(true);
-    expect(w.entries).toEqual([{ chips: [{ kind: 'skill', name: 'alpha', pinned: false }, { kind: 'skill', name: 'beta', pinned: true }], text: 'check the parser' }]);
-    expect(events.find((e) => (e as { activityType?: string }).activityType === 'pi.skills')).toMatchObject({ messageId: 'skills:s1', content: { chips: [{ name: 'alpha' }, { name: 'beta' }] } });
+    expect(w.entries).toEqual([
+      {
+        chips: [
+          { kind: 'skill', name: 'alpha', pinned: false },
+          { kind: 'skill', name: 'beta', pinned: true },
+        ],
+        text: 'check the parser',
+      },
+    ]);
+    expect(events.find((e) => (e as { activityType?: string }).activityType === 'pi.skills')).toMatchObject({
+      messageId: 'skills:s1',
+      content: { chips: [{ name: 'alpha' }, { name: 'beta' }] },
+    });
   });
 
   it('gives one chip and no text exactly what /skill:name gave, and expands a template with the sentence as its arguments', async () => {
     const one = world();
     await one.run('', { skills: [chip('skill', 'alpha')] });
-    const real = (pi.AgentSession.prototype as unknown as { _expandSkillCommand(this: unknown, text: string): string })._expandSkillCommand.call(
-      { resourceLoader: { getSkills: () => ({ skills: resources.skills }) }, _extensionRunner: { emitError: () => undefined } },
+    const real = (
+      pi.AgentSession.prototype as unknown as { _expandSkillCommand(this: unknown, text: string): string }
+    )._expandSkillCommand.call(
+      {
+        resourceLoader: { getSkills: () => ({ skills: resources.skills }) },
+        _extensionRunner: { emitError: () => undefined },
+      },
       '/skill:alpha',
     );
     expect(one.prompts).toEqual([real]);
@@ -98,5 +135,33 @@ describe('PiAgent: skill and prompt-template chips', () => {
     expect(w.queued[0].startsWith('<skill name="beta"')).toBe(true);
     expect(w.queued[0].endsWith('</skill>\n\nand this')).toBe(true);
     expect(w.entries).toEqual([]);
+  });
+});
+
+describe('PiAgent: the snapshot before a prompt', () => {
+  it('hands pi the prompt only once `beforePrompt` is done', async () => {
+    let taken!: (go: boolean) => void;
+    const w = world(false, () => new Promise<boolean>((resolve) => (taken = resolve)));
+    const events = w.run('hello', undefined);
+    await vi.waitFor(() => expect(taken).toBeDefined());
+    expect(w.prompts).toEqual([]);
+    taken(true);
+    await events;
+    expect(w.prompts).toEqual(['hello']);
+  });
+
+  it('never hands pi the prompt when the run was stopped meanwhile, and ends it as aborted', async () => {
+    const w = world(false, async () => false);
+    const events = await w.run('hello', undefined);
+    expect(w.prompts).toEqual([]);
+    expect(events.at(-1)).toMatchObject({ type: 'RUN_FINISHED', result: { aborted: true } });
+  });
+
+  it('queues a message for a running pi without waiting for a snapshot', async () => {
+    const before = vi.fn(async () => true);
+    const w = world(true, before);
+    await w.run('also this', { streamingBehavior: 'followUp' });
+    expect(w.queued).toEqual(['also this']);
+    expect(before).not.toHaveBeenCalled();
   });
 });

@@ -1,3 +1,4 @@
+import { Subject } from 'rxjs';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideMockApi, workspaceStatusStatus } from '@pi-kit/api';
@@ -8,7 +9,7 @@ import { ThreadsStore } from './threads.store';
 describe('ChangedCountStore (the badge of "Working tree changes")', () => {
   const folder = signal<string | undefined>('/a');
   const threads = signal<{ id: string; state: { activity: string } }[]>([]);
-  const watchTick = signal(0);
+  let folderChanges = new Subject<{ paths: readonly string[]; overflow: boolean; headMoved: boolean }>();
   const now = signal(1_000_000);
   const api = { status: vi.fn(async (_folder: string) => ({ entries: [{}, {}, {}], thread: [] })) };
 
@@ -16,7 +17,7 @@ describe('ChangedCountStore (the badge of "Working tree changes")', () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
-        { provide: ThreadsStore, useValue: { folder, threads, watchTick } },
+        { provide: ThreadsStore, useValue: { folder, threads, folderChanges } },
         { provide: ClockStore, useValue: { now } },
         ...provideMockApi([
           [workspaceStatusStatus, api.status, (o) => [o.path?.['id'], o.query?.['thread'], o.signal]],
@@ -36,7 +37,7 @@ describe('ChangedCountStore (the badge of "Working tree changes")', () => {
     vi.useFakeTimers();
     folder.set('/a');
     threads.set([]);
-    watchTick.set(0);
+    folderChanges = new Subject();
     api.status.mockClear();
     api.status.mockResolvedValue({ entries: [{}, {}, {}], thread: [] });
   });
@@ -59,11 +60,11 @@ describe('ChangedCountStore (the badge of "Working tree changes")', () => {
     expect(api.status).toHaveBeenLastCalledWith('/b', undefined, expect.any(AbortSignal));
     api.status.mockClear();
     api.status.mockResolvedValue({ entries: [], thread: [] });
-    watchTick.set(1);
+    folderChanges.next({ paths: [], overflow: true, headMoved: false });
     await settle();
-    watchTick.set(2);
+    folderChanges.next({ paths: [], overflow: true, headMoved: false });
     await settle(100);
-    watchTick.set(3);
+    folderChanges.next({ paths: [], overflow: true, headMoved: false });
     await settle(100);
     expect(api.status).not.toHaveBeenCalled();
     await settle(1000);
