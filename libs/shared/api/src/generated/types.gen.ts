@@ -222,8 +222,7 @@ export type ChangedFile = {
     added: number;
     removed: number;
     binary?: boolean;
-    turn?: number;
-    baseline?: 'captured' | 'reconstructed' | 'git-head' | 'empty';
+    run?: number;
     conflict?: boolean;
 };
 
@@ -528,7 +527,6 @@ export type DiffModel = {
             } | null;
         }>;
     }>;
-    baseline?: 'captured' | 'reconstructed' | 'git-head' | 'empty';
     note?: string;
 };
 
@@ -602,6 +600,10 @@ export type FsEntryPath = {
 export type FsRename = {
     from: string;
     to: string;
+};
+
+export type GitInitResult = {
+    git: boolean;
 };
 
 export type Health = {
@@ -2681,6 +2683,7 @@ export type WatchEvent = {
     type: 'change';
     paths: Array<string>;
     overflow: boolean;
+    headMoved: boolean;
     at: number;
 } | {
     type: 'ping';
@@ -5585,6 +5588,40 @@ export type WorkspaceStatusStatusResponses = {
 };
 
 export type WorkspaceStatusStatusResponse = WorkspaceStatusStatusResponses[keyof WorkspaceStatusStatusResponses];
+
+export type WorkspaceStatusInitGitData = {
+    body?: never;
+    path: {
+        /**
+         * The project's folder, URL-encoded (a project has no other id).
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/workspaces/{id}/git-init';
+};
+
+export type WorkspaceStatusInitGitErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * The folder is not a known project.
+     */
+    404: Problem;
+};
+
+export type WorkspaceStatusInitGitError = WorkspaceStatusInitGitErrors[keyof WorkspaceStatusInitGitErrors];
+
+export type WorkspaceStatusInitGitResponses = {
+    /**
+     * OK
+     */
+    200: GitInitResult;
+};
+
+export type WorkspaceStatusInitGitResponse = WorkspaceStatusInitGitResponses[keyof WorkspaceStatusInitGitResponses];
 
 export type CoordinationGetData = {
     body?: never;

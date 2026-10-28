@@ -27,9 +27,16 @@ export class EventLogRepository {
 
   /** SQLite allocates the ID inside the insert; no application counter can become stale. */
   append(threadId: string, runId: string | null, event: BaseEvent): number {
-    return this.db.insert(threadEvents).values({
-      threadId, runId, event: this.redaction ? this.redaction.event(threadId, event) : event, type: event.type,
-    }).returning({ seq: threadEvents.seq }).get().seq;
+    return this.db
+      .insert(threadEvents)
+      .values({
+        threadId,
+        runId,
+        event: this.redaction ? this.redaction.event(threadId, event) : event,
+        type: event.type,
+      })
+      .returning({ seq: threadEvents.seq })
+      .get().seq;
   }
 
   read(threadId: string): StoredEvent[] {
@@ -49,15 +56,23 @@ export class EventLogRepository {
     const seq = Number(cursor.slice(split + 1));
     if (split < 0 || !Number.isSafeInteger(seq) || seq < 0 || cursor !== this.cursor(threadId, seq)) return undefined;
     if (seq === 0) return this.count(threadId) === 0 ? 0 : undefined;
-    return this.db.select({ seq: threadEvents.seq }).from(threadEvents)
-      .where(and(eq(threadEvents.threadId, threadId), eq(threadEvents.seq, seq))).get() ? seq : undefined;
+    return this.db
+      .select({ seq: threadEvents.seq })
+      .from(threadEvents)
+      .where(and(eq(threadEvents.threadId, threadId), eq(threadEvents.seq, seq)))
+      .get()
+      ? seq
+      : undefined;
   }
 
   /** The events after `seq`, in order: what a compaction pass looks at instead of the whole log. */
   readAfter(threadId: string, seq: number): StoredEvent[] {
-    return this.db.select({ seq: threadEvents.seq, runId: threadEvents.runId, event: threadEvents.event })
-      .from(threadEvents).where(and(eq(threadEvents.threadId, threadId), gt(threadEvents.seq, seq)))
-      .orderBy(asc(threadEvents.seq)).all();
+    return this.db
+      .select({ seq: threadEvents.seq, runId: threadEvents.runId, event: threadEvents.event })
+      .from(threadEvents)
+      .where(and(eq(threadEvents.threadId, threadId), gt(threadEvents.seq, seq)))
+      .orderBy(asc(threadEvents.seq))
+      .all();
   }
 
   /**
@@ -65,20 +80,38 @@ export class EventLogRepository {
    * SQLite uses the partial index `thread_events_snapshot`, the one index on this table besides the thread's own.
    */
   lastSnapshotSeq(threadId: string, before = Number.MAX_SAFE_INTEGER): number {
-    return this.db.select({ seq: max(threadEvents.seq) }).from(threadEvents)
-      .where(and(eq(threadEvents.threadId, threadId), sql`${threadEvents.type} = 'MESSAGES_SNAPSHOT'`, lt(threadEvents.seq, before))).get()?.seq ?? 0;
+    return (
+      this.db
+        .select({ seq: max(threadEvents.seq) })
+        .from(threadEvents)
+        .where(
+          and(
+            eq(threadEvents.threadId, threadId),
+            sql`${threadEvents.type} = 'MESSAGES_SNAPSHOT'`,
+            lt(threadEvents.seq, before),
+          ),
+        )
+        .get()?.seq ?? 0
+    );
   }
 
   /** The runs that have events, oldest first, each with the first sequence number it wrote. */
   runsWithEvents(threadId: string): { runId: string; firstSeq: number }[] {
-    return this.db.select({ runId: sql<string>`${threadEvents.runId}`, firstSeq: sql<number>`MIN(${threadEvents.seq})` })
-      .from(threadEvents).where(and(eq(threadEvents.threadId, threadId), isNotNull(threadEvents.runId)))
-      .groupBy(threadEvents.runId).orderBy(sql`MIN(${threadEvents.seq})`).all();
+    return this.db
+      .select({ runId: sql<string>`${threadEvents.runId}`, firstSeq: sql<number>`MIN(${threadEvents.seq})` })
+      .from(threadEvents)
+      .where(and(eq(threadEvents.threadId, threadId), isNotNull(threadEvents.runId)))
+      .groupBy(threadEvents.runId)
+      .orderBy(sql`MIN(${threadEvents.seq})`)
+      .all();
   }
 
   /** Deletes every event before `seq`; returns how many rows went. */
   deleteBefore(threadId: string, seq: number): number {
-    return this.db.delete(threadEvents).where(and(eq(threadEvents.threadId, threadId), lt(threadEvents.seq, seq))).run().changes;
+    return this.db
+      .delete(threadEvents)
+      .where(and(eq(threadEvents.threadId, threadId), lt(threadEvents.seq, seq)))
+      .run().changes;
   }
 
   count(threadId: string): number {
@@ -86,8 +119,10 @@ export class EventLogRepository {
   }
 
   deleteSeqs(threadId: string, seqs: number[]): void {
-    const del = this.db.delete(threadEvents)
-      .where(and(eq(threadEvents.threadId, threadId), eq(threadEvents.seq, sql.placeholder('seq')))).prepare();
+    const del = this.db
+      .delete(threadEvents)
+      .where(and(eq(threadEvents.threadId, threadId), eq(threadEvents.seq, sql.placeholder('seq'))))
+      .prepare();
     this.db.transaction(() => {
       for (const seq of seqs) del.run({ seq });
     });
@@ -106,8 +141,12 @@ export class EventLogRepository {
   }
 
   endRun(runId: string, status: Exclude<RunStatus, 'running'>): void {
-    const row = this.db.update(runRecords).set({ status, endedAt: Date.now() }).where(eq(runRecords.runId, runId))
-      .returning({ threadId: runRecords.threadId }).get();
+    const row = this.db
+      .update(runRecords)
+      .set({ status, endedAt: Date.now() })
+      .where(eq(runRecords.runId, runId))
+      .returning({ threadId: runRecords.threadId })
+      .get();
     if (row) this.notifyRun(row.threadId, 'end');
   }
 
@@ -130,6 +169,30 @@ export class EventLogRepository {
     }
   }
 
+  /** Where the run worked and the snapshot of that folder before it started; `tree` is `null` outside a git work tree. */
+  setStartTree(runId: string, folder: string, tree: string | null, shadow?: { dir: string; prefix: string }): void {
+    this.db
+      .update(runRecords)
+      .set({ folder, startTree: tree, shadowDir: shadow?.dir ?? null, shadowPrefix: shadow?.prefix ?? null })
+      .where(eq(runRecords.runId, runId))
+      .run();
+  }
+
+  /** The snapshot of the run's folder when it ended. */
+  setEndTree(runId: string, tree: string | null): void {
+    this.db.update(runRecords).set({ endTree: tree }).where(eq(runRecords.runId, runId)).run();
+  }
+
+  /** Every run of a thread, oldest first. */
+  runsOf(threadId: string): RunRow[] {
+    return this.db
+      .select()
+      .from(runRecords)
+      .where(eq(runRecords.threadId, threadId))
+      .orderBy(asc(sql`${runRecords}.rowid`))
+      .all();
+  }
+
   /** Runs left 'running' by a process that no longer exists. */
   staleRuns(): RunRow[] {
     return this.db.select().from(runRecords).where(eq(runRecords.status, 'running')).all();
@@ -137,16 +200,27 @@ export class EventLogRepository {
 
   /** The newest run of a thread: the last row written, as in `lastRunByThread` (a clock that steps back does not reorder runs). */
   lastRun(threadId: string): RunRow | undefined {
-    return this.db.select().from(runRecords).where(eq(runRecords.threadId, threadId))
-      .orderBy(desc(sql`${runRecords}.rowid`)).limit(1).get();
+    return this.db
+      .select()
+      .from(runRecords)
+      .where(eq(runRecords.threadId, threadId))
+      .orderBy(desc(sql`${runRecords}.rowid`))
+      .limit(1)
+      .get();
   }
 
   /** Latest run per thread, for the thread list. */
   lastRunByThread(): Map<string, RunRow> {
-    const latest = this.db.select({ rowId: sql<number>`MAX(${runRecords}.rowid)`.as('row_id') })
-      .from(runRecords).groupBy(runRecords.threadId).as('latest');
-    const rows = this.db.select(getTableColumns(runRecords)).from(runRecords)
-      .innerJoin(latest, eq(sql`${runRecords}.rowid`, latest.rowId)).all();
+    const latest = this.db
+      .select({ rowId: sql<number>`MAX(${runRecords}.rowid)`.as('row_id') })
+      .from(runRecords)
+      .groupBy(runRecords.threadId)
+      .as('latest');
+    const rows = this.db
+      .select(getTableColumns(runRecords))
+      .from(runRecords)
+      .innerJoin(latest, eq(sql`${runRecords}.rowid`, latest.rowId))
+      .all();
     return new Map(rows.map((row) => [row.threadId, row]));
   }
 }

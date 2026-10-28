@@ -2,8 +2,8 @@
 //
 // It is a plain pi extension. Everything it needs from pi-kit it asks for over pi's shared event bus (`pi.events`), the plugin API of doc/docs/plugins.md:
 //   pi-kit:thread:outcome        how the thread ended, its diff, the labels stored so far     pi-kit:thread:transcript    the reduced, redacted thread with its turns
-//   pi-kit:thread:baselines      the files pi edited                                          pi-kit:thread:outside-edits files changed by hand while the thread ran
-//   pi-kit:attendant:run         one capped model call (task `score`)                         pi-kit:thread:annotate      hand the labels and the scores back to be stored
+//   pi-kit:thread:baselines      the files the thread's runs changed                          pi-kit:attendant:run        one capped model call (task `score`)
+//   pi-kit:thread:annotate       hand the labels and the scores back to be stored
 // A request is { requestId, ...params }; pi-kit says `<channel>:accepted` for it inside the emit and answers on `<channel>:reply` with the same requestId. In a host that is
 // not pi-kit nothing accepts it, and the command says so at once.
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
@@ -13,7 +13,6 @@ const CHANNEL = {
   outcome: 'pi-kit:thread:outcome',
   transcript: 'pi-kit:thread:transcript',
   baselines: 'pi-kit:thread:baselines',
-  outsideEdits: 'pi-kit:thread:outside-edits',
   attendant: 'pi-kit:attendant:run',
   annotate: 'pi-kit:thread:annotate',
 } as const;
@@ -65,8 +64,8 @@ export default function (pi: ExtensionAPI) {
         outcome: () => ask(pi, CHANNEL.outcome, { ...on, diff: true, annotations: true }),
         transcript: () => ask(pi, CHANNEL.transcript, on),
         baselines: () => ask(pi, CHANNEL.baselines, on),
-        outsideEdits: () => ask(pi, CHANNEL.outsideEdits, on),
-        run: (prompt: { system: string; user: string }) => ask(pi, CHANNEL.attendant, { ...on, task: 'score', ...(consent ? { consent: true } : {}), ...prompt }),
+        run: (prompt: { system: string; user: string }) =>
+          ask(pi, CHANNEL.attendant, { ...on, task: 'score', ...(consent ? { consent: true } : {}), ...prompt }),
         annotate: (body: Record<string, unknown>) => ask(pi, CHANNEL.annotate, { ...on, ...body }),
       });
       try {
@@ -78,8 +77,15 @@ export default function (pi: ExtensionAPI) {
           if (!agreed) return void ctx.ui.notify('Nothing was sent. The thread was not scored.', 'info');
           result = (await scoreThread(host(true))) as typeof result;
         }
-        if (!result.ok) return void ctx.ui.notify(String(result.error ?? 'The thread could not be scored.'), result.code === 'not-found' || result.code === 'invalid' ? 'info' : 'error');
-        ctx.ui.notify(`${result.scores?.line ?? 'Scored.'}. The hunks carry their labels in the Outcome view; you can correct any of them there.`, 'info');
+        if (!result.ok)
+          return void ctx.ui.notify(
+            String(result.error ?? 'The thread could not be scored.'),
+            result.code === 'not-found' || result.code === 'invalid' ? 'info' : 'error',
+          );
+        ctx.ui.notify(
+          `${result.scores?.line ?? 'Scored.'}. The hunks carry their labels in the Outcome view; you can correct any of them there.`,
+          'info',
+        );
       } catch (error) {
         ctx.ui.notify(error instanceof Error ? error.message : String(error), 'error');
       }

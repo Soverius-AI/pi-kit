@@ -12,7 +12,16 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { buildSessionTree } from '@pi-kit/pi-adapter';
-import type { NewLocal, NewWorktree, PatchWorkspace, ThreadDetail, ThreadPlacement, ThreadSummary, WorktreeKeep, Workspace } from '@pi-kit/protocol';
+import type {
+  NewLocal,
+  NewWorktree,
+  PatchWorkspace,
+  ThreadDetail,
+  ThreadPlacement,
+  ThreadSummary,
+  WorktreeKeep,
+  Workspace,
+} from '@pi-kit/protocol';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
 import { EventLogRepository } from '../db/event-log.repository';
@@ -24,6 +33,7 @@ import { WorktreeService } from '../worktree/worktree.service';
 import { normalizePrefix } from '../worktree/worktree-paths';
 import { currentBranch } from './branch';
 import { OutcomesService } from './outcomes.service';
+import { workFolderOf } from './work-folder';
 import { sessionMtime } from './session-files';
 import { contextPercent, lastAssistantLine, lastContext } from './thread-context';
 import { type StateLookups, ThreadStatusService } from './thread-status.service';
@@ -85,7 +95,9 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
   list(options: { workspace?: string; includeArchived?: boolean }): ThreadSummary[] {
     const lookups = this.status.lookups();
     const learning = this.meta.learningThreads();
-    return this.threads.list({ cwd: options.workspace, includeArchived: options.includeArchived }).map((row) => this.summary(row, lookups, learning));
+    return this.threads
+      .list({ cwd: options.workspace, includeArchived: options.includeArchived })
+      .map((row) => this.summary(row, lookups, learning));
   }
 
   /** The thread, and it counts as opened now. */
@@ -155,8 +167,10 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
    * so do its settings; opening the folder again (or a new thread in it) brings it back. A run in the folder has to end first.
    */
   forgetWorkspace(cwd: string): Workspace[] {
-    if (!this.meta.listWorkspaces().some((w) => w.cwd === cwd)) throw new NotFoundException(`Workspace ${cwd} is not known.`);
-    if (this.list({ workspace: cwd }).some((t) => t.running)) throw new ConflictException('A run is going in this project. Stop it, then forget the project.');
+    if (!this.meta.listWorkspaces().some((w) => w.cwd === cwd))
+      throw new NotFoundException(`Workspace ${cwd} is not known.`);
+    if (this.list({ workspace: cwd }).some((t) => t.running))
+      throw new ConflictException('A run is going in this project. Stop it, then forget the project.');
     this.meta.forgetWorkspace(cwd);
     this.status.listChanged();
     return this.workspaces();
@@ -175,7 +189,13 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
    * A new thread in the project's folder, or, with `local`, in the folder on another branch (switched first), or, with `worktree`, in a git worktree
    * of it.
    */
-  async create(cwd: string, title?: string, worktree?: NewWorktree, local?: NewLocal, options: { setup?: 'terminal' | 'skip'; onId?: (threadId: string) => void } = {}): Promise<ThreadDetail> {
+  async create(
+    cwd: string,
+    title?: string,
+    worktree?: NewWorktree,
+    local?: NewLocal,
+    options: { setup?: 'terminal' | 'skip'; onId?: (threadId: string) => void } = {},
+  ): Promise<ThreadDetail> {
     this.requireDirectory(cwd);
     const id = randomUUID();
     // The caller learns the id before the thread exists (a verification run marks it as one before anything can look at it).
@@ -185,7 +205,14 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
       await this.worktrees.switchLocal(cwd, local);
       this.worktrees.runLocalSetup(cwd, local.setup);
     }
-    const facts: WorktreeFacts | undefined = worktree ? await this.worktrees.create(cwd, { threadId: id, ...(title ? { title } : {}), request: worktree, ...(options.setup ? { setup: options.setup } : {}) }) : undefined;
+    const facts: WorktreeFacts | undefined = worktree
+      ? await this.worktrees.create(cwd, {
+          threadId: id,
+          ...(title ? { title } : {}),
+          request: worktree,
+          ...(options.setup ? { setup: options.setup } : {}),
+        })
+      : undefined;
     let session: NewPiSession;
     try {
       session = await this.sessions.createSession(facts?.path ?? cwd, id);
@@ -195,7 +222,14 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     }
     // Where the thread starts from: HEAD of the folder it works in; for a worktree its HEAD, which is the base branch's tip.
     const baseCommit = await this.outcomes.headOf(facts?.path ?? cwd);
-    this.threads.insertDraft({ id: session.id, sessionPath: session.path, cwd: facts?.path ?? cwd, title, baseCommit, ...(facts ? { worktree: facts } : {}) });
+    this.threads.insertDraft({
+      id: session.id,
+      sessionPath: session.path,
+      cwd: facts?.path ?? cwd,
+      title,
+      baseCommit,
+      ...(facts ? { worktree: facts } : {}),
+    });
     void this.outcomes.track(facts?.path ?? cwd);
     this.meta.touchWorkspace(cwd);
     this.status.listChanged();
@@ -210,7 +244,9 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
   async place(id: string, placement: ThreadPlacement): Promise<ThreadDetail> {
     const row = this.require(id);
     if (row.messageCount > 0 || existsSync(row.sessionPath) || row.worktreePath || row.origin !== 'app') {
-      throw new ConflictException('This thread has begun, so its folder is fixed. Hand it off from the thread menu instead.');
+      throw new ConflictException(
+        'This thread has begun, so its folder is fixed. Hand it off from the thread menu instead.',
+      );
     }
     if (this.events.lastRun(id)?.status === 'running') throw new ConflictException('A run has started in this thread.');
     const cwd = row.cwd;
@@ -219,7 +255,11 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
       this.worktrees.runLocalSetup(cwd, placement.local.setup);
     }
     if (placement.worktree) {
-      const facts = await this.worktrees.create(cwd, { threadId: id, ...(row.title ? { title: row.title } : {}), request: placement.worktree });
+      const facts = await this.worktrees.create(cwd, {
+        threadId: id,
+        ...(row.title ? { title: row.title } : {}),
+        request: placement.worktree,
+      });
       let session: NewPiSession;
       try {
         this.sessions.dispose(id);
@@ -240,10 +280,14 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     return this.detail(this.threads.get(id) as ThreadRow);
   }
 
-  async patch(id: string, patch: { title?: string; pinned?: boolean; archived?: boolean; worktree?: WorktreeKeep }): Promise<ThreadDetail> {
+  async patch(
+    id: string,
+    patch: { title?: string; pinned?: boolean; archived?: boolean; worktree?: WorktreeKeep },
+  ): Promise<ThreadDetail> {
     const row = this.require(id);
     // Archiving can take the thread's worktree with it; a worktree with uncommitted changes is not removed unasked (409 before anything changes).
-    if (patch.archived === true && patch.worktree === 'remove' && row.worktreePath) await this.worktrees.remove(row, { force: false });
+    if (patch.archived === true && patch.worktree === 'remove' && row.worktreePath)
+      await this.worktrees.remove(row, { force: false });
     if (patch.title !== undefined && patch.title !== row.title) {
       const before = sessionMtime(row.sessionPath);
       // pi gets the name too, so `pi --resume` shows it. Without a file yet, it waits in our row.
@@ -316,12 +360,15 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
    */
   async importFrom(path: string, cwd: string): Promise<ThreadDetail> {
     this.requireDirectory(cwd);
-    if (!existsSync(path) || !statSync(path).isFile()) throw new BadRequestException(`There is no session file at ${path}.`);
+    if (!existsSync(path) || !statSync(path).isFile())
+      throw new BadRequestException(`There is no session file at ${path}.`);
     try {
       return await this.adopt(await this.sessions.forkSession(path, cwd), { sessionPath: path });
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException(`That file is not a pi session: ${error instanceof Error ? error.message : String(error)}`);
+      throw new BadRequestException(
+        `That file is not a pi session: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -378,7 +425,14 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
 
   /** The worktree folders of the threads of a project (a trust answer for the project reaches them). */
   worktreeFoldersOf(project: string): string[] {
-    return [...new Set(this.threads.all().filter((row) => row.cwd === project && row.worktreePath).map((row) => row.worktreePath as string))];
+    return [
+      ...new Set(
+        this.threads
+          .all()
+          .filter((row) => row.cwd === project && row.worktreePath)
+          .map((row) => row.worktreePath as string),
+      ),
+    ];
   }
 
   /** The project's folder the thread is listed under (the main checkout for a thread in a worktree). */
@@ -393,7 +447,7 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
       this.sessions.dispose(row.id);
       return row.cwd;
     }
-    return row.worktreePath ?? row.cwd;
+    return workFolderOf(row);
   }
 
   /** The thread's pi session file (it may not exist yet for a thread without messages). */
@@ -404,7 +458,9 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
   // ---- the session tree
 
   /** The session's entries and leaf for the graph; the thread's open session if there is one, else its file. */
-  async treeSource(id: string): Promise<{ entries: PiSessionEntry[]; leafId: string | null; path: string | undefined }> {
+  async treeSource(
+    id: string,
+  ): Promise<{ entries: PiSessionEntry[]; leafId: string | null; path: string | undefined }> {
     const row = this.require(id);
     const valid = row.leafId !== null && row.leafMtime !== null && sessionMtime(row.sessionPath) === row.leafMtime;
     const source = await this.sessions.treeSource(id, row.sessionPath, valid ? (row.leafId ?? undefined) : undefined);
@@ -422,13 +478,25 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
   async prepareRun(threadId: string, cwdHint: string, options: { open?: boolean } = {}): Promise<RunTarget> {
     let row = this.threads.get(threadId);
     // A verification run is kept as a record after its scratch worktree is removed; without the worktree a run would fall back to the project's folder, which a verification never touches.
-    if (row && !options.open && this.meta.isVerificationThread(threadId) && (!row.worktreePath || !existsSync(row.worktreePath))) {
-      throw new ConflictException('This thread replayed a skill in a scratch worktree that is removed now, so it cannot run again. It stays as the record of that run.');
+    if (
+      row &&
+      !options.open &&
+      this.meta.isVerificationThread(threadId) &&
+      (!row.worktreePath || !existsSync(row.worktreePath))
+    ) {
+      throw new ConflictException(
+        'This thread replayed a skill in a scratch worktree that is removed now, so it cannot run again. It stays as the record of that run.',
+      );
     }
     if (!row) {
       this.requireDirectory(cwdHint);
       const session = await this.sessions.createSession(cwdHint, threadId);
-      this.threads.insertDraft({ id: session.id, sessionPath: session.path, cwd: cwdHint, baseCommit: await this.outcomes.headOf(cwdHint) });
+      this.threads.insertDraft({
+        id: session.id,
+        sessionPath: session.path,
+        cwd: cwdHint,
+        baseCommit: await this.outcomes.headOf(cwdHint),
+      });
       this.meta.touchWorkspace(cwdHint);
       row = this.threads.get(threadId) as ThreadRow;
     } else {
@@ -514,7 +582,9 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
       removed += 1;
     }
     if (added || removed || scan.read > 0) {
-      this.logger.log(`Reconciled ${infos.length} sessions in ${Date.now() - started} ms (read ${scan.read}, +${added}, -${removed})`);
+      this.logger.log(
+        `Reconciled ${infos.length} sessions in ${Date.now() - started} ms (read ${scan.read}, +${added}, -${removed})`,
+      );
     }
     // Threads and projects are in the table now: tell the sidebars before the slower measuring below (a first pass over many sessions takes a while).
     if (added || removed || scan.read > 0) this.status.listChanged();
@@ -523,9 +593,13 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     // The file facts of many threads may have moved (a message count, a change from the CLI, a context share): push what changed.
     this.status.touchAll();
     // Worktree folders that were left for a week after a hand off go when they are due (Remove the folder: after 7 days).
-    void this.worktrees.sweep().catch((error) => this.logger.warn(`Worktree sweep: ${error instanceof Error ? error.message : String(error)}`));
+    void this.worktrees
+      .sweep()
+      .catch((error) => this.logger.warn(`Worktree sweep: ${error instanceof Error ? error.message : String(error)}`));
     // A thread that began before the base commit was kept gets an estimate, once: in the background, one git call at a time.
-    void this.outcomes.estimateBases().catch((error) => this.logger.warn(`Base commits: ${error instanceof Error ? error.message : String(error)}`));
+    void this.outcomes
+      .estimateBases()
+      .catch((error) => this.logger.warn(`Base commits: ${error instanceof Error ? error.message : String(error)}`));
   }
 
   /**
@@ -552,15 +626,20 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
       }
       try {
         const source = await this.sessions.treeSource(row.id, row.sessionPath);
-        if (!forksCurrent) this.threads.setForkCount(row.id, buildSessionTree(source.entries, source.leafId).forks, mtime);
+        if (!forksCurrent)
+          this.threads.setForkCount(row.id, buildSessionTree(source.entries, source.leafId).forks, mtime);
         if (!contextCurrent) {
           const sample = lastContext(source.entries, source.leafId);
-          const pct = sample ? contextPercent(sample.tokens, await this.sessions.modelWindow(sample.provider, sample.model)) : null;
+          const pct = sample
+            ? contextPercent(sample.tokens, await this.sessions.modelWindow(sample.provider, sample.model))
+            : null;
           this.threads.setContext(row.id, pct, mtime);
         }
         if (!lineCurrent) this.threads.setLastLine(row.id, lastAssistantLine(source.entries, source.leafId), mtime);
       } catch (error) {
-        this.logger.warn(`Fork count and context of ${row.id} failed: ${error instanceof Error ? error.message : String(error)}`);
+        this.logger.warn(
+          `Fork count and context of ${row.id} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
         this.threads.setForkCount(row.id, row.forkCount, mtime);
         this.threads.setContext(row.id, row.contextPct, mtime);
         this.threads.setLastLine(row.id, row.lastLine, mtime);

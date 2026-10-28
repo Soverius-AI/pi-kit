@@ -11,13 +11,29 @@ const run = promisify(execFile);
  */
 export const GIT_ENV = { ...process.env, GIT_OPTIONAL_LOCKS: '0' };
 
+/**
+ * A reading git call that runs longer than this is killed, so a stuck repository cannot pile up processes behind the refreshes. Commands that
+ * write (add, checkout, rm, init) pass `timeout: 0`: killing one half-way would leave `.git/index.lock` behind and break every later git command.
+ */
+export const GIT_TIMEOUT_MS = 30_000;
+
 /** What `baseRevision()` answers in a repository without commits, where there is no `HEAD` to compare with. */
 export const NO_HEAD = 'no-head';
 
 /** Runs git in `cwd`; resolves with stdout, rejects with git's own message. */
-export async function git(cwd: string, args: readonly string[], options: { allowFail?: boolean } = {}): Promise<string> {
+export async function git(
+  cwd: string,
+  args: readonly string[],
+  options: { allowFail?: boolean; timeout?: number; env?: Record<string, string> } = {},
+): Promise<string> {
   try {
-    const { stdout } = await run('git', ['-C', cwd, '-c', 'core.quotepath=off', ...args], { maxBuffer: 64 * 1024 * 1024, encoding: 'utf8', env: GIT_ENV });
+    const { stdout } = await run('git', ['-C', cwd, '-c', 'core.quotepath=off', ...args], {
+      maxBuffer: 64 * 1024 * 1024,
+      encoding: 'utf8',
+      env: options.env ? { ...GIT_ENV, ...options.env } : GIT_ENV,
+      timeout: options.timeout ?? GIT_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+    });
     return stdout;
   } catch (error) {
     const e = error as { stdout?: string; stderr?: string; code?: number; message: string };
@@ -82,9 +98,24 @@ export async function statusBadges(cwd: string): Promise<FileStatusEntry[]> {
 }
 
 /** `git diff <base> --numstat`: added and removed lines per file (`null` for a binary file), relative to `cwd`. */
-export async function numstat(cwd: string, base: string, head?: string): Promise<Map<string, { added: number; removed: number } | null>> {
+export async function numstat(
+  cwd: string,
+  base: string,
+  head?: string,
+): Promise<Map<string, { added: number; removed: number } | null>> {
   if (base === NO_HEAD) return new Map();
-  const out = await git(cwd, ['diff', base, ...(head ? [head] : []), '--numstat', '-z', '--no-renames', '--relative', '--no-ext-diff', '--', '.']);
+  const out = await git(cwd, [
+    'diff',
+    base,
+    ...(head ? [head] : []),
+    '--numstat',
+    '-z',
+    '--no-renames',
+    '--relative',
+    '--no-ext-diff',
+    '--',
+    '.',
+  ]);
   const map = new Map<string, { added: number; removed: number } | null>();
   for (const item of out.split('\0')) {
     const match = /^(\d+|-)\t(\d+|-)\t(.+)$/s.exec(item);
@@ -96,12 +127,34 @@ export async function numstat(cwd: string, base: string, head?: string): Promise
 
 /** The unified diff of one file against `base` (staged and unstaged together). */
 export function diffFile(cwd: string, base: string, path: string, head?: string): Promise<string> {
-  return git(cwd, ['diff', base, ...(head ? [head] : []), '--no-color', '--no-ext-diff', '--no-renames', '--relative', '-U3', '--', path]);
+  return git(cwd, [
+    'diff',
+    base,
+    ...(head ? [head] : []),
+    '--no-color',
+    '--no-ext-diff',
+    '--no-renames',
+    '--relative',
+    '-U3',
+    '--',
+    path,
+  ]);
 }
 
 /** `git diff --name-status -z base head`: the status letter of every file the two commits differ in, relative to `cwd` (a rename is a delete and an add). */
 export async function nameStatusRange(cwd: string, base: string, head: string): Promise<Map<string, 'A' | 'M' | 'D'>> {
-  const out = await git(cwd, ['diff', '--name-status', '-z', '--no-renames', '--relative', '--no-ext-diff', base, head, '--', '.']);
+  const out = await git(cwd, [
+    'diff',
+    '--name-status',
+    '-z',
+    '--no-renames',
+    '--relative',
+    '--no-ext-diff',
+    base,
+    head,
+    '--',
+    '.',
+  ]);
   const items = out.split('\0');
   const map = new Map<string, 'A' | 'M' | 'D'>();
   for (let i = 0; i + 1 < items.length; i += 2) {
@@ -109,15 +162,6 @@ export async function nameStatusRange(cwd: string, base: string, head: string): 
     map.set(items[i + 1], letter === 'A' ? 'A' : letter === 'D' ? 'D' : 'M');
   }
   return map;
-}
-
-/** The file as `HEAD` has it, or `undefined` if `HEAD` has no such file. */
-export async function headContent(cwd: string, path: string): Promise<string | undefined> {
-  try {
-    return await git(cwd, ['show', `HEAD:./${path}`]);
-  } catch {
-    return undefined;
-  }
 }
 
 export async function inHead(cwd: string, path: string): Promise<boolean> {
@@ -130,24 +174,24 @@ export async function inHead(cwd: string, path: string): Promise<boolean> {
 }
 
 export async function isTracked(cwd: string, path: string): Promise<boolean> {
-  return (await git(cwd, ['ls-files', '--error-unmatch', '--', path]).then(
+  return await git(cwd, ['ls-files', '--error-unmatch', '--', path]).then(
     () => true,
     () => false,
-  ));
+  );
 }
 
 /** `git add -A` for the whole folder, or only `files`. */
 export async function stage(cwd: string, files?: readonly string[]): Promise<void> {
-  if (files && files.length > 0) await git(cwd, ['add', '-A', '--', ...files]);
-  else await git(cwd, ['add', '-A', '--', '.']);
+  if (files && files.length > 0) await git(cwd, ['add', '-A', '--', ...files], { timeout: 0 });
+  else await git(cwd, ['add', '-A', '--', '.'], { timeout: 0 });
 }
 
 /** Puts a file back to what `HEAD` has; a file that is new (not in `HEAD`) is removed from the index and the disk. */
 export async function restoreToHead(cwd: string, path: string): Promise<'restored' | 'removed'> {
   if (await inHead(cwd, path)) {
-    await git(cwd, ['checkout', 'HEAD', '--', path]);
+    await git(cwd, ['checkout', 'HEAD', '--', path], { timeout: 0 });
     return 'restored';
   }
-  if (await isTracked(cwd, path)) await git(cwd, ['rm', '-f', '--quiet', '--', path]);
+  if (await isTracked(cwd, path)) await git(cwd, ['rm', '-f', '--quiet', '--', path], { timeout: 0 });
   return 'removed';
 }

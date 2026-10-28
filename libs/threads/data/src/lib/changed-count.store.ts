@@ -1,5 +1,7 @@
 import { computed, effect, inject, untracked } from '@angular/core';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withProps, withState } from '@ngrx/signals';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
+import { tap } from 'rxjs';
 import { ApiClient, unwrap, workspaceStatusStatus } from '@pi-kit/api';
 import { ClockStore, withLatestRequest } from '@pi-kit/data-access';
 import { THREADS_POLICY } from './threads-policy';
@@ -65,10 +67,11 @@ export const ChangedCountStore = signalStore(
       effect(() => {
         const folder = threads.folder();
         running();
-        threads.watchTick();
         Math.floor(clock.now() / store._policy.changesRefreshMs);
         untracked(() => store.refresh(folder));
       });
+      // Every change the folder's stream reports, each one.
+      rxMethod<unknown>(tap(() => store.refresh(threads.folder())))(threads.folderChanges);
     },
     onDestroy(store) {
       store._stop();

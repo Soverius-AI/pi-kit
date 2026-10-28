@@ -14,32 +14,11 @@ import {
 import type { DialogAnswer } from '../pi/ui-bridge';
 
 /**
- * The rules of the Meat Proxy Score that belong to pi-kit: what counts as a change by hand, how the person's relabelling and a new scoring combine, what is
- * stored and drawn. Pure, so every edge case is a unit test. The arithmetic of the score itself is the package's (`lib/score.mjs`).
+ * The rules of the Meat Proxy Score that belong to pi-kit: how the person's relabelling and a new scoring combine, what is stored and drawn. Pure, so every edge case is a unit test. The arithmetic of the score itself is the package's (`lib/score.mjs`).
  */
 
-/** A run that ended this recently still owns the writes the watcher reports: its debounced batch can arrive after the run's end. */
-export const RUN_GRACE_MS = 2500;
 /** At most this many of the person's corrections are kept per thread. */
 export const MAX_CORRECTIONS = 200;
-
-export interface HandEditFacts {
-  /** The paths of one watcher batch, relative to the folder. */
-  paths: readonly string[];
-  /** Some thread's run in this folder is going on. */
-  running: boolean;
-  /** Milliseconds since the last run in this folder ended; null if none did. */
-  sinceRunEnd: number | null;
-  /** The batch includes a sign of `HEAD` or a branch moving (a checkout, a pull, a merge): the files changed because git changed them. */
-  headMoved: boolean;
-}
-
-/** The paths of a watcher batch that are a person's hand: nothing of pi is writing, git did not move, and the path is a file of the project (not `.git`). */
-export function handEditedPaths(facts: HandEditFacts): string[] {
-  if (facts.running || facts.headMoved) return [];
-  if (facts.sinceRunEnd !== null && facts.sinceRunEnd < RUN_GRACE_MS) return [];
-  return facts.paths.filter((path) => path !== '' && path !== '.git' && !path.startsWith('.git/'));
-}
 
 /** `thread_outcomes.hunk_labels` as stored, or `null` when there is none or it is not what pi-kit writes. */
 export function parseLabelsStore(raw: unknown): HunkLabelsStore | null {
@@ -56,24 +35,47 @@ export function parseScores(raw: unknown): OutcomeScores | null {
  * What a new scoring does to the stored labels: the package's labels replace the earlier ones, the person's corrections stay (they are the person's, and the next prompt shows them
  * as examples); `null` clears the labels and the corrections with them.
  */
-export function mergeLabels(existing: HunkLabelsStore | null, body: Pick<AnnotateRequest, 'base' | 'head' | 'model' | 'labels'>, now: number): HunkLabelsStore | null | undefined {
+export function mergeLabels(
+  existing: HunkLabelsStore | null,
+  body: Pick<AnnotateRequest, 'base' | 'head' | 'model' | 'labels'>,
+  now: number,
+): HunkLabelsStore | null | undefined {
   if (body.labels === undefined) return undefined;
   if (body.labels === null) return null;
-  return { base: body.base, head: body.head, model: body.model ?? null, at: now, labels: body.labels, corrections: existing?.corrections ?? {} };
+  return {
+    base: body.base,
+    head: body.head,
+    model: body.model ?? null,
+    at: now,
+    labels: body.labels,
+    corrections: existing?.corrections ?? {},
+  };
 }
 
 /**
  * The person says what a hunk is. A label that is the model's own is no correction (it takes an earlier one back); `null` takes the correction back. Returns the new store, or
  * `undefined` when the store has no such hunk.
  */
-export function relabelHunk(store: HunkLabelsStore, hunk: string, label: HunkLabel | null, now: number): HunkLabelsStore | undefined {
+export function relabelHunk(
+  store: HunkLabelsStore,
+  hunk: string,
+  label: HunkLabel | null,
+  now: number,
+): HunkLabelsStore | undefined {
   const entry = store.labels.find((l) => l.id === hunk);
   if (!entry) return undefined;
   const corrections = { ...store.corrections };
   if (label === null || label === entry.label) {
     delete corrections[hunk];
   } else {
-    const correction: HunkCorrection = { label, was: entry.label, file: entry.file, header: entry.header, ...(entry.excerpt ? { excerpt: entry.excerpt } : {}), at: now };
+    const correction: HunkCorrection = {
+      label,
+      was: entry.label,
+      file: entry.file,
+      header: entry.header,
+      ...(entry.excerpt ? { excerpt: entry.excerpt } : {}),
+      at: now,
+    };
     delete corrections[hunk];
     corrections[hunk] = correction;
   }
@@ -87,9 +89,18 @@ export function relabelHunk(store: HunkLabelsStore, hunk: string, label: HunkLab
  * The part of a score the thread state carries while the package is installed: the number and the sentence and whether the outcome moved on since the hunks were labelled, or
  * nulls for a thread that was not scored (the badge's menu then offers "Score this thread").
  */
-export function scoreBadgeOf(scores: OutcomeScores | null, store: HunkLabelsStore | null, outcome: { base: string; head: string }): ThreadScoreBadge {
+export function scoreBadgeOf(
+  scores: OutcomeScores | null,
+  store: HunkLabelsStore | null,
+  outcome: { base: string; head: string },
+): ThreadScoreBadge {
   if (!scores || !store) return { meat: null, vibe: null, line: null, stale: false };
-  return { meat: scores.meat, vibe: scores.vibe, line: scores.line, stale: store.head !== outcome.head || store.base !== outcome.base };
+  return {
+    meat: scores.meat,
+    vibe: scores.vibe,
+    line: scores.line,
+    stale: store.head !== outcome.head || store.base !== outcome.base,
+  };
 }
 
 /** Ten bins of the steered share: 0–9 %, 10–19 %, ... 90–100 %. */

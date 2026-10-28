@@ -6,28 +6,28 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACTIONS_KEEP_MS = 90 * DAY_MS;
 /** A terminal screen nobody opened for this long goes. */
 export const TERMINAL_KEEP_MS = 30 * DAY_MS;
+
 /**
- * The copies of files from before pi's first edit go when the thread's session has not changed for this long. They can be the biggest rows
- * in the database (up to 2 MB a file); without them "This thread" rebuilds the earlier text from the session's edits, or compares with
- * git's HEAD and says so.
+ * A run with snapshots of its folder is kept this long: "This thread", the score and the attribution of a commit read what changed from them.
+ * The private repositories prune the trees after as long (`ShadowRepo`).
  */
-export const BASELINES_KEEP_MS = 30 * DAY_MS;
+export const RUN_SNAPSHOTS_KEEP_MS = 30 * DAY_MS;
 
 export interface Pruned {
   actions: number;
   runs: number;
+  agentSpans: number;
   suggestions: number;
   terminals: number;
   events: number;
-  baselines: number;
 }
 
 /**
  * Keeps the tables that grow with use from growing for ever. It runs once after startup and then once a day: attendant activity older than
- * 90 days, finished runs except each thread's newest (the lock and the sidebar read only that one), settled follow-up prompts except each
+ * 90 days, finished runs except each thread's newest (the lock and the sidebar read only that one) and those with snapshots of their folder
+ * from the last 30 days, settled follow-up prompts except each
  * thread's newest (the one "was this proposed before?" asks about), terminal screens of folders that are no longer a project or a thread's
- * folder or were not opened for 30 days, replay logs whose thread or background agent is gone, and the change baselines of threads whose
- * session has not changed for 30 days.
+ * folder or were not opened for 30 days and replay logs whose thread or background agent is gone.
  */
 @Injectable()
 export class MaintenanceRepository implements OnApplicationBootstrap, OnModuleDestroy {
@@ -68,8 +68,15 @@ export class MaintenanceRepository implements OnApplicationBootstrap, OnModuleDe
     return this.db.transaction(() => {
       const actions = this.db.prepare('DELETE FROM attendant_actions WHERE at < ?').run(now - ACTIONS_KEEP_MS).changes;
       const runs = this.db
-        .prepare("DELETE FROM runs WHERE status <> 'running' AND rowid NOT IN (SELECT MAX(rowid) FROM runs GROUP BY thread_id)")
-        .run().changes;
+        .prepare(
+          `DELETE FROM runs WHERE status <> 'running' AND rowid NOT IN (SELECT MAX(rowid) FROM runs GROUP BY thread_id)
+             AND (start_tree IS NULL OR started_at < ?)`,
+        )
+        .run(now - RUN_SNAPSHOTS_KEEP_MS).changes;
+      // The work of background agents is snapshotted like runs, and kept as long.
+      const agentSpans = this.db
+        .prepare('DELETE FROM agent_spans WHERE started_at < ?')
+        .run(now - RUN_SNAPSHOTS_KEEP_MS).changes;
       const suggestions = this.db
         .prepare(
           "DELETE FROM thread_suggestions WHERE kind = 'prompt' AND state <> 'open' AND id NOT IN (SELECT MAX(id) FROM thread_suggestions WHERE kind = 'prompt' GROUP BY thread_id)",
@@ -83,17 +90,18 @@ export class MaintenanceRepository implements OnApplicationBootstrap, OnModuleDe
         .run(now - TERMINAL_KEEP_MS).changes;
       // Logs are keyed by a thread id or a background agent id; the distinct ids come from the index, not from a scan of the events.
       const owners = new Set(
-        (this.db.prepare('SELECT id FROM threads UNION SELECT id FROM bg_agents').all() as { id: string }[]).map((row) => row.id),
+        (this.db.prepare('SELECT id FROM threads UNION SELECT id FROM bg_agents').all() as { id: string }[]).map(
+          (row) => row.id,
+        ),
       );
       const remove = this.db.prepare('DELETE FROM thread_events WHERE thread_id = ?');
       let events = 0;
-      for (const { thread_id } of this.db.prepare('SELECT DISTINCT thread_id FROM thread_events').all() as { thread_id: string }[]) {
+      for (const { thread_id } of this.db.prepare('SELECT DISTINCT thread_id FROM thread_events').all() as {
+        thread_id: string;
+      }[]) {
         if (!owners.has(thread_id)) events += remove.run(thread_id).changes;
       }
-      const baselines = this.db
-        .prepare('DELETE FROM change_baselines WHERE thread_id IN (SELECT id FROM threads WHERE updated_at < ?)')
-        .run(now - BASELINES_KEEP_MS).changes;
-      return { actions, runs, suggestions, terminals, events, baselines };
+      return { actions, runs, agentSpans, suggestions, terminals, events };
     })();
   }
 }

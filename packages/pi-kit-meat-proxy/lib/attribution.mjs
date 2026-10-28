@@ -23,7 +23,9 @@ export function loadPrompt(file = readFileSync(join(root, 'prompts', 'attribute.
 }
 
 const clip = (text, max) => {
-  const flat = String(text ?? '').replace(/\s+/g, ' ').trim();
+  const flat = String(text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
   return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 };
 
@@ -62,7 +64,9 @@ export function* attributionBatches(hunks, ledger) {
 
 function hunkText(hunk, key = '') {
   const changed = hunk.lines.filter((l) => l[0] === '+' || l[0] === '-');
-  const cut = changed.slice(0, BODY_LINES).map((l) => `  ${l.length > LINE_WIDTH ? `${l.slice(0, LINE_WIDTH - 1)}…` : l}`);
+  const cut = changed
+    .slice(0, BODY_LINES)
+    .map((l) => `  ${l.length > LINE_WIDTH ? `${l.slice(0, LINE_WIDTH - 1)}…` : l}`);
   if (changed.length > BODY_LINES) cut.push(`  … ${changed.length - BODY_LINES} more changed lines`);
   return `${key ? `${key} | ` : ''}${hunk.file} | ${hunk.header}${hunk.section ? ` ${hunk.section}` : ''} | +${hunk.added} -${hunk.removed}\n${cut.join('\n')}`;
 }
@@ -71,7 +75,17 @@ function hunkText(hunk, key = '') {
 export function examplesText(stored) {
   const corrections = Object.values(stored?.corrections ?? {}).slice(-12);
   if (corrections.length === 0) return '';
-  const lines = corrections.map((c) => `- ${c.file} ${c.header}${c.excerpt?.length ? ` (${c.excerpt.slice(0, 2).map((l) => clip(l, 70)).join(' / ')})` : ''}: the model said ${c.was}, the person says ${c.label}`);
+  const lines = corrections.map(
+    (c) =>
+      `- ${c.file} ${c.header}${
+        c.excerpt?.length
+          ? ` (${c.excerpt
+              .slice(0, 2)
+              .map((l) => clip(l, 70))
+              .join(' / ')})`
+          : ''
+      }: the model said ${c.was}, the person says ${c.label}`,
+  );
   return `## The person corrected earlier labels of this thread\nTreat these as ground truth and judge similar hunks the same way.\n${lines.join('\n')}\n\n`;
 }
 
@@ -81,7 +95,10 @@ export function buildAttributionPrompt({ ledger, hunks, stored }, file) {
   const prompt = loadPrompt(file);
   const listing = plan.shown.map(({ key, hunk }) => hunkText(hunk, key)).join('\n\n') || '(no hunks to label)';
   const notes = [];
-  if (plan.byRule.length > 0) notes.push(`${plan.byRule.length} hunks in files only the person changed by hand are labelled manual without you and are not listed.`);
+  if (plan.byRule.length > 0)
+    notes.push(
+      `${plan.byRule.length} hunks in files pi never edited (changed outside pi) are labelled manual without you and are not listed.`,
+    );
   const user = prompt.user
     .replace('{{ledger}}', () => ledgerToText(ledger))
     .replace('{{examples}}', () => examplesText(stored))
@@ -93,10 +110,13 @@ const LABEL_WORD = new RegExp(`\\b(${LABELS.join('|')})\\b`, 'i');
 
 /** The input a model names (`prompt 2`, `review 3`, `hand`, `none`, ...) as `{ input, turn }`. */
 export function parseInput(text) {
-  const word = String(text ?? '').trim().toLowerCase();
+  const word = String(text ?? '')
+    .trim()
+    .toLowerCase();
   const turn = /(\d+)/.exec(word);
   const n = turn ? Number(turn[1]) : undefined;
-  if (/^(?:prompt|message|msg|turn)\b/.test(word)) return n === 1 ? { input: 'first-prompt', turn: 1 } : { input: 'follow-up', ...(n ? { turn: n } : {}) };
+  if (/^(?:prompt|message|msg|turn)\b/.test(word))
+    return n === 1 ? { input: 'first-prompt', turn: 1 } : { input: 'follow-up', ...(n ? { turn: n } : {}) };
   if (/^review/.test(word)) return { input: 'review', ...(n ? { turn: n } : {}) };
   if (/^(?:hand|manual|by hand)/.test(word)) return { input: 'hand' };
   if (/^(?:dialog|answer|question)/.test(word)) return { input: 'dialog', ...(n ? { turn: n } : {}) };
@@ -112,8 +132,13 @@ export function parseAttribution(reply, keys) {
   const labels = new Map();
   const wanted = new Set(keys);
   const unknown = [];
-  for (const raw of String(reply ?? '').replace(/\r\n/g, '\n').split('\n')) {
-    const line = raw.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/[*`]/g, '').trim();
+  for (const raw of String(reply ?? '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')) {
+    const line = raw
+      .replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '')
+      .replace(/[*`]/g, '')
+      .trim();
     if (!line || line.startsWith('```')) continue;
     const head = /^(h\d+)\s*([|:\-–])?\s*(.*)$/i.exec(line);
     if (!head) continue;
@@ -165,16 +190,35 @@ export function buildLabelEntries({ plan, parsed, ledger, hunks }) {
     ...fields,
   });
   const out = [];
-  const all = [...plan.byRule.map((h) => ({ h, how: 'rule' })), ...plan.shown.map(({ hunk }) => ({ h: hunk, how: 'shown' }))];
+  const all = [
+    ...plan.byRule.map((h) => ({ h, how: 'rule' })),
+    ...plan.shown.map(({ hunk }) => ({ h: hunk, how: 'shown' })),
+  ];
   for (const { h, how } of all) {
     if (how === 'rule') {
-      const edit = ledger.files.find((f) => f.path === h.file)?.byHand;
-      out.push(entry(h, { label: 'manual', input: 'hand', trace: `changed by hand outside pi${edit ? ` (${edit.count} change${edit.count === 1 ? '' : 's'} seen)` : ''}; pi never edited this file`, by: 'ledger' }));
+      out.push(
+        entry(h, {
+          label: 'manual',
+          input: 'hand',
+          trace: 'changed outside pi; no run of the thread edited this file',
+          by: 'ledger',
+        }),
+      );
     } else {
       const got = parsed.labels.get(shownKey.get(h.id));
       if (!got) throw new Error(`The model did not label ${h.id}.`);
       const settled = settle(got.label, got, ledger, h.file);
-      out.push(entry(h, { label: got.label, input: settled.input, ...(settled.turn ? { turn: settled.turn } : {}), trace: got.reason || (settled.input === 'none' ? 'nothing in the thread leads to it' : `message ${settled.turn ?? ''}`.trim()), by: 'model' }));
+      out.push(
+        entry(h, {
+          label: got.label,
+          input: settled.input,
+          ...(settled.turn ? { turn: settled.turn } : {}),
+          trace:
+            got.reason ||
+            (settled.input === 'none' ? 'nothing in the thread leads to it' : `message ${settled.turn ?? ''}`.trim()),
+          by: 'model',
+        }),
+      );
     }
   }
   // Back in diff order.

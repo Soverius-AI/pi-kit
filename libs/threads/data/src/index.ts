@@ -10,5 +10,6 @@ export * from './lib/ports';
 export * from './lib/score.store';
 export * from './lib/threads-policy';
 export * from './lib/threads.store';
+export * from './lib/with-folder-changes';
 export * from './lib/trust.store';
 export * from './lib/worktree.store';

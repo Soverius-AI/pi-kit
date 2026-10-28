@@ -12,7 +12,7 @@ lib/pipeline.mjs           the whole scoring of one thread against a host (the e
 prompts/attribute.md       the attribution prompt
 ```
 
-It talks to pi-kit only through the plugin events of `doc/docs/plugins.md`: `pi-kit:thread:outcome`, `pi-kit:thread:transcript`, `pi-kit:thread:baselines`, `pi-kit:thread:outside-edits`, `pi-kit:attendant:run` and `pi-kit:thread:annotate`. It never reads pi-kit's database. Everything is retrospective: the score never changes how a thread runs.
+It talks to pi-kit only through the plugin events of `doc/docs/plugins.md`: `pi-kit:thread:outcome`, `pi-kit:thread:transcript`, `pi-kit:thread:baselines`, `pi-kit:attendant:run` and `pi-kit:thread:annotate`. It never reads pi-kit's database. Everything is retrospective: the score never changes how a thread runs.
 
 ```
 pi install ./packages/pi-kit-meat-proxy     # or let pi-kit do it

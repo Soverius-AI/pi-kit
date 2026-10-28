@@ -147,12 +147,20 @@ const changeKindLabels = (translate: Translate): Record<FileStatus, { label: str
           }
         } @empty {
           <p class="p-3 text-sm text-muted">
-            @if (review.source() === 'thread') {
+            @if (review.notGit()) {
+              {{ 'review.changesPanel.thisFolderIsNotAGitRepository' | transloco }}
+              <button
+                type="button"
+                class="btn btn-sm btn-primary mt-2"
+                [disabled]="!!review.busy()"
+                (click)="review.initGit()"
+              >
+                {{ 'review.changesPanel.initialiseGit' | transloco }}
+              </button>
+            } @else if (review.source() === 'thread') {
               {{ 'review.changesPanel.piHasNotChangedAnyFileIn' | transloco }}
             } @else if (review.source() === 'outcome') {
               {{ review.list()?.note ?? ('review.changesPanel.theOutcomeChangedNoFile' | transloco) }}
-            } @else if (review.list()?.git === false) {
-              {{ 'review.changesPanel.thisFolderIsNotAGitRepository' | transloco }}
             } @else {
               {{ 'review.changesPanel.theWorkingTreeMatchesHEADNothingTo' | transloco }}
             }
@@ -180,11 +188,9 @@ const changeKindLabels = (translate: Translate): Record<FileStatus, { label: str
         <button
           type="button"
           class="btn btn-sm flex-1"
-          [disabled]="
-            review.files().length === 0 || !!review.busy() || review.list()?.git === false || !review.editable()
-          "
+          [disabled]="review.files().length === 0 || !!review.busy() || review.notGit() || !review.editable()"
           [title]="
-            review.list()?.git === false
+            review.notGit()
               ? ('review.changesPanel.thisFolderIsNotAGitRepositoryb5942' | transloco)
               : review.editable()
                 ? ''

@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, si
 import { CopilotChatView, provideCopilotChatConfiguration } from '@copilotkit/angular';
 import { AGENT_INPUT_VIEW, CHAT_AGENT, ChatStore, ComposerExtensions, TRANSCRIPT_VIEW } from '@pi-kit/chat/api';
 import { ThreadsStore } from '@pi-kit/threads/api';
+import { EMPTY } from 'rxjs';
 import type { BgAgent, ThreadSummary } from '@pi-kit/protocol';
 
 /** The agent as the chat store's thread selection: the agent's id is the `pi-bg` thread id, nothing else of a thread applies. */
@@ -11,8 +12,32 @@ function agentAsThreads() {
   const selected = computed<ThreadSummary | undefined>(() => {
     const a = agent();
     if (!a) return undefined;
-    const state: ThreadSummary['state'] = { activity: 'idle', question: null, context: null, lastRun: null, unread: false, unseen: false, cli: false, summary: null, suggestions: [], outcome: null, draft: null };
-    return { id: a.id, cwd: '', title: a.name, preview: a.brief, pinned: false, updatedAt: a.createdAt, lastOpenedAt: null, state, running: false, waiting: false, lastRun: null } as unknown as ThreadSummary;
+    const state: ThreadSummary['state'] = {
+      activity: 'idle',
+      question: null,
+      context: null,
+      lastRun: null,
+      unread: false,
+      unseen: false,
+      cli: false,
+      summary: null,
+      suggestions: [],
+      outcome: null,
+      draft: null,
+    };
+    return {
+      id: a.id,
+      cwd: '',
+      title: a.name,
+      preview: a.brief,
+      pinned: false,
+      updatedAt: a.createdAt,
+      lastOpenedAt: null,
+      state,
+      running: false,
+      waiting: false,
+      lastRun: null,
+    } as unknown as ThreadSummary;
   });
   return {
     /** The component sets it from its input; the stand-in cannot inject the component while it is being made. */
@@ -24,8 +49,7 @@ function agentAsThreads() {
     workspace: () => undefined,
     workspaces: signal([]),
     threads: signal<ThreadSummary[]>([]),
-    watchTick: signal(0),
-    watchLast: signal(undefined),
+    folderChanges: EMPTY,
     refresh: async () => undefined,
     select: () => undefined,
     want: () => undefined,
@@ -57,7 +81,9 @@ export class AgentNothing {}
     provideCopilotChatConfiguration({ agentId: 'pi-bg' }),
   ],
   template: `
-    <div class="t-xs muted px-3 py-1">{{ 'agents.agentsPanel.transcriptOf' | transloco: { value1: agent().name } }}</div>
+    <div class="t-xs muted px-3 py-1">
+      {{ 'agents.agentsPanel.transcriptOf' | transloco: { value1: agent().name } }}
+    </div>
     <copilot-chat-view
       class="flex-1 min-h-0"
       agentId="pi-bg"
@@ -93,9 +119,15 @@ export class AgentTranscript {
       const current = this.agent();
       const before = this.last;
       this.last = { activity: current.activity, status: current.status };
-      const started = before && ((before.activity === 'idle' && current.activity !== 'idle') || (before.status !== 'active' && current.status === 'active'));
+      const started =
+        before &&
+        ((before.activity === 'idle' && current.activity !== 'idle') ||
+          (before.status !== 'active' && current.status === 'active'));
       // A run this store started itself (a message from the composer) is followed already: only a start from elsewhere needs the join.
-      if (started) untracked(() => { if (!this.chat.running()) this.chat.reconnect(); });
+      if (started)
+        untracked(() => {
+          if (!this.chat.running()) this.chat.reconnect();
+        });
     });
     // A message to an agent is its next task unless the person picks Steer: the thread's default of steering mid-run does not fit here.
     this.chat.setBehavior('followUp');

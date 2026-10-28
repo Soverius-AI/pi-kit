@@ -22,6 +22,7 @@ describe('ChangesPanel', () => {
     hasOutcome,
     editable: () => source() !== 'outcome',
     list: () => ({ files: files(), git: true }) as unknown as ChangesList,
+    notGit: () => false,
     loading: () => false,
     busy: () => undefined,
     mode: () => 'chat',

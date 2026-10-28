@@ -5,7 +5,8 @@ import { DatabaseService } from './database.service';
 export type ThreadOrigin = 'app' | 'cli';
 
 /** The first user message and the title are text the person typed: key shapes in them are masked before they are kept (the thread list shows them). */
-const mask = <T extends string | null | undefined>(text: T): T => (typeof text === 'string' ? (redact(text) as T) : text);
+const mask = <T extends string | null | undefined>(text: T): T =>
+  typeof text === 'string' ? (redact(text) as T) : text;
 
 export interface ThreadRow {
   id: string;
@@ -177,7 +178,15 @@ export class ThreadsRepository {
   }
 
   /** A thread the app creates: no session file yet, so counts are zero. */
-  insertDraft(thread: { id: string; sessionPath: string; cwd: string; title?: string; parentSessionPath?: string; worktree?: WorktreeFacts; baseCommit?: string | null }): void {
+  insertDraft(thread: {
+    id: string;
+    sessionPath: string;
+    cwd: string;
+    title?: string;
+    parentSessionPath?: string;
+    worktree?: WorktreeFacts;
+    baseCommit?: string | null;
+  }): void {
     const now = Date.now();
     this.db
       .prepare(
@@ -211,13 +220,19 @@ export class ThreadsRepository {
 
   /** The thread whose worktree is this folder, if any (a session that the pi command line starts in a worktree folder belongs to the same project). */
   worktreeAt(path: string): ThreadRow | undefined {
-    const row = this.db.prepare('SELECT * FROM threads WHERE worktree_path = ? OR (project_cwd IS NOT NULL AND cwd = ?) LIMIT 1').get(path, path) as RawThread | undefined;
+    const row = this.db
+      .prepare('SELECT * FROM threads WHERE worktree_path = ? OR (project_cwd IS NOT NULL AND cwd = ?) LIMIT 1')
+      .get(path, path) as RawThread | undefined;
     return row && toRow(row);
   }
 
   /** The folders that are the worktree of a thread right now. */
   worktreePaths(): string[] {
-    return (this.db.prepare('SELECT DISTINCT worktree_path FROM threads WHERE worktree_path IS NOT NULL').all() as { worktree_path: string }[]).map((r) => r.worktree_path);
+    return (
+      this.db.prepare('SELECT DISTINCT worktree_path FROM threads WHERE worktree_path IS NOT NULL').all() as {
+        worktree_path: string;
+      }[]
+    ).map((r) => r.worktree_path);
   }
 
   /** The worktree is gone (removed after a merge, or by the user): the thread carries on in its project's folder. */
@@ -232,7 +247,9 @@ export class ThreadsRepository {
 
   /** The thread moved into a worktree of its project (a hand off to a worktree): the session file stays where it is and names the project folder. */
   setWorktree(id: string, facts: WorktreeFacts): void {
-    this.db.prepare('UPDATE threads SET worktree_path = ?, branch = ?, project_cwd = ?, base_branch = ? WHERE id = ?').run(facts.path, facts.branch, facts.projectCwd, facts.base, id);
+    this.db
+      .prepare('UPDATE threads SET worktree_path = ?, branch = ?, project_cwd = ?, base_branch = ? WHERE id = ?')
+      .run(facts.path, facts.branch, facts.projectCwd, facts.base, id);
   }
 
   /** A detached worktree got a branch. */
@@ -243,8 +260,18 @@ export class ThreadsRepository {
   /** A thread without a message is placed in a worktree: its session is created again in the worktree's folder, so the file and `cwd` change with it. */
   relocateDraft(id: string, to: { sessionPath: string; worktree: WorktreeFacts }): void {
     this.db
-      .prepare('UPDATE threads SET session_path = ?, cwd = ?, worktree_path = ?, branch = ?, project_cwd = ?, base_branch = ? WHERE id = ?')
-      .run(to.sessionPath, to.worktree.path, to.worktree.path, to.worktree.branch, to.worktree.projectCwd, to.worktree.base, id);
+      .prepare(
+        'UPDATE threads SET session_path = ?, cwd = ?, worktree_path = ?, branch = ?, project_cwd = ?, base_branch = ? WHERE id = ?',
+      )
+      .run(
+        to.sessionPath,
+        to.worktree.path,
+        to.worktree.path,
+        to.worktree.branch,
+        to.worktree.projectCwd,
+        to.worktree.base,
+        id,
+      );
   }
 
   /**
@@ -340,7 +367,10 @@ export class ThreadsRepository {
   }
 
   /** After a run: the session file's new mtime, message count and, if pi just created it, the preview. */
-  recordRunEnd(id: string, facts: { logMtime: number | null; messageCount: number; preview: string | undefined; lastLine?: string | null }): void {
+  recordRunEnd(
+    id: string,
+    facts: { logMtime: number | null; messageCount: number; preview: string | undefined; lastLine?: string | null },
+  ): void {
     this.db
       .prepare(
         `UPDATE threads SET log_mtime = ?, message_count = ?, preview = COALESCE(preview, ?), updated_at = ? WHERE id = ?`,
@@ -372,13 +402,12 @@ export class ThreadsRepository {
     this.db.transaction(() => {
       this.db.prepare('DELETE FROM thread_events WHERE thread_id = ?').run(id);
       this.db.prepare('DELETE FROM runs WHERE thread_id = ?').run(id);
+      this.db.prepare('DELETE FROM agent_spans WHERE thread_id = ?').run(id);
       this.db.prepare('DELETE FROM thread_outcomes WHERE thread_id = ?').run(id);
       // An approved draft is the record of a skill that exists as a file: it outlives the thread it was learned from.
       this.db.prepare("DELETE FROM skill_drafts WHERE thread_id = ? AND state <> 'approved'").run(id);
-      this.db.prepare('DELETE FROM thread_outside_edits WHERE thread_id = ?').run(id);
       this.db.prepare('DELETE FROM thread_dialog_answers WHERE thread_id = ?').run(id);
       this.db.prepare('DELETE FROM review_comments WHERE thread_id = ?').run(id);
-      this.db.prepare('DELETE FROM change_baselines WHERE thread_id = ?').run(id);
       this.db.prepare('DELETE FROM feedback WHERE thread_id = ?').run(id);
       this.db.prepare('DELETE FROM thread_meta WHERE thread_id = ?').run(id);
       this.db.prepare('DELETE FROM thread_suggestions WHERE thread_id = ?').run(id);

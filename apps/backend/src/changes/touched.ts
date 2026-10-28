@@ -1,7 +1,6 @@
 import { homedir } from 'node:os';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import type { PiSessionEntry } from '@pi-kit/pi-adapter';
-import { applyPatch, parsePatch, reversePatch } from 'diff';
 
 /**
  * "This thread": which files pi touched with `edit` / `write` in a thread, read from the session
@@ -47,12 +46,19 @@ export function collectTouched(branch: readonly PiSessionEntry[], cwd: string): 
   let turn = 0;
   for (const entry of branch) {
     if (entry.type !== 'message') continue;
-    const message = entry['message'] as { role?: string; content?: unknown; toolCallId?: string; isError?: boolean; details?: { patch?: unknown } } | undefined;
+    const message = entry['message'] as
+      | { role?: string; content?: unknown; toolCallId?: string; isError?: boolean; details?: { patch?: unknown } }
+      | undefined;
     if (!message) continue;
     if (message.role === 'user') {
       turn += 1;
     } else if (message.role === 'assistant' && Array.isArray(message.content)) {
-      for (const block of message.content as { type?: string; id?: string; name?: string; arguments?: { path?: unknown } }[]) {
+      for (const block of message.content as {
+        type?: string;
+        id?: string;
+        name?: string;
+        arguments?: { path?: unknown };
+      }[]) {
         if (block.type !== 'toolCall' || !block.id || (block.name !== 'edit' && block.name !== 'write')) continue;
         const path = normalizeToolPath(cwd, block.arguments?.path);
         if (path) calls.set(block.id, { tool: block.name, path, turn: Math.max(turn, 1) });
@@ -67,26 +73,4 @@ export function collectTouched(branch: readonly PiSessionEntry[], cwd: string): 
     }
   }
   return [...files.values()];
-}
-
-/**
- * The file as it was before the first of `steps`, found by undoing each `edit` patch, last first, on the file as it is
- * now. Works only when every step is an `edit` and the file still has exactly the content the last edit left (the
- * patches apply without fuzz); otherwise `undefined`, and the caller falls back to git.
- */
-export function reconstructBaseline(current: string, steps: readonly TouchedStep[]): string | undefined {
-  if (steps.length === 0 || steps.some((step) => step.tool !== 'edit' || !step.patch)) return undefined;
-  let text = current;
-  for (const step of [...steps].reverse()) {
-    try {
-      const [patch] = parsePatch(step.patch as string);
-      if (!patch) return undefined;
-      const before = applyPatch(text, reversePatch(patch));
-      if (before === false) return undefined;
-      text = before;
-    } catch {
-      return undefined;
-    }
-  }
-  return text;
 }

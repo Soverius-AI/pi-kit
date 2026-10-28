@@ -9,6 +9,7 @@ import {
   changesStage,
   provideMockApi,
   sessionOpenInEditor,
+  workspaceStatusInitGit,
 } from '@pi-kit/api';
 import { ChatStore } from '@pi-kit/chat/api';
 import { ToastStore, UiStore } from '@pi-kit/data-access';
@@ -17,13 +18,13 @@ import { fakeThreads, idleState, thread } from '@pi-kit/testing';
 import { ThreadsStore } from '@pi-kit/threads/api';
 import { ChangesStore } from './changes.store';
 
-const file = (path: string, added = 1, removed = 0, turn?: number) => ({
+const file = (path: string, added = 1, removed = 0, run?: number) => ({
   path,
   status: 'M',
   added,
   removed,
   binary: false,
-  ...(turn ? { turn } : {}),
+  ...(run ? { run } : {}),
 });
 const list = (...files: ReturnType<typeof file>[]): ChangesList => ({ files, git: true }) as unknown as ChangesList;
 const comment = (id: string, path: string, line = 1): ReviewComment =>
@@ -39,6 +40,7 @@ describe('ChangesStore', () => {
     reviewComments: vi.fn(async () => saved),
     putReviewComments: vi.fn(async () => undefined),
     openInEditor: vi.fn(async () => ({ opened: true })),
+    initGit: vi.fn(async () => ({ git: true })),
   };
   const chat = {
     threadId: signal<string | undefined>('t1'),
@@ -82,6 +84,7 @@ describe('ChangesStore', () => {
           [changesComments, api.reviewComments, (o) => [o.path?.['id']]],
           [changesPutComments, api.putReviewComments, (o) => [o.path?.['id'], o.body?.['comments']]],
           [sessionOpenInEditor, api.openInEditor, (o) => [o.path?.['id'], o.body?.['path']]],
+          [workspaceStatusInitGit, api.initGit, (o) => [o.path?.['id']]],
         ]),
       ],
     });
@@ -108,7 +111,7 @@ describe('ChangesStore', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(api.diff).toHaveBeenCalledWith('t1', 'thread', 'src/a.ts', expect.anything());
     expect(changes.model()).toMatchObject({ path: 'src/a.ts' });
-    expect(changes.subtitle()).toBe('edited in turn 2');
+    expect(changes.subtitle()).toBe('changed in run 2');
     expect(changes.viewedCount()).toBe(1);
     changes.next();
     expect(changes.selectedId()).toBe('src/b.ts');
@@ -140,29 +143,27 @@ describe('ChangesStore', () => {
     TestBed.tick();
     await vi.advanceTimersByTimeAsync(0);
     const before = api.diff.mock.calls.length;
-    threads.watchLast.set({ paths: ['README.md'], overflow: false });
-    threads.watchTick.set(1);
+    threads.folderChanges.next({ paths: ['README.md'], overflow: false, headMoved: false });
     TestBed.tick();
     await vi.advanceTimersByTimeAsync(0);
     expect(api.diff).toHaveBeenCalledTimes(before);
-    threads.watchLast.set({ paths: ['src/a.ts'], overflow: false });
-    threads.watchTick.set(2);
+    threads.folderChanges.next({ paths: ['src/a.ts'], overflow: false, headMoved: false });
     TestBed.tick();
     await vi.advanceTimersByTimeAsync(0);
     expect(api.diff).toHaveBeenCalledTimes(before + 1);
-    threads.watchLast.set({ paths: [], overflow: true });
-    threads.watchTick.set(3);
+    threads.folderChanges.next({ paths: [], overflow: true, headMoved: false });
     TestBed.tick();
     await vi.advanceTimersByTimeAsync(0);
     expect(api.diff).toHaveBeenCalledTimes(before + 2);
   });
 
-  it('keeps a file invalidation when an unrelated watcher batch supersedes its pending list request', async () => {
+  it('keeps a file invalidation when an unrelated watcher batch arrives while its list request is pending', async () => {
     const changes = await open(await make());
     changes.open('src/a.ts');
     TestBed.tick();
     await vi.advanceTimersByTimeAsync(0);
     const before = api.diff.mock.calls.length;
+    const listsBefore = api.changes.mock.calls.length;
     let finish!: (value: ChangesList) => void;
     api.changes.mockImplementationOnce(
       () =>
@@ -170,17 +171,73 @@ describe('ChangesStore', () => {
           finish = resolve;
         }),
     );
-    threads.watchLast.set({ paths: ['src/a.ts'], overflow: false });
-    threads.watchTick.set(1);
+    threads.folderChanges.next({ paths: ['src/a.ts'], overflow: false, headMoved: false });
     TestBed.tick();
-    threads.watchLast.set({ paths: ['README.md'], overflow: false });
-    threads.watchTick.set(2);
+    threads.folderChanges.next({ paths: ['README.md'], overflow: false, headMoved: false });
+    TestBed.tick();
+    await vi.advanceTimersByTimeAsync(0);
+    // The second batch does not start a second list request; it is folded into one trailing refresh.
+    expect(api.changes).toHaveBeenCalledTimes(listsBefore + 1);
+    finish(list(file('src/a.ts')));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.changes).toHaveBeenCalledTimes(listsBefore + 2);
+    expect(api.diff).toHaveBeenCalledTimes(before + 1);
+    expect(changes.files()).toHaveLength(3);
+  });
+
+  it('reloads the open file when it is in the first of two changes that arrive back to back', async () => {
+    const changes = await open(await make());
+    changes.open('src/a.ts');
+    TestBed.tick();
+    await vi.advanceTimersByTimeAsync(0);
+    const before = api.diff.mock.calls.length;
+    threads.folderChanges.next({ paths: ['src/a.ts'], overflow: false, headMoved: false });
+    threads.folderChanges.next({ paths: ['README.md'], overflow: false, headMoved: false });
     TestBed.tick();
     await vi.advanceTimersByTimeAsync(0);
     expect(api.diff).toHaveBeenCalledTimes(before + 1);
-    finish(list(file('src/a.ts')));
+  });
+
+  it('loads the new thread’s list when the thread changes while a list request is still running', async () => {
+    const changes = await open(await make());
+    let finish!: (value: ChangesList) => void;
+    api.changes.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    threads.folderChanges.next({ paths: ['README.md'], overflow: false, headMoved: false });
+    TestBed.tick();
     await vi.advanceTimersByTimeAsync(0);
+    chat.threadId.set('t2');
+    TestBed.tick();
+    await vi.advanceTimersByTimeAsync(0);
+    finish(list(file('stale-from-t1.ts')));
+    await vi.advanceTimersByTimeAsync(0);
+    TestBed.tick();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.changes).toHaveBeenLastCalledWith('t2', 'thread', expect.anything());
+    expect(changes.files().map((f) => f.path)).not.toContain('stale-from-t1.ts');
     expect(changes.files()).toHaveLength(3);
+  });
+
+  it('initialises git in a folder without a repository, then lists its changes', async () => {
+    api.changes.mockResolvedValueOnce({
+      source: 'thread',
+      cwd: '/work',
+      git: false,
+      files: [],
+    } as unknown as ChangesList);
+    const changes = await open(await make());
+    expect(changes.list()?.git).toBe(false);
+    const calls = api.changes.mock.calls.length;
+    await changes.initGit();
+    // The folder the thread works in, as everything else that acts on the folder.
+    expect(api.initGit).toHaveBeenCalledWith(threads.folder());
+    expect(api.changes).toHaveBeenCalledTimes(calls + 1);
+    expect(changes.list()?.git).toBe(true);
+    expect(changes.busy()).toBeUndefined();
   });
 
   it.each(['success', 'failure'])(
@@ -308,7 +365,7 @@ describe('ChangesStore', () => {
   it('refreshes when the watcher ticks while shown', async () => {
     await open(await make());
     const before = api.changes.mock.calls.length;
-    threads.watchTick.set(1);
+    threads.folderChanges.next({ paths: [], overflow: true, headMoved: false });
     TestBed.tick();
     await vi.advanceTimersByTimeAsync(0);
     expect(api.changes.mock.calls.length).toBe(before + 1);

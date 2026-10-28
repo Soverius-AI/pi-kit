@@ -137,7 +137,6 @@
     "better-sqlite3": "npm:better-sqlite3-multiple-ciphers@13.0.3",
     "better-sqlite3-multiple-ciphers": "13.0.3",
     "cactus-needle": "0.3.0",
-    "chokidar": "5.0.0",
     "daisyui": "5.7.50",
     "diff": "9.0.0",
     "drizzle-orm": "0.45.4",

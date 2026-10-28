@@ -6,7 +6,7 @@ Labels, one per hunk:
 - specified: the developer said what to do here. A message names this file, this function or this behaviour, or asks for exactly what the hunk does.
 - corrected: the hunk exists because the developer corrected pi: a later message that reverses or narrows an instruction, a review comment on these lines, a "no, instead ...".
 - autonomous: pi chose it. Tests nobody asked for, refactors, helpers, formatting, files the developer never named, or changes that go beyond what any message asked.
-- manual: the developer changed it by hand outside pi (the file list says which files were changed by hand).
+- manual: the developer changed it by hand outside pi (the file list says which files pi never edited).
 
 Rules:
 - Judge each hunk by what it does, not by how big it is. A hunk in a file the developer named, doing what they asked, is specified even when pi wrote every line.

@@ -6,8 +6,8 @@ import { promisify } from 'node:util';
 import { Injectable, Optional } from '@nestjs/common';
 import { type FileMatch, type FileNode, fuzzyScore } from '@pi-kit/protocol';
 import { GIT_ENV } from '../changes/git';
-import { WatchService } from '../watch/watch.service';
-import { SKIP_DIRS, rootIgnores } from './ignore';
+import { FolderChangesService } from '../folder-changes/folder-changes.service';
+import { SKIP_DIRS, rootIgnores } from '../workspace/ignore';
 
 const run = promisify(execFile);
 
@@ -31,16 +31,20 @@ interface Index {
  */
 @Injectable()
 export class FilesService {
-  private readonly cache = new Map<string, { at: number; index: Promise<Index> }>();
-  private readonly ignoredCache = new Map<string, { at: number; list: Promise<string[]> }>();
+  private readonly cache = new Map<string, { at: number; index: Promise<Index>; settled: boolean }>();
+  /** The ignored paths being read, per folder: only a read already under way is shared ("Show ignored" must list what a run just wrote). */
+  private readonly ignoredReads = new Map<string, Promise<string[]>>();
 
-  constructor(@Optional() watch?: WatchService) {
+  constructor(@Optional() watch?: FolderChangesService) {
     watch?.onBatch((cwd) => this.refresh(cwd));
   }
 
   async search(cwd: string, query: string, limit = 50): Promise<FileMatch[]> {
     const { files } = await this.index(cwd);
-    const entries: FileMatch[] = [...files.map((path) => ({ path })), ...directories(files).map((path) => ({ path, dir: true }))];
+    const entries: FileMatch[] = [
+      ...files.map((path) => ({ path })),
+      ...directories(files).map((path) => ({ path, dir: true })),
+    ];
     const q = query.trim().replace(/^\.?\//, '');
     if (q === '') {
       // No query: the top level first, shallow before deep.
@@ -70,7 +74,9 @@ export class FilesService {
    * it (then ignored entries are listed too, marked `ignored`). A file that git still knows but the disk no longer has is `missing`.
    */
   async children(cwd: string, dir = '', options: { showIgnored?: boolean } = {}): Promise<FileNode[]> {
-    const { files, git } = await this.index(cwd);
+    // The panel reads a folder when it opens it, when the window gets the focus back or a run ended: nothing watches the folder, so a cached index
+    // could show a file created a moment ago as missing until the next change. Only a read already under way is shared.
+    const { files, git } = await this.index(cwd, { fresh: true });
     const prefix = dir ? `${dir.replace(/\/$/, '')}/` : '';
     const names = new Map<string, { dir: boolean; ignored: boolean }>();
     for (const file of files) {
@@ -82,15 +88,27 @@ export class FilesService {
     }
     // A folder with no file in it (just made with "New folder") is in no file list, but the panel should show it.
     for (const entry of safeReaddir(join(cwd, dir.replace(/\/$/, '')))) {
-      if (entry.isDirectory() && !names.has(entry.name) && entry.name !== '.git' && !SKIP_DIRS.has(entry.name) && holdsNoFile(join(cwd, prefix, entry.name))) {
+      if (
+        entry.isDirectory() &&
+        !names.has(entry.name) &&
+        entry.name !== '.git' &&
+        !SKIP_DIRS.has(entry.name) &&
+        holdsNoFile(join(cwd, prefix, entry.name))
+      ) {
         names.set(entry.name, { dir: true, ignored: false });
       }
     }
     if (options.showIgnored) {
       const ignored = git ? await this.ignoredPaths(cwd) : [];
-      for (const [name, entry] of this.ignoredChildren(cwd, dir, prefix, ignored, git)) if (!names.has(name)) names.set(name, entry);
+      for (const [name, entry] of this.ignoredChildren(cwd, dir, prefix, ignored, git))
+        if (!names.has(name)) names.set(name, entry);
     }
-    const nodes: FileNode[] = [...names].map(([name, entry]) => ({ name, path: `${prefix}${name}`, dir: entry.dir, ...(entry.ignored ? { ignored: true } : {}) }));
+    const nodes: FileNode[] = [...names].map(([name, entry]) => ({
+      name,
+      path: `${prefix}${name}`,
+      dir: entry.dir,
+      ...(entry.ignored ? { ignored: true } : {}),
+    }));
     nodes.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
     return nodes.length <= STAT_LIMIT ? Promise.all(nodes.map((node) => withStat(cwd, node))) : nodes;
   }
@@ -98,36 +116,53 @@ export class FilesService {
   /** Forget the cached index (after a revert or a write the panel should see, and when the watcher saw a change). */
   refresh(cwd: string): void {
     this.cache.delete(cwd);
-    this.ignoredCache.delete(cwd);
   }
 
-  private index(cwd: string): Promise<Index> {
+  /** The folder's index, cached for `CACHE_MS` (`@` completion types fast); `fresh` takes only a read that has not finished yet. */
+  private index(cwd: string, options: { fresh?: boolean } = {}): Promise<Index> {
     const hit = this.cache.get(cwd);
-    if (hit && Date.now() - hit.at < CACHE_MS) return hit.index;
-    const index = listFiles(cwd);
-    this.cache.set(cwd, { at: Date.now(), index });
-    return index;
+    if (hit && (options.fresh ? !hit.settled : Date.now() - hit.at < CACHE_MS)) return hit.index;
+    const entry = { at: Date.now(), index: listFiles(cwd), settled: false };
+    void entry.index.finally(() => (entry.settled = true)).catch(() => undefined);
+    this.cache.set(cwd, entry);
+    return entry.index;
   }
 
   /** Ignored files and folders (`dist/`, `.env`, `src/gen/a.js`) of a git folder, folders collapsed to their name with a trailing slash. */
   private ignoredPaths(cwd: string): Promise<string[]> {
-    const hit = this.ignoredCache.get(cwd);
-    if (hit && Date.now() - hit.at < CACHE_MS) return hit.list;
-    const list = run('git', ['-C', cwd, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], { maxBuffer: 128 * 1024 * 1024, encoding: 'utf8', env: GIT_ENV })
+    const pending = this.ignoredReads.get(cwd);
+    if (pending) return pending;
+    const list = run(
+      'git',
+      ['-C', cwd, 'ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'],
+      { maxBuffer: 128 * 1024 * 1024, encoding: 'utf8', env: GIT_ENV },
+    )
       .then(({ stdout }) => stdout.split('\0').filter(Boolean))
-      .catch(() => []);
-    this.ignoredCache.set(cwd, { at: Date.now(), list });
+      .catch(() => [])
+      .finally(() => this.ignoredReads.delete(cwd));
+    this.ignoredReads.set(cwd, list);
     return list;
   }
 
   /** What "Show ignored" adds under `dir`. */
-  private ignoredChildren(cwd: string, dir: string, prefix: string, ignored: readonly string[], git: boolean): Map<string, { dir: boolean; ignored: boolean }> {
+  private ignoredChildren(
+    cwd: string,
+    dir: string,
+    prefix: string,
+    ignored: readonly string[],
+    git: boolean,
+  ): Map<string, { dir: boolean; ignored: boolean }> {
     const out = new Map<string, { dir: boolean; ignored: boolean }>();
     const base = dir.replace(/\/$/, '');
     // Inside an ignored folder everything is ignored: read the disk.
-    const inside = base !== '' && (git ? ignored.some((p) => p.endsWith('/') && (base === p.slice(0, -1) || base.startsWith(p))) : isUnderSkipped(cwd, base));
+    const inside =
+      base !== '' &&
+      (git
+        ? ignored.some((p) => p.endsWith('/') && (base === p.slice(0, -1) || base.startsWith(p)))
+        : isUnderSkipped(cwd, base));
     if (inside) {
-      for (const entry of safeReaddir(join(cwd, base))) if (entry.name !== '.git') out.set(entry.name, { dir: entry.isDirectory(), ignored: true });
+      for (const entry of safeReaddir(join(cwd, base)))
+        if (entry.name !== '.git') out.set(entry.name, { dir: entry.isDirectory(), ignored: true });
       return out;
     }
     if (git) {
@@ -145,7 +180,8 @@ export class FilesService {
     const names = rootIgnores(cwd);
     for (const entry of safeReaddir(join(cwd, base))) {
       if (entry.name === '.git') continue;
-      if (SKIP_DIRS.has(entry.name) || names.has(entry.name)) out.set(entry.name, { dir: entry.isDirectory(), ignored: true });
+      if (SKIP_DIRS.has(entry.name) || names.has(entry.name))
+        out.set(entry.name, { dir: entry.isDirectory(), ignored: true });
     }
     return out;
   }
@@ -192,7 +228,11 @@ async function listFiles(cwd: string): Promise<Index> {
       env: GIT_ENV,
     });
     // A deletion that is staged (`git rm`) is no longer in the index, but the panel keeps showing it until it is committed.
-    const staged = await run('git', ['-C', cwd, 'diff', '--cached', '--name-only', '--diff-filter=D', '--relative', '-z', '--', '.'], { maxBuffer: 16 * 1024 * 1024, env: GIT_ENV })
+    const staged = await run(
+      'git',
+      ['-C', cwd, 'diff', '--cached', '--name-only', '--diff-filter=D', '--relative', '-z', '--', '.'],
+      { maxBuffer: 16 * 1024 * 1024, env: GIT_ENV },
+    )
       .then(({ stdout: out }) => out.split('\0').filter(Boolean))
       .catch(() => []);
     return { files: [...new Set([...stdout.split('\0').filter(Boolean), ...staged])].slice(0, MAX_FILES), git: true };

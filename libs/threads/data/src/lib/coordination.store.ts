@@ -1,5 +1,7 @@
 import { computed, effect, inject, untracked } from '@angular/core';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withProps, withState } from '@ngrx/signals';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
+import { tap } from 'rxjs';
 import { ApiClient, coordinationGet, unwrap } from '@pi-kit/api';
 import { withLatestRequest, withPolling } from '@pi-kit/data-access';
 import type { FileLease, OtherAgentInfo } from '@pi-kit/protocol';
@@ -85,19 +87,24 @@ export const CoordinationStore = signalStore(
   withHooks({
     onInit(store) {
       const threads = inject(ThreadsStore);
+      const poll = (): void =>
+        store._startPolling('coordination', {
+          intervalMs: store._policy.coordinationRefreshMs,
+          run: (signal) => store.refresh(signal),
+        });
+      // Reads while a panel wants it: again when the thread changes and on a timer.
       effect((onCleanup) => {
-        // Reads again when the thread changes, when the folder does (an edit by another thread is a change there), and on a timer.
         threads.selectedId();
-        threads.watchTick();
         if (store.wanted().length === 0) return;
-        untracked(() =>
-          store._startPolling('coordination', {
-            intervalMs: store._policy.coordinationRefreshMs,
-            run: (signal) => store.refresh(signal),
-          }),
-        );
+        untracked(poll);
         onCleanup(() => store._stopPolling('coordination'));
       });
+      // And at once when the folder changes (an edit by another thread is a change there).
+      rxMethod<unknown>(
+        tap(() => {
+          if (store.wanted().length > 0) poll();
+        }),
+      )(threads.folderChanges);
     },
   }),
 );

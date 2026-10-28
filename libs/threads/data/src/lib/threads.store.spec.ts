@@ -20,6 +20,7 @@ import type { ThreadState, ThreadSummary, ThreadsEvent, WatchEvent, Workspace } 
 import { TrustStore } from './trust.store';
 
 import { ThreadsStore } from './threads.store';
+import type { FolderChange } from './with-folder-changes';
 
 const ws = (cwd: string, over: Partial<Workspace> = {}): Workspace =>
   ({
@@ -547,6 +548,8 @@ describe('ThreadsStore', () => {
     it('opens while a panel wants it, bumps the tick on events, and closes a grace period after the last lets go', async () => {
       const store = make();
       await store.init();
+      const seen: FolderChange[] = [];
+      store.folderChanges.subscribe((change) => seen.push(change));
       TestBed.tick();
       expect(workspaceApi.watch).not.toHaveBeenCalled();
       store.want('files', true);
@@ -555,11 +558,13 @@ describe('ThreadsStore', () => {
       expect(workspaceApi.watch).toHaveBeenCalledTimes(1);
       emit?.({ type: 'ready' } as WatchEvent);
       await vi.advanceTimersByTimeAsync(0);
-      emit?.({ type: 'change', paths: ['src/a.ts'], overflow: false } as WatchEvent);
+      emit?.({ type: 'change', paths: ['src/a.ts'], overflow: false, headMoved: false, at: 0 } as WatchEvent);
       await vi.advanceTimersByTimeAsync(0);
       expect(store.watchConnected()).toBe(true);
-      expect(store.watchTick()).toBe(2);
-      expect(store.watchLast()).toEqual({ paths: ['src/a.ts'], overflow: false });
+      expect(seen).toEqual([
+        { paths: [], overflow: true, headMoved: false },
+        { paths: ['src/a.ts'], overflow: false, headMoved: false },
+      ]);
 
       store.want('files', false);
       TestBed.tick();
@@ -569,6 +574,41 @@ describe('ThreadsStore', () => {
       await vi.advanceTimersByTimeAsync(200);
       TestBed.tick();
       expect(store.watchHeld()).toBe(false);
+    });
+
+    it('reads the folder again when the window gets the focus back, while a panel wants it', async () => {
+      const store = make();
+      await store.init();
+      const seen: FolderChange[] = [];
+      store.folderChanges.subscribe((change) => seen.push(change));
+      window.dispatchEvent(new Event('focus'));
+      expect(seen).toEqual([]);
+      store.want('files', true);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+      window.dispatchEvent(new Event('focus'));
+      expect(seen).toEqual([{ paths: [], overflow: true, headMoved: false }]);
+    });
+
+    it('hands on every change, also two that arrive in one chunk of the stream', async () => {
+      const store = make();
+      await store.init();
+      const seen: FolderChange[] = [];
+      store.folderChanges.subscribe((change) => seen.push(change));
+      store.want('changes', true);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+      emit?.({ type: 'ready' } as WatchEvent);
+      await vi.advanceTimersByTimeAsync(0);
+      seen.length = 0;
+      // Back to back, as the stream hands over two lines of one chunk: a signal would keep only the second.
+      emit?.({ type: 'change', paths: ['src/a.ts'], overflow: false, headMoved: false, at: 0 } as WatchEvent);
+      emit?.({ type: 'change', paths: [], overflow: false, headMoved: true, at: 0 } as WatchEvent);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(seen).toEqual([
+        { paths: ['src/a.ts'], overflow: false, headMoved: false },
+        { paths: [], overflow: false, headMoved: true },
+      ]);
     });
 
     it.each(['EOF', 'error'])(
@@ -600,10 +640,12 @@ describe('ThreadsStore', () => {
         await vi.advanceTimersByTimeAsync(0);
         emit?.({ type: 'ready' } as WatchEvent);
         await vi.advanceTimersByTimeAsync(0);
-        const tick = store.watchTick();
-        oldEmit?.({ type: 'change', paths: ['old-folder.ts'], overflow: false, at: Date.now() });
+        const seen: FolderChange[] = [];
+        const sub = store.folderChanges.subscribe((change) => seen.push(change));
+        oldEmit?.({ type: 'change', paths: ['old-folder.ts'], overflow: false, headMoved: false, at: Date.now() });
         await vi.advanceTimersByTimeAsync(2000);
-        expect(store.watchTick()).toBe(tick);
+        sub.unsubscribe();
+        expect(seen).toEqual([]);
         expect(workspaceApi.watch.mock.calls.map(([cwd]) => cwd)).toEqual(['/a', '/a', '/b']);
         expect(workspaceApi.watch.mock.calls[1][2].aborted).toBe(true);
         // Demand ending closes the current transport after the shared panel grace.

@@ -1,12 +1,19 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { type WorkspaceStatus, WorkspaceStatusQuerySchema, WorkspaceStatusSchema } from '@pi-kit/protocol';
+import {
+  type GitInitResult,
+  GitInitResultSchema,
+  type WorkspaceStatus,
+  WorkspaceStatusQuerySchema,
+  WorkspaceStatusSchema,
+} from '@pi-kit/protocol';
 import type { z } from 'zod';
 import { Fails, Responds, WorkspaceIdParam } from '../contract';
 import { MetaRepository } from '../db/meta.repository';
 import { ChangesService } from './changes.service';
+import { git, isWorkTree } from './git';
 
-/** The Files panel's decoration. `:id` is the workspace's folder, URL-encoded, as for the rest of `workspaces/:id`. */
+/** The folder's git state: the Files panel's decoration, and making a folder a repository. `:id` is the workspace's folder, URL-encoded, as for the rest of `workspaces/:id`. */
 @ApiTags('files')
 @WorkspaceIdParam()
 @Controller('workspaces/:id')
@@ -18,10 +25,33 @@ export class WorkspaceStatusController {
 
   /** git's badge per changed file, plus (with `thread`) the files pi changed in that thread. */
   @Get('status')
-  @ApiOperation({ summary: "Get a folder's git status", description: "Returns git's badge for each changed file of the project, and with `thread` the files pi changed in that thread." })
+  @ApiOperation({
+    summary: "Get a folder's git status",
+    description:
+      "Returns git's badge for each changed file of the project, and with `thread` the files pi changed in that thread.",
+  })
   @Responds(WorkspaceStatusSchema)
   @Fails({ 404: 'The folder is not a known project.' })
-  status(@Param('id') id: string, @Query({ schema: WorkspaceStatusQuerySchema }) query: z.infer<typeof WorkspaceStatusQuerySchema>): Promise<WorkspaceStatus> {
+  status(
+    @Param('id') id: string,
+    @Query({ schema: WorkspaceStatusQuerySchema }) query: z.infer<typeof WorkspaceStatusQuerySchema>,
+  ): Promise<WorkspaceStatus> {
     return this.changes.fileStatus(this.meta.requireWorkspace(id), query.thread || undefined);
+  }
+
+  /** Diffs and the live refresh are built from git: a folder without a repository gets one when the person asks. */
+  @Post('git-init')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Initialise git',
+    description:
+      'Runs `git init` in the project folder if it is not in a git work tree yet. Diffs and the live refresh of the Files and Changes panels are built from git.',
+  })
+  @Responds(GitInitResultSchema)
+  @Fails({ 404: 'The folder is not a known project.' })
+  async initGit(@Param('id') id: string): Promise<GitInitResult> {
+    const cwd = this.meta.requireWorkspace(id);
+    if (!(await isWorkTree(cwd))) await git(cwd, ['init'], { timeout: 0 });
+    return { git: true };
   }
 }

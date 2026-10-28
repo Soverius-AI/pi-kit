@@ -237,22 +237,46 @@ describe('FilesStore', () => {
     expect(api.tree).toHaveBeenCalledWith('/a', 'src', true, expect.any(AbortSignal));
   });
 
-  it('a watcher batch reloads only the folders it touched; a git change reloads all', async () => {
+  it('a change of the folder reads every open folder again, and the badges', async () => {
     const files = await make();
     files.toggle(node('src', true));
     await vi.advanceTimersByTimeAsync(0);
-    api.tree.mockClear();
-    threads.watchLast.set({ paths: ['src/c.ts'], overflow: false });
-    threads.watchTick.set(1);
-    TestBed.tick();
+    for (const change of [
+      { paths: ['src/c.ts'], overflow: false, headMoved: false },
+      // A run that only made an empty folder, or wrote ignored files: no path names it.
+      { paths: [], overflow: false, headMoved: false },
+      { paths: [], overflow: false, headMoved: true },
+    ]) {
+      api.tree.mockClear();
+      api.status.mockClear();
+      threads.folderChanges.next(change);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(api.tree.mock.calls.map((c) => c[1]).sort()).toEqual(['', 'src']);
+      expect(api.status).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('drops the row of an open folder that was deleted', async () => {
+    const files = await make();
+    files.toggle(node('src', true));
     await vi.advanceTimersByTimeAsync(0);
-    expect(api.tree.mock.calls.map((c) => c[1])).toEqual(['src']);
-    api.tree.mockClear();
-    threads.watchLast.set({ paths: ['.git/index'], overflow: false });
-    threads.watchTick.set(2);
-    TestBed.tick();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(api.tree.mock.calls.map((c) => c[1]).sort()).toEqual(['', 'src']);
+    const before = { ...tree };
+    try {
+      tree[''] = [node('README.md'), node('zeta.txt')];
+      tree['src'] = [];
+      threads.folderChanges.next({ paths: ['src/a.ts', 'src/b.ts'], overflow: false, headMoved: false });
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        files
+          .children()
+          .get('')
+          ?.map((n) => n.path),
+      ).toEqual(['README.md', 'zeta.txt']);
+    } finally {
+      Object.assign(tree, before);
+    }
   });
 
   it('refreshes the badges when a run ends', async () => {

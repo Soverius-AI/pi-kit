@@ -8,7 +8,14 @@ const hunks = splitDiff(readFileSync(new URL('./fixtures/outcome.diff', import.m
 
 describe('specificityOf: how concrete a message is', () => {
   it('a message that names nothing is vague', () => {
-    expect(specificityOf('make it better and faster please')).toMatchObject({ level: 'vague', kinds: 0, files: [], lines: [], commands: [], code: false });
+    expect(specificityOf('make it better and faster please')).toMatchObject({
+      level: 'vague',
+      kinds: 0,
+      files: [],
+      lines: [],
+      commands: [],
+      code: false,
+    });
   });
 
   it('names files by path and by extension, but not a version number or a link', () => {
@@ -22,11 +29,15 @@ describe('specificityOf: how concrete a message is', () => {
   });
 
   it('finds line numbers in the usual ways', () => {
-    expect(specificityOf('fix line 42, lines 10-20, L7 and src/a.ts:15').lines).toEqual(expect.arrayContaining(['line 42', 'lines 10-20', 'L7', ':15']));
+    expect(specificityOf('fix line 42, lines 10-20, L7 and src/a.ts:15').lines).toEqual(
+      expect.arrayContaining(['line 42', 'lines 10-20', 'L7', ':15']),
+    );
   });
 
   it('finds commands in backticks and after a dollar sign, and code in fences and calls', () => {
-    const s = specificityOf('Run `npm run build` then\n$ git status\nand call `mapRow(row)` like:\n```ts\nconst x = 1;\n```');
+    const s = specificityOf(
+      'Run `npm run build` then\n$ git status\nand call `mapRow(row)` like:\n```ts\nconst x = 1;\n```',
+    );
     expect(s.commands).toEqual(['npm run build', 'git status']);
     expect(s.code).toBe(true);
   });
@@ -52,7 +63,9 @@ describe('correctionOf: a small rule set', () => {
   });
 
   it('quoting pi’s own words back is a correction', () => {
-    const c = correctionOf('You said "I also changed the README" but I never asked for that', { previous: 'I added the notes. I also changed the README.' });
+    const c = correctionOf('You said "I also changed the README" but I never asked for that', {
+      previous: 'I added the notes. I also changed the README.',
+    });
     expect(c.signals).toContain('quotes-pi');
   });
 
@@ -62,12 +75,18 @@ describe('correctionOf: a small rule set', () => {
   });
 
   it('plain instructions and words that only contain a rule word are not corrections', () => {
-    for (const text of ['Add a note about nodes', 'Now run the tests', 'know your limits, see notes.md', 'Also add a header']) expect(correctionOf(text).is).toBe(false);
+    for (const text of [
+      'Add a note about nodes',
+      'Now run the tests',
+      'know your limits, see notes.md',
+      'Also add a header',
+    ])
+      expect(correctionOf(text).is).toBe(false);
   });
 });
 
 describe('buildLedger over the recorded thread', () => {
-  const ledger = buildLedger({ transcript: fixture.transcript, baselines: fixture.baselines, outsideEdits: fixture.outsideEdits, hunks });
+  const ledger = buildLedger({ transcript: fixture.transcript, baselines: fixture.baselines, hunks });
 
   it('classifies the messages: first, follow-up, queued', () => {
     expect(ledger.messages.map((m) => m.kind)).toEqual(['first', 'follow-up', 'follow-up', 'queued']);
@@ -87,22 +106,41 @@ describe('buildLedger over the recorded thread', () => {
   });
 
   it('totals what the person did', () => {
-    expect(ledger.totals).toMatchObject({ messages: 4, corrections: 2, reviewBatches: 1, reviewComments: 1, dialogAnswers: 1, chips: 1, unattendedTurns: 1, toolCalls: 9, handEditedFiles: 1, handEditedInOutcome: 1 });
+    expect(ledger.totals).toMatchObject({
+      messages: 4,
+      corrections: 2,
+      reviewBatches: 1,
+      reviewComments: 1,
+      dialogAnswers: 1,
+      chips: 1,
+      unattendedTurns: 1,
+      toolCalls: 9,
+      handEditedInOutcome: 1,
+    });
     expect(ledger.totals.toolCallsPerMessage).toBe(2.3);
     // The person's time between turns counts the turns they waited for, not the queued one.
     expect(ledger.totals.waitMs).toBe(180_000);
     expect(ledger.totals.medianGapMs).toBe(90_000);
   });
 
-  it('a file that only the hand changed is the person’s whole; a file both changed is not', () => {
+  it('a file of the outcome that no run changed is the person’s whole; a file pi changed is not', () => {
     expect(ledger.handOnly).toEqual(['notes/gamma.md']);
-    const both = buildLedger({ transcript: fixture.transcript, baselines: [...fixture.baselines, { path: 'notes/gamma.md', turn: 3 }], outsideEdits: fixture.outsideEdits, hunks });
+    const both = buildLedger({
+      transcript: fixture.transcript,
+      baselines: [...fixture.baselines, { path: 'notes/gamma.md', turn: 3 }],
+      hunks,
+    });
     expect(both.handOnly).toEqual([]);
   });
 
   it('keeps per file what led to it', () => {
     const alpha = ledger.files.find((f) => f.path === 'notes/alpha.md');
-    expect(alpha).toMatchObject({ inDiff: true, named: [1, 3], reviewed: [{ n: 3, line: 2, endLine: null }], piTouched: { turn: 1, edits: 2 }, byHand: null });
+    expect(alpha).toMatchObject({
+      inDiff: true,
+      named: [1, 3],
+      reviewed: [{ n: 3, line: 2, endLine: null }],
+      piTouched: { turn: 1, edits: 2 },
+    });
   });
 
   it('works on a transcript from before turns existed, from the prompts alone', () => {
@@ -120,7 +158,7 @@ describe('buildLedger over the recorded thread', () => {
     expect(text).toContain('review comment on notes/alpha.md:2');
     expect(text).toContain('dialog answer (confirm: Allow bash?): allow');
     expect(text).toContain('queued message (pi picked it up unattended)');
-    expect(text).toContain('- notes/gamma.md: pi never edited it; changed by hand 3 times outside pi');
+    expect(text).toContain('- notes/gamma.md: pi never edited it; changed outside pi');
     expect(text).toContain('4 messages, 2 corrections, 1 review comments');
   });
 });

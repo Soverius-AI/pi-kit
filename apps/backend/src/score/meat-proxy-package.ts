@@ -15,16 +15,29 @@ export interface HostFailure {
 
 /** What the extension and the backend share: the whole scoring of a thread against a host that answers the plugin API's requests (`lib/pipeline.mjs`). */
 export interface ScoringHost {
-  outcome(): Promise<{ ok: true; outcome: unknown; diff?: string | null; annotations?: { hunkLabels: unknown; scores: unknown } } | HostFailure>;
+  outcome(): Promise<
+    | { ok: true; outcome: unknown; diff?: string | null; annotations?: { hunkLabels: unknown; scores: unknown } }
+    | HostFailure
+  >;
   transcript(): Promise<{ ok: true; transcript: unknown } | HostFailure>;
   baselines(): Promise<{ ok: true; files: unknown[] } | HostFailure>;
-  outsideEdits(): Promise<{ ok: true; edits: unknown[] } | HostFailure>;
   /** One model call; `progress` says which of the diff's batches this is (1-based), so a long scoring can be followed call by call. */
-  run(prompt: { system: string; user: string }, progress: { batch: number; batches: number }): Promise<{ ok: true; text: string; model?: string | null } | HostFailure>;
-  annotate(body: { base: string; head: string; model: string | null; labels: HunkLabelEntry[]; scores: OutcomeScores }): Promise<{ ok: true } | HostFailure>;
+  run(
+    prompt: { system: string; user: string },
+    progress: { batch: number; batches: number },
+  ): Promise<{ ok: true; text: string; model?: string | null } | HostFailure>;
+  annotate(body: {
+    base: string;
+    head: string;
+    model: string | null;
+    labels: HunkLabelEntry[];
+    scores: OutcomeScores;
+  }): Promise<{ ok: true } | HostFailure>;
 }
 
-export type ScoringResult = { ok: true; scores: OutcomeScores; labels: HunkLabelEntry[]; model: string | null } | { ok: false; code: string; error: string; model?: string };
+export type ScoringResult =
+  | { ok: true; scores: OutcomeScores; labels: HunkLabelEntry[]; model: string | null }
+  | { ok: false; code: string; error: string; model?: string };
 
 /** What `packages/pi-kit-meat-proxy/lib/pipeline.mjs` offers pi-kit's backend (the extension uses the same file). */
 export interface ScoringModule {
@@ -49,7 +62,14 @@ export class MeatProxyPackage extends PiKitPackage<ScoringModule> {
   private readonly changeListeners = new Set<(installed: boolean) => void>();
 
   constructor(meta: MetaRepository) {
-    super(meta, { name: MEAT_PROXY_PACKAGE, folder: 'pi-kit-meat-proxy', entry: 'lib/pipeline.mjs', setting: 'meat-proxy', env: 'PI_KIT_MEAT_PROXY_PACKAGE', label: 'meat-proxy' });
+    super(meta, {
+      name: MEAT_PROXY_PACKAGE,
+      folder: 'pi-kit-meat-proxy',
+      entry: 'lib/pipeline.mjs',
+      setting: 'meat-proxy',
+      env: 'PI_KIT_MEAT_PROXY_PACKAGE',
+      label: 'meat-proxy',
+    });
   }
 
   scoring(): Promise<ScoringModule | undefined> {

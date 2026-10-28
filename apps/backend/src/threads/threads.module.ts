@@ -2,7 +2,8 @@ import { Module } from '@nestjs/common';
 import { DbModule } from '../db/db.module';
 import { PiModule } from '../pi/pi.module';
 import { TerminalModule } from '../terminal/terminal.module';
-import { WatchModule } from '../watch/watch.module';
+import { SnapshotsModule } from '../snapshots/snapshots.module';
+import { FolderChangesModule } from '../folder-changes/folder-changes.module';
 import { WorktreeService } from '../worktree/worktree.service';
 import { AppSettingsController } from './app-settings.controller';
 import { OutcomesController } from './outcomes.controller';
@@ -18,7 +19,7 @@ import { WorktreeController } from './worktree.controller';
  * worktrees, outcomes.
  */
 @Module({
-  imports: [DbModule, PiModule, TerminalModule, WatchModule],
+  imports: [DbModule, PiModule, TerminalModule, FolderChangesModule, SnapshotsModule],
   controllers: [ThreadsController, WorkspacesController, AppSettingsController, WorktreeController, OutcomesController],
   providers: [ThreadsService, ThreadStatusService, WorktreeService, OutcomesService],
   exports: [ThreadsService, ThreadStatusService, WorktreeService, OutcomesService],

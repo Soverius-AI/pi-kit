@@ -40,7 +40,9 @@ export function attribute(files: readonly string[], candidates: readonly Candida
     if (
       !best ||
       n > best.overlap ||
-      (n === best.overlap && (candidate.lastRunAt > best.lastRunAt || (candidate.lastRunAt === best.lastRunAt && candidate.threadId < best.id)))
+      (n === best.overlap &&
+        (candidate.lastRunAt > best.lastRunAt ||
+          (candidate.lastRunAt === best.lastRunAt && candidate.threadId < best.id)))
     ) {
       best = { id: candidate.threadId, overlap: n, lastRunAt: candidate.lastRunAt };
     }
@@ -67,7 +69,10 @@ const union = (a: readonly string[], b: readonly string[]): string[] => [...new 
  * latest of the two wins). A commit becomes the outcome of a thread that has none, extends a `committed` outcome (the head moves, the files grow, the
  * base stays where the first commit put it) and never replaces a merge or a pull request.
  */
-export function nextOutcome(existing: OutcomeRow | undefined, incoming: Incoming): Omit<OutcomeRow, 'scores' | 'hunkLabels'> | undefined {
+export function nextOutcome(
+  existing: OutcomeRow | undefined,
+  incoming: Incoming,
+): Omit<OutcomeRow, 'scores' | 'hunkLabels'> | undefined {
   if (incoming.kind !== 'committed') {
     return {
       threadId: incoming.threadId,
@@ -104,12 +109,13 @@ export function isCommitSubject(subject: string): boolean {
 /** The badge the thread state carries for an outcome row. */
 export function outcomeBadge(row: OutcomeRow | undefined, score?: ThreadScoreBadge): ThreadOutcomeBadge | null {
   if (!row) return null;
-  return { kind: row.kind, head: row.headCommit, at: row.at, ...(row.prUrl ? { url: row.prUrl } : {}), ...(score ? { score } : {}) };
-}
-
-/** Is this batch of watcher paths a sign that `HEAD` or a branch moved? */
-export function touchesHead(paths: readonly string[]): boolean {
-  return paths.some((p) => p === '.git/HEAD' || p === '.git/logs/HEAD' || p === '.git/packed-refs' || p.startsWith('.git/refs/heads/'));
+  return {
+    kind: row.kind,
+    head: row.headCommit,
+    at: row.at,
+    ...(row.prUrl ? { url: row.prUrl } : {}),
+    ...(score ? { score } : {}),
+  };
 }
 
 /** The git empty tree: what a root commit's "base" is, so `git diff <empty>..<head>` shows everything the commit added. */

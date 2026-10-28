@@ -10,11 +10,9 @@ import { Test } from '@nestjs/testing';
 import { type HunkLabelEntry, PLUGIN_CHANNELS } from '@pi-kit/protocol';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Completion } from '../attendant/attendant.service';
-import { ChangesRepository } from '../db/changes.repository';
 import { DatabaseService } from '../db/database.service';
 import { MetaRepository } from '../db/meta.repository';
 import { OutcomesRepository } from '../db/outcomes.repository';
-import { SignalsRepository } from '../db/signals.repository';
 import { ThreadsRepository } from '../db/threads.repository';
 import type { MeatProxyPackage, ScoringModule } from './meat-proxy-package';
 import { ScoreController } from './score.controller';
@@ -24,7 +22,10 @@ import { ScoreService, scoreConsentSentence } from './score.service';
 vi.mock('../pi/load-pi', () => ({ loadPi: () => import('@earendil-works/pi-coding-agent') }));
 
 const git = (cwd: string, ...args: string[]): string => {
-  const out = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd, encoding: 'utf8' });
+  const out = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
+    cwd,
+    encoding: 'utf8',
+  });
   if (out.status !== 0) throw new Error(`git ${args.join(' ')}: ${out.stderr}`);
   return out.stdout.trim();
 };
@@ -32,7 +33,9 @@ const git = (cwd: string, ...args: string[]): string => {
 let scoring: ScoringModule;
 beforeAll(async () => {
   // The scoring the package does, loaded the way the backend loads it from an installed package.
-  const url = pathToFileURL(resolve(__dirname, '..', '..', '..', '..', 'packages', 'pi-kit-meat-proxy', 'lib', 'pipeline.mjs')).href;
+  const url = pathToFileURL(
+    resolve(__dirname, '..', '..', '..', '..', 'packages', 'pi-kit-meat-proxy', 'lib', 'pipeline.mjs'),
+  ).href;
   scoring = (await import(/* @vite-ignore */ url)) as ScoringModule;
 });
 afterAll(() => undefined);
@@ -42,13 +45,17 @@ let project: string;
 let db: DatabaseService;
 let rows: ThreadsRepository;
 let outcomeRows: OutcomesRepository;
-let signals: SignalsRepository;
-let changes: ChangesRepository;
 let meta: MetaRepository;
 let service: ScoreService;
 let installed: boolean;
+let piChanged: string[];
 let attendantOn: boolean;
-let completions: { prompt: { system: string; user: string }; initiative: string; signal: AbortSignal | undefined; listed: string | undefined }[];
+let completions: {
+  prompt: { system: string; user: string };
+  initiative: string;
+  signal: AbortSignal | undefined;
+  listed: string | undefined;
+}[];
 let answer: (prompt: { system: string; user: string }) => Completion;
 /** Every model call of the fake attendant waits for this before it answers (resolved unless a test holds it). */
 let hold: Promise<void>;
@@ -74,8 +81,21 @@ const previousAgentDir = process.env['PI_CODING_AGENT_DIR'];
 
 const entries = [
   { type: 'message', id: 'm0', parentId: null, message: { role: 'user', content: 'Add notes/a.md and notes/b.md' } },
-  { type: 'message', id: 'm1', parentId: 'm0', message: { role: 'assistant', content: [{ type: 'toolCall', id: 'c1', name: 'write', arguments: { path: 'notes/a.md', content: 'x' } }] } },
-  { type: 'message', id: 'm2', parentId: 'm1', message: { role: 'toolResult', toolCallId: 'c1', content: [{ type: 'text', text: 'ok' }] } },
+  {
+    type: 'message',
+    id: 'm1',
+    parentId: 'm0',
+    message: {
+      role: 'assistant',
+      content: [{ type: 'toolCall', id: 'c1', name: 'write', arguments: { path: 'notes/a.md', content: 'x' } }],
+    },
+  },
+  {
+    type: 'message',
+    id: 'm2',
+    parentId: 'm1',
+    message: { role: 'toolResult', toolCallId: 'c1', content: [{ type: 'text', text: 'ok' }] },
+  },
 ];
 
 const transcript = {
@@ -94,7 +114,21 @@ const transcript = {
   head: null,
   truncated: false,
   redactions: 0,
-  turns: [{ n: 1, at: 1, text: 'Add notes/a.md and notes/b.md', queued: false, gapMs: null, toolCalls: 1, files: ['notes/a.md'], chips: [], review: null, answers: [], previous: null }],
+  turns: [
+    {
+      n: 1,
+      at: 1,
+      text: 'Add notes/a.md and notes/b.md',
+      queued: false,
+      gapMs: null,
+      toolCalls: 1,
+      files: ['notes/a.md'],
+      chips: [],
+      review: null,
+      answers: [],
+      previous: null,
+    },
+  ],
 };
 
 beforeEach(() => {
@@ -123,21 +157,34 @@ beforeEach(() => {
   meta.touchWorkspace(project);
   rows = new ThreadsRepository(db);
   outcomeRows = new OutcomesRepository(db);
-  signals = new SignalsRepository(db);
-  changes = new ChangesRepository(db);
   installed = true;
+  piChanged = ['notes/a.md', 'notes/b.md', 'notes/c.md'];
   attendantOn = true;
   completions = [];
   touched = [];
   notes = [];
   delegated = [];
   hold = Promise.resolve();
-  answer = () => ({ ok: true, text: 'h1 | specified | prompt 1 | named\nh2 | autonomous | none | extra', model: 'fake/canned', inputTokens: 1, outputTokens: 1, cost: 0 });
+  answer = () => ({
+    ok: true,
+    text: 'h1 | specified | prompt 1 | named\nh2 | autonomous | none | extra',
+    model: 'fake/canned',
+    inputTokens: 1,
+    outputTokens: 1,
+    cost: 0,
+  });
 
   rows.insertDraft({ id: 't1', sessionPath: join(base, 't1.jsonl'), cwd: project, baseCommit });
-  outcomeRows.put({ threadId: 't1', kind: 'committed', baseCommit, headCommit, mergeCommit: null, prUrl: null, at: 5, files: ['notes/a.md', 'notes/b.md', 'notes/hand.md'] });
-  changes.putBaseline('t1', 'notes/a.md', { existed: false, content: null });
-  signals.noteOutsideEdit('t1', 'notes/hand.md', 10);
+  outcomeRows.put({
+    threadId: 't1',
+    kind: 'committed',
+    baseCommit,
+    headCommit,
+    mergeCommit: null,
+    prUrl: null,
+    at: 5,
+    files: ['notes/a.md', 'notes/b.md', 'notes/hand.md'],
+  });
 
   const attendant = {
     settings: () => ({ enabled: attendantOn }),
@@ -145,12 +192,23 @@ beforeEach(() => {
     allowedIn: () => true,
     enqueueTask: vi.fn((_id: string, task: () => Promise<void>) => void task()),
     note: (kind: string, _row: unknown, text: string, status?: string) => void notes.push({ kind, text, status }),
-    complete: async (_row: unknown, prompt: { system: string; user: string }, options: { initiative: string; signal?: AbortSignal; describe: (text: string) => { text: string } }) => {
-      const call: (typeof completions)[number] = { prompt, initiative: options.initiative, signal: options.signal, listed: undefined };
+    complete: async (
+      _row: unknown,
+      prompt: { system: string; user: string },
+      options: { initiative: string; signal?: AbortSignal; describe: (text: string) => { text: string } },
+    ) => {
+      const call: (typeof completions)[number] = {
+        prompt,
+        initiative: options.initiative,
+        signal: options.signal,
+        listed: undefined,
+      };
       completions.push(call);
       await hold;
       // The attendant's own contract (attendant.service.spec.ts): a call whose signal aborted answers `failed` without asking the model.
-      const done: Completion = options.signal?.aborted ? { ok: false, code: 'failed', error: 'The request was cancelled.' } : answer(prompt);
+      const done: Completion = options.signal?.aborted
+        ? { ok: false, code: 'failed', error: 'The request was cancelled.' }
+        : answer(prompt);
       // What the attendant's activity would list for this call.
       if (done.ok) call.listed = options.describe(done.text).text;
       return done;
@@ -165,13 +223,34 @@ beforeEach(() => {
   } as unknown as MeatProxyPackage;
   const outcomeOf = (id: string) => {
     const row = outcomeRows.get(id);
-    return row && { kind: row.kind, base: row.baseCommit, head: row.headCommit, merge: null, prUrl: null, at: row.at, files: row.files, baseBranch: 'main', baseSource: 'start' };
+    return (
+      row && {
+        kind: row.kind,
+        base: row.baseCommit,
+        head: row.headCommit,
+        merge: null,
+        prUrl: null,
+        at: row.at,
+        files: row.files,
+        baseBranch: 'main',
+        baseSource: 'start',
+      }
+    );
   };
   service = new ScoreService(
     outcomeRows,
     { get: outcomeOf, onOutcome: () => () => undefined } as never,
     rows,
-    { assertExists: (id: string) => void (rows.get(id) ?? (() => { throw new Error('missing'); })()), treeSource: async () => ({ entries, leafId: 'm2', path: undefined }) } as never,
+    {
+      assertExists: (id: string) =>
+        void (
+          rows.get(id) ??
+          (() => {
+            throw new Error('missing');
+          })()
+        ),
+      treeSource: async () => ({ entries, leafId: 'm2', path: undefined }),
+    } as never,
     {
       transcriptOf: async () => ({ ...transcript, cwd: project }),
       plugin: async (_t: string, channel: string, payload: unknown) => {
@@ -179,13 +258,20 @@ beforeEach(() => {
         return { requestId: (payload as { requestId: string }).requestId, ok: true, learn: true };
       },
     } as never,
-    signals,
-    changes,
     attendant as never,
     new PiPluginService(),
-    { touch: (id: string) => void touched.push(id), setScoreBadge: () => undefined, touchAll: () => undefined } as never,
+    {
+      touch: (id: string) => void touched.push(id),
+      setScoreBadge: () => undefined,
+      touchAll: () => undefined,
+    } as never,
     meta,
     pkg,
+    // What the thread's runs changed: everything of the outcome but the files changed by hand.
+    {
+      runChanges: async () =>
+        piChanged.map((path) => ({ path, turn: 1, at: 5, status: path === 'notes/a.md' ? 'A' : 'M' })),
+    } as never,
   );
 });
 
@@ -196,26 +282,58 @@ afterEach(() => {
   else process.env['PI_CODING_AGENT_DIR'] = previousAgentDir;
 });
 
-const ask = (channel: string, payload: Record<string, unknown> = {}, session = 't1') => service.plugin(session, channel, { requestId: 'r1', ...payload });
+const ask = (channel: string, payload: Record<string, unknown> = {}, session = 't1') =>
+  service.plugin(session, channel, { requestId: 'r1', ...payload });
 
 /** An outcome with enough changed text for more than one of the package's prompts; the fake model labels whatever each prompt offers. */
 function longOutcome(): void {
-  for (let index = 0; index < 30; index++) writeFileSync(join(project, 'notes', `long-${index}.txt`), Array.from({ length: 24 }, (_, line) => `file ${index} line ${line} ${'words '.repeat(28)}`).join('\n') + '\n');
+  for (let index = 0; index < 30; index++) piChanged.push(`notes/long-${index}.txt`);
+  for (let index = 0; index < 30; index++)
+    writeFileSync(
+      join(project, 'notes', `long-${index}.txt`),
+      Array.from({ length: 24 }, (_, line) => `file ${index} line ${line} ${'words '.repeat(28)}`).join('\n') + '\n',
+    );
   git(project, 'add', '-A');
   git(project, 'commit', '-q', '-m', 'Long outcome');
   const head = git(project, 'rev-parse', 'HEAD');
-  outcomeRows.put({ threadId: 't1', kind: 'committed', baseCommit, headCommit: head, mergeCommit: null, prUrl: null, at: 11, files: [] });
-  answer = (prompt) => ({ ok: true, text: [...prompt.user.matchAll(/^(h\d+) \| notes\/\S+ \|/gm)].map((match) => `${match[1]} | specified | prompt 1 | named`).join('\n'), model: 'fake/canned', inputTokens: 1, outputTokens: 1, cost: 0 });
+  outcomeRows.put({
+    threadId: 't1',
+    kind: 'committed',
+    baseCommit,
+    headCommit: head,
+    mergeCommit: null,
+    prUrl: null,
+    at: 11,
+    files: [],
+  });
+  answer = (prompt) => ({
+    ok: true,
+    text: [...prompt.user.matchAll(/^(h\d+) \| notes\/\S+ \|/gm)]
+      .map((match) => `${match[1]} | specified | prompt 1 | named`)
+      .join('\n'),
+    model: 'fake/canned',
+    inputTokens: 1,
+    outputTokens: 1,
+    cost: 0,
+  });
 }
 
-/** An outcome whose only changed file was changed by hand and never by pi: every hunk is decided by rule, and no model is asked. */
+/** An outcome whose only changed file no run of the thread changed: every hunk is decided by rule, and no model is asked. */
 function handOnlyOutcome(): void {
   writeFileSync(join(project, 'notes', 'hand2.md'), 'by hand too\n');
   git(project, 'add', '-A');
   git(project, 'commit', '-q', '-m', 'By hand');
   const head = git(project, 'rev-parse', 'HEAD');
-  outcomeRows.put({ threadId: 't1', kind: 'committed', baseCommit: head2, headCommit: head, mergeCommit: null, prUrl: null, at: 12, files: ['notes/hand2.md'] });
-  signals.noteOutsideEdit('t1', 'notes/hand2.md', 10);
+  outcomeRows.put({
+    threadId: 't1',
+    kind: 'committed',
+    baseCommit: head2,
+    headCommit: head,
+    mergeCommit: null,
+    prUrl: null,
+    at: 12,
+    files: ['notes/hand2.md'],
+  });
 }
 
 describe('scoring a thread through the package’s pipeline', () => {
@@ -225,7 +343,7 @@ describe('scoring a thread through the package’s pipeline', () => {
     expect(completions).toHaveLength(1);
     expect(completions[0].initiative).toBe('person');
     // The model saw the ledger and the hunks of the files pi touched or nobody explained; the hand-edited file is decided by the ledger.
-    expect(completions[0].prompt.user).toContain('- notes/hand.md: pi never edited it; changed by hand 1 time outside pi');
+    expect(completions[0].prompt.user).toContain('- notes/hand.md: pi never edited it; changed outside pi');
     expect(completions[0].prompt.user).toMatch(/h1 \| notes\/a\.md \| @@ -0,0 \+1,2 @@/);
     expect(completions[0].prompt.user).not.toMatch(/h\d \| notes\/hand\.md/);
 
@@ -238,7 +356,13 @@ describe('scoring a thread through the package’s pipeline', () => {
     // 2 + 1 + 1 changed lines: a.md (2) and hand.md (1) are the person's, b.md (1) is pi's.
     expect(view.scores).toMatchObject({ meat: 75, vibe: 25, hunks: 3, steered: 2, lines: 4, steeredLines: 3 });
     expect(view.scores.line).toBe('75 % steered: 2 of 3 hunks, 1 by the first prompt, 1 by hand');
-    expect(view).toMatchObject({ stale: false, model: 'fake/canned', base: baseCommit, head: headCommit, corrected: 0 });
+    expect(view).toMatchObject({
+      stale: false,
+      model: 'fake/canned',
+      base: baseCommit,
+      head: headCommit,
+      corrected: 0,
+    });
     expect(completions[0].listed).toBe('Attributed the outcome’s hunks to what you did');
     expect(touched).toContain('t1');
   });
@@ -248,11 +372,22 @@ describe('scoring a thread through the package’s pipeline', () => {
     const result = await service.request('t1');
     expect(result.status).toBe('scored');
     expect(completions.length).toBeGreaterThan(1);
-    expect(completions.map((c) => c.listed)).toEqual(completions.map((_, index) => `Attributed the outcome’s hunks to what you did (batch ${index + 1} of ${completions.length})`));
+    expect(completions.map((c) => c.listed)).toEqual(
+      completions.map(
+        (_, index) => `Attributed the outcome’s hunks to what you did (batch ${index + 1} of ${completions.length})`,
+      ),
+    );
     // The fixture already committed c.md after the first outcome, so the extended outcome includes it too.
-    const files = ['a.md', 'b.md', 'c.md', 'hand.md', ...Array.from({ length: 30 }, (_, index) => `long-${index}.txt`)].map((file) => `notes/${file}`).sort();
+    const files = ['a.md', 'b.md', 'c.md', 'hand.md', ...Array.from({ length: 30 }, (_, index) => `long-${index}.txt`)]
+      .map((file) => `notes/${file}`)
+      .sort();
     expect(result.score!.hunks.map((h) => h.file).sort()).toEqual(files);
-    expect(result.score!.hunks.filter((h) => h.by === 'model').map((h) => h.file).sort()).toEqual(files.filter((file) => file !== 'notes/hand.md'));
+    expect(
+      result
+        .score!.hunks.filter((h) => h.by === 'model')
+        .map((h) => h.file)
+        .sort(),
+    ).toEqual(files.filter((file) => file !== 'notes/hand.md'));
   });
 
   it('the request’s signal cancels a scoring of several batches: the call in flight hears it, no further batch is sent, nothing is stored, the request is refused', async () => {
@@ -342,12 +477,21 @@ describe('POST /threads/:id/score over HTTP', () => {
 
   /** The real route in front of the service built above, listening on a local port. */
   async function start(): Promise<string> {
-    const module = await Test.createTestingModule({ controllers: [ScoreController], providers: [{ provide: ScoreService, useValue: service }] }).compile();
+    const module = await Test.createTestingModule({
+      controllers: [ScoreController],
+      providers: [{ provide: ScoreService, useValue: service }],
+    }).compile();
     app = module.createNestApplication({ logger: false });
     await app.listen(0, '127.0.0.1');
     return (await app.getUrl()).replace('[::1]', '127.0.0.1');
   }
-  const post = (url: string, signal?: AbortSignal) => fetch(`${url}/threads/t1/score`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', signal });
+  const post = (url: string, signal?: AbortSignal) =>
+    fetch(`${url}/threads/t1/score`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+      signal,
+    });
 
   it('a client that closes the connection mid-scoring cancels it: the attendant’s call hears it, no batch follows, nothing is stored', async () => {
     longOutcome();
@@ -384,7 +528,9 @@ describe('the attendant’s own scoring after an outcome', () => {
   it('scores, lists the result in the activity, and uses the attendant’s initiative', async () => {
     expect(await service.autoScore('t1')).toBe('scored');
     expect(completions[0].initiative).toBe('attendant');
-    expect(notes).toEqual([{ kind: 'score', text: '75 % steered: 2 of 3 hunks, 1 by the first prompt, 1 by hand', status: 'done' }]);
+    expect(notes).toEqual([
+      { kind: 'score', text: '75 % steered: 2 of 3 hunks, 1 by the first prompt, 1 by hand', status: 'done' },
+    ]);
   });
 
   it('does nothing while the attendant is off or the package is gone', async () => {
@@ -398,7 +544,16 @@ describe('the attendant’s own scoring after an outcome', () => {
 
   it('says why in the activity when the outcome changed no text', async () => {
     git(project, 'checkout', '-q', baseCommit);
-    outcomeRows.put({ threadId: 't1', kind: 'committed', baseCommit, headCommit: baseCommit, mergeCommit: null, prUrl: null, at: 6, files: [] });
+    outcomeRows.put({
+      threadId: 't1',
+      kind: 'committed',
+      baseCommit,
+      headCommit: baseCommit,
+      mergeCommit: null,
+      prUrl: null,
+      at: 6,
+      files: [],
+    });
     expect(await service.autoScore('t1')).toBe('skipped');
     expect(notes[0]).toMatchObject({ kind: 'score', status: 'skipped' });
     expect(notes[0].text).toMatch(/no text file/);
@@ -437,7 +592,16 @@ describe('the person relabels a hunk', () => {
 describe('what is drawn, and when', () => {
   it('says the labels are out of date when the outcome moved on', async () => {
     await service.request('t1');
-    outcomeRows.put({ threadId: 't1', kind: 'committed', baseCommit, headCommit: head2, mergeCommit: null, prUrl: null, at: 9, files: [] });
+    outcomeRows.put({
+      threadId: 't1',
+      kind: 'committed',
+      baseCommit,
+      headCommit: head2,
+      mergeCommit: null,
+      prUrl: null,
+      at: 9,
+      files: [],
+    });
     expect(service.view('t1').stale).toBe(true);
     expect(service.view('t1').head).toBe(headCommit);
   });
@@ -458,37 +622,66 @@ describe('the plugin events', () => {
     const reply = await ask(PLUGIN_CHANNELS.baselines);
     expect(reply).toMatchObject({ requestId: 'r1', ok: true });
     const files = reply?.['files'] as { path: string; existed: boolean; turn: number | null; edits: number }[];
-    expect(files).toHaveLength(1);
+    expect(files.map((f) => f.path)).toEqual(['notes/a.md', 'notes/b.md', 'notes/c.md']);
     expect(files[0]).toMatchObject({ path: 'notes/a.md', existed: false, turn: 1, edits: 1 });
     expect(JSON.stringify(files)).not.toContain('content');
   });
 
-  it('outside-edits: the files the watcher saw change by hand', async () => {
-    const reply = await ask(PLUGIN_CHANNELS.outsideEdits);
-    expect(reply?.['edits']).toEqual([{ path: 'notes/hand.md', firstAt: 10, lastAt: 10, count: 1 }]);
+  it('baselines: a file pi’s session says it edited is pi’s even when no snapshot recorded it', async () => {
+    piChanged = [];
+    const files = (await ask(PLUGIN_CHANNELS.baselines))?.['files'] as {
+      path: string;
+      existed: boolean;
+      turn: number | null;
+    }[];
+    expect(files).toEqual([expect.objectContaining({ path: 'notes/a.md', existed: false, turn: 1, edits: 1 })]);
   });
 
   it('a thread id is enough as its start, and an unknown one is not found', async () => {
-    expect((await ask(PLUGIN_CHANNELS.outsideEdits, { thread: 't' }, 'other'))?.ok).toBe(true);
-    expect(await ask(PLUGIN_CHANNELS.outsideEdits, { thread: 'nope' })).toMatchObject({ ok: false, code: 'not-found' });
+    expect((await ask(PLUGIN_CHANNELS.baselines, { thread: 't' }, 'other'))?.ok).toBe(true);
+    expect(await ask(PLUGIN_CHANNELS.baselines, { thread: 'nope' })).toMatchObject({ ok: false, code: 'not-found' });
   });
 
   it.each([1, 2001])('annotate: stores all %s labels and scores, and the thread’s state is told', async (count) => {
-    const labels: HunkLabelEntry[] = Array.from({ length: count }, (_, index) => ({ id: `notes/file-${index}.md@0:1`, file: `notes/file-${index}.md`, header: '@@ -0,0 +1,2 @@', label: 'specified', input: 'first-prompt', trace: 'named', lines: 2, by: 'model' }));
+    const labels: HunkLabelEntry[] = Array.from({ length: count }, (_, index) => ({
+      id: `notes/file-${index}.md@0:1`,
+      file: `notes/file-${index}.md`,
+      header: '@@ -0,0 +1,2 @@',
+      label: 'specified',
+      input: 'first-prompt',
+      trace: 'named',
+      lines: 2,
+      by: 'model',
+    }));
     const scores = scoring.computeScores(labels)!;
-    const reply = await ask(PLUGIN_CHANNELS.annotate, { base: baseCommit, head: headCommit, model: 'm', labels, scores });
+    const reply = await ask(PLUGIN_CHANNELS.annotate, {
+      base: baseCommit,
+      head: headCommit,
+      model: 'm',
+      labels,
+      scores,
+    });
     expect(reply).toEqual({ requestId: 'r1', ok: true });
-    expect(outcomeRows.get('t1')).toMatchObject({ scores: { meat: 100 }, hunkLabels: { base: baseCommit, head: headCommit, model: 'm', labels, corrections: {} } });
+    expect(outcomeRows.get('t1')).toMatchObject({
+      scores: { meat: 100 },
+      hunkLabels: { base: baseCommit, head: headCommit, model: 'm', labels, corrections: {} },
+    });
     expect(touched).toContain('t1');
     expect(service.view('t1').hunks).toHaveLength(count);
   });
 
   it('annotate: a thread without an outcome, a bad payload, and a label outside the four', async () => {
     rows.insertDraft({ id: 't2', sessionPath: join(base, 't2.jsonl'), cwd: project });
-    expect(await ask(PLUGIN_CHANNELS.annotate, { thread: 't2', base: 'a', head: 'b', labels: [] })).toMatchObject({ ok: false, code: 'not-found' });
+    expect(await ask(PLUGIN_CHANNELS.annotate, { thread: 't2', base: 'a', head: 'b', labels: [] })).toMatchObject({
+      ok: false,
+      code: 'not-found',
+    });
     expect(await ask(PLUGIN_CHANNELS.annotate, { base: 'a' })).toMatchObject({ ok: false, code: 'invalid' });
     const bad = { id: 'x', file: 'x', header: '@@', label: 'great', input: 'none', trace: '', lines: 1, by: 'model' };
-    expect(await ask(PLUGIN_CHANNELS.annotate, { base: 'a', head: 'b', labels: [bad] })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(await ask(PLUGIN_CHANNELS.annotate, { base: 'a', head: 'b', labels: [bad] })).toMatchObject({
+      ok: false,
+      code: 'invalid',
+    });
   });
 
   it('annotate: null clears; the person’s corrections survive new labels and the score is computed over them', async () => {
@@ -506,7 +699,16 @@ describe('the plugin events', () => {
     git(project, 'add', '-A');
     git(project, 'commit', '-q', '-m', 'Large outcome with a final file');
     const head = git(project, 'rev-parse', 'HEAD');
-    outcomeRows.put({ threadId: 't1', kind: 'committed', baseCommit, headCommit: head, mergeCommit: null, prUrl: null, at: 10, files: [] });
+    outcomeRows.put({
+      threadId: 't1',
+      kind: 'committed',
+      baseCommit,
+      headCommit: head,
+      mergeCommit: null,
+      prUrl: null,
+      at: 10,
+      files: [],
+    });
     const reply = await ask(PLUGIN_CHANNELS.outcome, { diff: true, annotations: true });
     expect(reply).toMatchObject({ ok: true });
     const diff = String(reply?.['diff']);
@@ -518,7 +720,11 @@ describe('the plugin events', () => {
     const plain = await ask(PLUGIN_CHANNELS.outcome, { diff: true });
     expect(plain).toMatchObject({ learn: true });
     const full = await ask(PLUGIN_CHANNELS.outcome, { diff: true, annotations: true });
-    expect(full).toMatchObject({ ok: true, outcome: { base: baseCommit, head: headCommit }, annotations: { hunkLabels: null, scores: null } });
+    expect(full).toMatchObject({
+      ok: true,
+      outcome: { base: baseCommit, head: headCommit },
+      annotations: { hunkLabels: null, scores: null },
+    });
     expect(String(full?.['diff'])).toContain('diff --git a/notes/a.md b/notes/a.md');
     await service.request('t1');
     const after = await ask(PLUGIN_CHANNELS.outcome, { annotations: true });
@@ -527,19 +733,33 @@ describe('the plugin events', () => {
   });
 
   it('attendant:run with the task score is answered here (its consent, its activity kind); any other task is learn’s', async () => {
-    expect(await ask(PLUGIN_CHANNELS.attendant, { task: 'learn', system: 's', user: 'u' })).toMatchObject({ learn: true });
+    expect(await ask(PLUGIN_CHANNELS.attendant, { task: 'learn', system: 's', user: 'u' })).toMatchObject({
+      learn: true,
+    });
     const ok = await ask(PLUGIN_CHANNELS.attendant, { task: 'score', system: 's', user: 'u' });
     expect(ok).toMatchObject({ ok: true, model: 'fake/canned' });
     attendantOn = false;
     const consent = await ask(PLUGIN_CHANNELS.attendant, { task: 'score', system: 's', user: 'u' });
-    expect(consent).toMatchObject({ ok: false, code: 'consent', model: 'fake/canned', error: scoreConsentSentence('fake/canned') });
-    expect(await ask(PLUGIN_CHANNELS.attendant, { task: 'score', system: 's', user: 'u', consent: true })).toMatchObject({ ok: true });
+    expect(consent).toMatchObject({
+      ok: false,
+      code: 'consent',
+      model: 'fake/canned',
+      error: scoreConsentSentence('fake/canned'),
+    });
+    expect(
+      await ask(PLUGIN_CHANNELS.attendant, { task: 'score', system: 's', user: 'u', consent: true }),
+    ).toMatchObject({ ok: true });
   });
 
   it('attendant:run forwards its caller’s cancellation signal to the model owner', async () => {
     const release = holdAnswers();
     const session = new AbortController();
-    const pending = service.plugin('t1', PLUGIN_CHANNELS.attendant, { requestId: 'r1', task: 'score', system: 's', user: 'u' }, session.signal);
+    const pending = service.plugin(
+      't1',
+      PLUGIN_CHANNELS.attendant,
+      { requestId: 'r1', task: 'score', system: 's', user: 'u' },
+      session.signal,
+    );
     try {
       await until(() => completions.length === 1);
       expect(completions[0].signal?.aborted).toBe(false);

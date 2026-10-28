@@ -2,15 +2,17 @@ import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import type { ThreadOutcome } from '@pi-kit/protocol';
-import { ChangesRepository } from '../db/changes.repository';
 import { EventLogRepository } from '../db/event-log.repository';
 import { OutcomesRepository } from '../db/outcomes.repository';
 import { type ThreadRow, ThreadsRepository } from '../db/threads.repository';
 import { PiSessionService } from '../pi/pi-session.service';
-import { WatchService } from '../watch/watch.service';
+import { RunSnapshotsService } from '../snapshots/run-snapshots.service';
+import { FolderChangesService, headChanged } from '../folder-changes/folder-changes.service';
 import * as wt from '../worktree/worktree-git';
-import { attribute, type Candidate, EMPTY_TREE, type Incoming, isCommitSubject, nextOutcome, touchesHead } from './outcome-rules';
+import { attribute, type Candidate, EMPTY_TREE, type Incoming, isCommitSubject, nextOutcome } from './outcome-rules';
+import { HeadWatcher } from './head-watcher';
 import { ThreadStatusService } from './thread-status.service';
+import { workFolderOf } from './work-folder';
 
 const isDirectory = (path: string): boolean => {
   try {
@@ -20,67 +22,60 @@ const isDirectory = (path: string): boolean => {
   }
 };
 
-/** A folder stays watched for commits this long after the last time one of its threads was opened or ran. */
-const WATCH_TTL_MS = 2 * 60 * 60_000;
-const SWEEP_MS = 10 * 60_000;
 /** A commit counts for a thread that touched a file up to this long after the commit's (whole-second) timestamp: a clock's rounding, not a later edit. */
 const COMMIT_CLOCK_SLACK_MS = 1500;
+/** The `HEAD` remembered for a repository that has no commit yet: its first commit is a move from here. */
+const NO_COMMIT = '';
 /** The commits of one move of `HEAD` that are looked at (a rebase of a long branch is one move). */
 const MAX_COMMITS_PER_MOVE = 50;
 
 /**
  * How threads end: the base commit a thread starts from, and the outcome it reaches. `merged` and `pr` come from the worktree
- * service; `committed` from the folder watcher, which sees `.git/HEAD`, `.git/logs/HEAD` and the branch refs move when a commit is made in a
- * terminal: the new commits' files are matched against the files each thread of the folder touched (its change baselines) by `attribute()`.
- * The watcher is shared with the panels and held per folder while one of its threads is open or ran lately.
+ * service; `committed` from `HEAD` moving after a commit made in a terminal: the new commits' files are matched against the files each thread of
+ * the folder changed in its runs (`RunSnapshotsService`) by `attribute()`. The folder opened last is watched (`HeadWatcher`); any other folder is
+ * compared with the `HEAD` last seen when one of its threads runs or is opened.
  */
 @Injectable()
 export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OutcomesService.name);
   /** The `HEAD` each tracked folder was on when it was last looked at. */
   private readonly heads = new Map<string, string>();
-  private readonly held = new Map<string, { off: () => void; at: number }>();
+  private readonly headWatcher = new HeadWatcher((folder) => this.enqueue(folder, () => this.headMoved(folder)));
   private readonly starting = new Map<string, Promise<void>>();
+  /** Counts `track` calls: only the newest one moves the watch. */
+  private tracked = 0;
   /** One folder's work at a time, in order. */
   private readonly queues = new Map<string, Promise<void>>();
   /** Commits pi-kit made itself (the merge commit of a merge back): they are the worktree's outcome, not a terminal commit. */
   private readonly own = new Set<string>();
   private excluded: ((threadId: string) => boolean) | undefined;
   private estimating = false;
-  private timer: NodeJS.Timeout | undefined;
-  private offBatch: (() => void) | undefined;
   private offRun: (() => void) | undefined;
-  private readonly outcomeListeners = new Set<(threadId: string, kind: ThreadOutcome['kind'], firstTime: boolean) => void>();
+  private readonly outcomeListeners = new Set<
+    (threadId: string, kind: ThreadOutcome['kind'], firstTime: boolean) => void
+  >();
 
   constructor(
     private readonly threads: ThreadsRepository,
     private readonly outcomes: OutcomesRepository,
-    private readonly changes: ChangesRepository,
     private readonly events: EventLogRepository,
     private readonly sessions: PiSessionService,
-    private readonly watch: WatchService,
+    private readonly folderChanges: FolderChangesService,
     private readonly status: ThreadStatusService,
+    private readonly snapshots: RunSnapshotsService,
   ) {}
 
   onModuleInit(): void {
-    this.offBatch = this.watch.onBatch((cwd, batch) => {
-      if (this.heads.has(cwd) && touchesHead(batch.paths)) this.enqueue(cwd, () => this.headMoved(cwd));
-    });
-    // A thread that runs has its folder watched, so a commit made after the run is seen (the thread's session may be closed by then).
+    // A run's start and end compare its folder with the `HEAD` last seen: a commit made meanwhile in a terminal is found then.
     this.offRun = this.events.onRunChange((threadId) => {
       const row = this.threads.get(threadId);
-      if (row) void this.track(this.folderOf(row));
+      if (row) void this.remember(workFolderOf(row));
     });
-    this.timer = setInterval(() => this.sweep(), SWEEP_MS);
-    this.timer.unref();
   }
 
   onModuleDestroy(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.offBatch?.();
     this.offRun?.();
-    for (const { off } of this.held.values()) off();
-    this.held.clear();
+    this.headWatcher.stop();
   }
 
   /** Told whenever an outcome is written (`firstTime`: the thread had none before). The learning service uses it to draft a skill; a listener's failure is its own. */
@@ -127,7 +122,7 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   /** A thread that has not had a message yet starts from `HEAD` as it is now, however long ago it was created. */
   async refreshBase(row: ThreadRow): Promise<void> {
     if (row.messageCount > 0 || row.baseSource === 'estimated') return;
-    const head = await this.headOf(this.folderOf(row));
+    const head = await this.headOf(workFolderOf(row));
     if (head !== row.baseCommit) this.threads.setBase(row.id, head, head ? 'start' : 'none');
   }
 
@@ -148,7 +143,7 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   private async estimateAll(): Promise<void> {
     for (const row of this.threads.all()) {
       if (row.baseSource !== null) continue;
-      const folder = this.folderOf(row);
+      const folder = workFolderOf(row);
       if (!existsSync(folder)) continue;
       try {
         const inside = await wt.run(folder, ['rev-parse', '--is-inside-work-tree']);
@@ -156,11 +151,18 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
           this.threads.setBase(row.id, null, 'none');
           continue;
         }
-        const found = await wt.run(folder, ['rev-list', '-1', `--before=${new Date(row.createdAt).toISOString()}`, 'HEAD']);
+        const found = await wt.run(folder, [
+          'rev-list',
+          '-1',
+          `--before=${new Date(row.createdAt).toISOString()}`,
+          'HEAD',
+        ]);
         const commit = found.ok ? found.stdout.trim() : '';
         this.threads.setBase(row.id, commit || null, commit ? 'estimated' : 'none');
       } catch (error) {
-        this.logger.debug(`Could not estimate the base of ${row.id}: ${error instanceof Error ? error.message : String(error)}`);
+        this.logger.debug(
+          `Could not estimate the base of ${row.id}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
       await new Promise((resolve) => setImmediate(resolve));
     }
@@ -180,9 +182,19 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
       this.own.add(head);
       const brought = await wt.run(project, ['rev-list', '--max-count=500', `${base}..${head}`]);
       for (const sha of brought.stdout.split('\n').filter(Boolean)) this.own.add(sha);
-      await this.put({ threadId: row.id, kind: 'merged', base, head, merge: head, at: Date.now(), files: await this.filesOf(project, head) });
+      await this.put({
+        threadId: row.id,
+        kind: 'merged',
+        base,
+        head,
+        merge: head,
+        at: Date.now(),
+        files: await this.filesOf(project, head),
+      });
     } catch (error) {
-      this.logger.warn(`Could not record the merge of ${row.id}: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(
+        `Could not record the merge of ${row.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -195,59 +207,66 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
       const fork = row.baseBranch ? await wt.run(folder, ['merge-base', row.baseBranch, head]) : undefined;
       const base = (fork?.ok ? fork.stdout.trim() : '') || row.baseCommit;
       if (!base) return;
-      await this.put({ threadId: row.id, kind: 'pr', base, head, prUrl: url, at: Date.now(), files: await this.filesBetween(folder, base, head) });
+      await this.put({
+        threadId: row.id,
+        kind: 'pr',
+        base,
+        head,
+        prUrl: url,
+        at: Date.now(),
+        files: await this.filesBetween(folder, base, head),
+      });
     } catch (error) {
-      this.logger.warn(`Could not record the pull request of ${row.id}: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(
+        `Could not record the pull request of ${row.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
-  // ---- committed (from the folder watcher)
+  // ---- committed (from HEAD moving)
 
-  /** Keeps the folder watched for commits while one of its threads is in use. Cheap to call again: it only renews the hold. */
-  track(folder: string | null | undefined): Promise<void> {
-    if (!folder) return Promise.resolve();
-    const held = this.held.get(folder);
-    if (held) {
-      held.at = Date.now();
-      return Promise.resolve();
+  /** The folder was opened: its reflog becomes the one watched, and a commit made since its `HEAD` was last seen is found now. */
+  async track(folder: string | null | undefined): Promise<void> {
+    const ticket = ++this.tracked;
+    if (!folder || !(await this.remember(folder))) return;
+    // A folder opened meanwhile is the one watched: a slower repository finishing last must not take the watch back.
+    if (ticket === this.tracked) this.headWatcher.watch(folder);
+  }
+
+  /**
+   * Knows the folder's `HEAD` from now on and catches up with commits made since it was last seen; false for a folder whose commits are not
+   * looked at: one outside git, a worktree (its `.git` is a file) or a subfolder, whose threads get their outcome from the merge back.
+   */
+  private remember(folder: string): Promise<boolean> {
+    if (this.heads.has(folder)) {
+      this.enqueue(folder, () => this.headMoved(folder));
+      return Promise.resolve(true);
     }
     const pending = this.starting.get(folder);
-    if (pending) return pending;
+    if (pending) return pending.then(() => this.heads.has(folder));
     const start = (async () => {
       try {
         const head = await this.headOf(folder);
-        // The folder watcher sees `.git` of the folder it watches: a repository's root. A worktree (its `.git` is a file) and a subfolder have no commits to see;
-        // their threads get their outcome from the merge back.
-        if (!head || !isDirectory(join(folder, '.git'))) return;
-        this.held.set(folder, { off: this.watch.subscribe(folder, () => undefined), at: Date.now() });
-        const known = this.heads.get(folder);
-        this.heads.set(folder, known ?? head);
-        // Commits made while nobody watched the folder are found now, from the head last seen.
-        if (known && known !== head) this.enqueue(folder, () => this.headMoved(folder));
+        // A repository without a commit yet (just initialised) is known too, so its first commit is seen.
+        if (isDirectory(join(folder, '.git')) && !this.heads.has(folder)) this.heads.set(folder, head ?? NO_COMMIT);
       } catch (error) {
-        this.logger.debug(`Could not watch ${folder} for commits: ${error instanceof Error ? error.message : String(error)}`);
+        this.logger.debug(
+          `Could not read the HEAD of ${folder}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       } finally {
         this.starting.delete(folder);
       }
     })();
     this.starting.set(folder, start);
-    return start;
-  }
-
-  /** Releases the folders no thread has used for a while. The head last seen stays, so a later commit is still compared with it. */
-  private sweep(): void {
-    const now = Date.now();
-    for (const [folder, held] of this.held) {
-      if (now - held.at < WATCH_TTL_MS) continue;
-      held.off();
-      this.held.delete(folder);
-    }
+    return start.then(() => this.heads.has(folder));
   }
 
   private enqueue(folder: string, work: () => Promise<void>): void {
     const next = (this.queues.get(folder) ?? Promise.resolve())
       .then(work)
-      .catch((error) => this.logger.warn(`Commits in ${folder}: ${error instanceof Error ? error.message : String(error)}`))
+      .catch((error) =>
+        this.logger.warn(`Commits in ${folder}: ${error instanceof Error ? error.message : String(error)}`),
+      )
       .finally(() => {
         if (this.queues.get(folder) === next) this.queues.delete(folder);
       });
@@ -256,7 +275,8 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
 
   /** Resolves when the folder's pending work is done (tests). */
   async idle(): Promise<void> {
-    while (this.queues.size > 0) await Promise.all([...this.queues.values()]);
+    while (this.queues.size > 0 || this.starting.size > 0)
+      await Promise.all([...this.queues.values(), ...this.starting.values()]);
   }
 
   /** `HEAD` of the folder may have moved: if it was a commit (not a checkout or a reset), attribute the new commits one by one. */
@@ -265,11 +285,20 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
     const old = this.heads.get(folder);
     if (!head) return;
     this.heads.set(folder, head);
-    if (!old || old === head) return;
+    if (old === undefined || old === head) return;
+    // The panels show the folder's git state: a commit, checkout or reset changes it.
+    this.folderChanges.publish(folder, headChanged());
     const subject = (await wt.run(folder, ['reflog', '-1', '--format=%gs', 'HEAD'])).stdout.trim();
     if (!isCommitSubject(subject)) return;
-    const listed = await wt.run(folder, ['rev-list', '--reverse', `--max-count=${MAX_COMMITS_PER_MOVE}`, `${old}..${head}`]);
-    const commits = (listed.ok ? listed.stdout.split('\n').filter(Boolean) : [head]).filter((sha) => !this.own.has(sha));
+    const listed = await wt.run(folder, [
+      'rev-list',
+      '--reverse',
+      `--max-count=${MAX_COMMITS_PER_MOVE}`,
+      old === NO_COMMIT ? head : `${old}..${head}`,
+    ]);
+    const commits = (listed.ok ? listed.stdout.split('\n').filter(Boolean) : [head]).filter(
+      (sha) => !this.own.has(sha),
+    );
     for (const sha of commits) await this.attributeCommit(folder, sha);
   }
 
@@ -278,12 +307,19 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
     const files = await this.filesOf(folder, sha);
     if (files.length === 0) return undefined;
     const when = Number((await wt.run(folder, ['log', '-1', '--format=%ct', sha])).stdout.trim()) * 1000 || Date.now();
-    const threadId = attribute(files, this.candidates(folder, when));
+    const threadId = attribute(files, await this.candidates(folder, when));
     if (!threadId) return undefined;
     const row = this.threads.get(threadId);
     if (!row) return undefined;
     const parent = await this.resolve(folder, `${sha}^`);
-    await this.put({ threadId, kind: 'committed', base: row.baseCommit ?? parent ?? EMPTY_TREE, head: sha, at: when, files });
+    await this.put({
+      threadId,
+      kind: 'committed',
+      base: row.baseCommit ?? parent ?? EMPTY_TREE,
+      head: sha,
+      at: when,
+      files,
+    });
     return threadId;
   }
 
@@ -293,8 +329,8 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The threads that work in the folder, as `attribute()` wants them. A thread that already merged or opened a pull request is not asked: a commit does not replace those. */
-  private candidates(folder: string, commitAt: number): Candidate[] {
-    const rows = this.threads.all().filter((row) => this.folderOf(row) === folder && !this.excluded?.(row.id));
+  private async candidates(folder: string, commitAt: number): Promise<Candidate[]> {
+    const rows = this.threads.all().filter((row) => workFolderOf(row) === folder && !this.excluded?.(row.id));
     const runs = this.events.lastRunByThread();
     const newest = Math.max(0, ...rows.map((row) => runs.get(row.id)?.startedAt ?? 0));
     const out: Candidate[] = [];
@@ -302,9 +338,10 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
       const existing = this.outcomes.get(row.id);
       if (existing && existing.kind !== 'committed') continue;
       const lastRunAt = runs.get(row.id)?.startedAt ?? 0;
+      const changed = await this.snapshots.runChanges(row.id);
       out.push({
         threadId: row.id,
-        touched: new Set(this.changes.touchedPaths(row.id).filter((t) => t.at <= commitAt + COMMIT_CLOCK_SLACK_MS).map((t) => t.path)),
+        touched: new Set(changed.filter((f) => f.at <= commitAt + COMMIT_CLOCK_SLACK_MS).map((f) => f.path)),
         open: this.sessions.has(row.id),
         lastToRun: lastRunAt > 0 && lastRunAt === newest,
         lastRunAt,
@@ -323,7 +360,9 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
     if (!next) return;
     this.outcomes.put(next);
     this.status.touch(incoming.threadId);
-    this.logger.log(`Thread ${incoming.threadId}: ${next.kind} at ${next.headCommit.slice(0, 7)} (${next.files.length} files)`);
+    this.logger.log(
+      `Thread ${incoming.threadId}: ${next.kind} at ${next.headCommit.slice(0, 7)} (${next.files.length} files)`,
+    );
     for (const listener of [...this.outcomeListeners]) {
       try {
         listener(incoming.threadId, next.kind, existing === undefined);
@@ -331,11 +370,6 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(`An outcome listener failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-  }
-
-  /** The folder pi works in for the row: its worktree while that exists, else the project's folder (as `ThreadsService.cwdOf`). */
-  folderOf(row: ThreadRow): string {
-    return row.worktreePath && existsSync(row.worktreePath) ? row.worktreePath : row.cwd;
   }
 
   private async resolve(folder: string, rev: string): Promise<string | null> {
@@ -350,7 +384,16 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async filesBetween(folder: string, base: string, head: string): Promise<string[]> {
-    const result = await wt.run(folder, ['diff-tree', '--name-only', '-r', '-z', '--no-renames', '--relative', base, head]);
+    const result = await wt.run(folder, [
+      'diff-tree',
+      '--name-only',
+      '-r',
+      '-z',
+      '--no-renames',
+      '--relative',
+      base,
+      head,
+    ]);
     return result.ok ? result.stdout.split('\0').filter(Boolean).sort() : [];
   }
 }
