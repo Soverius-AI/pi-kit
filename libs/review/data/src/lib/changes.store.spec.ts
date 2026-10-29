@@ -102,6 +102,17 @@ describe('ChangesStore', () => {
     expect(threads.want).toHaveBeenCalledWith('changes', true);
   });
 
+  it('keeps the list loaded for a shown summary (the header pill) with the panel closed', async () => {
+    const changes = await make();
+    changes.showSummary(true);
+    TestBed.tick();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.changes).toHaveBeenCalledWith('t1', 'thread', expect.anything());
+    expect(changes.totals()).toEqual({ added: 5, removed: 1 });
+    expect(changes.mode()).toBe('chat');
+    expect(threads.want).toHaveBeenCalledWith('changes', true);
+  });
+
   it('review mode opens on the first file and fetches its diff', async () => {
     const changes = await open(await make());
     changes.open();

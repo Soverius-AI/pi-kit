@@ -8,7 +8,7 @@ import { ChatPage } from '@pi-kit/chat/feature-chat';
 import { Palette } from '@pi-kit/chat/feature-composer';
 import { DialogHost } from '@pi-kit/chat/feature-composer/dialogs';
 import { DialogStore, IS_MAC, PANEL_WIDTH, RedactionStore, ThemeStore, UiStore, ViewPrefs } from '@pi-kit/data-access';
-import { PkAnsiText, PkIcon, PkLightbox } from '@pi-kit/design-system';
+import { PkAnsiText, PkChangesPill, PkDiffTotals, PkIcon, PkLightbox } from '@pi-kit/design-system';
 import { FilesPanel } from '@pi-kit/files/feature-files';
 import { OnboardingLaunch } from '@pi-kit/onboarding/data';
 import { OnboardingStrip, OnboardingWindow } from '@pi-kit/onboarding/feature-onboarding';
@@ -45,6 +45,8 @@ import { ShellStore } from './shell.store';
     OutcomeMenuHost,
     Palette,
     PkAnsiText,
+    PkChangesPill,
+    PkDiffTotals,
     PanelSwitcher,
     ReviewToolbar,
     ReviewTray,
@@ -113,6 +115,7 @@ export class App {
 
   constructor() {
     this.shell.start();
+    this.review.showSummary(true);
     effect(() => {
       const source = this.learningSource();
       const editing = this.learn.editing();

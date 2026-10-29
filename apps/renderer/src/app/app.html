@@ -33,14 +33,26 @@
           {{ 'shell.app.chat' | transloco }}
         </button>
         <h1 class="font-medium shrink-0">{{ 'shell.app.reviewChanges' | transloco }}</h1>
-        <span class="pk-review-totals t-xs pk-hide-sm" [title]="review.summary()">
-          <span class="text-success">+{{ review.totals().added }}</span>
-          <span class="text-error">−{{ review.totals().removed }}</span>
-        </span>
+        <pk-diff-totals
+          class="pk-review-totals t-xs pk-hide-sm"
+          [title]="review.summary()"
+          [added]="review.totals().added"
+          [removed]="review.totals().removed"
+        />
       } @else {
         <h1 class="font-medium truncate">{{ shell.title() }}</h1>
       }
       <div class="pk-header-actions ml-auto flex items-center gap-2">
+        @if (
+          review.mode() === 'chat' && threads.selectedId() && !threads.selected()?.learning && review.files().length
+        ) {
+          <pk-changes-pill
+            [added]="review.totals().added"
+            [removed]="review.totals().removed"
+            [title]="('shell.app.reviewChanges' | transloco) + ': ' + review.summary()"
+            (pressed)="review.open()"
+          />
+        }
         <!-- One control for every side panel (doc/docs/design-system.md, "Layout"). -->
         <pk-panel-switcher />
       </div>
