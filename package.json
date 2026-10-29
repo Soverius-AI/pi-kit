@@ -17,6 +17,7 @@
     "dev": "node scripts/dev.mjs desktop",
     "dev:web": "node scripts/dev.mjs web",
     "build:icons": "node scripts/build-icons.mjs",
+    "build:mac-icon": "node scripts/build-mac-icon.mjs",
     "check:icons": "node scripts/build-icons.mjs --check",
     "build": "nx run-many -t build",
     "lint": "nx run-many -t eslint:lint",

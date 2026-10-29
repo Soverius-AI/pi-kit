@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <!-- pi-kit app icon: the πk ligature (pi's right leg is the k's stem) cut into sixteen facets, warm golds with amber-orange and
        copper on the k's arms, the folds lit with a hairline of light, on the design system's dark base. Master for
-       icon.png (electron-builder derives .icns and .ico from it). -->
+       icon.png (electron-builder derives .ico from it; regenerate .icns on macOS with pnpm run build:mac-icon). -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2d3038"/><stop offset="1" stop-color="#14161a"/></linearGradient>
     <radialGradient id="glow" cx="0.5" cy="0.2" r="0.6"><stop offset="0" stop-color="#e3b457" stop-opacity="0.18"/><stop offset="1" stop-color="#e3b457" stop-opacity="0"/></radialGradient>

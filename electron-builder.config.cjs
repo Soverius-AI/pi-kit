@@ -52,6 +52,9 @@ module.exports = {
   publish: [{ provider: 'github', owner: (process.env.PI_KIT_UPDATE_REPO || 'wolfmanfx/pi-kit').split('/')[0], repo: (process.env.PI_KIT_UPDATE_REPO || 'wolfmanfx/pi-kit').split('/')[1] }],
 
   mac: {
+    // Apple's encoder avoids the corrupted small Finder icon from automatic PNG-to-ICNS conversion.
+    // Regenerate on macOS with `pnpm run build:mac-icon` when icon.png changes.
+    icon: 'apps/desktop/build/icon.icns',
     category: 'public.app-category.developer-tools',
     // The architecture comes from the command line (`scripts/package.mjs` passes --arm64 or --x64), because the staged backend holds one platform's natives.
     // The dmg is what people download; electron-updater updates a mac app from the zip (and latest-mac.yml) next to it.
