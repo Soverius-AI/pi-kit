@@ -9,7 +9,7 @@ const steps = [
   ['pnpm', ['run', 'check:i18n']],
   ['pnpm', ['run', 'check:format']],
   ['pnpm', ['run', 'check:icons']],
-  ['node', ['--test', 'scripts/dependency-contract.spec.mjs', 'scripts/mac-signing.spec.mjs', 'scripts/mac-notarization.spec.mjs', 'scripts/release-targets.spec.mjs', 'scripts/dev-builder.spec.mjs', 'scripts/e2e-world.spec.mjs']],
+  ['node', ['--test', 'scripts/dependency-contract.spec.mjs', 'scripts/natives.spec.mjs', 'scripts/mac-signing.spec.mjs', 'scripts/mac-notarization.spec.mjs', 'scripts/release-targets.spec.mjs', 'scripts/dev-builder.spec.mjs', 'scripts/e2e-world.spec.mjs']],
   ['pnpm', ['run', 'lint:tooling']],
   // The inferred ESLint target also covers Nest/desktop/Node projects without a legacy Angular `lint` target.
   ['pnpm', ['exec', 'nx', 'run-many', '-t', 'build', 'eslint:lint', 'test', '--output-style=static']],

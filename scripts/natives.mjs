@@ -71,8 +71,8 @@ function installedDir(name) {
  * against pnpm-lock.yaml's integrity and unpacked once.
  * @returns {Promise<{ dir: string, source: string }>}
  */
-async function packageDir(name, version, cacheDir, log) {
-  const installed = installedDir(name);
+async function packageDir(name, version, cacheDir, log, { registryOnly = false } = {}) {
+  const installed = registryOnly ? undefined : installedDir(name);
   if (installed && JSON.parse(readFileSync(join(installed, 'package.json'), 'utf8')).version === version) {
     return { dir: installed, source: `installed (${relative(root, installed)}), ${name}@${version}` };
   }
@@ -103,6 +103,26 @@ async function packageDir(name, version, cacheDir, log) {
   }
   if (!existsSync(join(unpacked, 'package.json'))) throw new Error(`${name}@${version}: the tarball has no package/ folder`);
   return { dir: unpacked, source: `registry tarball ${name}@${version}, integrity checked against pnpm-lock.yaml` };
+}
+
+/** Recover prebuilds omitted by installation or asset copying from the pinned, integrity-checked tarball. */
+export async function provisionSqlitePrebuild({ sqlite, triple, cacheDir, log = console.log }) {
+  const name = 'better-sqlite3-multiple-ciphers';
+  const version = JSON.parse(readFileSync(join(sqlite, 'package.json'), 'utf8')).version;
+  const prebuilds = join(sqlite, 'prebuilds');
+  const wanted = `${triple}.node`;
+  let source = `prebuilds/ in the npm tarball, ${version} (N-API)`;
+  if (!existsSync(join(prebuilds, wanted))) {
+    // Do not reuse the installed package: its prebuilds may be missing too.
+    const pristine = await packageDir(name, version, cacheDir, log, { registryOnly: true });
+    const binary = join(pristine.dir, 'prebuilds', wanted);
+    if (!existsSync(binary)) throw new Error(`No ${name} binary for ${triple}: prebuilds/${wanted} is not in the pinned package ${version}`);
+    mkdirSync(prebuilds, { recursive: true });
+    cpSync(binary, join(prebuilds, wanted));
+    source = pristine.source;
+  }
+  for (const file of readdirSync(prebuilds)) if (file !== wanted) rmSync(join(prebuilds, file), { recursive: true });
+  return { module: name, file: `prebuilds/${wanted}`, source };
 }
 
 /**
@@ -155,12 +175,7 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
   const sqlite = join(modulesOut, 'better-sqlite3-multiple-ciphers');
   if (existsSync(sqlite)) {
     for (const path of ['deps', 'src', 'binding.gyp', 'build']) prune(`better-sqlite3-multiple-ciphers/${path}`);
-    const prebuilds = join(sqlite, 'prebuilds');
-    const wanted = `${triple}.node`;
-    if (!existsSync(join(prebuilds, wanted))) fail('better-sqlite3-multiple-ciphers', `prebuilds/${wanted} is not in the package (it ships: ${existsSync(prebuilds) ? readdirSync(prebuilds).join(', ') : 'no prebuilds folder'})`);
-    for (const file of readdirSync(prebuilds)) if (file !== wanted) rmSync(join(prebuilds, file));
-    const version = JSON.parse(readFileSync(join(sqlite, 'package.json'), 'utf8')).version;
-    rows.push({ module: 'better-sqlite3-multiple-ciphers', file: `prebuilds/${wanted}`, source: `prebuilds/ in the npm tarball, ${version} (N-API)` });
+    rows.push(await provisionSqlitePrebuild({ sqlite, triple, cacheDir, log }));
   }
 
   // ---- node-pty: prebuilds/<platform>-<arch>/ in the tarball. Linux has none: a host-built build/Release is accepted there and nowhere else.
