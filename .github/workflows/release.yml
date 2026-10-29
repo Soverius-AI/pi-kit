@@ -4,17 +4,18 @@
 #   windows  windows-latest (x64)       pnpm run release --only win   -> pi-kit-<v>-win-x64.exe + -portable.exe, pi-kit-<v>-win-arm64.exe + -portable.exe, latest.yml
 #                                       (one run packs both architectures so latest.yml lists both installers; the arm64 build is a cross build)
 #   linux    ubuntu-22.04 / -arm       native x64 and arm64 AppImages, latest-linux.yml / latest-linux-arm64.yml
-#   publish  ubuntu-latest              on a `v*` tag only: a DRAFT GitHub release holding every file. Nothing is published until you press the button.
+#   publish  ubuntu-latest              on a `v*` tag push: automatically publish a GitHub release holding every file.
 #
-# Triggers: a `v*` tag push builds the artifacts, then drafts the release. Manual runs build (and smoke-test the Linux AppImages) without drafting a release.
-# Cut a release: set "version" in package.json, commit, `git tag v<version> && git push origin v<version>`. The publish job refuses a tag that differs from package.json.
+# Triggers: a `v*` tag push builds every target without smoke tests, then publishes the release. Manual runs build without publishing; smoke tests are opt-in.
+# Cut a release: set "version" in package.json, commit, `git tag v<version> && git push origin v<version>`. Preflight refuses a tag that differs from package.json before any builds start.
 #
 # What each build job checks (scripts/release.mjs and scripts/release-smoke.mjs):
 #   - the natives of every target triple are the right ones (file headers; loaded in Electron for the runner's own target), see scripts/natives.mjs
-#   - on `v*` tags (also manual runs for Linux), the smoke test launches the packaged app of the runner's own target with a scratch agent folder, a local fake model, a file secret store and PI_OFFLINE=1,
+#   - only on manual runs with smoke_tests enabled, the smoke test launches the packaged app of the runner's own target with a scratch agent folder, a local fake model, a file secret store and PI_OFFLINE=1,
 #     opens a thread, sends one prompt, asserts the answer and quits. The Windows arm64 build cannot run on an x64 runner: it gets the header checks only.
 #
-# Signing is OPT-IN. Without any of the secrets below the builds are unsigned: macOS is ad-hoc signed (runs on the machine that built it, and after
+# Tag releases require macOS signing, a provisioning profile and notarization credentials (checked in preflight).
+# Signing is optional for manual builds. Without any of the secrets below the builds are unsigned: macOS is ad-hoc signed (runs on the machine that built it, and after
 # "Open anyway" elsewhere; Gatekeeper rejects it), Windows is unsigned (SmartScreen warns). Electron-updater only installs updates of a build
 # whose signature matches on macOS, so signed releases are what makes the in-app update work for other people.
 #
@@ -37,6 +38,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      smoke_tests:
+        description: Run packaged-app smoke tests
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -52,7 +58,56 @@ env:
   PI_KIT_UPDATE_REPO: ${{ vars.PI_KIT_UPDATE_REPO }}
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate tag version and required macOS release credentials
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          MAC_PROVISIONING_PROFILE_BASE64: ${{ secrets.MAC_PROVISIONING_PROFILE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          PI_KIT_NOTARIZE: ${{ vars.PI_KIT_NOTARIZE }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          missing=0
+          for name in MAC_CSC_LINK MAC_CSC_KEY_PASSWORD MAC_PROVISIONING_PROFILE_BASE64 APPLE_TEAM_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Required release secret $name is missing"
+              missing=1
+            fi
+          done
+          if [ "$PI_KIT_NOTARIZE" != "1" ]; then
+            echo "::error::Repository variable PI_KIT_NOTARIZE must be 1 for tag releases"
+            missing=1
+          fi
+          # Match mac-notarization.cjs: any Apple ID credential selects Apple ID authentication.
+          if [ -n "$APPLE_ID" ] || [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ]; then
+            if [ -z "$APPLE_ID" ] || [ -z "$APPLE_APP_SPECIFIC_PASSWORD" ]; then
+              echo "::error::Apple ID notarization requires both APPLE_ID and APPLE_APP_SPECIFIC_PASSWORD"
+              missing=1
+            fi
+          elif ! { [ -n "$APPLE_API_KEY_BASE64" ] && [ -n "$APPLE_API_KEY_ID" ] && [ -n "$APPLE_API_ISSUER" ]; }; then
+            echo "::error::Provide complete App Store Connect API notarization credentials when Apple ID credentials are absent"
+            missing=1
+          fi
+          exit "$missing"
+
   mac:
+    needs: preflight
     runs-on: macos-14
     timeout-minutes: 60
     steps:
@@ -94,7 +149,7 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       # The zip is what electron-updater installs from, so it is the artifact worth launching; the unpacked folder is the same app.
       - name: Smoke test (zip)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
         run: node scripts/release-smoke.mjs dist/release/pi-kit-*-mac-arm64.zip
       - uses: actions/upload-artifact@v4
         with:
@@ -107,6 +162,7 @@ jobs:
             dist/release/latest-mac.yml
 
   windows:
+    needs: preflight
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
@@ -128,12 +184,12 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
       # The runner is x64: it can launch the x64 app, not the arm64 one (that one has only the native header checks of the release step).
       - name: Smoke test (x64, the unpacked app)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
         run: node scripts/release-smoke.mjs dist/release/win-unpacked
       # The installer itself: silent install into a temp folder (NSIS /S /D=), launch, uninstall. Written for this workflow and not run anywhere
       # before it; it must not block a release until it has been seen green once, hence continue-on-error.
       - name: Smoke test (x64 installer)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
         continue-on-error: true
         run: node scripts/release-smoke.mjs dist/release/pi-kit-*-win-x64.exe
       - uses: actions/upload-artifact@v4
@@ -146,6 +202,7 @@ jobs:
             dist/release/latest.yml
 
   linux:
+    needs: preflight
     name: Linux ${{ matrix.arch }}
     strategy:
       fail-fast: false
@@ -166,16 +223,20 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      # node-pty compiles during install (allowBuilds); Electron and the smoke test need desktop libraries and a virtual display.
+      # node-pty compiles during install (allowBuilds); Electron needs desktop libraries.
       - name: Linux build and runtime dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential python3 libgtk-3-0 libnss3 libasound2 libgbm1 libsecret-1-0 libxtst6 libxss1 xvfb xauth
+          sudo apt-get install -y build-essential python3 libgtk-3-0 libnss3 libasound2 libgbm1 libsecret-1-0 libxtst6 libxss1
+      - name: Linux smoke-test display dependencies
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
+        run: sudo apt-get install -y xvfb xauth
       - run: pnpm install --frozen-lockfile
       - name: Build the Linux AppImage
         run: pnpm run release --only linux-${{ matrix.arch }}
       # Extract the actual AppImage without FUSE, then exercise its packaged app on the matching CPU under Xvfb.
       - name: Smoke test (AppImage)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
         run: xvfb-run -a node scripts/release-smoke.mjs dist/release/pi-kit-*-linux-${{ matrix.appimageArch }}.AppImage
       - uses: actions/upload-artifact@v4
         with:
@@ -186,8 +247,8 @@ jobs:
             dist/release/latest-linux*.yml
 
   publish:
-    # A draft only: review the files and the notes, then publish it by hand. electron-updater sees it once it is published.
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    # Publish only tag pushes; manual builds never create or modify releases.
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     needs: [mac, windows, linux]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -197,18 +258,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
+          pattern: release-*
           path: release
           merge-multiple: true
-      - name: The tag must be the version in package.json
-        run: |
-          version="$(node -p "require('./package.json').version")"
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
-            exit 1
-          fi
-      - name: Draft the GitHub release
+      - name: Publish the GitHub release (or replace assets on rerun)
         run: |
           ls -l release
-          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "pi-kit $GITHUB_REF_NAME" --generate-notes release/*
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+            gh release edit "$GITHUB_REF_NAME" --draft=false
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --title "pi-kit $GITHUB_REF_NAME" --generate-notes release/*
+          fi
         env:
           GH_TOKEN: ${{ github.token }}

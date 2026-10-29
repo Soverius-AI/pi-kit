@@ -2477,6 +2477,11 @@
   font-size: 12px;
   text-overflow: ellipsis;
 }
+.pk-diff-totals {
+  display: inline-flex;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
 .pk-review-progress,
 .pk-review-layout,
 .pk-review-totals {
@@ -2487,6 +2492,29 @@
   display: flex;
   gap: 8px;
   font-variant-numeric: tabular-nums;
+}
+.pk-changes-pill {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: var(--border) solid var(--color-base-300);
+  border-radius: var(--radius-selector);
+  background: var(--color-base-100);
+  color: var(--pk-muted);
+  font-family: var(--pk-font-mono);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pk-changes-pill:hover {
+  border-color: color-mix(in oklab, var(--color-base-content) 30%, transparent);
+  color: var(--color-base-content);
+}
+.pk-changes-pill:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 @container review-toolbar (max-width: 760px) {
   .pk-review-progress {

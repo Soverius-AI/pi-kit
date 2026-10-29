@@ -41,6 +41,7 @@ interface ChangesState {
   modelError: string | undefined;
   visited: ReadonlySet<string>;
   busy: string | undefined;
+  summaryShown: boolean;
 }
 
 const basename = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
@@ -62,6 +63,7 @@ export const ChangesStore = signalStore(
     modelError: undefined,
     visited: new Set<string>(),
     busy: undefined,
+    summaryShown: false,
   }),
   withProps(() => ({ _policy: inject(REVIEW_POLICY) })),
   withChangeSource(),
@@ -188,6 +190,10 @@ export const ChangesStore = signalStore(
         ui.setPanel(window.innerWidth >= OVERLAY_BELOW_PX ? 'changes' : null);
         if (file) methods.select(file);
         else if (!store.selectedId() && store.files().length > 0) methods.select(store.files()[0].path);
+      },
+
+      showSummary(shown: boolean): void {
+        patchState(store, { summaryShown: shown });
       },
 
       exit(): void {
@@ -450,7 +456,7 @@ export const ChangesStore = signalStore(
     onInit(store) {
       const threads = inject(ThreadsStore);
       const ui = inject(UiStore);
-      const shown = (): boolean => ui.panel() === 'changes' || store.mode() === 'review';
+      const shown = (): boolean => ui.panel() === 'changes' || store.mode() === 'review' || store.summaryShown();
 
       // A thread of its own: its batch is loaded, the rest starts over.
       effect(() => {

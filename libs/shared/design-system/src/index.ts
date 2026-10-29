@@ -16,6 +16,8 @@ export * from './lib/file-icon';
 export * from './lib/icon';
 export * from './lib/logo';
 export * from './lib/outcome-badge';
+export * from './lib/changes-pill';
+export * from './lib/diff-totals';
 export * from './lib/skill-draft-card';
 export * from './lib/score-meter';
 export * from './lib/score-histogram';
