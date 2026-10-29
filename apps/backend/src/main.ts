@@ -6,6 +6,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app/app.module';
 import { configureJsonBody } from './app/http-body';
 import { loadConfig } from './app/config';
+import { DatabaseBrokenError } from './db/database.service';
 import { mountContract } from './contract';
 import { REPLAY_CURSOR_HEADER, THREAD_HYDRATION_HEADER } from '@pi-kit/protocol';
 
@@ -20,7 +21,7 @@ function scratchHome(env: NodeJS.ProcessEnv = process.env): void {
 async function bootstrap() {
   scratchHome();
   const config = loadConfig();
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { abortOnError: false });
   configureJsonBody(app);
   app.enableShutdownHooks(['SIGINT', 'SIGTERM']);
   app.setGlobalPrefix('api');
@@ -31,4 +32,10 @@ async function bootstrap() {
   Logger.log(`pi-kit backend listening on http://${config.host}:${config.port}/api`);
 }
 
-void bootstrap().catch((error: unknown) => { Logger.error(error); process.exitCode = 1; });
+void bootstrap().catch((error: unknown) => {
+  Logger.error(error);
+  process.exitCode = 1;
+  if (error instanceof DatabaseBrokenError) process.send?.({ type: 'startup-failure', reason: 'database-broken', message: error.message });
+  // Open handles (e.g. the desktop IPC listener) would otherwise keep the process alive.
+  setTimeout(() => process.exit(1), 1000).unref();
+});

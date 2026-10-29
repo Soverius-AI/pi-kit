@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { APP_ORIGIN, registerAppScheme, serveRenderer } from './app-protocol';
 import { AppUpdater, type AppUpdateAction } from './app-updater';
 import { allocateEndpoint, type BackendEndpoint, launchForWatchdog, pingHealth, type RunningBackend, spawnBackend } from './backend';
+import { removeDatabases } from './database-reset';
 import { FileLog } from './log';
 import { BrowserArtifacts } from './browser';
 import { BrowserActionSchema, BrowserOperationError, BrowserViewportSchema } from '@pi-kit/protocol';
@@ -31,6 +32,9 @@ let latestStatus: WatchdogStatus = { state: 'starting', restarts: 0 };
 let mainLog: FileLog | undefined;
 let backendLog: FileLog | undefined;
 let appUpdater: AppUpdater | undefined;
+/** Sent by the backend over IPC before it exits on a failed start. */
+interface StartupFailure { reason: string; message: string }
+let startupFailure: StartupFailure | undefined;
 let tray: Tray | undefined;
 let uiStorage: UiStorage | undefined;
 interface TrayThread { id: string; title: string; project: string; state: 'running' | 'waiting' }
@@ -265,7 +269,7 @@ function launch(path: string | undefined) {
     backend = running;
     mainLog?.line(`backend started, pid ${running.child.pid}, ${running.url}`);
     // "Open in editor": the backend validated the path, the OS opens it with the default application (shell.openPath).
-    running.child.on('message', (message: { type?: string; id?: string; path?: string; action?: AppUpdateAction; threadId?: string; request?: unknown }) => {
+    running.child.on('message', (message: { type?: string; id?: string; path?: string; reason?: string; message?: string; action?: AppUpdateAction; threadId?: string; request?: unknown }) => {
       if (message?.type === 'browser-cancel' && typeof message.id === 'string') {
         browserRequests.get(message.id)?.abort();
         return;
@@ -301,6 +305,10 @@ function launch(path: string | undefined) {
         );
         return;
       }
+      if (message?.type === 'startup-failure' && typeof message.reason === 'string' && typeof message.message === 'string') {
+        startupFailure = { reason: message.reason, message: message.message };
+        return;
+      }
       if (typeof message?.id !== 'string' || typeof message.path !== 'string') return;
       const id = message.id;
       const answer = (error?: string): void => {
@@ -315,6 +323,40 @@ function launch(path: string | undefined) {
     });
     return running;
   }, HEALTH_TIMEOUT_MS);
+}
+
+/** Quit was chosen in a startup dialog. */
+class StartupCancelled extends Error {}
+
+/** The first start; a broken database can be recreated and the backend started again. */
+async function firstLaunch(path: string | undefined, splash: BrowserWindow): ReturnType<typeof launch> {
+  for (;;) {
+    startupFailure = undefined;
+    try {
+      return await launch(path);
+    } catch (error) {
+      // Assigned by the IPC handler, which control flow analysis cannot see.
+      const failure = startupFailure as StartupFailure | undefined;
+      if (failure?.reason !== 'database-broken') throw error;
+      if (!(await offerDatabaseReset(failure.message))) throw new StartupCancelled();
+      const removed = removeDatabases(app.getPath('userData'));
+      mainLog?.line(`database recreated on request: removed ${removed.join(', ') || 'nothing'}`);
+      setSplashStatus(splash, 'Creating a new database…');
+    }
+  }
+}
+
+async function offerDatabaseReset(reason: string): Promise<boolean> {
+  const { response } = await dialog.showMessageBox({
+    type: 'error',
+    title: 'pi-kit',
+    message: 'The pi-kit database is broken.',
+    detail: `${reason}\n\nRecreate deletes pi-kit's databases and starts with new, empty ones. Your pi sessions are kept and the threads are rebuilt from them; what pi-kit kept only in its database (feedback, reviews, background agents) is lost.\n\nThe log is in ${app.getPath('logs')}.`,
+    buttons: ['Recreate database', 'Quit'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  return response === 0;
 }
 
 async function boot(): Promise<void> {
@@ -349,7 +391,7 @@ async function boot(): Promise<void> {
     });
   })().catch((error: Error) => mainLog?.line(`UI preference cache could not load: ${error.message}`)) : Promise.resolve();
   // The first start fails fast with a dialog; only a backend that was up is restarted by the watchdog.
-  let adopted: Awaited<ReturnType<typeof launch>> | undefined = await launch(path);
+  let adopted: Awaited<ReturnType<typeof launch>> | undefined = await firstLaunch(path, splash);
   mainLog.line(`backend healthy at ${endpoint.url} (bootId ${adopted.health.bootId})`);
   setSplashStatus(splash, 'pi is ready. Opening…');
   const { url, token } = endpoint;
@@ -498,6 +540,11 @@ async function reportSmoke(win: BrowserWindow, url: string, token: string): Prom
 }
 
 app.whenReady().then(boot).catch((err: Error) => {
+    if (err instanceof StartupCancelled) {
+      mainLog?.line('could not start: the user quit');
+      app.quit();
+      return;
+    }
     mainLog?.line(`could not start: ${err.message}`);
     dialog.showErrorBox('pi-kit could not start', `${err.message}\n\nThe log is in ${app.getPath('logs')}.`);
     app.quit();

@@ -14,6 +14,9 @@ export const DB_FILE = 'pi-kit.sqlite';
 export const BG_DB_FILE = 'bg-agents.sqlite';
 interface DatabaseKey { key?: string; reason?: string }
 
+/** Made by another pi-kit version or damaged; the desktop offers to recreate it. Never thrown for key problems. */
+export class DatabaseBrokenError extends Error {}
+
 /**
  * Owns the SQLite connection and applies the plain SQL files in `migrations/`
  * in name order at construction, each in its own transaction, recorded in `schema_migrations`. The
@@ -56,6 +59,7 @@ export class DatabaseService implements OnApplicationShutdown {
       this.orm = drizzle(this.db);
     } catch (error) {
       this.db.close();
+      if (isCorruption(error)) throw new DatabaseBrokenError(`${this.path} is damaged (${(error as Error).message}).`, { cause: error });
       throw error;
     }
   }
@@ -183,7 +187,7 @@ export class DatabaseService implements OnApplicationShutdown {
         return !file || hash !== schemaHash(file.sql);
       });
       if (changed.length) {
-        throw new Error(`${this.path} was created by a different pi-kit version (migrations ${changed.map(([name]) => name).join(', ')}). Delete it and restart to start fresh.`);
+        throw new DatabaseBrokenError(`${this.path} was created by a different pi-kit version (migrations ${changed.map(([name]) => name).join(', ')}). Delete it and restart to start fresh.`);
       }
       const added: string[] = [];
       for (const file of files) {
@@ -197,6 +201,11 @@ export class DatabaseService implements OnApplicationShutdown {
     for (const name of applied) this.logger.log(`Applied migration ${name}`);
     this.logger.log(`Database ready at ${this.path} (${this.protection.state})`);
   }
+}
+
+/** `SQLITE_NOTADB` is excluded: a wrong key reports it too. */
+function isCorruption(error: unknown): boolean {
+  return error instanceof Database.SqliteError && error.code.startsWith('SQLITE_CORRUPT');
 }
 
 /** The hash a migration is recorded with: its SQL without `--` comments and with spacing collapsed, so editing a comment changes nothing. */

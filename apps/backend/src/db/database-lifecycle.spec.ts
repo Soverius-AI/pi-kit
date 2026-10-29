@@ -1,10 +1,10 @@
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, openSync, closeSync, readdirSync, rmSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Test } from '@nestjs/testing';
 import Database from 'better-sqlite3-multiple-ciphers';
 import { expect, it } from 'vitest';
-import { DatabaseService, DB_FILE, schemaHash } from './database.service';
+import { DatabaseBrokenError, DatabaseService, DB_FILE, schemaHash } from './database.service';
 
 it('keeps SQLite open until asynchronous module teardown finishes', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'pk-db-lifecycle-'));
@@ -45,6 +45,21 @@ it('refuses a database made by a build from before the migrations were squashed'
     expect(() => new DatabaseService({ dataDir: dir })).toThrow(
       /different pi-kit version .*0022_follow_up_prompts\.sql.*Delete it/,
     );
+    expect(() => new DatabaseService({ dataDir: dir })).toThrow(DatabaseBrokenError);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+it('reports a damaged database file as broken', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pk-db-corrupt-'));
+  try {
+    new DatabaseService({ dataDir: dir }).onApplicationShutdown();
+    // Keep the header so the file still reads as plain SQLite.
+    const fd = openSync(join(dir, DB_FILE), 'r+');
+    writeSync(fd, Buffer.alloc(3996, 0xff), 0, 3996, 100);
+    closeSync(fd);
+    expect(() => new DatabaseService({ dataDir: dir })).toThrow(DatabaseBrokenError);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
