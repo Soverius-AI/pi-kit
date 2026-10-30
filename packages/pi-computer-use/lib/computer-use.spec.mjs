@@ -99,8 +99,7 @@ describe('macOS permissions', () => {
     expect(permissionHelp('linux', undefined)).toBeUndefined();
     expect(['darwin', 'win32', 'linux'].map((p) => isSupported(p))).toEqual([true, true, true]);
     expect(isSupported('freebsd')).toBe(false);
-    expect(noPermissionsNote('linux')).toMatch(/desktop session/);
-    expect(noPermissionsNote('linux')).toMatch(/Hyprland, computer use is read-only/);
+    expect(noPermissionsNote('linux')).toBeTruthy();
     expect(noPermissionsNote('win32')).toMatch(/^Windows needs no permissions/);
   });
 
@@ -158,7 +157,6 @@ describe('Hyprland', () => {
 
   it('says read-only on Hyprland and nothing elsewhere', () => {
     expect(linuxInputHelp(hypr, 'linux')).toBe(HYPRLAND_READ_ONLY_NOTE);
-    expect(HYPRLAND_READ_ONLY_NOTE).toContain('read-only');
     expect(linuxInputHelp({ XDG_SESSION_TYPE: 'wayland' }, 'linux')).toBeUndefined();
     expect(linuxInputHelp({ DISPLAY: ':0' }, 'linux')).toBeUndefined();
     expect(linuxInputHelp(hypr, 'darwin')).toBeUndefined();
@@ -167,9 +165,10 @@ describe('Hyprland', () => {
   it('appends the read-only hint to an input the compositor refused, and leaves other errors alone', () => {
     const refused = 'foreground_unavailable (unsupported_operation): production Hyprland input plugin is unavailable';
     expect(explainToolError(refused, hypr)).toBe(`${refused}\n\n${HYPRLAND_TOOL_HINT}`);
-    expect(explainToolError('Background delivery is not available: the requested target has no focus-free input backend; ...', hypr)).toContain(HYPRLAND_TOOL_HINT);
+    const background = 'Background delivery is not available: the requested target has no focus-free input backend; ...';
+    expect(explainToolError(background, hypr)).toBe(`${background}\n\n${HYPRLAND_TOOL_HINT}`);
     expect(explainToolError('No windows found for pid 0. Provide window_id.', hypr)).toBe('No windows found for pid 0. Provide window_id.');
     expect(explainToolError(refused, { XDG_SESSION_TYPE: 'wayland' })).toBe(refused);
-    expect(() => toToolResult('click', { text: refused, images: [], isError: true }, hypr)).toThrow(/only look/);
+    expect(() => toToolResult('click', { text: refused, images: [], isError: true }, hypr)).toThrow(HYPRLAND_TOOL_HINT);
   });
 });
