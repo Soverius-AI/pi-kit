@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { EventType, type Message } from '@ag-ui/core';
-import { verifyEvents } from '@ag-ui/client';
+import { enforceEvents, verifyEvents } from '@ag-ui/client';
 import { firstValueFrom, from, toArray } from 'rxjs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { messagesSnapshot } from './event-log';
 import { type PiSessionEntry, sessionToMessages } from './session-messages';
 
@@ -290,7 +290,7 @@ describe('sessionToMessages (generative UI)', () => {
 });
 
 describe("a background agent's report in the session file", () => {
-  it('is a user-side note attributed to the agent, with the id its live envelope used', () => {
+  it('is a user-side note attributed to the agent, with the id its live envelope used', async () => {
     const entries: PiSessionEntry[] = [
       { type: 'message', id: 'u1', parentId: null, message: { role: 'user', content: 'go' } },
       { type: 'custom_message', id: 'r1', parentId: 'u1', customType: 'pikit.agent-report', display: true, content: 'Report from agent "tester": done', details: { agentId: '7', name: 'tester', reportId: 'rep-1' } } as unknown as PiSessionEntry,
@@ -298,7 +298,18 @@ describe("a background agent's report in the session file", () => {
     ];
     const messages = sessionToMessages(entries);
     expect(messages.map((m) => m.id)).toEqual(['u1', 'r1', 'n1']);
-    expect(messages[1]).toMatchObject({ role: 'user', content: 'Report from agent "tester": done', subagentRunId: '7/rep-1', subagentName: 'tester' });
+    expect(messages[1]).toMatchObject({ role: 'user', content: 'Report from agent "tester": done', subagentRunId: '7/rep-1', metadata: { piKitSubagentName: 'tester' } });
+    expect(messages[1]).not.toHaveProperty('subagentName');
     expect((messages[2] as { subagentRunId?: string }).subagentRunId).toBeUndefined();
+
+    // Verification alone does not strip unknown fields; exercise the actual client enforcement boundary.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const events = await firstValueFrom(from([messagesSnapshot(messages)]).pipe(enforceEvents(), toArray()));
+      expect(events).toEqual([messagesSnapshot(messages)]);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

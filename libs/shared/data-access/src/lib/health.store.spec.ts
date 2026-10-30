@@ -37,16 +37,51 @@ describe('HealthStore', () => {
     expect(health.epoch()).toBe(0);
   });
 
+  it('allows 30 seconds for a health response', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    try {
+      await make();
+      expect(timeout).toHaveBeenCalledWith(30000);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
+  it('polls every 10 seconds', async () => {
+    await make();
+    const before = fakeBackend.fetch.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(9999);
+    expect(fakeBackend.fetch).toHaveBeenCalledTimes(before);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fakeBackend.fetch).toHaveBeenCalledTimes(before + 1);
+  });
+
+  it('does not replace a slow health check when the next polling interval arrives', async () => {
+    const health = await make();
+    let finish!: (response: Response) => void;
+    fakeBackend.fetch.mockImplementationOnce(() => new Promise<Response>((resolve) => (finish = resolve)));
+    const before = fakeBackend.fetch.mock.calls.length;
+    const pending = health.poll();
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(fakeBackend.fetch).toHaveBeenCalledTimes(before + 1);
+    expect(health.state()).toBe('ok');
+    finish(ok('boot-1')());
+    await pending;
+    expect(health.state()).toBe('ok');
+  });
+
   it('two misses in a row are an outage; the return bumps the epoch and says so', async () => {
     const health = await make();
     const toasts = TestBed.inject(ToastStore);
     answer = () => new Response('{}', { status: 500 });
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(9999);
     expect(health.state()).toBe('ok');
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(health.state()).toBe('ok');
+    await vi.advanceTimersByTimeAsync(10000);
     expect(health.state()).toBe('error');
     answer = ok('boot-1');
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(10000);
     expect(health.state()).toBe('ok');
     expect(health.epoch()).toBe(1);
     expect(toasts.items().at(-1)?.text).toBe('Reconnected to the backend.');
@@ -55,7 +90,7 @@ describe('HealthStore', () => {
   it('a new bootId is a restart', async () => {
     const health = await make();
     answer = ok('boot-2');
-    await vi.advanceTimersByTimeAsync(4000);
+    await vi.advanceTimersByTimeAsync(10000);
     expect(health.epoch()).toBe(1);
     expect(TestBed.inject(ToastStore).items().at(-1)?.level).toBe('success');
   });

@@ -172,7 +172,7 @@ export function sessionToMessages(branch: readonly PiSessionEntry[], options: Se
       const text = textOf(entry['content'] as string | PiContentBlock[] | undefined);
       const subagentRunId = subagentRunIdOf(entry['customType'] as string | undefined, entry['details']);
       const subagentName = subagentRunId ? (entry['details'] as { name?: string } | undefined)?.name : undefined;
-      if (text) out.push({ id: entry.id, role: 'user', content: text, ...(subagentRunId ? { subagentRunId } : {}), ...(subagentName ? { subagentName } : {}) });
+      if (text) out.push({ id: entry.id, role: 'user', content: text, ...(subagentRunId ? { subagentRunId } : {}), ...(subagentName ? { metadata: { piKitSubagentName: subagentName } } : {}) });
     }
   }
   return out;

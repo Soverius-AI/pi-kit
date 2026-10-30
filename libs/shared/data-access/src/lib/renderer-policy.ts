@@ -11,8 +11,8 @@ export interface RendererPolicy {
 
 /** Runtime policy, overridable at the application or feature injector. */
 export const DEFAULT_RENDERER_POLICY: RendererPolicy = {
-  healthPollMs: 4000,
-  healthTimeoutMs: 3000,
+  healthPollMs: 10000,
+  healthTimeoutMs: 30000,
   healthMisses: 2,
   toastMs: 6000,
   maxToasts: 4,

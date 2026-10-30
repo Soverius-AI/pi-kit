@@ -249,7 +249,9 @@ export class Transcript {
 
   /** The background agent a message is attributed to: the name the stored message carries, else the one this stream named, else its id. */
   protected agentOf(message: Message): string | undefined {
-    const { subagentRunId, subagentName } = message as { subagentRunId?: string; subagentName?: string };
+    const { subagentRunId } = message;
+    const name = message.metadata?.['piKitSubagentName'];
+    const subagentName = typeof name === 'string' ? name : undefined;
     const id = subagentRunId?.split('/')[0];
     if (!id) return undefined;
     const threadId = this.chat.threadId();

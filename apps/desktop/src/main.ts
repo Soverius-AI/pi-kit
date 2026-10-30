@@ -5,6 +5,7 @@ import { AppUpdater, type AppUpdateAction } from './app-updater';
 import { allocateEndpoint, type BackendEndpoint, launchForWatchdog, pingHealth, type RunningBackend, spawnBackend } from './backend';
 import { removeDatabases } from './database-reset';
 import { FileLog } from './log';
+import { configureLoopbackConnections } from './loopback-network';
 import { BrowserArtifacts } from './browser';
 import { BrowserActionSchema, BrowserOperationError, BrowserViewportSchema } from '@pi-kit/protocol';
 import { MICROPHONE_SETTINGS_URL, requestMicrophone } from './microphone';
@@ -46,6 +47,7 @@ const splashState = { loaded: false, shown: false };
 
 // Fixes the userData folder (and with it the database) to .../pi-kit however Electron is launched.
 app.setName('pi-kit');
+configureLoopbackConnections(app.commandLine);
 
 // Smoke mode (scripts/release-smoke.mjs): data and logs in the scratch folder the script names, a SIGTERM quits like Cmd+Q.
 const SMOKE_DIR = smokeDataDir();
