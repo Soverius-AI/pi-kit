@@ -38,7 +38,11 @@ export function runProcess(options: RunOptions): Promise<RunResult> {
         if (options.processGroup && process.platform === 'win32' && child.pid && child.exitCode === null) spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
         else if (grouped && child.pid) process.kill(-child.pid, signal);
         else child.kill(signal);
-      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error; }
+      } catch (error) {
+        // ESRCH: nothing left to signal. EPERM: what macOS answers for a group whose leader is already gone (the SIGKILL after `close` lands there); nothing left either.
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== 'ESRCH' && code !== 'EPERM') throw error;
+      }
     };
     const abort = (): void => {
       cancelled = true;
