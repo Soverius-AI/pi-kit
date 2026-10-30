@@ -23,3 +23,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run check
       - run: node --test e2e/backend-lifecycle.e2e.mjs e2e/browser.desktop.e2e.mjs
+
+  windows-install:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      # Keep the linker flags aligned with the Windows release job.
+      - run: pnpm install --frozen-lockfile --node-linker=isolated --shamefully-hoist
+      - run: node --test scripts/dependency-contract.spec.mjs

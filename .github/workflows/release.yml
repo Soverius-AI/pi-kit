@@ -176,7 +176,10 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      # Avoid pnpm's hoisted importer on Windows: importing nested packages can fail with
+      # ENOENT when renaming _tmp_* directories (seen with the SQLite alias under @ag-ui/client).
+      # Public hoisting keeps root node_modules lookups used by Nx and the build scripts working.
+      - run: pnpm install --frozen-lockfile --node-linker=isolated --shamefully-hoist
       - name: Build the Windows apps (x64 and arm64)
         run: pnpm run release --only win
         env:
