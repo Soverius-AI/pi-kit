@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AnnotateRequestSchema, AttendantRunRequestSchema, BaselineFileSchema, OutcomeRequestSchema, OutsideEditSchema, PLUGIN_CHANNELS, PLUGIN_CHANNEL_LIST, TranscriptTurnSchema } from './plugins';
+import { AnnotateRequestSchema, AttendantRunRequestSchema, BaselineFileSchema, OutcomeRequestSchema, PLUGIN_CHANNELS, PLUGIN_CHANNEL_LIST, TranscriptTurnSchema } from './plugins';
 import { type HunkLabelEntry, HunkLabelEntrySchema, HunkLabelsStoreSchema, OutcomeScoresSchema, ProjectScoresSchema, RelabelHunkSchema, ThreadScoreBadgeSchema, effectiveHunks, hunkId } from './score';
 
 const entry = (id: string, label: HunkLabelEntry['label'], over: Partial<HunkLabelEntry> = {}): HunkLabelEntry => ({ id, file: id.split('@')[0], header: '@@ -1 +1 @@', label, input: label === 'autonomous' ? 'none' : 'first-prompt', trace: 'because', lines: 3, by: 'model', ...over });
@@ -57,7 +57,7 @@ describe('the stored shapes', () => {
 
 describe('the events 10e added to the plugin API', () => {
   it('are on the list a session’s bus subscribes to', () => {
-    for (const channel of ['pi-kit:thread:baselines', 'pi-kit:thread:outside-edits', 'pi-kit:thread:annotate']) expect(PLUGIN_CHANNEL_LIST).toContain(channel);
+    for (const channel of ['pi-kit:thread:baselines', 'pi-kit:thread:annotate']) expect(PLUGIN_CHANNEL_LIST).toContain(channel);
     expect(PLUGIN_CHANNELS.annotate).toBe('pi-kit:thread:annotate');
   });
 
@@ -74,10 +74,8 @@ describe('the events 10e added to the plugin API', () => {
     expect(AttendantRunRequestSchema.safeParse({ requestId: 'r', task: 'wander', system: 's', user: 'u' }).success).toBe(false);
   });
 
-  it('baselines carry paths and times, never content; outside edits carry paths and counts', () => {
+  it('baselines carry paths and times, never content', () => {
     expect(BaselineFileSchema.safeParse({ path: 'a.ts', existed: false, at: 1, turn: 1, edits: 2 }).success).toBe(true);
-    expect(OutsideEditSchema.safeParse({ path: 'a.ts', firstAt: 1, lastAt: 2, count: 2 }).success).toBe(true);
-    expect(OutsideEditSchema.safeParse({ path: 'a.ts', firstAt: 1, lastAt: 2, count: 0 }).success).toBe(false);
   });
 
   it('a turn is a message with its timing, tool calls, chips, review comments and answers', () => {
