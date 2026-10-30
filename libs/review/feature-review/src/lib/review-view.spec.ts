@@ -85,6 +85,11 @@ describe('ReviewView in the Outcome view', () => {
     return fixture.nativeElement as HTMLElement;
   };
 
+  it('uses the full available width for unified diffs', () => {
+    const el = render();
+    expect(el.querySelector<HTMLElement>('.pk-measure')?.style.getPropertyValue('--pk-measure')).toBe('100%');
+  });
+
   beforeEach(() => {
     source.set('outcome');
     current.set(undefined);

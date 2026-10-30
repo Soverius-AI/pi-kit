@@ -42,6 +42,11 @@ describe('ReviewTray', () => {
     });
   });
 
+  it('uses the full available width for the comment tray', () => {
+    const el = render();
+    expect(el.querySelector<HTMLElement>('.pk-measure')?.style.getPropertyValue('--pk-measure')).toBe('100%');
+  });
+
   it('invites the first comment and keeps Send and Discard off', () => {
     const el = render();
     expect(el.textContent).toContain('No comments yet');

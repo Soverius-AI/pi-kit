@@ -26,7 +26,7 @@ import { ChangesStore } from '@pi-kit/review/data';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'pk-transcript' },
   template: `
-    <div class="pk-measure" [style.--pk-measure]="mode() === 'split' ? '100%' : '96ch'">
+    <div class="pk-measure" style="--pk-measure: 100%">
       @if (review.error(); as error) {
         <p class="text-sm text-error" role="alert">
           {{ 'review.reviewView.theChangesCouldNotBeLoaded' | transloco: { value1: error } }}

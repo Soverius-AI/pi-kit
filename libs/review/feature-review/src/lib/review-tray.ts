@@ -14,7 +14,7 @@ import { ChangesStore } from '@pi-kit/review/data';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'pk-composer' },
   template: `
-    <div class="pk-measure" style="--pk-measure: 96ch">
+    <div class="pk-measure" style="--pk-measure: 100%">
       <div class="pk-tray">
         <div class="min-w-0 flex-1 flex flex-col gap-2">
           @if (review.commentCount() > 0) {
