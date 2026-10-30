@@ -322,6 +322,11 @@ export type ComputerUseState = {
         screenRecording: boolean;
     } | null;
     needsRelaunch: boolean;
+    linux?: {
+        wayland: boolean;
+        hyprland: boolean;
+        hyprlandPlugin: boolean;
+    };
 };
 
 export type Connector = {

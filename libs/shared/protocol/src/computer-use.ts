@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const ComputerUsePermissionSchema = z.enum(['accessibility', 'screenRecording']).meta({ id: 'ComputerUsePermission' });
 export type ComputerUsePermission = z.infer<typeof ComputerUsePermissionSchema>;
 
-/** Settings › Computer use: whether it is on, which app macOS asks, and (macOS, while it is on) what macOS has granted. */
+/** Settings › Computer use: whether it is on, which app macOS asks, (macOS, while it is on) what macOS has granted, and (Linux) what the session offers. */
 export const ComputerUseStateSchema = z
   .object({
     /** pi has the `@pi-kit/computer-use` package (pi-kit installs it once; `pi remove` takes it away). */
@@ -25,6 +25,8 @@ export const ComputerUseStateSchema = z
     permissions: z.object({ accessibility: z.boolean(), screenRecording: z.boolean() }).nullable(),
     /** Screen Recording was asked for since this app started: macOS applies it only after a relaunch. */
     needsRelaunch: z.boolean(),
+    /** Linux, with the package: what the session offers. On Hyprland, clicking at a point, pressing keys and raising a window need Cua's compositor plugin. */
+    linux: z.object({ wayland: z.boolean(), hyprland: z.boolean(), hyprlandPlugin: z.boolean() }).optional(),
   })
   .meta({ id: 'ComputerUseState' });
 export type ComputerUseState = z.infer<typeof ComputerUseStateSchema>;

@@ -4122,7 +4122,9 @@
       "adHocBuild": "Dieser Build ist ad-hoc signiert: macOS vergisst seine Berechtigungen bei jedem neuen Build. Ein Developer-ID-Build behält sie über Updates hinweg.",
       "terminalHost": "Das Backend von pi-kit wurde aus {{value1}} gestartet, daher fragt macOS {{value1}}, nicht pi-kit.",
       "windowsNoPermissions": "Windows braucht für die Computer-Steuerung keine Berechtigungen.",
-      "linuxNoPermissions": "Linux braucht für die Computer-Steuerung keine Berechtigungen. Es braucht eine Desktop-Sitzung (X11, oder Wayland mit XWayland oder den Wayland-Wegen des Treibers, die pi-kit einschaltet) und den AT-SPI-Bus für Barrierefreiheit (at-spi2-core). Unter Hyprland (Omarchy) braucht die Eingabe zusätzlich Cuas cua-hyprland-plugin, im Compositor geladen."
+      "linuxNoPermissions": "Linux braucht für die Computer-Steuerung keine Berechtigungen. Es braucht eine Desktop-Sitzung und den AT-SPI-Bus für Barrierefreiheit (at-spi2-core). Unter Hyprland ist die Computer-Steuerung read-only.",
+      "hyprlandPluginMissing": "Unter Hyprland ist die Computer-Steuerung read-only: pi kann den Bildschirm sehen, aber nicht klicken oder tippen. Cua Driver unterstützt Eingaben unter Hyprland noch nicht.",
+      "hyprlandPluginLoaded": "Cuas Hyprland-Plugin ist geladen: pi kann klicken, tippen und Fenster nach vorn holen."
     }
   },
   "agents": {

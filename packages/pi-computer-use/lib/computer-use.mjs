@@ -1,5 +1,6 @@
 // The logic of the extension without pi or the driver in it, so it can be tested: the one saved choice, which tools the model sees,
 // when to ask, what a result looks like, and what to tell the person when macOS has not given permission.
+import { execFile } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -82,9 +83,12 @@ export function describeCall(name, input) {
 /** An accessibility tree of a busy window can be very large: the model gets the start and is told it was cut. */
 const MAX_TEXT_CHARS = 60_000;
 
-/** The driver's `{ text, images: [{ mimeType, dataBase64 }], isError }` as pi's tool result. A failed tool throws, so pi marks it an error. */
-export function toToolResult(name, result) {
-  if (result.isError) throw new Error(result.text || `${name} failed`);
+/**
+ * The driver's `{ text, images: [{ mimeType, dataBase64 }], isError }` as pi's tool result. A failed tool throws, so pi marks it an error; on Hyprland an
+ * input the compositor refused gets the read-only hint appended (`explainToolError`), for the model and the person alike.
+ */
+export function toToolResult(name, result, env = process.env) {
+  if (result.isError) throw new Error(explainToolError(result.text || `${name} failed`, env));
   /** @type {({ type: 'text', text: string } | { type: 'image', data: string, mimeType: string })[]} */
   const content = [];
   let text = result.text ?? '';
@@ -101,10 +105,10 @@ export const SUPPORTED_PLATFORMS = ['darwin', 'win32', 'linux'];
 export const PLATFORM_NAMES = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
 export const isSupported = (platform = process.platform) => SUPPORTED_PLATFORMS.includes(platform);
 export const unsupportedMessage = (platform = process.platform) => `Computer use supports macOS, Windows and Linux; this is ${platform}.`;
-/** Outside macOS there is nothing to grant: Windows needs no permissions, Linux a desktop session and, on Hyprland, Cua's compositor plugin for input. */
+/** Outside macOS there is nothing to grant: Windows needs no permissions, Linux a desktop session; Hyprland is read-only. */
 export const noPermissionsNote = (platform = process.platform) =>
   platform === 'linux'
-    ? 'Linux needs no permissions for computer use; it needs a desktop session (X11, or Wayland with XWayland or native Wayland routes) and the AT-SPI accessibility bus (at-spi2-core). On Hyprland (Omarchy), input also needs the cua-hyprland-plugin loaded in the compositor.'
+    ? 'Linux needs no permissions for computer use. It needs a desktop session and the AT-SPI accessibility bus (at-spi2-core). On Hyprland, computer use is read-only.'
     : `${PLATFORM_NAMES[platform] ?? platform} needs no permissions for computer use. Nothing to set up.`;
 
 /** The switch that turns on Cua Driver's native Wayland routes; without it a Wayland session only reaches apps that run under XWayland. */
@@ -115,6 +119,57 @@ export function enableWayland(env = process.env, platform = process.platform) {
   if (platform !== 'linux' || !isWaylandSession(env) || env[WAYLAND_SWITCH] !== undefined) return false;
   env[WAYLAND_SWITCH] = '1';
   return true;
+}
+
+// --- Hyprland: read-only. Looking (windows, screenshots, the accessibility tree) works through Hyprland's own protocols; clicking, typing and raising
+// a window go through Cua's compositor plugin, which is experimental, not part of the driver, and (the build Omarchy ships) delivers no input yet. An
+// element the driver has read can still be acted on through AT-SPI where the app exposes an action. The README has the plugin's details.
+
+export const isHyprland = (env = process.env) => Boolean(env.HYPRLAND_INSTANCE_SIGNATURE);
+
+/** What `/computer-use on | status | setup` and pi-kit's Settings say on Hyprland without the plugin. */
+export const HYPRLAND_READ_ONLY_NOTE = 'Hyprland: read-only. pi can see the screen but cannot click or type.';
+
+/** Appended to an input the driver refused, so the model stops retrying and the person knows why. */
+export const HYPRLAND_TOOL_HINT = 'Hyprland: pi cannot click or type here, only look (and act on an element it has read, where the app exposes one).';
+
+/** What the driver answers an input it cannot deliver on Hyprland without the plugin. */
+const HYPRLAND_INPUT_REFUSED = /Hyprland input plugin is unavailable|no focus-free input backend|cua-compositor activation requires/;
+
+const runHyprctl = (args) =>
+  new Promise((resolve, reject) => {
+    execFile('hyprctl', args, { timeout: 3000, windowsHide: true }, (error, stdout) => (error ? reject(error) : resolve(stdout)));
+  });
+
+/** Whether Cua's compositor plugin answers in this Hyprland session: `hyprctl -j cua:status` returns JSON from the plugin and "unknown request" without it. */
+export async function hyprlandPluginLoaded(run = runHyprctl) {
+  try {
+    JSON.parse(await run(['-j', 'cua:status']));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What this Linux session offers the driver: a Wayland session (the native routes get turned on), Hyprland, and whether its Cua plugin is loaded.
+ * `undefined` outside Linux.
+ * @returns {Promise<{ wayland: boolean, hyprland: boolean, hyprlandPlugin: boolean } | undefined>}
+ */
+export async function linuxReadiness(env = process.env, platform = process.platform, run = runHyprctl) {
+  if (platform !== 'linux') return undefined;
+  const hyprland = isHyprland(env);
+  return { wayland: isWaylandSession(env), hyprland, hyprlandPlugin: hyprland ? await hyprlandPluginLoaded(run) : false };
+}
+
+/** The warning for `/computer-use on | status | setup` on Linux: Hyprland without the plugin is read-only; nothing elsewhere. */
+export function linuxInputHelp(readiness) {
+  return readiness?.hyprland && !readiness.hyprlandPlugin ? HYPRLAND_READ_ONLY_NOTE : undefined;
+}
+
+/** A driver error that is Hyprland refusing input gets the hint appended: the model learns to look (or act on an element) instead, the person why. */
+export function explainToolError(text, env = process.env) {
+  return isHyprland(env) && HYPRLAND_INPUT_REFUSED.test(text) ? `${text}\n\n${HYPRLAND_TOOL_HINT}` : text;
 }
 
 // --- macOS permissions: granted to the app that started pi (the terminal, or pi-kit), not to this package ---

@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { classify, decide, describeCall, driverToolName, enableWayland, exposureFor, host, hostApp, inPiKit, isEnabled, isSupported, missingPermissions, noPermissionsNote, permissionHelp, piToolName, setEnabled, toToolResult } from './computer-use.mjs';
+import { classify, decide, describeCall, driverToolName, enableWayland, explainToolError, exposureFor, host, hostApp, hyprlandPluginLoaded, HYPRLAND_READ_ONLY_NOTE, HYPRLAND_TOOL_HINT, inPiKit, isEnabled, isSupported, linuxInputHelp, linuxReadiness, missingPermissions, noPermissionsNote, permissionHelp, piToolName, setEnabled, toToolResult } from './computer-use.mjs';
 
 describe('the saved choice', () => {
   let dir;
@@ -99,8 +99,8 @@ describe('macOS permissions', () => {
     expect(permissionHelp('linux', undefined)).toBeUndefined();
     expect(['darwin', 'win32', 'linux'].map((p) => isSupported(p))).toEqual([true, true, true]);
     expect(isSupported('freebsd')).toBe(false);
-    expect(noPermissionsNote('linux')).toMatch(/X11, or Wayland/);
-    expect(noPermissionsNote('linux')).toMatch(/cua-hyprland-plugin/);
+    expect(noPermissionsNote('linux')).toMatch(/desktop session/);
+    expect(noPermissionsNote('linux')).toMatch(/Hyprland, computer use is read-only/);
     expect(noPermissionsNote('win32')).toMatch(/^Windows needs no permissions/);
   });
 
@@ -150,5 +150,45 @@ describe('the Wayland switch of Cua Driver', () => {
     const off = { XDG_SESSION_TYPE: 'wayland', CUA_DRIVER_RS_ENABLE_WAYLAND: '0' };
     expect(enableWayland(off, 'linux')).toBe(false);
     expect(off.CUA_DRIVER_RS_ENABLE_WAYLAND).toBe('0');
+  });
+});
+
+describe('Hyprland', () => {
+  const hypr = { HYPRLAND_INSTANCE_SIGNATURE: 'abc', XDG_SESSION_TYPE: 'wayland' };
+  const loaded = async () => '{"name":"cua-hyprland-plugin","state":"discovery_only"}';
+  const missing = async () => 'unknown request';
+  const noHyprctl = async () => {
+    throw new Error('spawn hyprctl ENOENT');
+  };
+
+  it('knows whether the plugin answers hyprctl', async () => {
+    expect(await hyprlandPluginLoaded(loaded)).toBe(true);
+    expect(await hyprlandPluginLoaded(missing)).toBe(false);
+    expect(await hyprlandPluginLoaded(noHyprctl)).toBe(false);
+  });
+
+  it('reads what a Linux session offers, and asks hyprctl only on Hyprland', async () => {
+    expect(await linuxReadiness(hypr, 'linux', missing)).toEqual({ wayland: true, hyprland: true, hyprlandPlugin: false });
+    expect(await linuxReadiness(hypr, 'linux', loaded)).toEqual({ wayland: true, hyprland: true, hyprlandPlugin: true });
+    expect(await linuxReadiness({ XDG_SESSION_TYPE: 'wayland' }, 'linux', noHyprctl)).toEqual({ wayland: true, hyprland: false, hyprlandPlugin: false });
+    expect(await linuxReadiness({ DISPLAY: ':0' }, 'linux', noHyprctl)).toEqual({ wayland: false, hyprland: false, hyprlandPlugin: false });
+    expect(await linuxReadiness(hypr, 'darwin', loaded)).toBeUndefined();
+  });
+
+  it('warns on Hyprland without the plugin and nowhere else', () => {
+    expect(linuxInputHelp({ wayland: true, hyprland: true, hyprlandPlugin: false })).toBe(HYPRLAND_READ_ONLY_NOTE);
+    expect(HYPRLAND_READ_ONLY_NOTE).toContain('read-only');
+    expect(linuxInputHelp({ wayland: true, hyprland: true, hyprlandPlugin: true })).toBeUndefined();
+    expect(linuxInputHelp({ wayland: true, hyprland: false, hyprlandPlugin: false })).toBeUndefined();
+    expect(linuxInputHelp(undefined)).toBeUndefined();
+  });
+
+  it('appends the read-only hint to an input the compositor refused, and leaves other errors alone', () => {
+    const refused = 'foreground_unavailable (unsupported_operation): production Hyprland input plugin is unavailable';
+    expect(explainToolError(refused, hypr)).toBe(`${refused}\n\n${HYPRLAND_TOOL_HINT}`);
+    expect(explainToolError('Background delivery is not available: the requested target has no focus-free input backend; ...', hypr)).toContain(HYPRLAND_TOOL_HINT);
+    expect(explainToolError('No windows found for pid 0. Provide window_id.', hypr)).toBe('No windows found for pid 0. Provide window_id.');
+    expect(explainToolError(refused, { XDG_SESSION_TYPE: 'wayland' })).toBe(refused);
+    expect(() => toToolResult('click', { text: refused, images: [], isError: true }, hypr)).toThrow(/only look/);
   });
 });
