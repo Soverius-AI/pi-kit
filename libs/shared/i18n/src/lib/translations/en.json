@@ -4123,8 +4123,7 @@
       "terminalHost": "pi-kit’s backend was started from {{value1}}, so macOS asks {{value1}}, not pi-kit.",
       "windowsNoPermissions": "Windows needs no permissions for computer use.",
       "linuxNoPermissions": "Linux needs no permissions for computer use. It needs a desktop session and the AT-SPI accessibility bus (at-spi2-core). On Hyprland, computer use is read-only.",
-      "hyprlandPluginMissing": "On Hyprland, computer use is read-only: pi can see your screen but cannot click or type. Cua Driver does not support input on Hyprland yet.",
-      "hyprlandPluginLoaded": "Cua’s Hyprland plugin is loaded: pi can click, type and bring windows to the front."
+      "hyprlandReadOnly": "On Hyprland, computer use is read-only: pi can see your screen but cannot click or type. Cua Driver does not support input on Hyprland yet."
     }
   },
   "agents": {

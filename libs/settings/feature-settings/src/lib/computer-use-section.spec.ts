@@ -129,33 +129,10 @@ describe('Settings › Computer use', () => {
     expect(linux.el.textContent).toContain('Linux needs no permissions');
   });
 
-  it('tells a Hyprland session that computer use is read-only until Cua’s plugin is loaded', () => {
-    state.set({
-      ...base,
-      platform: 'linux',
-      enabled: true,
-      linux: { wayland: true, hyprland: true, hyprlandPlugin: false },
-    });
-    const missing = render();
-    expect(q(missing.el, 'computer-use-hyprland-plugin')?.textContent).toContain('read-only');
-    expect(q(missing.el, 'computer-use-hyprland-plugin-loaded')).toBeNull();
-    state.set({
-      ...base,
-      platform: 'linux',
-      enabled: true,
-      linux: { wayland: true, hyprland: true, hyprlandPlugin: true },
-    });
-    const loaded = render();
-    expect(q(loaded.el, 'computer-use-hyprland-plugin')).toBeNull();
-    expect(q(loaded.el, 'computer-use-hyprland-plugin-loaded')?.textContent).toContain('loaded');
-    state.set({
-      ...base,
-      platform: 'linux',
-      enabled: true,
-      linux: { wayland: true, hyprland: false, hyprlandPlugin: false },
-    });
-    const gnome = render();
-    expect(q(gnome.el, 'computer-use-hyprland-plugin')).toBeNull();
-    expect(q(gnome.el, 'computer-use-hyprland-plugin-loaded')).toBeNull();
+  it('tells a Hyprland session that computer use is read-only', () => {
+    state.set({ ...base, platform: 'linux', enabled: true, hyprland: true });
+    expect(q(render().el, 'computer-use-hyprland')?.textContent).toContain('read-only');
+    state.set({ ...base, platform: 'linux', enabled: true, hyprland: false });
+    expect(q(render().el, 'computer-use-hyprland')).toBeNull();
   });
 });

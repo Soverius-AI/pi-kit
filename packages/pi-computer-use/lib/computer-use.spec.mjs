@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { classify, decide, describeCall, driverToolName, enableWayland, explainToolError, exposureFor, host, hostApp, hyprlandPluginLoaded, HYPRLAND_READ_ONLY_NOTE, HYPRLAND_TOOL_HINT, inPiKit, isEnabled, isSupported, linuxInputHelp, linuxReadiness, missingPermissions, noPermissionsNote, permissionHelp, piToolName, setEnabled, toToolResult } from './computer-use.mjs';
+import { classify, decide, describeCall, driverToolName, enableWayland, explainToolError, exposureFor, host, hostApp, HYPRLAND_READ_ONLY_NOTE, HYPRLAND_TOOL_HINT, inPiKit, isEnabled, isSupported, linuxInputHelp, missingPermissions, noPermissionsNote, permissionHelp, piToolName, setEnabled, toToolResult } from './computer-use.mjs';
 
 describe('the saved choice', () => {
   let dir;
@@ -155,32 +155,13 @@ describe('the Wayland switch of Cua Driver', () => {
 
 describe('Hyprland', () => {
   const hypr = { HYPRLAND_INSTANCE_SIGNATURE: 'abc', XDG_SESSION_TYPE: 'wayland' };
-  const loaded = async () => '{"name":"cua-hyprland-plugin","state":"discovery_only"}';
-  const missing = async () => 'unknown request';
-  const noHyprctl = async () => {
-    throw new Error('spawn hyprctl ENOENT');
-  };
 
-  it('knows whether the plugin answers hyprctl', async () => {
-    expect(await hyprlandPluginLoaded(loaded)).toBe(true);
-    expect(await hyprlandPluginLoaded(missing)).toBe(false);
-    expect(await hyprlandPluginLoaded(noHyprctl)).toBe(false);
-  });
-
-  it('reads what a Linux session offers, and asks hyprctl only on Hyprland', async () => {
-    expect(await linuxReadiness(hypr, 'linux', missing)).toEqual({ wayland: true, hyprland: true, hyprlandPlugin: false });
-    expect(await linuxReadiness(hypr, 'linux', loaded)).toEqual({ wayland: true, hyprland: true, hyprlandPlugin: true });
-    expect(await linuxReadiness({ XDG_SESSION_TYPE: 'wayland' }, 'linux', noHyprctl)).toEqual({ wayland: true, hyprland: false, hyprlandPlugin: false });
-    expect(await linuxReadiness({ DISPLAY: ':0' }, 'linux', noHyprctl)).toEqual({ wayland: false, hyprland: false, hyprlandPlugin: false });
-    expect(await linuxReadiness(hypr, 'darwin', loaded)).toBeUndefined();
-  });
-
-  it('warns on Hyprland without the plugin and nowhere else', () => {
-    expect(linuxInputHelp({ wayland: true, hyprland: true, hyprlandPlugin: false })).toBe(HYPRLAND_READ_ONLY_NOTE);
+  it('says read-only on Hyprland and nothing elsewhere', () => {
+    expect(linuxInputHelp(hypr, 'linux')).toBe(HYPRLAND_READ_ONLY_NOTE);
     expect(HYPRLAND_READ_ONLY_NOTE).toContain('read-only');
-    expect(linuxInputHelp({ wayland: true, hyprland: true, hyprlandPlugin: true })).toBeUndefined();
-    expect(linuxInputHelp({ wayland: true, hyprland: false, hyprlandPlugin: false })).toBeUndefined();
-    expect(linuxInputHelp(undefined)).toBeUndefined();
+    expect(linuxInputHelp({ XDG_SESSION_TYPE: 'wayland' }, 'linux')).toBeUndefined();
+    expect(linuxInputHelp({ DISPLAY: ':0' }, 'linux')).toBeUndefined();
+    expect(linuxInputHelp(hypr, 'darwin')).toBeUndefined();
   });
 
   it('appends the read-only hint to an input the compositor refused, and leaves other errors alone', () => {
