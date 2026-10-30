@@ -1,6 +1,5 @@
 // The logic of the extension without pi or the driver in it, so it can be tested: the one saved choice, which tools the model sees,
 // when to ask, what a result looks like, and what to tell the person when macOS has not given permission.
-import { execFile } from 'node:child_process';
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -127,44 +126,18 @@ export function enableWayland(env = process.env, platform = process.platform) {
 
 export const isHyprland = (env = process.env) => Boolean(env.HYPRLAND_INSTANCE_SIGNATURE);
 
-/** What `/computer-use on | status | setup` and pi-kit's Settings say on Hyprland without the plugin. */
+/** What `/computer-use on | status | setup` and pi-kit's Settings say on Hyprland. */
 export const HYPRLAND_READ_ONLY_NOTE = 'Hyprland: read-only. pi can see the screen but cannot click or type.';
 
 /** Appended to an input the driver refused, so the model stops retrying and the person knows why. */
 export const HYPRLAND_TOOL_HINT = 'Hyprland: pi cannot click or type here, only look (and act on an element it has read, where the app exposes one).';
 
-/** What the driver answers an input it cannot deliver on Hyprland without the plugin. */
+/** What the driver answers an input it cannot deliver on Hyprland. */
 const HYPRLAND_INPUT_REFUSED = /Hyprland input plugin is unavailable|no focus-free input backend|cua-compositor activation requires/;
 
-const runHyprctl = (args) =>
-  new Promise((resolve, reject) => {
-    execFile('hyprctl', args, { timeout: 3000, windowsHide: true }, (error, stdout) => (error ? reject(error) : resolve(stdout)));
-  });
-
-/** Whether Cua's compositor plugin answers in this Hyprland session: `hyprctl -j cua:status` returns JSON from the plugin and "unknown request" without it. */
-export async function hyprlandPluginLoaded(run = runHyprctl) {
-  try {
-    JSON.parse(await run(['-j', 'cua:status']));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * What this Linux session offers the driver: a Wayland session (the native routes get turned on), Hyprland, and whether its Cua plugin is loaded.
- * `undefined` outside Linux.
- * @returns {Promise<{ wayland: boolean, hyprland: boolean, hyprlandPlugin: boolean } | undefined>}
- */
-export async function linuxReadiness(env = process.env, platform = process.platform, run = runHyprctl) {
-  if (platform !== 'linux') return undefined;
-  const hyprland = isHyprland(env);
-  return { wayland: isWaylandSession(env), hyprland, hyprlandPlugin: hyprland ? await hyprlandPluginLoaded(run) : false };
-}
-
-/** The warning for `/computer-use on | status | setup` on Linux: Hyprland without the plugin is read-only; nothing elsewhere. */
-export function linuxInputHelp(readiness) {
-  return readiness?.hyprland && !readiness.hyprlandPlugin ? HYPRLAND_READ_ONLY_NOTE : undefined;
+/** The warning for `/computer-use on | status | setup` on Linux: Hyprland is read-only; nothing elsewhere. */
+export function linuxInputHelp(env = process.env, platform = process.platform) {
+  return platform === 'linux' && isHyprland(env) ? HYPRLAND_READ_ONLY_NOTE : undefined;
 }
 
 /** A driver error that is Hyprland refusing input gets the hint appended: the model learns to look (or act on an element) instead, the person why. */

@@ -16,8 +16,6 @@ export interface ComputerUseHostModule {
   /** Loads the driver's SDK (and its native library) on macOS. */
   permissions(): Promise<Permissions>;
   requestPermissions(): Promise<Permissions>;
-  /** Linux: a Wayland session, Hyprland, and whether Cua's Hyprland plugin answers (`hyprctl -j cua:status`); `undefined` elsewhere. */
-  linuxReadiness(): Promise<ComputerUseState['linux']>;
 }
 
 /**

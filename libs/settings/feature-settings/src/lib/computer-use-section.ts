@@ -10,8 +10,8 @@ const POLL_MS = 1500;
 /**
  * Settings › Computer use (`@pi-kit/computer-use`): the switch that `/computer-use on | off` also writes, and on macOS the two permissions with their state, a button that
  * asks macOS and opens the right page of System Settings, which app macOS gives them to (pi-kit, Electron for a development build, or a terminal) and, once Screen
- * Recording was asked for, Relaunch, because macOS applies it only to an app that starts again. On Linux, whether a Hyprland session has Cua's plugin (input at a
- * point needs it). The state follows the system by itself: the page reads it every 1.5 s while something is missing and when the window gets the focus back.
+ * Recording was asked for, Relaunch, because macOS applies it only to an app that starts again. On Hyprland, that computer use is read-only. The state follows
+ * System Settings by itself: the page reads it every 1.5 s while something is missing and when the window gets the focus back.
  */
 @Component({
   selector: 'pk-computer-use-section',
@@ -150,18 +150,10 @@ const POLL_MS = 1500;
         } @else if (s.installed && s.platform === 'win32') {
           <p class="muted t-sm">{{ 'settings.computerUseSection.windowsNoPermissions' | transloco }}</p>
         } @else if (s.installed && s.platform === 'linux') {
-          @if (s.linux?.hyprland && !s.linux.hyprlandPlugin) {
-            <div
-              role="status"
-              class="alert alert-soft alert-warning text-sm"
-              data-testid="computer-use-hyprland-plugin"
-            >
-              <span>{{ 'settings.computerUseSection.hyprlandPluginMissing' | transloco }}</span>
+          @if (s.hyprland) {
+            <div role="status" class="alert alert-soft alert-warning text-sm" data-testid="computer-use-hyprland">
+              <span>{{ 'settings.computerUseSection.hyprlandReadOnly' | transloco }}</span>
             </div>
-          } @else if (s.linux?.hyprland) {
-            <p class="t-sm" data-testid="computer-use-hyprland-plugin-loaded">
-              {{ 'settings.computerUseSection.hyprlandPluginLoaded' | transloco }}
-            </p>
           }
           <p class="muted t-sm">{{ 'settings.computerUseSection.linuxNoPermissions' | transloco }}</p>
         }
@@ -190,11 +182,10 @@ export class ComputerUseSection implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     void this.cu.load();
-    // Only while computer use is on and macOS still lacks something, or Hyprland its plugin; otherwise there is nothing that can change on its own.
+    // Only while computer use is on and macOS still lacks something; otherwise there is nothing that can change on its own.
     this.timer = setInterval(() => {
       const s = this.cu.state();
-      if (s?.enabled && ((s.permissions && !this.allGranted()) || (s.linux?.hyprland && !s.linux.hyprlandPlugin)))
-        void this.cu.load();
+      if (s?.enabled && s.permissions && !this.allGranted()) void this.cu.load();
     }, POLL_MS);
   }
 

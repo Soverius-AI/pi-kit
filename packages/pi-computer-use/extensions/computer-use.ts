@@ -8,7 +8,7 @@
 //   approval                                    looking runs; acting asks once per session; scripts, quitting apps and downloads ask every time
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
-import { classify, configPath, decide, describeCall, driverToolName, enableWayland, exposureFor, GUIDELINE, host, inPiKit, isEnabled, isSupported, linuxInputHelp, linuxReadiness, noPermissionsNote, PERMISSIONS, permissionHelp, piToolName, setEnabled, toToolResult, unsupportedMessage } from '../lib/computer-use.mjs';
+import { classify, configPath, decide, describeCall, driverToolName, enableWayland, exposureFor, GUIDELINE, host, inPiKit, isEnabled, isSupported, isWaylandSession, linuxInputHelp, noPermissionsNote, PERMISSIONS, permissionHelp, piToolName, setEnabled, toToolResult, unsupportedMessage } from '../lib/computer-use.mjs';
 
 interface DriverTool {
   name: string;
@@ -98,11 +98,10 @@ export default function (pi: ExtensionAPI) {
     await current?.shutdown().catch(() => undefined);
   }
 
-  /** Linux: what the session offers (Wayland, Hyprland and its plugin) and, while the driver runs, its own check of the session. */
+  /** Linux: Hyprland is read-only; elsewhere the session type and, while the driver runs, its own check of the session. */
   async function linuxStatus(): Promise<{ lines: string[]; help?: string }> {
-    const readiness = await linuxReadiness();
-    const help = linuxInputHelp(readiness);
-    const lines = [readiness?.hyprland ? (readiness.hyprlandPlugin ? 'Hyprland: Cua’s plugin is loaded.' : undefined) : readiness?.wayland ? 'Wayland session: the driver’s native Wayland routes are on.' : 'X11 session.'];
+    const help = linuxInputHelp();
+    const lines = [help ?? (isWaylandSession() ? 'Wayland session: the driver’s native Wayland routes are on.' : 'X11 session.')];
     if (driver) lines.push((await driver.callTool('check_permissions', '{}').catch(() => undefined))?.text?.trim() ?? '');
     return { lines: lines.filter(Boolean), help };
   }
@@ -111,7 +110,7 @@ export default function (pi: ExtensionAPI) {
     const macHelp = SUPPORTED ? permissionHelp(process.platform, await permissions().catch(() => ({ accessibility: false, screenRecording: false }))) : undefined;
     const linux = SUPPORTED && process.platform === 'linux' ? await linuxStatus() : { lines: [] };
     const help = macHelp ?? linux.help;
-    const detail = SUPPORTED ? [macHelp ?? (process.platform === 'linux' ? undefined : 'Permissions: ready.'), ...linux.lines, linux.help].filter(Boolean).join('\n') : `Not supported on ${process.platform}.`;
+    const detail = SUPPORTED ? [macHelp ?? (process.platform === 'linux' ? undefined : 'Permissions: ready.'), ...linux.lines].filter(Boolean).join('\n') : `Not supported on ${process.platform}.`;
     ctx.ui.notify(`Computer use is ${isEnabled() ? 'on' : 'off'} (${configPath()}).\n${detail}`, help ? 'warning' : 'info');
   }
 
@@ -122,7 +121,7 @@ export default function (pi: ExtensionAPI) {
    */
   async function setup(ctx: ExtensionContext) {
     if (process.platform !== 'darwin') {
-      const help = process.platform === 'linux' ? linuxInputHelp(await linuxReadiness()) : undefined;
+      const help = linuxInputHelp();
       return ctx.ui.notify(SUPPORTED ? (help ? `${noPermissionsNote()}\n\n${help}` : noPermissionsNote()) : `Not supported on ${process.platform}.`, help ? 'warning' : 'info');
     }
     const app = host();
@@ -171,7 +170,7 @@ export default function (pi: ExtensionAPI) {
           setEnabled(true);
           await registerTools(true);
           ctx.ui.notify('Computer use is on.', 'info');
-          const help = permissionHelp(process.platform, await permissions()) ?? (process.platform === 'linux' ? linuxInputHelp(await linuxReadiness()) : undefined);
+          const help = permissionHelp(process.platform, await permissions()) ?? linuxInputHelp();
           showSetupPill(Boolean(help));
           if (help) ctx.ui.notify(help, 'warning');
         } else if (word === 'off') {

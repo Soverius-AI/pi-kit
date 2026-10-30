@@ -1,6 +1,6 @@
-// What a host app uses of this package without pi in it: pi-kit's backend reads and writes the saved choice, names the app macOS asks, reads or
-// requests the macOS permissions for its Settings › Computer use page, and on Linux reads what the session offers (`linuxReadiness`). The SDK (and with it the native library) is loaded only when a permission is asked about.
-export { configPath, host, isEnabled, linuxReadiness, missingPermissions, PERMISSIONS, setEnabled } from './computer-use.mjs';
+// What a host app uses of this package without pi in it: pi-kit's backend reads and writes the saved choice, names the app macOS asks, and reads or
+// requests the macOS permissions for its Settings › Computer use page. The SDK (and with it the native library) is loaded only when a permission is asked about.
+export { configPath, host, isEnabled, missingPermissions, PERMISSIONS, setEnabled } from './computer-use.mjs';
 
 let sdk;
 const load = async () => (sdk ??= await import('@trycua/cua-driver'));

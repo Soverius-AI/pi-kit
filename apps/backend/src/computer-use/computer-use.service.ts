@@ -11,7 +11,7 @@ const SUPPORTED_PLATFORMS: readonly NodeJS.Platform[] = ['darwin', 'win32', 'lin
 
 /**
  * Settings › Computer use: the on/off switch (the same saved choice as `/computer-use on | off`), which app macOS gives the permissions to, on macOS what it has
- * granted, with the System Settings page of each, and on Linux what the session offers (Hyprland needs Cua's compositor plugin for input at a point). The driver's native library is loaded only while computer use is on, as in the extension. A change of the
+ * granted, with the System Settings page of each, and on Linux whether this is Hyprland, where computer use is read-only. The driver's native library is loaded only while computer use is on, as in the extension. A change of the
  * switch reloads the idle sessions, so their computer tools appear or go.
  */
 @Injectable()
@@ -23,6 +23,7 @@ export class ComputerUseService {
   private adHoc: Promise<boolean | undefined> | undefined;
   /** Overridable for the tests. */
   platform: NodeJS.Platform = process.platform;
+  env: NodeJS.ProcessEnv = process.env;
   openUrl = (url: string): Promise<unknown> => run('open', [url]);
   codesignInfo = async (bundle: string): Promise<string> => (await run('codesign', ['-dv', bundle])).stderr;
 
@@ -47,7 +48,6 @@ export class ComputerUseService {
         this.logger.warn(`Could not read the macOS permissions: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    const linux = mod && this.platform === 'linux' ? await this.linuxReadiness(mod) : undefined;
     return {
       installed: Boolean(mod),
       supported,
@@ -56,7 +56,7 @@ export class ComputerUseService {
       host: { name: host.name, kind: host.kind, ...(adHoc === undefined ? {} : { adHoc }) },
       permissions,
       needsRelaunch: this.platform === 'darwin' && enabled && this.screenChanged,
-      ...(linux ? { linux } : {}),
+      ...(this.platform === 'linux' ? { hyprland: Boolean(this.env['HYPRLAND_INSTANCE_SIGNATURE']) } : {}),
     };
   }
 
@@ -82,17 +82,6 @@ export class ComputerUseService {
     if (pane) await this.openUrl(pane);
     if (permission === 'screenRecording') this.screenChanged = true;
     return this.state();
-  }
-
-  /** What the Linux session offers; a package too old to say (no `linuxReadiness`) or a failing check leaves it out. */
-  private async linuxReadiness(mod: ComputerUseHostModule): Promise<ComputerUseState['linux']> {
-    if (typeof mod.linuxReadiness !== 'function') return undefined;
-    try {
-      return await mod.linuxReadiness();
-    } catch (error) {
-      this.logger.warn(`Could not read what the Linux session offers: ${error instanceof Error ? error.message : String(error)}`);
-      return undefined;
-    }
   }
 
   private async required(): Promise<ComputerUseHostModule> {

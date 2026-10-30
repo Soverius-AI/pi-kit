@@ -17,7 +17,7 @@ Installing does nothing yet. Computer use is **off until you turn it on**:
 | `/computer-use on` | asks once, then gives pi the tools |
 | `/computer-use off` | takes them away |
 | `/computer-use setup` | macOS: opens the permission pages one at a time (Windows and Linux need none; Hyprland is told it is read-only) |
-| `/computer-use status` | on or off, whether permissions are ready, and on Linux what the session offers (Wayland, Hyprland read-only or not, the driver's own check while it runs) |
+| `/computer-use status` | on or off, whether permissions are ready, and on Linux the session type (Hyprland: read-only) and the driver's own check while it runs |
 
 ## Linux
 
@@ -57,5 +57,5 @@ What counts as looking comes from each tool's own `readOnlyHint` and `risk` from
 ```
 extensions/computer-use.ts   the commands, the tools, the approval question, the setup steps
 lib/computer-use.mjs         the logic without pi or the driver in it (tested)
-lib/host.mjs                 what a host app uses: the saved choice, the app macOS asks, the permissions, what a Linux session offers (pi-kit's Settings page)
+lib/host.mjs                 what a host app uses: the saved choice, the app macOS asks, the permissions (pi-kit's Settings page)
 ```

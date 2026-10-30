@@ -1,6 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
-import type { ComputerUseState } from '@pi-kit/protocol';
 import type { PiSessionService } from '../pi/pi-session.service';
 import type { ComputerUseHostModule, ComputerUsePackage } from './computer-use-package';
 import { ComputerUseService } from './computer-use.service';
@@ -10,7 +9,7 @@ const PERMISSIONS = [
   { key: 'screenRecording', name: 'Screen & System Audio Recording', pane: 'pane:screen' },
 ] as const;
 
-function setup(options: { installed?: boolean; enabled?: boolean; granted?: { accessibility: boolean; screenRecording: boolean }; host?: ReturnType<ComputerUseHostModule['host']>; linux?: ComputerUseState['linux'] } = {}) {
+function setup(options: { installed?: boolean; enabled?: boolean; granted?: { accessibility: boolean; screenRecording: boolean }; host?: ReturnType<ComputerUseHostModule['host']> } = {}) {
   let enabled = options.enabled ?? false;
   const granted = { ...(options.granted ?? { accessibility: false, screenRecording: false }) };
   const mod: ComputerUseHostModule = {
@@ -20,7 +19,6 @@ function setup(options: { installed?: boolean; enabled?: boolean; granted?: { ac
     PERMISSIONS,
     permissions: vi.fn(async () => ({ ...granted })),
     requestPermissions: vi.fn(async () => ({ ...granted })),
-    linuxReadiness: vi.fn(async () => options.linux),
   };
   const pkg = { hostModule: async () => (options.installed === false ? undefined : mod) } as unknown as ComputerUsePackage;
   const sessions = { reloadIdleSessions: vi.fn(async () => 2) } as unknown as PiSessionService;
@@ -83,23 +81,16 @@ describe('Settings › Computer use', () => {
     expect(mod.requestPermissions).not.toHaveBeenCalled();
   });
 
-  it('says what a Linux session offers, and only there', async () => {
-    const linux = { wayland: true, hyprland: true, hyprlandPlugin: false };
-    const { service, mod } = setup({ enabled: true, linux });
+  it('says whether Linux is Hyprland, and only there', async () => {
+    const { service } = setup({ enabled: true });
     service.platform = 'linux';
-    expect((await service.state()).linux).toEqual(linux);
+    service.env = { HYPRLAND_INSTANCE_SIGNATURE: 'abc' };
+    expect((await service.state()).hyprland).toBe(true);
+    service.env = {};
+    expect((await service.state()).hyprland).toBe(false);
     service.platform = 'darwin';
-    expect((await service.state()).linux).toBeUndefined();
-    expect(mod.linuxReadiness).toHaveBeenCalledOnce();
-  });
-
-  it('leaves the Linux session out when the package cannot say', async () => {
-    const { service, mod } = setup({ enabled: true });
-    service.platform = 'linux';
-    (mod.linuxReadiness as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('hyprctl hung'));
-    expect((await service.state()).linux).toBeUndefined();
-    delete (mod as Partial<ComputerUseHostModule>).linuxReadiness;
-    expect((await service.state()).linux).toBeUndefined();
+    service.env = { HYPRLAND_INSTANCE_SIGNATURE: 'abc' };
+    expect((await service.state()).hyprland).toBeUndefined();
   });
 
   it('refuses to turn on where Cua Driver does not run', async () => {
