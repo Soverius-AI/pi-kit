@@ -57,7 +57,7 @@ export const scoreConsentSentence = (model: string): string =>
   `This sends the thread’s transcript (prompts, tool calls, review comments, the final diff and the files you changed by hand, with secrets masked) to ${model} to attribute each change to what you did. The attendant is off, so nothing else is ever sent for this thread.`;
 
 /**
- * The Meat Proxy Score: the host side of the plugin events the package needs beyond `learn`'s (`baselines`, `outside-edits`, `annotate`, the outcome's stored
+ * The Meat Proxy Score: the host side of the plugin events the package needs beyond `learn`'s (`baselines`, `annotate`, the outcome's stored
  * annotations, the attendant's `score` task), the attendant's fourth job (scoring a thread after its outcome lands, under its cap and per-project opt-out), and what the app asks
  * for: the score of a thread, scoring it now, relabelling a hunk, and the per-project distribution. Core stores and draws; the labelling and the arithmetic are the package's
  * (`lib/pipeline.mjs`), and nothing here is drawn while the package is not installed in pi.
