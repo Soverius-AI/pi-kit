@@ -9852,6 +9852,20 @@ components:
             - type: 'null'
         needsRelaunch:
           type: boolean
+        linux:
+          type: object
+          properties:
+            wayland:
+              type: boolean
+            hyprland:
+              type: boolean
+            hyprlandPlugin:
+              type: boolean
+          required:
+            - wayland
+            - hyprland
+            - hyprlandPlugin
+          additionalProperties: false
       required:
         - installed
         - supported

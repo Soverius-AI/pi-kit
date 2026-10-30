@@ -4122,7 +4122,9 @@
       "adHocBuild": "This build is ad-hoc signed: macOS forgets its permissions whenever it is rebuilt. A Developer ID build keeps them across updates.",
       "terminalHost": "pi-kit’s backend was started from {{value1}}, so macOS asks {{value1}}, not pi-kit.",
       "windowsNoPermissions": "Windows needs no permissions for computer use.",
-      "linuxNoPermissions": "Linux needs no permissions for computer use. It needs a desktop session (X11, or Wayland with XWayland or the driver's Wayland routes, which pi-kit turns on) and the AT-SPI accessibility bus (at-spi2-core). On Hyprland (Omarchy), input also needs Cua's cua-hyprland-plugin loaded in the compositor."
+      "linuxNoPermissions": "Linux needs no permissions for computer use. It needs a desktop session and the AT-SPI accessibility bus (at-spi2-core). On Hyprland, computer use is read-only.",
+      "hyprlandPluginMissing": "On Hyprland, computer use is read-only: pi can see your screen but cannot click or type. Cua Driver does not support input on Hyprland yet.",
+      "hyprlandPluginLoaded": "Cua’s Hyprland plugin is loaded: pi can click, type and bring windows to the front."
     }
   },
   "agents": {

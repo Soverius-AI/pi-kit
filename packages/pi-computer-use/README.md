@@ -16,8 +16,8 @@ Installing does nothing yet. Computer use is **off until you turn it on**:
 |---|---|
 | `/computer-use on` | asks once, then gives pi the tools |
 | `/computer-use off` | takes them away |
-| `/computer-use setup` | macOS: opens the permission pages one at a time (Windows and Linux need none) |
-| `/computer-use status` | on or off, and whether permissions are ready |
+| `/computer-use setup` | macOS: opens the permission pages one at a time (Windows and Linux need none; Hyprland is told it is read-only) |
+| `/computer-use status` | on or off, whether permissions are ready, and on Linux what the session offers (Wayland, Hyprland read-only or not, the driver's own check while it runs) |
 
 ## Linux
 
@@ -26,7 +26,7 @@ Nothing to grant, but more to have in place than on the other platforms. The dri
 - **X11** is the best supported: capture, input and the accessibility tree.
 - **Wayland** is compositor by compositor. In a Wayland session this package turns on the driver's native Wayland routes (`CUA_DRIVER_RS_ENABLE_WAYLAND=1`, unless you set it yourself; `0` turns them off). Without them only apps running under XWayland are reached, and with neither XWayland nor the native routes there is nothing to drive.
 - **The accessibility tree** (reading a window, acting on an element) needs the AT-SPI bus: install `at-spi2-core`. Desktops without a full GNOME or KDE session may not start it; Qt apps also need `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1`.
-- **Hyprland (Omarchy)** is experimental in Cua Driver. Window capture works through Hyprland's own protocol, but input needs Cua's compositor plugin, `cua-hyprland-plugin`, which is off by default and not part of the driver: install it (`pacman -S cua-hyprland-plugin`), load it into Hyprland (`hyprctl plugin load /usr/lib/cua/hyprland/cua-hyprland-plugin.so`, then enable `plugin.cua.enabled` in your Hyprland config) and check it with `hyprctl -j cua:status`. The plugin is built against one exact Hyprland version, so it may not install on Omarchy's stable channel. Even with it, Cua Driver covers background input for a short list of apps only (LibreOffice Calc and Inkscape at the time of writing); Chromium, Electron and XWayland apps, Unicode and input methods are not covered. See Cua's [platform support](https://cua.ai/docs/reference/cua-driver/platform-support).
+- **Hyprland (Omarchy)** is read-only. Looking works: windows, screenshots and the accessibility tree come through Hyprland's own protocols, and an element the driver has read can be acted on through AT-SPI where the app exposes an action (an `element_token` from `computer_get_window_state`). Clicking at a point, pressing keys and bringing a window to the front do not: the driver answers `foreground_unavailable: production Hyprland input plugin is unavailable` or `Background delivery is not available`. This package says so (`/computer-use status`, `on` and `setup`, a refused input's error, and in pi-kit Settings › Computer use). *Experimental, untested:* that input goes through Cua's compositor plugin, `cua-hyprland-plugin`, which is not part of the driver. Omarchy's repository packages it against the exact Hyprland it ships (`sudo pacman -S cua-hyprland-plugin`, then `hyprctl plugin load /usr/lib/cua/hyprland/cua-hyprland-plugin.so`, a `plugin = …` line in `hyprland.conf` to load it at login, `hyprctl -j cua:status` to check), but the build it carries at the time of writing (0.33.2) reports itself `discovery_only` and speaks a newer socket protocol than this driver (0.36.0), so it is not expected to deliver input. Even where it does, Cua covers a short list of apps only (LibreOffice Calc and Inkscape at the time of writing); Chromium, Electron and XWayland apps are not covered. See Cua's [platform support](https://cua.ai/docs/reference/cua-driver/platform-support).
 
 ## macOS permissions
 
@@ -57,5 +57,5 @@ What counts as looking comes from each tool's own `readOnlyHint` and `risk` from
 ```
 extensions/computer-use.ts   the commands, the tools, the approval question, the setup steps
 lib/computer-use.mjs         the logic without pi or the driver in it (tested)
-lib/host.mjs                 what a host app uses: the saved choice, the app macOS asks, the permissions (pi-kit's Settings page)
+lib/host.mjs                 what a host app uses: the saved choice, the app macOS asks, the permissions, what a Linux session offers (pi-kit's Settings page)
 ```

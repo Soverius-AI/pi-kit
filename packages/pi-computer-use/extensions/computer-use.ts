@@ -2,12 +2,13 @@
 //
 // Cua Driver runs in this process through its npm SDK (`@trycua/cua-driver`; the native library for the OS comes with it): no installer, no daemon.
 //   /computer-use on | off | setup | status     off until `on`; `setup` walks through the macOS permissions one page at a time and moves on once macOS reports
-//                                               each one (Windows and Linux need none); in pi-kit, Settings › Computer use does the same with live status and a Relaunch button
+//                                               each one (Windows and Linux need none; Hyprland is read-only, and `status` says so); in pi-kit, Settings › Computer use
+//                                               does the same with live status and a Relaunch button
 //   computer_<tool>                             the driver's own tools, read from the driver when computer use turns on
 //   approval                                    looking runs; acting asks once per session; scripts, quitting apps and downloads ask every time
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
-import { classify, configPath, decide, describeCall, driverToolName, enableWayland, exposureFor, GUIDELINE, host, inPiKit, isEnabled, isSupported, noPermissionsNote, PERMISSIONS, permissionHelp, piToolName, setEnabled, toToolResult, unsupportedMessage } from '../lib/computer-use.mjs';
+import { classify, configPath, decide, describeCall, driverToolName, enableWayland, exposureFor, GUIDELINE, host, inPiKit, isEnabled, isSupported, linuxInputHelp, linuxReadiness, noPermissionsNote, PERMISSIONS, permissionHelp, piToolName, setEnabled, toToolResult, unsupportedMessage } from '../lib/computer-use.mjs';
 
 interface DriverTool {
   name: string;
@@ -97,9 +98,21 @@ export default function (pi: ExtensionAPI) {
     await current?.shutdown().catch(() => undefined);
   }
 
+  /** Linux: what the session offers (Wayland, Hyprland and its plugin) and, while the driver runs, its own check of the session. */
+  async function linuxStatus(): Promise<{ lines: string[]; help?: string }> {
+    const readiness = await linuxReadiness();
+    const help = linuxInputHelp(readiness);
+    const lines = [readiness?.hyprland ? (readiness.hyprlandPlugin ? 'Hyprland: Cua’s plugin is loaded.' : undefined) : readiness?.wayland ? 'Wayland session: the driver’s native Wayland routes are on.' : 'X11 session.'];
+    if (driver) lines.push((await driver.callTool('check_permissions', '{}').catch(() => undefined))?.text?.trim() ?? '');
+    return { lines: lines.filter(Boolean), help };
+  }
+
   async function status(ctx: ExtensionContext) {
-    const help = SUPPORTED ? permissionHelp(process.platform, await permissions().catch(() => ({ accessibility: false, screenRecording: false }))) : undefined;
-    ctx.ui.notify(`Computer use is ${isEnabled() ? 'on' : 'off'} (${configPath()}).\n${SUPPORTED ? (help ?? 'Permissions: ready.') : `Not supported on ${process.platform}.`}`, help ? 'warning' : 'info');
+    const macHelp = SUPPORTED ? permissionHelp(process.platform, await permissions().catch(() => ({ accessibility: false, screenRecording: false }))) : undefined;
+    const linux = SUPPORTED && process.platform === 'linux' ? await linuxStatus() : { lines: [] };
+    const help = macHelp ?? linux.help;
+    const detail = SUPPORTED ? [macHelp ?? (process.platform === 'linux' ? undefined : 'Permissions: ready.'), ...linux.lines, linux.help].filter(Boolean).join('\n') : `Not supported on ${process.platform}.`;
+    ctx.ui.notify(`Computer use is ${isEnabled() ? 'on' : 'off'} (${configPath()}).\n${detail}`, help ? 'warning' : 'info');
   }
 
   /**
@@ -108,7 +121,10 @@ export default function (pi: ExtensionAPI) {
    * is started again, so the last message says that. In pi-kit the steps still work, and the pill points at Settings › Computer use, which shows both live.
    */
   async function setup(ctx: ExtensionContext) {
-    if (process.platform !== 'darwin') return ctx.ui.notify(SUPPORTED ? noPermissionsNote() : `Not supported on ${process.platform}.`, 'info');
+    if (process.platform !== 'darwin') {
+      const help = process.platform === 'linux' ? linuxInputHelp(await linuxReadiness()) : undefined;
+      return ctx.ui.notify(SUPPORTED ? (help ? `${noPermissionsNote()}\n\n${help}` : noPermissionsNote()) : `Not supported on ${process.platform}.`, help ? 'warning' : 'info');
+    }
     const app = host();
     const before = await permissions();
     const todo = STEPS.filter((step) => !before[step.key]);
@@ -155,7 +171,7 @@ export default function (pi: ExtensionAPI) {
           setEnabled(true);
           await registerTools(true);
           ctx.ui.notify('Computer use is on.', 'info');
-          const help = permissionHelp(process.platform, await permissions());
+          const help = permissionHelp(process.platform, await permissions()) ?? (process.platform === 'linux' ? linuxInputHelp(await linuxReadiness()) : undefined);
           showSetupPill(Boolean(help));
           if (help) ctx.ui.notify(help, 'warning');
         } else if (word === 'off') {
