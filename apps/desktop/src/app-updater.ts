@@ -2,13 +2,9 @@ import { app } from 'electron';
 import { autoUpdater } from 'electron-updater';
 
 /**
- * pi-kit's own updates: `electron-updater` against the project's GitHub releases (the `publish` block of
- * `electron-builder.config.cjs` writes `app-update.yml` into the packed app). The backend's `UpdateService` is the one that decides
- * when to check and what to show; it asks this module over the IPC channel `DesktopBridge` keeps open. Nothing is downloaded or
- * installed without that request: `autoDownload` is off, and a downloaded update installs on the next quit or on "Restart to update".
- *
- * Only a packed app can update itself (`app.isPackaged`); a development build answers that it cannot. Without a release on GitHub
- * (or with a repository the publish block names wrongly) a check ends in an error, which the backend shows as the row's error.
+ * pi-kit's own updates: `electron-updater` against the GitHub repository in `app-update.yml` (the `publish` block of
+ * `electron-builder.config.cjs`). The backend's `UpdateService` decides when to check and asks over the `DesktopBridge` IPC channel;
+ * nothing is downloaded without that request, and a downloaded update installs on the next quit or on "Restart to update".
  */
 
 export type AppUpdateAction = 'check' | 'download' | 'install';
@@ -19,7 +15,7 @@ export interface AppUpdateResult {
   version?: string;
   /** The update is downloaded and waits for a restart. */
   downloaded?: boolean;
-  /** Why nothing can be done (a development build). */
+  /** Why nothing can be done: a development or portable build, or no reachable release feed. */
   unavailable?: string;
 }
 
@@ -43,11 +39,7 @@ function unavailableFeed(error: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * The `electron-updater` driver behind the IPC channel: `run()` answers the backend's `check`, `download` and `install` requests
- * (a development build answers that it cannot), and every updater event is forwarded through `emit` so the backend can show the
- * progress. It remembers the latest version seen and whether it is downloaded; `install` quits and installs after the reply went out.
- */
+/** Answers the backend's update requests and forwards every updater event through `emit`. */
 export class AppUpdater {
   private latest: string | undefined;
   private downloaded = false;
@@ -73,6 +65,10 @@ export class AppUpdater {
 
   async run(action: AppUpdateAction): Promise<AppUpdateResult> {
     if (!app.isPackaged) return { unavailable: 'Updates apply to the installed app, not to a development build.' };
+    // electron-updater would install the NSIS build next to it instead of replacing the portable .exe.
+    if (process.env['PORTABLE_EXECUTABLE_FILE']) return { unavailable: 'The portable build does not update itself: download the new one from the GitHub releases page.' };
+    // On Linux only a running AppImage can replace itself; any other copy's check resolves null, which would read as "up to date".
+    if (!autoUpdater.isUpdaterActive()) return { unavailable: 'Only the AppImage updates itself: download the new one from the GitHub releases page.' };
     switch (action) {
       case 'check': {
         let result;

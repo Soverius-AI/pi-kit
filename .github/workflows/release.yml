@@ -31,7 +31,8 @@
 #                      (an EV/HSM or Azure Trusted Signing setup needs electron-builder's `win.azureSignOptions` / a custom sign hook, not wired here)
 # electron-builder reads CSC_LINK / CSC_KEY_PASSWORD for macOS and WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD for Windows; the jobs below map the secrets onto them.
 #
-# pi-kit's own update source is this repository (electron-builder.config.cjs `publish`); PI_KIT_UPDATE_REPO=owner/name (a repository variable) points a build at a fork.
+# Installed apps look for updates in the repository that built them (PI_KIT_UPDATE_REPO, read by electron-builder.config.cjs `publish`),
+# so it must be public. The publish job refuses a build whose app-update.yml names another repository.
 name: release
 
 on:
@@ -55,7 +56,7 @@ env:
   NX_DAEMON: 'false'
   # Never let electron-builder go looking for a signing identity on its own; the config picks CSC_NAME / CSC_LINK or ad-hoc signs.
   CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-  PI_KIT_UPDATE_REPO: ${{ vars.PI_KIT_UPDATE_REPO }}
+  PI_KIT_UPDATE_REPO: ${{ github.repository }}
 
 jobs:
   preflight:
@@ -112,7 +113,7 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      # pnpm first (setup-node's `cache: pnpm` needs it): the version comes from `packageManager` in package.json, the action is pinned exactly.
+      # pnpm first: setup-node's `cache: pnpm` needs it. The pnpm version comes from `packageManager` in package.json.
       - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v4
         with:
@@ -147,7 +148,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-      # The zip is what electron-updater installs from, so it is the artifact worth launching; the unpacked folder is the same app.
+      # The zip is what electron-updater installs.
       - name: Smoke test (zip)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
         run: node scripts/release-smoke.mjs dist/release/pi-kit-*-mac-arm64.zip
@@ -170,7 +171,7 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-      # pnpm first (setup-node's `cache: pnpm` needs it): the version comes from `packageManager` in package.json, the action is pinned exactly.
+      # pnpm first: setup-node's `cache: pnpm` needs it. The pnpm version comes from `packageManager` in package.json.
       - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v4
         with:
@@ -185,12 +186,11 @@ jobs:
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-      # The runner is x64: it can launch the x64 app, not the arm64 one (that one has only the native header checks of the release step).
+      # The x64 runner cannot launch the arm64 build; that one only gets the release step's header checks.
       - name: Smoke test (x64, the unpacked app)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
         run: node scripts/release-smoke.mjs dist/release/win-unpacked
-      # The installer itself: silent install into a temp folder (NSIS /S /D=), launch, uninstall. Written for this workflow and not run anywhere
-      # before it; it must not block a release until it has been seen green once, hence continue-on-error.
+      # Silent install into a temp folder (NSIS /S /D=), launch, uninstall. continue-on-error until it has passed once.
       - name: Smoke test (x64 installer)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
         continue-on-error: true
@@ -250,7 +250,6 @@ jobs:
             dist/release/latest-linux*.yml
 
   publish:
-    # Publish only tag pushes; manual builds never create or modify releases.
     if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     needs: [mac, windows, linux]
     runs-on: ubuntu-latest
@@ -264,6 +263,16 @@ jobs:
           pattern: release-*
           path: release
           merge-multiple: true
+      # All platforms share the publish config; the mac zip is the copy readable here without running it.
+      - name: The update feed must be this repository
+        run: |
+          feed="$(unzip -p release/pi-kit-*-mac-arm64.zip pi-kit.app/Contents/Resources/app-update.yml)"
+          owner="$(printf '%s\n' "$feed" | sed -n 's/^owner: //p')"
+          repo="$(printf '%s\n' "$feed" | sed -n 's/^repo: //p')"
+          if [ "$owner/$repo" != "$GITHUB_REPOSITORY" ]; then
+            echo "::error::the app looks for updates in $owner/$repo, but this release goes to $GITHUB_REPOSITORY"
+            exit 1
+          fi
       - name: Publish the GitHub release (or replace assets on rerun)
         run: |
           ls -l release
