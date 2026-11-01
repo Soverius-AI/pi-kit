@@ -2150,7 +2150,10 @@
       "restartToUse": "Restart to use ",
       "restartToUpdatePiKit": "Restart to update pi-kit",
       "later": "Later",
-      "modelCatalogs": "model catalogs"
+      "modelCatalogs": "model catalogs",
+      "piKitIsAvailable": "pi-kit {{value1}} is available",
+      "download": "Download",
+      "downloadUpdatesAutomaticallyFromNowOn": "Download updates automatically from now on"
     },
     "updateStore": {
       "theUpdateStreamEnded": "The update stream ended.",
@@ -2164,7 +2167,8 @@
       "couldNotInstallThePiCommand": "Could not install the pi command",
       "thePiCommandNowRunsPiS": "The pi command now runs pi’s managed install.",
       "couldNotListThePiReleases": "Could not list the pi releases",
-      "couldNotChangeThePiRelease": "Could not change the pi release"
+      "couldNotChangeThePiRelease": "Could not change the pi release",
+      "couldNotChangeAutomaticDownloads": "Could not change automatic downloads"
     }
   },
   "settings": {
@@ -3162,7 +3166,9 @@
       "dayAgo": {
         "one": "{{days}} day ago",
         "other": "{{days}} days ago"
-      }
+      },
+      "downloadUpdatesAutomatically": "Download updates automatically",
+      "aDownloadedUpdateInstallsWhenYouQuit": "A downloaded update installs when you quit pi-kit."
     },
     "generalSection": {
       "context": "Context",

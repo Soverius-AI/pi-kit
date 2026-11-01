@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import { BrowserOperationError, type BrowserFailureCode, type BrowserAction, type BrowserResult, type OpenPathResult, emptyBrowserState } from '@pi-kit/protocol';
+import { BrowserOperationError, type BrowserFailureCode, type BrowserAction, type BrowserResult, type OpenPathResult, type ReleaseNote, emptyBrowserState } from '@pi-kit/protocol';
 
 const ANSWER_TIMEOUT_MS = 8000;
 
@@ -21,6 +21,7 @@ export type AppUpdateAction = 'check' | 'download' | 'install';
 export interface AppUpdateResult {
   available?: boolean;
   version?: string;
+  notes?: ReleaseNote[];
   downloaded?: boolean;
   unavailable?: string;
 }

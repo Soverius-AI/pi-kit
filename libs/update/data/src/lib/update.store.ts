@@ -6,6 +6,7 @@ import {
   ApiClient,
   errorMessage,
   unwrap,
+  updateAutoDownload,
   updateCancel,
   updateCheck,
   updateEvents,
@@ -37,6 +38,8 @@ interface UpdateState {
   releases: { release: string; label: string }[];
   /** The restart notice was dismissed for this version. */
   dismissedRestart: string | undefined;
+  /** "Later" on the offer of this pi-kit version. */
+  dismissedOffer: string | undefined;
 }
 
 /**
@@ -46,10 +49,17 @@ interface UpdateState {
  */
 export const UpdateStore = signalStore(
   { providedIn: 'root' },
-  withState<UpdateState>({ status: undefined, lines: [], connected: false, releases: [], dismissedRestart: undefined }),
+  withState<UpdateState>({
+    status: undefined,
+    lines: [],
+    connected: false,
+    releases: [],
+    dismissedRestart: undefined,
+    dismissedOffer: undefined,
+  }),
   withProps(() => ({ _policy: inject(UPDATE_POLICY) })),
   withRequestStatus(),
-  withComputed(({ status, dismissedRestart }) => {
+  withComputed(({ status, dismissedRestart, dismissedOffer }) => {
     const row = (target: UpdateTarget) =>
       computed<UpdateRow | undefined>(() => status()?.rows.find((r) => r.target === target));
     return {
@@ -68,6 +78,15 @@ export const UpdateStore = signalStore(
       restartNotice: computed(() => {
         const wait = status()?.restart.find((r) => `${r.kind}:${r.version}` !== dismissedRestart());
         return wait;
+      }),
+      /** A newer pi-kit to ask about: not with automatic downloads (it downloads by itself), nor once it is downloading or downloaded. */
+      appOffer: computed<UpdateRow | undefined>(() => {
+        const current = status();
+        const app = current?.rows.find((r) => r.target === 'app');
+        if (!current || app?.state !== 'outdated' || !app.latest || app.latest === dismissedOffer()) return undefined;
+        if (current.autoDownload || current.job?.state === 'running' || current.restart.some((r) => r.kind === 'app'))
+          return undefined;
+        return app;
       }),
     };
   }),
@@ -204,6 +223,18 @@ export const UpdateStore = signalStore(
           const list = await unwrap(updateReleases({ client: api.client })).catch(() => undefined);
           if (list) patchState(store, { releases: list.choices });
         }
+      },
+      /** Settings › Versions and the "from now on" box of the offer. */
+      async setAutoDownload(enabled: boolean): Promise<void> {
+        const status = await call(
+          () => unwrap(updateAutoDownload({ client: api.client, body: { enabled } })),
+          translate('update.updateStore.couldNotChangeAutomaticDownloads'),
+        );
+        if (status) patchState(store, { status });
+      },
+      dismissOffer(): void {
+        const offer = store.appOffer();
+        if (offer) patchState(store, { dismissedOffer: offer.latest });
       },
       dismissRestart(): void {
         const wait = store.restartNotice();

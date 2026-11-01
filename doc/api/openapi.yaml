@@ -5792,6 +5792,39 @@ paths:
       summary: Pin a pi release
       tags:
         - update
+  /api/update/auto-download:
+    post:
+      description: Turns the automatic download of pi-kit updates on or off; a downloaded update installs on the next quit. Answers with the status.
+      operationId: Update_autoDownload
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutoDownload'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UpdateStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Download app updates automatically
+      tags:
+        - update
   /api/update/events:
     get:
       description: 'Keeps the connection open and sends newline-delimited JSON: a `status` snapshot first and whenever it changes, and the output lines of the running job as `line`. A blank line every 20 seconds keeps the connection alive.'
@@ -9268,6 +9301,14 @@ components:
         - onEnd
         - onInterrupt
         - everyMinutes
+      additionalProperties: false
+    AutoDownload:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required:
+        - enabled
       additionalProperties: false
     BashRequest:
       type: object
@@ -14800,6 +14841,17 @@ components:
         - hunk
         - label
       additionalProperties: false
+    ReleaseNote:
+      type: object
+      properties:
+        version:
+          type: string
+        html:
+          type: string
+      required:
+        - version
+        - html
+      additionalProperties: false
     Releases:
       type: object
       properties:
@@ -17455,6 +17507,10 @@ components:
           type: array
           items:
             type: string
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReleaseNote'
         updatedAt:
           type: number
         error:
@@ -17515,6 +17571,8 @@ components:
           additionalProperties: false
         desktop:
           type: boolean
+        autoDownload:
+          type: boolean
       required:
         - rows
         - checking
@@ -17523,6 +17581,7 @@ components:
         - resolution
         - command
         - desktop
+        - autoDownload
       additionalProperties: false
     ValidateKey:
       type: object

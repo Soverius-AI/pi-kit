@@ -3226,6 +3226,26 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* GitHub's release notes in the offer of a newer pi-kit */
+.pk-release-notes {
+  max-height: 12rem;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 16px;
+}
+.pk-release-notes .version,
+.pk-release-notes h2,
+.pk-release-notes h3 {
+  font-weight: 600;
+  margin: 6px 0 2px;
+}
+.pk-release-notes ul {
+  list-style: disc;
+  padding-left: 16px;
+}
+.pk-release-notes a {
+  text-decoration: underline;
+}
 /* The dot on the sidebar footer's settings button when anything is outdated or waits for a restart */
 .pk-update-dot {
   position: relative;
