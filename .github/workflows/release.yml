@@ -1,6 +1,6 @@
 # Release builds.
 #
-#   mac      macos-14 (Apple Silicon)   pnpm run release --only mac   -> pi-kit-<v>-mac-arm64.dmg + .zip, latest-mac.yml
+#   mac      macos-15 (Apple Silicon)   pnpm run release --only mac   -> pi-kit-<v>-mac-arm64.dmg + .zip, latest-mac.yml
 #   windows  windows-latest (x64)       pnpm run release --only win   -> pi-kit-<v>-win-x64.exe + -portable.exe, pi-kit-<v>-win-arm64.exe + -portable.exe, latest.yml
 #                                       (one run packs both architectures so latest.yml lists both installers; the arm64 build is a cross build)
 #   linux    ubuntu-22.04 / -arm       native x64 and arm64 AppImages, latest-linux.yml / latest-linux-arm64.yml
@@ -109,7 +109,7 @@ jobs:
 
   mac:
     needs: preflight
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
