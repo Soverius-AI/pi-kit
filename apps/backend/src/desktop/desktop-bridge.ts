@@ -2,8 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { BrowserOperationError, type BrowserFailureCode, type BrowserAction, type BrowserResult, type OpenPathResult, type ReleaseNote, emptyBrowserState } from '@pi-kit/protocol';
 
-const ANSWER_TIMEOUT_MS = 8000;
-
 interface DesktopAnswer {
   type: 'desktop-answer';
   id: string;
@@ -55,7 +53,7 @@ export class DesktopBridge implements OnModuleDestroy {
 
   browser(threadId: string, request?: BrowserAction, signal?: AbortSignal): Promise<BrowserResult> {
     if (!this.available) return Promise.resolve({ state: emptyBrowserState(threadId, false) });
-    return this.exchange('browser', { threadId, ...(request ? { request } : {}) }, 30_000, signal, true);
+    return this.exchange('browser', { threadId, ...(request ? { request } : {}) }, signal, true);
   }
 
   openPath(path: string): Promise<OpenPathResult> {
@@ -68,7 +66,7 @@ export class DesktopBridge implements OnModuleDestroy {
 
   appUpdate(action: AppUpdateAction): Promise<AppUpdateResult> {
     if (!this.available) return Promise.resolve({ unavailable: 'pi-kit updates itself in the desktop app, not in the browser.' });
-    return this.exchange('app-update', { action }, action === 'download' ? 30 * 60_000 : 60_000).then((result) => (result ?? {}) as AppUpdateResult);
+    return this.exchange('app-update', { action }).then((result) => (result ?? {}) as AppUpdateResult);
   }
 
   onAppUpdate(listener: (event: AppUpdateEvent) => void): () => void {
@@ -89,14 +87,18 @@ export class DesktopBridge implements OnModuleDestroy {
   private async open(type: 'open-path' | 'reveal-path', path: string, unavailable: string): Promise<OpenPathResult> {
     if (!this.available) return { opened: false, reason: unavailable };
     try {
-      await this.exchange(type, { path }, ANSWER_TIMEOUT_MS);
+      await this.exchange(type, { path });
       return { opened: true };
     } catch (error) {
       return { opened: false, reason: error instanceof Error ? error.message : String(error) };
     }
   }
 
-  private exchange<T>(type: string, payload: Record<string, unknown>, timeout: number, signal?: AbortSignal, cancellable = false): Promise<T> {
+  /**
+   * One request to Electron main, without a deadline: main answers every request (a hung page ends in its own page limits) and a closed
+   * connection fails them all.
+   */
+  private exchange<T>(type: string, payload: Record<string, unknown>, signal?: AbortSignal, cancellable = false): Promise<T> {
     if (signal?.aborted) return Promise.reject(new BrowserOperationError('cancelled', 'Browser action cancelled.'));
     return new Promise((resolve, reject) => {
       const id = randomUUID();
@@ -107,7 +109,6 @@ export class DesktopBridge implements OnModuleDestroy {
       };
       const finish = (error?: BrowserOperationError, answer?: DesktopAnswer): void => {
         if (!this.waiting.delete(id)) return;
-        clearTimeout(timer);
         signal?.removeEventListener('abort', cancel);
         if (error) reject(error);
         else resolve(answer?.result as T);
@@ -116,11 +117,6 @@ export class DesktopBridge implements OnModuleDestroy {
         cancelInDesktop();
         finish(new BrowserOperationError('cancelled', 'Browser action cancelled.'));
       };
-      const timer = setTimeout(() => {
-        cancelInDesktop();
-        finish(new BrowserOperationError('timeout', 'The desktop app did not answer in time.'));
-      }, timeout);
-      timer.unref();
       this.waiting.set(id, {
         answer: (answer) => finish(answer.error ? new BrowserOperationError(answer.errorCode ?? 'failed', answer.error) : undefined, answer),
         fail: (error) => { cancelInDesktop(); finish(error); },

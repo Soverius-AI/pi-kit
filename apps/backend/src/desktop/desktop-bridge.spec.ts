@@ -83,8 +83,7 @@ describe('DesktopBridge', () => {
     bridge.onModuleDestroy();
   });
 
-  it('keeps a remote validation error distinct from a desktop timeout and send failure', async () => {
-    vi.useFakeTimers();
+  it('keeps a remote validation error distinct from a send failure', async () => {
     process.env['PI_KIT_DESKTOP'] = '1';
     process.send = vi.fn() as never;
     const bridge = createBridge();
@@ -94,12 +93,8 @@ describe('DesktopBridge', () => {
       const id = (process.send as ReturnType<typeof vi.fn>).mock.calls[0][0].id;
       process.emit('message', { type: 'desktop-answer', id, errorCode: 'invalid', error: 'Blocked page' } as never, undefined as never);
       await failed;
-      const timeout = expect(bridge.browser('chat')).rejects.toMatchObject({ code: 'timeout' });
-      await vi.advanceTimersByTimeAsync(30_000);
-      await timeout;
       process.send = vi.fn(() => { throw new Error('EPIPE'); }) as never;
       await expect(bridge.browser('chat')).rejects.toMatchObject({ code: 'unavailable' });
-      expect(vi.getTimerCount()).toBe(0);
     } finally { bridge.onModuleDestroy(); }
   });
 

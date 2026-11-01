@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { BrowserWindow, type NativeImage } from 'electron';
-import { BrowserOperationError, type BrowserAction, type BrowserResult } from '@pi-kit/protocol';
+import { BROWSER_STEP_TIMEOUT_MS, BrowserOperationError, type BrowserAction, type BrowserResult } from '@pi-kit/protocol';
 
 export interface ScreenshotPixels {
   bitmap: Uint8Array;
@@ -40,7 +40,7 @@ export function encodeScreenshot(image: NativeImage, format: ScreenshotPixels['f
       else if (result) resolve(result);
     };
     const cancel = (): void => finish(new BrowserOperationError('cancelled', 'Browser capture cancelled.'));
-    const timer = setTimeout(() => finish(new BrowserOperationError('timeout', 'Screenshot encoding timed out. Try a smaller capture.')), 20_000);
+    const timer = setTimeout(() => finish(new BrowserOperationError('timeout', 'Screenshot encoding timed out. Try a smaller capture.')), BROWSER_STEP_TIMEOUT_MS);
     signal.addEventListener('abort', cancel, { once: true });
     worker.once('closed', () => finish(new BrowserOperationError('failed', 'The screenshot encoder closed. Try again.')));
     worker.webContents.once('render-process-gone', () => finish(new BrowserOperationError('failed', 'The screenshot encoder stopped. Try again.')));
