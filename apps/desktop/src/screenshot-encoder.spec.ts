@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BROWSER_STEP_TIMEOUT_MS } from '@pi-kit/protocol';
 
 const native = vi.hoisted(() => ({ workers: [] as { emit: (name: string, ...args: unknown[]) => void; webContents: EventEmitter & { send: ReturnType<typeof vi.fn> }; destroy: ReturnType<typeof vi.fn> }[] }));
 vi.mock('electron', async () => {
@@ -61,7 +62,7 @@ describe('screenshot encoder process', () => {
     if (reason === 'abort') controller.abort();
     else if (reason === 'crash') worker.webContents.emit('render-process-gone', {}, {});
     else if (reason === 'close') worker.emit('closed');
-    else await vi.advanceTimersByTimeAsync(20_000);
+    else await vi.advanceTimersByTimeAsync(BROWSER_STEP_TIMEOUT_MS);
     await rejected;
     expect(worker.destroy).toHaveBeenCalledTimes(1);
     const next = encodeScreenshot(image as never, 'png', 80, new AbortController().signal);

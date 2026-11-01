@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 export type BrowserFailureCode = 'invalid' | 'unavailable' | 'timeout' | 'cancelled' | 'failed';
 
+/** How long one browser step (a page load, a script, a screenshot encoding) may take before it fails with `timeout`. */
+export const BROWSER_STEP_TIMEOUT_MS = 60_000;
+
 export const ScreenshotFormatSchema = z.enum(['jpeg', 'png']);
 export const ScreenshotQualitySchema = z.number().int().min(0).max(100);
 export const DEFAULT_SCREENSHOT_FORMAT = 'jpeg' as const;

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, WebContentsView, type WebContents } from 'electron';
-import { BrowserActionSchema, BrowserOperationError, type BrowserAction, type BrowserResult, type BrowserState, type BrowserViewport, emptyBrowserState } from '@pi-kit/protocol';
+import { BROWSER_STEP_TIMEOUT_MS, BrowserActionSchema, BrowserOperationError, type BrowserAction, type BrowserResult, type BrowserState, type BrowserViewport, emptyBrowserState } from '@pi-kit/protocol';
 import { BrowserDiagnostics } from './browser-diagnostics';
 
 interface BrowserPage {
@@ -191,7 +191,7 @@ export class BrowserArtifacts {
   }
 
   private async evaluate(wc: WebContents, expression: string): Promise<unknown> {
-    return this.value(await this.command<RemoteResult>(wc, 'Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true, timeout: 15_000 }));
+    return this.value(await this.command<RemoteResult>(wc, 'Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true, timeout: BROWSER_STEP_TIMEOUT_MS }));
   }
 
   private async element(page: BrowserPage, ref: string, fn: string): Promise<unknown> {
@@ -218,7 +218,7 @@ export class BrowserArtifacts {
       const done = (): void => finish();
       const stopped = (): void => finish(new BrowserOperationError('unavailable', 'The browser page stopped. Reload to continue.'));
       const cancelled = (): void => finish(new BrowserOperationError('cancelled', 'Browser action cancelled.'));
-      const timer = setTimeout(() => { finish(new BrowserOperationError('timeout', 'The page took too long to load.')); wc.stop(); }, 20_000);
+      const timer = setTimeout(() => { finish(new BrowserOperationError('timeout', 'The page took too long to load.')); wc.stop(); }, BROWSER_STEP_TIMEOUT_MS);
       wc.once('did-stop-loading', done);
       wc.once('destroyed', stopped);
       wc.once('render-process-gone', stopped);
