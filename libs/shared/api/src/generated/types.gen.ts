@@ -132,6 +132,10 @@ export type AttendantWhen = {
     everyMinutes: number;
 };
 
+export type AutoDownload = {
+    enabled: boolean;
+};
+
 export type BashRequest = {
     command: string;
     excludeFromContext?: boolean;
@@ -1835,6 +1839,11 @@ export type RelabelHunk = {
     label: 'specified' | 'corrected' | 'autonomous' | 'manual' | null;
 };
 
+export type ReleaseNote = {
+    version: string;
+    html: string;
+};
+
 export type Releases = {
     choices: Array<{
         release: string;
@@ -2634,6 +2643,7 @@ export type UpdateRow = {
     outdated?: number;
     detail?: string;
     items?: Array<string>;
+    notes?: Array<ReleaseNote>;
     updatedAt?: number;
     error?: string;
 };
@@ -2656,6 +2666,7 @@ export type UpdateStatus = {
         launcher?: string;
     };
     desktop: boolean;
+    autoDownload: boolean;
 };
 
 export type ValidateKey = {
@@ -8105,6 +8116,35 @@ export type UpdatePinResponses = {
 };
 
 export type UpdatePinResponse = UpdatePinResponses[keyof UpdatePinResponses];
+
+export type UpdateAutoDownloadData = {
+    body: AutoDownload;
+    path?: never;
+    query?: never;
+    url: '/api/update/auto-download';
+};
+
+export type UpdateAutoDownloadErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type UpdateAutoDownloadError = UpdateAutoDownloadErrors[keyof UpdateAutoDownloadErrors];
+
+export type UpdateAutoDownloadResponses = {
+    /**
+     * Created
+     */
+    201: UpdateStatus;
+};
+
+export type UpdateAutoDownloadResponse = UpdateAutoDownloadResponses[keyof UpdateAutoDownloadResponses];
 
 export type UpdateEventsData = {
     body?: never;

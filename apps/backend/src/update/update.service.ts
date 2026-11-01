@@ -23,6 +23,7 @@ interface StateFile {
   piUpdatedAt?: number;
   packagesUpdatedAt?: number;
   modelsRefreshedAt?: number;
+  autoDownloadApp?: boolean;
 }
 
 /** One package pi says has a newer version or commit. */
@@ -59,6 +60,9 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
   private appEventsOff: (() => void) | undefined;
   private readonly logPath: string;
   private readonly statePath: string;
+  private autoDownload: boolean;
+  /** The pi-kit version an automatic download was started for: a failed or cancelled one is not retried until the backend restarts. */
+  private autoTried: string | undefined;
 
   constructor(
     private readonly piUpdate: PiUpdateService,
@@ -68,6 +72,7 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
     const logDir = process.env['PI_KIT_LOG_DIR'] || join(config.dataDir, 'logs');
     this.logPath = join(logDir, 'update.log');
     this.statePath = join(config.dataDir, 'update-state.json');
+    this.autoDownload = this.readState().autoDownloadApp === true;
   }
 
   onApplicationBootstrap(): void {
@@ -150,6 +155,7 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
       ...(fresh.pinned ? { pinned: fresh.pinned } : {}),
       command: { onPath: command.onPath, ...(command.launcherInstalled ? { launcher: command.entrypoint } : {}) },
       desktop: this.desktop.available,
+      autoDownload: this.autoDownload,
     };
   }
 
@@ -183,6 +189,7 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
       this.checking = false;
       this.publish();
     }
+    this.autoDownloadApp();
     return this.status();
   }
 
@@ -249,10 +256,21 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
     try {
       const result = await this.desktop.appUpdate('check');
       if (result.unavailable) return void this.checked.set('app', { ...base, state: 'unavailable', detail: result.unavailable });
-      this.checked.set('app', result.available ? { ...base, state: 'outdated', latest: result.version, detail: `pi-kit ${result.version} is out.` } : { ...base, state: 'current' });
+      this.checked.set('app', result.available
+        ? { ...base, state: 'outdated', latest: result.version, detail: `pi-kit ${result.version} is out.`, ...(result.notes?.length ? { notes: result.notes } : {}) }
+        : { ...base, state: 'current' });
     } catch (error) {
       this.checked.set('app', { ...base, error: messageOf(error) });
     }
+  }
+
+  /** A newer pi-kit a check found downloads as a job of its own when the user allowed it; it installs on the next quit. */
+  private autoDownloadApp(): void {
+    const app = this.checked.get('app');
+    const latest = app?.state === 'outdated' ? app.latest : undefined;
+    if (!this.autoDownload || !latest || latest === this.autoTried || this.restarts.has('app') || this.job?.state === 'running') return;
+    this.autoTried = latest;
+    this.start(['app']);
   }
 
   private checkModels(state: StateFile): void {
@@ -427,6 +445,15 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
     if (release !== null && release !== offered.pinned && !offered.choices.some((choice) => choice.release === release)) throw new ConflictException(`${release} is not a release this pi-kit can switch to.`);
     writePin(release);
     this.log(release ? `Pinned to ${release}.` : 'Pin removed; following the newest compatible pi.');
+    this.publish();
+    return this.status();
+  }
+
+  /** "Download updates automatically" in Settings › Versions; turning it on downloads an update a check already found. */
+  setAutoDownload(enabled: boolean): UpdateStatus {
+    this.autoDownload = enabled;
+    this.writeState({ ...this.readState(), autoDownloadApp: enabled });
+    this.autoDownloadApp();
     this.publish();
     return this.status();
   }

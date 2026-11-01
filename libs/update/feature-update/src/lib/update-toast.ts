@@ -4,9 +4,8 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 import { UpdateStore } from '@pi-kit/update/data';
 
 /**
- * The update's progress toast and the "Restart to use …" toast. While the job runs it lists the rows that are
- * running and the last line of output, with Cancel; when pi or pi-kit waits for a restart it says so with the button. It sits inside
- * the window's toast stack (`ToastHost`).
+ * The update's toasts in the window's toast stack (`ToastHost`): the running job with its last output line and Cancel, "Restart to
+ * use …" when pi or pi-kit waits for a restart, and the offer of a newer pi-kit with GitHub's release notes.
  */
 @Component({
   imports: [TranslocoPipe],
@@ -62,6 +61,43 @@ import { UpdateStore } from '@pi-kit/update/data';
           </div>
         </div>
       </div>
+    } @else if (store.appOffer(); as offer) {
+      <div role="status" class="alert alert-soft alert-info text-sm max-w-sm" data-testid="update-offer">
+        <div class="pk-update-toast">
+          <span class="font-medium">{{
+            'update.updateToast.piKitIsAvailable' | transloco: { value1: offer.latest }
+          }}</span>
+          @if (offer.notes?.length) {
+            <!-- Links inside are anchors, so the keyboard reaches them; the handler only reroutes their click. -->
+            <!-- eslint-disable-next-line @angular-eslint/template/click-events-have-key-events, @angular-eslint/template/interactive-supports-focus -->
+            <div class="pk-release-notes" data-testid="update-notes" (click)="openLink($event)">
+              @for (note of offer.notes; track note.version) {
+                @if (offer.notes!.length > 1) {
+                  <div class="version">{{ note.version }}</div>
+                }
+                <div [innerHTML]="note.html"></div>
+              }
+            </div>
+          }
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input #always type="checkbox" class="checkbox checkbox-xs" />
+            {{ 'update.updateToast.downloadUpdatesAutomaticallyFromNowOn' | transloco }}
+          </label>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="btn btn-primary btn-xs"
+              [disabled]="store.loading()"
+              (click)="download(always.checked)"
+            >
+              {{ 'update.updateToast.download' | transloco }}
+            </button>
+            <button type="button" class="btn btn-ghost btn-xs" (click)="store.dismissOffer()">
+              {{ 'update.updateToast.later' | transloco }}
+            </button>
+          </div>
+        </div>
+      </div>
     }
   `,
 })
@@ -82,4 +118,17 @@ export class UpdateToast {
     return rows.length > 0 ? rows.join(', ') : 'everything';
   });
   protected readonly last = computed(() => this.store.lines().at(-1)?.text ?? '');
+
+  /** With the box ticked, turning automatic downloads on also starts this download. */
+  protected download(always: boolean): void {
+    void (always ? this.store.setAutoDownload(true) : this.store.update(['app']));
+  }
+
+  /** A link in the notes opens in the browser (Electron main sends `window.open` there), never in the app window. */
+  protected openLink(event: MouseEvent): void {
+    const link = (event.target as HTMLElement).closest('a');
+    if (!link?.href.startsWith('https://')) return;
+    event.preventDefault();
+    window.open(link.href, '_blank', 'noopener,noreferrer');
+  }
 }

@@ -93,6 +93,30 @@ function ago(translate: Translate, at: number | undefined): string {
             }
           </div>
         </div>
+        @if (status.desktop && app()?.state !== 'unavailable') {
+          <div class="row" data-testid="row-app-auto">
+            <div>
+              <div class="lbl" id="lbl-app-auto">
+                {{ 'settings.versionsBlock.downloadUpdatesAutomatically' | transloco }}
+              </div>
+              <div class="hint" id="hint-app-auto">
+                {{ 'settings.versionsBlock.aDownloadedUpdateInstallsWhenYouQuit' | transloco }}
+              </div>
+            </div>
+            <div class="ctl">
+              <input
+                type="checkbox"
+                class="toggle toggle-primary"
+                data-testid="app-auto-download"
+                aria-labelledby="lbl-app-auto"
+                aria-describedby="hint-app-auto"
+                [checked]="status.autoDownload"
+                [disabled]="store.loading()"
+                (change)="store.setAutoDownload($any($event.target).checked)"
+              />
+            </div>
+          </div>
+        }
 
         <!-- pi -->
         <div class="row" data-testid="row-pi">

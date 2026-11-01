@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, Res } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import {
+  AutoDownloadSchema,
   type Installing,
   InstallingSchema,
   PinReleaseSchema,
@@ -100,6 +101,13 @@ export class UpdateController {
   @Fails({ 409: 'That release is not one of the managed releases, or there is no managed install.' })
   pin(@Body({ schema: PinReleaseSchema }) body: z.infer<typeof PinReleaseSchema>): UpdateStatus {
     return this.updates.pin(body.release);
+  }
+
+  @Post('auto-download')
+  @ApiOperation({ summary: 'Download app updates automatically', description: 'Turns the automatic download of pi-kit updates on or off; a downloaded update installs on the next quit. Answers with the status.' })
+  @Responds(UpdateStatusSchema, { status: 201 })
+  autoDownload(@Body({ schema: AutoDownloadSchema }) body: z.infer<typeof AutoDownloadSchema>): UpdateStatus {
+    return this.updates.setAutoDownload(body.enabled);
   }
 
   @Get('events')

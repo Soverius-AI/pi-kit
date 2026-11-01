@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { autoUpdater } from 'electron-updater';
+import { autoUpdater, type UpdateInfo } from 'electron-updater';
 
 /**
  * pi-kit's own updates: `electron-updater` against the GitHub repository in `app-update.yml` (the `publish` block of
@@ -9,10 +9,18 @@ import { autoUpdater } from 'electron-updater';
 
 export type AppUpdateAction = 'check' | 'download' | 'install';
 
+/** One release's notes from GitHub, as HTML. */
+export interface ReleaseNote {
+  version: string;
+  html: string;
+}
+
 export interface AppUpdateResult {
   /** A newer pi-kit than this one is published. */
   available?: boolean;
   version?: string;
+  /** The notes of every release newer than this one, newest first. */
+  notes?: ReleaseNote[];
   /** The update is downloaded and waits for a restart. */
   downloaded?: boolean;
   /** Why nothing can be done: a development or portable build, or no reachable release feed. */
@@ -39,6 +47,12 @@ function unavailableFeed(error: unknown): string | undefined {
   return undefined;
 }
 
+function releaseNotes(info: UpdateInfo): ReleaseNote[] {
+  const notes = info.releaseNotes;
+  if (typeof notes === 'string') return notes ? [{ version: info.version, html: notes }] : [];
+  return (notes ?? []).flatMap((release) => (release.note ? [{ version: release.version, html: release.note }] : []));
+}
+
 /** Answers the backend's update requests and forwards every updater event through `emit`. */
 export class AppUpdater {
   private latest: string | undefined;
@@ -48,6 +62,8 @@ export class AppUpdater {
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.allowPrerelease = false;
+    // Notes of every release between this one and the newest, not only the newest's.
+    autoUpdater.fullChangelog = true;
     autoUpdater.on('checking-for-update', () => emit({ kind: 'checking' }));
     autoUpdater.on('update-available', (info) => {
       this.latest = info.version;
@@ -82,7 +98,7 @@ export class AppUpdater {
         const info = result?.updateInfo;
         const newer = !!info && !!result?.isUpdateAvailable;
         if (newer) this.latest = info.version;
-        return { available: newer, ...(newer ? { version: info.version } : {}), downloaded: this.downloaded };
+        return { available: newer, ...(newer ? { version: info.version, notes: releaseNotes(info) } : {}), downloaded: this.downloaded };
       }
       case 'download': {
         if (!this.downloaded) await autoUpdater.downloadUpdate();

@@ -59,6 +59,10 @@ export const UPDATE_ROW_STATES = ['unknown', 'current', 'outdated', 'running', '
 export const UpdateRowStateSchema = z.enum(UPDATE_ROW_STATES);
 export type UpdateRowState = z.infer<typeof UpdateRowStateSchema>;
 
+/** One release's notes from GitHub, as HTML: bind it through Angular's sanitiser. */
+export const ReleaseNoteSchema = z.object({ version: z.string(), html: z.string() }).meta({ id: 'ReleaseNote' });
+export type ReleaseNote = z.infer<typeof ReleaseNoteSchema>;
+
 export const UpdateRowSchema = z.object({
   target: UpdateTargetSchema,
   state: UpdateRowStateSchema,
@@ -72,6 +76,8 @@ export const UpdateRowSchema = z.object({
   detail: z.string().optional(),
   /** `packages`: the names. */
   items: z.array(z.string()).optional(),
+  /** `app`, when outdated: the notes of every release newer than the installed one, newest first. */
+  notes: z.array(ReleaseNoteSchema).optional(),
   /** Epoch ms of the last finished update of this row (models: the last catalog refresh). */
   updatedAt: z.number().optional(),
   error: z.string().optional(),
@@ -117,6 +123,8 @@ export const UpdateStatusSchema = z.object({
   /** The `pi` command on PATH is a launcher of the managed install (so the terminal and the app run the same pi). */
   command: z.object({ onPath: z.boolean(), launcher: z.string().optional() }),
   desktop: z.boolean(),
+  /** A newer pi-kit is downloaded as soon as a check finds it, and installs on the next quit. Off until the user turns it on. */
+  autoDownload: z.boolean(),
 }).meta({ id: 'UpdateStatus' });
 export type UpdateStatus = z.infer<typeof UpdateStatusSchema>;
 
@@ -130,6 +138,10 @@ export type UpdateEvent = z.infer<typeof UpdateEventSchema>;
 /** "Use previous release" in Settings › Advanced: pin the resolution to a managed release (or `bundled`), or `null` to follow the newest. */
 export const PinReleaseSchema = z.object({ release: z.string().min(1).nullable() }).strict().meta({ id: 'PinRelease' });
 export type PinRelease = z.infer<typeof PinReleaseSchema>;
+
+/** `POST /api/update/auto-download`. */
+export const AutoDownloadSchema = z.object({ enabled: z.boolean() }).strict().meta({ id: 'AutoDownload' });
+export type AutoDownload = z.infer<typeof AutoDownloadSchema>;
 
 /** `POST /api/update/restart`. */
 export const RestartingSchema = z.object({ restarting: z.literal(true) }).meta({ id: 'Restarting' });

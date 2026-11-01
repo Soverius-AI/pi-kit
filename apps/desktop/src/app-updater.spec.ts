@@ -43,3 +43,15 @@ describe('copies that cannot update themselves', () => {
     expect(autoUpdater.checkForUpdates).not.toHaveBeenCalled();
   });
 });
+
+describe('release notes', () => {
+  it("passes on GitHub's notes of every newer release, without the empty ones", async () => {
+    const releaseNotes = [{ version: '0.9.1', note: '<p>Fixes</p>' }, { version: '0.9.0', note: null }, { version: '0.8.10', note: '<p>Features</p>' }];
+    vi.mocked(autoUpdater.checkForUpdates).mockResolvedValueOnce({ isUpdateAvailable: true, updateInfo: { version: '0.9.1', releaseNotes } } as never);
+    expect(await new AppUpdater(vi.fn()).run('check')).toMatchObject({
+      available: true,
+      version: '0.9.1',
+      notes: [{ version: '0.9.1', html: '<p>Fixes</p>' }, { version: '0.8.10', html: '<p>Features</p>' }],
+    });
+  });
+});
