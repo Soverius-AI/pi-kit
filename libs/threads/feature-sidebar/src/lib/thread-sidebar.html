@@ -66,6 +66,16 @@
 <div class="pk-side-full">
   <!-- The top: the search takes the width, the amber "+" with its chevron menu stays. -->
   <div class="pk-side-top">
+    <button
+      type="button"
+      class="btn btn-ghost btn-sm btn-square pk-only-sm"
+      data-testid="close-sidebar-drawer"
+      [attr.aria-label]="'threads.threadSidebar.hideSidebar' | transloco"
+      [title]="'threads.threadSidebar.hideSidebar' | transloco"
+      (click)="closeDrawer()"
+    >
+      <pk-icon name="sidebar" size="16" />
+    </button>
     <label class="pk-search">
       <pk-icon name="search" size="14" />
       <input

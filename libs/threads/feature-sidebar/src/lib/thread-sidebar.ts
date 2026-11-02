@@ -675,7 +675,7 @@ export class ThreadSidebar {
   }
 
   /** On a phone the list is a drawer over the page: what an action opens is what the person looks at next. */
-  private closeDrawer(): void {
+  protected closeDrawer(): void {
     const drawer = document.getElementById('t-threads') as HTMLInputElement | null;
     if (drawer) drawer.checked = false;
   }

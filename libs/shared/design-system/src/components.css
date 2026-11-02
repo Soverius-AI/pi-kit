@@ -4370,6 +4370,14 @@ html[data-tool-output='collapsed'] .pk-out pre {
 .pk-well .copilotKitInput {
   display: block;
 }
+/* The well owns the frame; CopilotKit's default input shadow otherwise adds a
+   second, square gray outline (especially visible in light mode). */
+.pk-well .copilotKitInput {
+  box-shadow: none;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+}
 .pk-well pk-composer-field {
   display: block;
 }
