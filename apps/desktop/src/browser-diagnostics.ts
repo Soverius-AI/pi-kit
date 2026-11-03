@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { NativeImage, WebContents } from 'electron';
-import { BrowserInspectionSchema, BrowserOperationError, DEFAULT_SCREENSHOT_FORMAT, DEFAULT_SCREENSHOT_QUALITY, type BrowserAction, type BrowserInspection, type BrowserLog, type BrowserResult } from '@pi-kit/protocol';
+import { BROWSER_STEP_TIMEOUT_MS, BrowserInspectionSchema, BrowserOperationError, DEFAULT_SCREENSHOT_FORMAT, DEFAULT_SCREENSHOT_QUALITY, type BrowserAction, type BrowserInspection, type BrowserLog, type BrowserResult } from '@pi-kit/protocol';
 
 import { encodeScreenshot } from './screenshot-encoder';
+import { browserStep } from './browser-step';
 
 interface RemoteResult { result: { value?: unknown; objectId?: string }; exceptionDetails?: { text: string } }
 
@@ -33,9 +34,11 @@ export class BrowserDiagnostics {
   private selectedNode?: number;
   private generation = 0;
   private pixelCapture = Promise.resolve();
+  private readonly lifetime = new AbortController();
   readonly ready: Promise<void>;
 
-  constructor(private readonly wc: WebContents, private readonly refs: Map<string, number>) {
+  constructor(private readonly wc: WebContents, private readonly refs: Map<string, number>, private readonly stepTimeoutMs = BROWSER_STEP_TIMEOUT_MS) {
+    wc.once('destroyed', () => this.lifetime.abort());
     wc.on('did-start-navigation', (details) => {
       if (!details.isMainFrame) return;
       this.documentId = randomUUID();
@@ -78,7 +81,16 @@ export class BrowserDiagnostics {
 
   private command<T = unknown>(method: string, params: Record<string, unknown> = {}): Promise<T> {
     if (!this.wc.debugger.isAttached()) this.wc.debugger.attach('1.3');
-    return this.wc.debugger.sendCommand(method, params) as Promise<T>;
+    return browserStep(
+      () => this.wc.debugger.sendCommand(method, params) as Promise<T>,
+      'The browser did not answer. Navigate to the project again to retry.',
+      { signal: this.lifetime.signal, timeoutMs: this.stepTimeoutMs, interrupted: () => this.retire() },
+    );
+  }
+
+  private retire(): void {
+    // Native capture/CDP work cannot be cancelled reliably. Do not reuse its renderer or metrics.
+    if (!this.wc.isDestroyed()) this.wc.close();
   }
 
   assertDocument(expected: string | undefined): void {
@@ -152,7 +164,7 @@ export class BrowserDiagnostics {
       await this.cancelInspect();
       // Native captures include the inspector overlay; disable it before requesting page pixels.
       await this.command('Overlay.disable').catch(() => undefined);
-      const image = await this.capturePixels(scope, check);
+      const image = await this.capturePixels(scope, check, cancelled);
       check();
       const result = await encodeScreenshot(image, format, quality, cancelled);
       check();
@@ -162,16 +174,47 @@ export class BrowserDiagnostics {
     }
   }
 
-  private async capturePixels(scope: BrowserAction['scope'], check: () => void): Promise<NativeImage> {
+  private async capturePixels(scope: BrowserAction['scope'], check: () => void, signal: AbortSignal): Promise<NativeImage> {
     // Cancellation releases the action queue immediately. Finish restoring an older capture's
     // virtual viewport before another capture can change it.
-    const pending = this.pixelCapture.then(() => { check(); return this.captureNativePixels(scope, check); });
+    const pending = this.pixelCapture.then(() => { check(); return this.captureNativePixels(scope, check, signal); });
     this.pixelCapture = pending.then(() => undefined, () => undefined);
     return pending;
   }
 
-  private async captureNativePixels(scope: BrowserAction['scope'], check: () => void): Promise<NativeImage> {
-    if (scope === 'viewport') return this.wc.capturePage(undefined, { stayHidden: true, stayAwake: true });
+  /** Commit a tiny compositor frame, even if no native panel is currently visible.
+   * This also refreshes hit testing and accessibility after DOM changes. */
+  async render(signal?: AbortSignal): Promise<void> {
+    const metrics = await this.command<{ cssLayoutViewport: { pageX: number; pageY: number } }>('Page.getLayoutMetrics');
+    await browserStep(
+      () => this.command('Page.captureScreenshot', {
+        format: 'jpeg', quality: 10, fromSurface: true, captureBeyondViewport: false,
+        clip: { x: metrics.cssLayoutViewport.pageX, y: metrics.cssLayoutViewport.pageY, width: 1, height: 1, scale: 1 },
+      }),
+      'The browser could not render a frame. Navigate to the project again to retry.',
+      { signal, timeoutMs: this.stepTimeoutMs, interrupted: () => this.retire() },
+    );
+  }
+
+  private async pixels(rect: Electron.Rectangle | undefined, signal: AbortSignal): Promise<NativeImage> {
+    try {
+      // A hidden/reparented view may have no display surface: capturePage can fail
+      // with UnknownVizError OR never answer. Prime before requesting native pixels.
+      await this.render(signal);
+      return await browserStep(
+        () => this.wc.capturePage(rect, { stayHidden: true, stayAwake: true }),
+        'The screenshot stalled. The browser page was closed; navigate to the project again to retry.',
+        { signal, timeoutMs: this.stepTimeoutMs, interrupted: () => this.retire() },
+      );
+    } catch (cause) {
+      if (cause instanceof BrowserOperationError) throw cause;
+      this.retire();
+      throw new BrowserOperationError('failed', 'The browser could not capture rendered pixels. Navigate to the project again to retry.', { cause });
+    }
+  }
+
+  private async captureNativePixels(scope: BrowserAction['scope'], check: () => void, signal: AbortSignal): Promise<NativeImage> {
+    if (scope === 'viewport') return this.pixels(undefined, signal);
     const metrics = await this.command<{
       cssContentSize: { x: number; y: number; width: number; height: number };
       cssLayoutViewport: { pageX: number; pageY: number; clientWidth: number; clientHeight: number };
@@ -211,7 +254,7 @@ export class BrowserDiagnostics {
         const right = Math.min(Math.ceil(viewport.clientWidth * zoom), Math.ceil(x + clip.width * zoom));
         const bottom = Math.min(Math.ceil(viewport.clientHeight * zoom), Math.ceil(y + clip.height * zoom));
         check();
-        return await this.wc.capturePage({ x: left, y: top, width: right - left, height: bottom - top }, { stayHidden: true, stayAwake: true });
+        return await this.pixels({ x: left, y: top, width: right - left, height: bottom - top }, signal);
       } finally {
         if (scrolled && !this.wc.isDestroyed()) await this.command('Runtime.evaluate', { expression: `window.scrollTo({left:${originalViewport.pageX},top:${originalViewport.pageY},behavior:'instant'})` });
       }
@@ -232,7 +275,7 @@ export class BrowserDiagnostics {
         viewport: { ...clip, scale },
       });
       check();
-      return await this.wc.capturePage(undefined, { stayHidden: true, stayAwake: true });
+      return await this.pixels(undefined, signal);
     } finally {
       if (!this.wc.isDestroyed()) {
         await this.command('Emulation.clearDeviceMetricsOverride');

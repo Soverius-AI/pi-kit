@@ -555,6 +555,7 @@ app.whenReady().then(boot).catch((err: Error) => {
 app.on('window-all-closed', () => app.quit());
 let flushingUiStorage = false;
 app.on('before-quit', (event) => {
+  browserArtifacts.dispose();
   if (uiStorage && !flushingUiStorage) {
     event.preventDefault();
     flushingUiStorage = true;
@@ -569,6 +570,7 @@ app.on('before-quit', (event) => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0 && watchdog) {
     const win = createWindow();
+    win.once('closed', () => browserArtifacts.dispose());
     win.once('ready-to-show', () => win.show());
     void win.loadURL(DEV_URL ?? `${APP_ORIGIN}/`);
   }

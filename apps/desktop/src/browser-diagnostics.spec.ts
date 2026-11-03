@@ -8,18 +8,20 @@ import { encodeScreenshot } from './screenshot-encoder';
 
 beforeEach(() => { vi.mocked(encodeScreenshot).mockReset().mockResolvedValue({ data: 'encoded', mimeType: 'image/png' }); });
 
-function capturePage(capture: ReturnType<typeof vi.fn>) {
+function capturePage(capture: ReturnType<typeof vi.fn>, timeoutMs?: number) {
   const sendCommand = vi.fn(async (method: string): Promise<unknown> => method === 'Page.getLayoutMetrics' ? {
     cssContentSize: { x: 0, y: 0, width: 800, height: 1800 },
     cssLayoutViewport: { pageX: 0, pageY: 100, clientWidth: 800, clientHeight: 600 },
     layoutViewport: { clientWidth: 800 },
   } : {});
+  let destroyed = false;
   const wc = Object.assign(new EventEmitter(), {
-    isDestroyed: () => false, getZoomFactor: () => 1, capturePage: capture,
+    isDestroyed: () => destroyed, getZoomFactor: () => 1, capturePage: capture,
+    close: vi.fn(() => { destroyed = true; wc.emit('destroyed'); }),
     debugger: Object.assign(new EventEmitter(), { isAttached: () => true, sendCommand }),
   });
   const refs = new Map<string, number>();
-  return { wc, sendCommand, refs, diagnostics: new BrowserDiagnostics(wc as never, refs) };
+  return { wc, sendCommand, refs, diagnostics: new BrowserDiagnostics(wc as never, refs, timeoutMs) };
 }
 
 
@@ -63,11 +65,29 @@ describe('native browser inspection', () => {
     expect(sendCommand).toHaveBeenCalledWith('Overlay.setInspectMode', { mode: 'none' });
     await vi.waitFor(() => expect(sendCommand).toHaveBeenLastCalledWith('Overlay.hideHighlight', {}));
   });
-  it('restores metrics and scrolling when raw full-page capture fails', async () => {
-    const { diagnostics, sendCommand } = capturePage(vi.fn(async () => { throw new Error('Capture failed'); }));
-    await expect(diagnostics.capture('fullpage')).rejects.toThrow('Capture failed');
-    expect(sendCommand).toHaveBeenCalledWith('Emulation.clearDeviceMetricsOverride', {});
-    expect(sendCommand).toHaveBeenLastCalledWith('Runtime.evaluate', expect.objectContaining({ expression: expect.stringContaining('top:100') }));
+  it('primes a tiny compositor frame before reading native pixels, preserving encoding preferences', async () => {
+    const capture = vi.fn(async () => ({}));
+    const { diagnostics, sendCommand } = capturePage(capture);
+    let prime!: () => void;
+    const primed = new Promise<void>((resolve) => { prime = resolve; });
+    const original = sendCommand.getMockImplementation();
+    sendCommand.mockImplementation(async (method) => method === 'Page.captureScreenshot' ? primed : original?.(method));
+    const result = diagnostics.capture('viewport', 'jpeg', 45);
+    await vi.waitFor(() => expect(sendCommand).toHaveBeenCalledWith('Page.captureScreenshot', {
+      format: 'jpeg', quality: 10, fromSurface: true, captureBeyondViewport: false,
+      clip: { x: 0, y: 100, width: 1, height: 1, scale: 1 },
+    }));
+    expect(capture).not.toHaveBeenCalled();
+    prime();
+    await result;
+    expect(capture).toHaveBeenCalledOnce();
+    expect(encodeScreenshot).toHaveBeenCalledWith(expect.anything(), 'jpeg', 45, expect.any(AbortSignal));
+  });
+
+  it('retires a broken compositor instead of leaking UnknownVizError to the user', async () => {
+    const { diagnostics, wc } = capturePage(vi.fn(async () => { throw new Error('UnknownVizError'); }));
+    await expect(diagnostics.capture('fullpage')).rejects.toMatchObject({ code: 'failed', message: expect.stringContaining('rendered pixels') });
+    expect(wc.close).toHaveBeenCalledOnce();
     expect(encodeScreenshot).not.toHaveBeenCalled();
   });
 
@@ -88,24 +108,42 @@ describe('native browser inspection', () => {
     expect(sendCommand.mock.calls.some(([method]) => method.startsWith('Emulation.'))).toBe(false);
   });
 
-  it('finishes cancelled raw capture cleanup before changing metrics for another capture', async () => {
-    let finish!: (image: unknown) => void;
-    const raw = new Promise((resolve) => { finish = resolve; });
-    const capture = vi.fn().mockReturnValueOnce(raw).mockResolvedValue({});
-    const { diagnostics, sendCommand } = capturePage(capture);
+  it('cancels a permanently stuck native capture without waiting for it or reusing its metrics', async () => {
+    const capture = vi.fn(() => new Promise(() => { /* native capture never answers */ }));
+    const { diagnostics, wc, sendCommand } = capturePage(capture);
     const controller = new AbortController();
     const first = diagnostics.capture('fullpage', 'png', 80, controller.signal);
-    const rejected = expect(first).rejects.toThrow('cancelled');
-    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
+    const rejected = expect(first).rejects.toMatchObject({ code: 'cancelled' });
+    await vi.waitFor(() => expect(capture).toHaveBeenCalledOnce());
     controller.abort();
-    const next = diagnostics.capture('fullpage');
-    await Promise.resolve();
-    expect(sendCommand.mock.calls.filter(([method]) => method === 'Emulation.setDeviceMetricsOverride')).toHaveLength(1);
-    finish({});
     await rejected;
-    expect(await next).toEqual({ data: 'encoded', mimeType: 'image/png' });
-    const metrics = sendCommand.mock.calls.map(([method]) => method).filter((method) => method.startsWith('Emulation.'));
-    expect(metrics).toEqual(['Emulation.setDeviceMetricsOverride', 'Emulation.clearDeviceMetricsOverride', 'Emulation.setDeviceMetricsOverride', 'Emulation.clearDeviceMetricsOverride']);
+    expect(wc.close).toHaveBeenCalledOnce();
+    await expect(diagnostics.capture('fullpage')).rejects.toMatchObject({ code: 'cancelled' });
+    expect(capture).toHaveBeenCalledOnce();
+    expect(sendCommand.mock.calls.filter(([method]) => method === 'Emulation.setDeviceMetricsOverride')).toHaveLength(1);
+    // A replacement page has a separate capture queue and clean virtual viewport.
+    const replacement = capturePage(vi.fn(async () => ({})));
+    expect(await replacement.diagnostics.capture('fullpage')).toEqual({ data: 'encoded', mimeType: 'image/png' });
+    expect(replacement.sendCommand).toHaveBeenCalledWith('Emulation.clearDeviceMetricsOverride', {});
+  });
+
+  it('times out native pixels before encoding, closes the page and ignores a late native reply', async () => {
+    let finish!: (image: unknown) => void;
+    const capture = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+    const { diagnostics, wc } = capturePage(capture, 50);
+    await expect(diagnostics.capture('viewport')).rejects.toMatchObject({ code: 'timeout' });
+    expect(wc.close).toHaveBeenCalledOnce();
+    finish({});
+    await Promise.resolve();
+    expect(encodeScreenshot).not.toHaveBeenCalled();
+  });
+
+  it('also bounds stalled layout/CDP responses, not just screenshot encoding', async () => {
+    const { diagnostics, wc, sendCommand } = capturePage(vi.fn(), 50);
+    sendCommand.mockImplementation(async (method) => method === 'Page.getLayoutMetrics' ? new Promise(() => { /* CDP never settles */ }) : {});
+    await expect(diagnostics.capture('fullpage')).rejects.toMatchObject({ code: 'timeout' });
+    expect(wc.close).toHaveBeenCalledOnce();
+    expect(encodeScreenshot).not.toHaveBeenCalled();
   });
 
   it('rejects an encoded result if the page navigated while the worker was running', async () => {
