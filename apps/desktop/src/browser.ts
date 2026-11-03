@@ -2,12 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { BrowserWindow, WebContentsView, type WebContents } from 'electron';
 import { BROWSER_STEP_TIMEOUT_MS, BrowserActionSchema, BrowserOperationError, type BrowserAction, type BrowserResult, type BrowserState, type BrowserViewport, emptyBrowserState } from '@pi-kit/protocol';
 import { BrowserDiagnostics } from './browser-diagnostics';
+import { browserStep } from './browser-step';
 
 interface BrowserPage {
   view: WebContentsView;
   refs: Map<string, number>;
   diagnostics: BrowserDiagnostics;
   error?: string;
+  /** Actual native parent, independent of the renderer's requested viewport. */
+  host?: BrowserWindow;
+  fallback?: BrowserWindow;
 }
 interface RemoteResult { result: { value?: unknown; objectId?: string; description?: string }; exceptionDetails?: { text: string; exception?: { description?: string } } }
 interface AxNode { ignored?: boolean; backendDOMNodeId?: number; role?: { value?: string }; name?: { value?: string }; value?: { value?: unknown } }
@@ -37,6 +41,7 @@ export class BrowserArtifacts {
   private readonly queues = new Map<string, Promise<unknown>>();
   private viewport?: BrowserViewport & { window: BrowserWindow };
   private allowInvalidLocalCertificates = false;
+  private disposed = false;
 
   /** Trusted renderer only; never exposed as an agent browser action. Drop sessions to clear cached TLS exceptions. */
   setAllowInvalidLocalCertificates(enabled: boolean): void {
@@ -45,7 +50,7 @@ export class BrowserArtifacts {
     for (const id of this.pages.keys()) this.close(id);
   }
 
-  constructor(private readonly blockedOrigins: () => readonly string[] = () => [], private readonly maxPages = 8) {}
+  constructor(private readonly blockedOrigins: () => readonly string[] = () => [], private readonly maxPages = 8, private readonly stepTimeoutMs = BROWSER_STEP_TIMEOUT_MS) {}
 
   state(threadId: string): BrowserState {
     const page = this.pages.get(threadId);
@@ -57,17 +62,19 @@ export class BrowserArtifacts {
   /** Layout updates may move only the selected chat's view. An old component cannot hide a newer viewport. */
   layout(window: BrowserWindow, viewport: BrowserViewport): void {
     if (!viewport.bounds && this.viewport?.owner !== viewport.owner) return;
-    if (this.viewport && (!viewport.bounds || this.viewport.threadId !== viewport.threadId)) void this.pages.get(this.viewport.threadId)?.diagnostics.cancelInspect();
-    this.detach();
+    if (this.viewport && (!viewport.bounds || this.viewport.threadId !== viewport.threadId || this.viewport.owner !== viewport.owner)) void this.pages.get(this.viewport.threadId)?.diagnostics.cancelInspect();
     this.viewport = viewport.bounds ? { ...viewport, window } : undefined;
     this.attach();
   }
 
   async run(threadId: string, input: BrowserAction, signal?: AbortSignal): Promise<BrowserResult> {
     const action = BrowserActionSchema.parse(input);
+    if (this.disposed) throw new BrowserOperationError('unavailable', 'The browser was closed with its desktop window.');
+    const request = new AbortController();
+    const requestSignal = signal ? AbortSignal.any([signal, request.signal]) : request.signal;
     const previous = this.queues.get(threadId) ?? Promise.resolve();
     const pending = previous.catch(() => undefined).then(async () => {
-      if (signal?.aborted) throw new BrowserOperationError('cancelled', 'Browser action cancelled.');
+      if (this.disposed || requestSignal.aborted) throw new BrowserOperationError('cancelled', 'Browser action cancelled.');
       if (action.action === 'close') {
         this.close(threadId);
         return { state: this.state(threadId) };
@@ -76,48 +83,62 @@ export class BrowserArtifacts {
       const wc = page.view.webContents;
       let interrupt!: (error: Error) => void;
       const interrupted = new Promise<never>((_resolve, reject) => { interrupt = reject; });
-      const stop = (): void => {
-        interrupt(new BrowserOperationError('cancelled', 'Browser action cancelled.'));
-        wc.stop();
-        if (!wc.isDestroyed() && wc.debugger.isAttached()) void this.command(wc, 'Runtime.terminateExecution').catch(() => undefined);
-      };
-      const stopped = (): void => interrupt(new BrowserOperationError('unavailable', 'The browser page stopped. Reload to continue.'));
-      signal?.addEventListener('abort', stop, { once: true });
+      const lifetime = new AbortController();
+      const activeSignal = AbortSignal.any([requestSignal, lifetime.signal]);
+      const stopped = (): void => interrupt(new BrowserOperationError('unavailable', 'The browser page stopped. Navigate to the project again to continue.'));
       wc.once('render-process-gone', stopped);
       wc.once('destroyed', stopped);
       try {
-        return await Promise.race([interrupted, (async () => {
+        return await browserStep(() => Promise.race([interrupted, (async () => {
           page.diagnostics.assertDocument(action.documentId);
           if (action.action !== 'navigate' && !wc.getURL()) throw new BrowserOperationError('invalid', 'Navigate to a project page first.');
           const documentId = page.diagnostics.documentId;
-          const text = await this.act(page, action, signal);
+          const text = await this.act(page, action, activeSignal);
           await page.diagnostics.ready;
-          if (signal?.aborted) throw new BrowserOperationError('cancelled', 'Browser action cancelled.');
-          const screenshot = action.action === 'screenshot' ? await page.diagnostics.capture(action.scope, action.format, action.quality, signal) : undefined;
+          if (activeSignal.aborted) throw new BrowserOperationError('cancelled', 'Browser action cancelled.');
+          const screenshot = action.action === 'screenshot' ? await page.diagnostics.capture(action.scope, action.format, action.quality, activeSignal) : undefined;
           if (screenshot) page.diagnostics.assertDocument(documentId);
           return { state: this.state(threadId), ...(text !== undefined ? { text } : {}), ...(screenshot ? { screenshot } : {}), ...(action.action === 'console' ? { logs: [...page.diagnostics.logs] } : {}) };
-        })()]);
+        })()]), 'The browser action stalled. Navigate to the project again to retry.', {
+          signal: requestSignal,
+          timeoutMs: this.stepTimeoutMs,
+          interrupted: () => {
+            lifetime.abort();
+            if (!wc.isDestroyed()) {
+              wc.stop();
+              if (wc.debugger.isAttached()) void this.command(wc, 'Runtime.terminateExecution').catch(() => undefined);
+            }
+            // CDP/native promises can outlive any cancelled action (not just capture).
+            // Never let its late continuation change the next action's page or references.
+            if (this.pages.get(threadId) === page) this.close(threadId);
+          },
+        });
       } finally {
-        signal?.removeEventListener('abort', stop);
         wc.off('render-process-gone', stopped);
         wc.off('destroyed', stopped);
       }
     });
     this.queues.set(threadId, pending);
-    try { return await pending; }
-    finally { if (this.queues.get(threadId) === pending) this.queues.delete(threadId); }
+    const settled = (): void => { if (this.queues.get(threadId) === pending) this.queues.delete(threadId); };
+    void pending.then(settled, settled);
+    // Queue waiting belongs to the same deadline. Cancelling a queued action does not
+    // remove its sequencing slot or interrupt the different action ahead of it.
+    return browserStep(() => pending, 'The browser action took too long. Navigate to the project again to retry.', {
+      signal, timeoutMs: this.stepTimeoutMs, interrupted: () => request.abort(),
+    });
   }
 
   close(threadId: string): void {
     const page = this.pages.get(threadId);
     if (!page) return;
-    if (this.viewport?.threadId === threadId) this.detach();
-    if (!page.view.webContents.isDestroyed()) page.view.webContents.close();
+    // Delete first: native destruction events can re-enter cleanup.
     this.pages.delete(threadId);
+    this.releaseHost(page);
+    if (!page.view.webContents.isDestroyed()) page.view.webContents.close();
   }
 
   dispose(): void {
-    this.detach();
+    this.disposed = true;
     this.viewport = undefined;
     for (const id of this.pages.keys()) this.close(id);
   }
@@ -125,6 +146,7 @@ export class BrowserArtifacts {
   private page(threadId: string): BrowserPage {
     const existing = this.pages.get(threadId);
     if (existing && !existing.view.webContents.isDestroyed()) return existing;
+    if (existing) this.close(threadId);
     if (this.pages.size >= this.maxPages) {
       const idle = [...this.pages.keys()].find((id) => id !== this.viewport?.threadId && !this.queues.has(id));
       if (!idle) throw new BrowserOperationError('unavailable', 'Close an unused browser artifact before opening another.');
@@ -133,9 +155,13 @@ export class BrowserArtifacts {
     const view = new WebContentsView({ webPreferences: { partition: `pi-kit-browser-${threadId}-${randomUUID()}`, contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false } });
     view.setBounds({ x: 0, y: 0, width: 1024, height: 768 });
     const refs = new Map<string, number>();
-    const page: BrowserPage = { view, refs, diagnostics: new BrowserDiagnostics(view.webContents, refs) };
+    const page: BrowserPage = { view, refs, diagnostics: new BrowserDiagnostics(view.webContents, refs, this.stepTimeoutMs) };
     this.pages.set(threadId, page);
     const wc = view.webContents;
+    wc.once('destroyed', () => {
+      if (this.pages.get(threadId) === page) this.pages.delete(threadId);
+      this.releaseHost(page);
+    });
     const allowLocal = this.allowInvalidLocalCertificates;
     wc.session.setCertificateVerifyProc((request, callback) => {
       // -3 delegates to Chromium's normal verification; 0 accepts only an explicitly opted-in loopback host.
@@ -162,22 +188,60 @@ export class BrowserArtifacts {
     return page;
   }
 
-  private detach(): void {
-    const current = this.viewport;
-    const page = current && this.pages.get(current.threadId);
-    if (current && !current.window.isDestroyed() && page) current.window.contentView.removeChildView(page.view);
+  private releaseHost(page: BrowserPage): void {
+    if (page.host && !page.host.isDestroyed()) page.host.contentView.removeChildView(page.view);
+    page.host = undefined;
+    if (page.fallback && !page.fallback.isDestroyed()) page.fallback.destroy();
+    page.fallback = undefined;
+  }
+
+  /** Intersect in native coordinates; invalid/fully clipped requests never reach setBounds. */
+  private visibleBounds(current: BrowserViewport & { window: BrowserWindow }): Electron.Rectangle | undefined {
+    if (!current.bounds || current.window.isDestroyed()) return;
+    const scale = current.window.webContents.getZoomFactor();
+    const [width, height] = current.window.getContentSize();
+    const { x, y, width: requestedWidth, height: requestedHeight } = current.bounds;
+    if (![x, y, requestedWidth, requestedHeight, scale, width, height].every(Number.isFinite) || requestedWidth <= 0 || requestedHeight <= 0 || scale <= 0) return;
+    const left = Math.max(0, Math.round(x * scale));
+    const top = Math.max(0, Math.round(y * scale));
+    const right = Math.min(width, Math.round((x + requestedWidth) * scale));
+    const bottom = Math.min(height, Math.round((y + requestedHeight) * scale));
+    if (![left, top, right, bottom].every(Number.isFinite) || right <= left || bottom <= top) return;
+    return { x: left, y: top, width: right - left, height: bottom - top };
   }
 
   private attach(): void {
     const current = this.viewport;
-    const page = current && this.pages.get(current.threadId);
-    if (!current?.bounds || !page || current.window.isDestroyed()) return;
-    const scale = current.window.webContents.getZoomFactor();
-    const [width, height] = current.window.getContentSize();
-    const x = Math.max(0, Math.round(current.bounds.x * scale));
-    const y = Math.max(0, Math.round(current.bounds.y * scale));
-    page.view.setBounds({ x, y, width: Math.max(0, Math.min(width - x, Math.round(current.bounds.width * scale))), height: Math.max(0, Math.min(height - y, Math.round(current.bounds.height * scale))) });
-    current.window.contentView.addChildView(page.view);
+    const bounds = current && this.visibleBounds(current);
+    for (const [threadId, page] of this.pages) {
+      const visible = current && bounds && current.threadId === threadId;
+      if (!visible && (!page.fallback || page.fallback.isDestroyed())) {
+        // Electron's paintWhenInitiallyHidden keeps a show:false renderer active.
+        // Hidden native capture may still need a CDP surface prime (see diagnostics).
+        // Keep a normal composited view: offscreen views cannot be assumed to embed visibly.
+        page.fallback = new BrowserWindow({
+          width: 1024, height: 768, useContentSize: true, show: false,
+          focusable: false, skipTaskbar: true, paintWhenInitiallyHidden: true,
+          webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
+        });
+      }
+      const host = visible ? current.window : page.fallback;
+      if (!host) continue;
+      if (page.host !== host) {
+        if (page.host && !page.host.isDestroyed()) page.host.contentView.removeChildView(page.view);
+        page.host = host;
+        page.view.setBounds(visible ? bounds : { x: 0, y: 0, width: 1024, height: 768 });
+        host.contentView.addChildView(page.view);
+      } else if (visible) {
+        // Bounds-only updates must not detach/re-add: that churns Chromium surfaces.
+        page.view.setBounds(bounds);
+      }
+      // The fallback is only needed while hidden; do not retain idle native windows.
+      if (visible && page.fallback) {
+        if (!page.fallback.isDestroyed()) page.fallback.destroy();
+        page.fallback = undefined;
+      }
+    }
   }
 
   private async command<T>(wc: WebContents, method: string, params: Record<string, unknown> = {}): Promise<T> {
@@ -233,11 +297,14 @@ export class BrowserArtifacts {
       case 'navigate':
         page.error = undefined;
         await wc.loadURL(browserUrl(action.url ?? '', this.blockedOrigins()));
+        await page.diagnostics.render(signal);
         return 'Page loaded. Use snapshot to inspect its content and controls.';
       case 'back': if (wc.navigationHistory.canGoBack()) await this.loaded(wc, () => wc.navigationHistory.goBack(), signal); return;
       case 'forward': if (wc.navigationHistory.canGoForward()) await this.loaded(wc, () => wc.navigationHistory.goForward(), signal); return;
       case 'reload': await this.loaded(wc, () => wc.reload(), signal); return;
       case 'snapshot': {
+        await page.diagnostics.render(signal);
+        await this.command(wc, 'Accessibility.enable');
         const { nodes } = await this.command<{ nodes: AxNode[] }>(wc, 'Accessibility.getFullAXTree');
         page.refs.clear();
         const prefix = randomUUID();
@@ -256,6 +323,7 @@ export class BrowserArtifacts {
       }
       case 'click': {
         const point = await this.element(page, action.ref ?? '', `function() { if (!this.isConnected || this.disabled) throw new Error('Element is detached or disabled.'); this.scrollIntoView({block:'center',inline:'center'}); const r = this.getBoundingClientRect(); if (!r.width || !r.height) throw new Error('Element is not visible.'); return {x:r.x+r.width/2,y:r.y+r.height/2}; }`) as { x: number; y: number };
+        await page.diagnostics.render(signal);
         if (signal?.aborted) throw new BrowserOperationError('cancelled', 'Browser action cancelled.');
         await this.command(wc, 'Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button: 'left', clickCount: 1 });
         await this.command(wc, 'Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button: 'left', clickCount: 1 });
