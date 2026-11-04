@@ -11,14 +11,36 @@ export function writeTranscriptSession({ agentDir, cwd, title, count = 1200 }) {
   for (let i = 0; i < count; i++) {
     const user = `u${i}`;
     const answer = `a${i}`;
-    entries.push({ type: 'message', id: user, parentId, timestamp,
-      message: { role: 'user', content: [{ type: 'text', text: `Viewport question ${i}` }], timestamp: Date.now() } });
+    entries.push({
+      type: 'message',
+      id: user,
+      parentId,
+      timestamp,
+      message: { role: 'user', content: [{ type: 'text', text: `Viewport question ${i}` }], timestamp: Date.now() },
+    });
     // Mixed row heights exercise measured layout rather than a fixed-height approximation.
-    const text = `Viewport answer ${i}` + (i % 9 === 0 ? '\n\n' + 'A longer paragraph that wraps in the transcript. '.repeat(35) : '');
-    entries.push({ type: 'message', id: answer, parentId: user, timestamp,
-      message: { role: 'assistant', content: [...(i % 2 ? [{ type: 'thinking', thinking: 'Checking a short calculation.' }] : []), { type: 'text', text }], api: 'openai-completions', provider: 'llama-swap',
-        model: 'gemma-4-26b', stopReason: 'stop', timestamp: Date.now(),
-        usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { total: 0 } } } });
+    const text =
+      `Viewport answer ${i}` +
+      (i % 9 === 0 ? '\n\n' + 'A longer paragraph that wraps in the transcript. '.repeat(35) : '');
+    entries.push({
+      type: 'message',
+      id: answer,
+      parentId: user,
+      timestamp,
+      message: {
+        role: 'assistant',
+        content: [
+          ...(i % 2 ? [{ type: 'thinking', thinking: 'Checking a short calculation.' }] : []),
+          { type: 'text', text },
+        ],
+        api: 'openai-completions',
+        provider: 'llama-swap',
+        model: 'gemma-4-26b',
+        stopReason: 'stop',
+        timestamp: Date.now(),
+        usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { total: 0 } },
+      },
+    });
     parentId = answer;
   }
   entries.push({ type: 'session_info', id: 'name', parentId, timestamp, name: title });

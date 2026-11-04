@@ -57,7 +57,8 @@ function ask(pi: ExtensionAPI, channel: string, params: Record<string, unknown>)
 
 export default function (pi: ExtensionAPI) {
   pi.registerCommand('learn', {
-    description: 'Draft a skill from this thread (or /learn <thread id>); you read it and approve it in pi-kit. /learn verify replays the draft from the thread’s base commit',
+    description:
+      'Draft a skill from this thread (or /learn <thread id>); you read it and approve it in pi-kit. /learn verify replays the draft from the thread’s base commit',
     handler: async (args, ctx) => {
       const word = (args ?? '').trim();
       const [first, ...rest] = word.split(/\s+/);
@@ -65,11 +66,18 @@ export default function (pi: ExtensionAPI) {
         const target = rest.join(' ').trim() || undefined;
         try {
           // The reply comes when the replay is over; pi-kit has the thread "Verify: <name>" in the sidebar while it runs.
-          ctx.ui.notify('Replaying the draft skill from the thread’s base commit in a scratch worktree. Watch the thread “Verify: …” in the sidebar; this takes a while.', 'info');
+          ctx.ui.notify(
+            'Replaying the draft skill from the thread’s base commit in a scratch worktree. Watch the thread “Verify: …” in the sidebar; this takes a while.',
+            'info',
+          );
           const reply = await ask(pi, CHANNEL.verified, { ...(target ? { thread: target } : {}) });
-          if (!reply.ok) return void ctx.ui.notify(String(reply.error ?? 'pi-kit could not verify the draft.'), 'error');
+          if (!reply.ok)
+            return void ctx.ui.notify(String(reply.error ?? 'pi-kit could not verify the draft.'), 'error');
           const draft = reply['draft'] as { name: string } | undefined;
-          const { text, level } = describeVerification(reply['verification'] as Record<string, unknown> | null, draft?.name ?? 'the draft');
+          const { text, level } = describeVerification(
+            reply['verification'] as Record<string, unknown> | null,
+            draft?.name ?? 'the draft',
+          );
           ctx.ui.notify(text, level);
         } catch (error) {
           ctx.ui.notify(error instanceof Error ? error.message : String(error), 'error');
@@ -79,11 +87,17 @@ export default function (pi: ExtensionAPI) {
       const thread = word || undefined;
       try {
         const transcript = await ask(pi, CHANNEL.transcript, { ...(thread ? { thread } : {}) });
-        if (!transcript.ok) return void ctx.ui.notify(String(transcript.error ?? 'pi-kit could not read the thread.'), 'error');
+        if (!transcript.ok)
+          return void ctx.ui.notify(String(transcript.error ?? 'pi-kit could not read the thread.'), 'error');
         // A thread has one draft; do not spend a model call on a thread that has it already.
         const existing = transcript['draft'] as { name: string; state: string } | null | undefined;
         if (existing) {
-          const what = { pending: 'Read it in the card at the end of the thread.', approved: 'It was approved: the skill exists.', discarded: 'You discarded it; reopen it from the thread’s menu.' }[existing.state] ?? '';
+          const what =
+            {
+              pending: 'Read it in the card at the end of the thread.',
+              approved: 'It was approved: the skill exists.',
+              discarded: 'You discarded it; reopen it from the thread’s menu.',
+            }[existing.state] ?? '';
           return void ctx.ui.notify(`This thread has a skill draft already: ${existing.name}. ${what}`, 'info');
         }
         const prompt = buildAnalysisPrompt(transcript['transcript'] as never);
@@ -94,17 +108,34 @@ export default function (pi: ExtensionAPI) {
           // The attendant is off: sending the transcript to a model is the person's decision, once per thread.
           const agreed = await ctx.ui.confirm('Learn a skill from this thread?', String(answer.error));
           if (!agreed) return void ctx.ui.notify('Nothing was sent. No draft was made.', 'info');
-          answer = await ask(pi, CHANNEL.attendant, { ...(thread ? { thread } : {}), task: 'learn', consent: true, ...prompt });
+          answer = await ask(pi, CHANNEL.attendant, {
+            ...(thread ? { thread } : {}),
+            task: 'learn',
+            consent: true,
+            ...prompt,
+          });
         }
         if (!answer.ok) return void ctx.ui.notify(String(answer.error ?? 'The model call failed.'), 'error');
 
         const parsed = parseDraftReply(String(answer['text'] ?? ''));
         if (!parsed.ok) {
-          return void ctx.ui.notify(parsed.skip ? `Nothing in this thread generalises: ${parsed.reason}` : `The model’s answer was not a skill: ${parsed.reason}`, parsed.skip ? 'info' : 'warning');
+          return void ctx.ui.notify(
+            parsed.skip
+              ? `Nothing in this thread generalises: ${parsed.reason}`
+              : `The model’s answer was not a skill: ${parsed.reason}`,
+            parsed.skip ? 'info' : 'warning',
+          );
         }
-        const stored = await ask(pi, CHANNEL.draft, { ...(thread ? { thread } : {}), text: parsed.text, model: answer['model'] });
+        const stored = await ask(pi, CHANNEL.draft, {
+          ...(thread ? { thread } : {}),
+          text: parsed.text,
+          model: answer['model'],
+        });
         if (!stored.ok) return void ctx.ui.notify(String(stored.error ?? 'pi-kit could not keep the draft.'), 'error');
-        ctx.ui.notify(`Drafted the skill ${parsed.name}. Read it in the card at the end of the thread, then approve it or discard it.`, 'info');
+        ctx.ui.notify(
+          `Drafted the skill ${parsed.name}. Read it in the card at the end of the thread, then approve it or discard it.`,
+          'info',
+        );
       } catch (error) {
         ctx.ui.notify(error instanceof Error ? error.message : String(error), 'error');
       }

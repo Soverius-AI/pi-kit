@@ -59,6 +59,10 @@ describe('skill_uses', () => {
   });
 
   it('refuses an outcome kind it does not know', () => {
-    expect(() => db.db.prepare("INSERT INTO skill_uses (learned_from, thread_id, at, outcome) VALUES ('o', 't', 1, 'abandoned')").run()).toThrow(/CHECK/);
+    expect(() =>
+      db.db
+        .prepare("INSERT INTO skill_uses (learned_from, thread_id, at, outcome) VALUES ('o', 't', 1, 'abandoned')")
+        .run(),
+    ).toThrow(/CHECK/);
   });
 });

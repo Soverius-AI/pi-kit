@@ -23,13 +23,28 @@ export function discoverSessionCommands(session: AgentSession): PiDiscoveredComm
     path: info?.path,
   });
   for (const command of session.extensionRunner.getRegisteredCommands()) {
-    out.push({ name: command.invocationName, description: command.description, source: 'extension', ...describe(command.sourceInfo) });
+    out.push({
+      name: command.invocationName,
+      description: command.description,
+      source: 'extension',
+      ...describe(command.sourceInfo),
+    });
   }
   for (const template of session.promptTemplates) {
-    out.push({ name: template.name, description: template.description, source: 'prompt', ...describe(template.sourceInfo) });
+    out.push({
+      name: template.name,
+      description: template.description,
+      source: 'prompt',
+      ...describe(template.sourceInfo),
+    });
   }
   for (const skill of session.resourceLoader.getSkills().skills) {
-    out.push({ name: `skill:${skill.name}`, description: skill.description, source: 'skill', ...describe(skill.sourceInfo) });
+    out.push({
+      name: `skill:${skill.name}`,
+      description: skill.description,
+      source: 'skill',
+      ...describe(skill.sourceInfo),
+    });
   }
   return out;
 }
@@ -38,7 +53,9 @@ export function discoverSessionCommands(session: AgentSession): PiDiscoveredComm
 export async function sessionChipResources(session: AgentSession): Promise<ChipResources> {
   const pi = await loadPi();
   return {
-    skills: session.resourceLoader.getSkills().skills.map((s) => ({ name: s.name, filePath: s.filePath, baseDir: s.baseDir })),
+    skills: session.resourceLoader
+      .getSkills()
+      .skills.map((s) => ({ name: s.name, filePath: s.filePath, baseDir: s.baseDir })),
     templates: session.promptTemplates.map((t) => ({ name: t.name, content: t.content })),
     read: (path) => readFileSync(path, 'utf-8'),
     stripFrontmatter: pi.stripFrontmatter,

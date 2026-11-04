@@ -21,15 +21,21 @@ const fixture: unknown = JSON.parse(readFileSync(join(__dirname, 'fixtures', 'np
 
 describe('the search address', () => {
   it('asks for the pi-package keyword and what was typed, twenty at a time', () => {
-    expect(searchUrl('', 'https://registry.npmjs.org')).toBe('https://registry.npmjs.org/-/v1/search?text=keywords%3Api-package&size=20');
-    expect(searchUrl(' subagent ', 'http://127.0.0.1:4555')).toBe('http://127.0.0.1:4555/-/v1/search?text=keywords%3Api-package%20subagent&size=20');
+    expect(searchUrl('', 'https://registry.npmjs.org')).toBe(
+      'https://registry.npmjs.org/-/v1/search?text=keywords%3Api-package&size=20',
+    );
+    expect(searchUrl(' subagent ', 'http://127.0.0.1:4555')).toBe(
+      'http://127.0.0.1:4555/-/v1/search?text=keywords%3Api-package%20subagent&size=20',
+    );
   });
   it('takes the registry from the environment', () => {
     expect(registryOf({})).toBe('https://registry.npmjs.org');
     expect(registryOf({ PI_KIT_NPM_REGISTRY: 'http://127.0.0.1:4555/' })).toBe('http://127.0.0.1:4555');
   });
   it('encodes a scoped name once', () => {
-    expect(packumentUrl('@devops/skills-devops', 'https://r.example')).toBe('https://r.example/@devops%2Fskills-devops');
+    expect(packumentUrl('@devops/skills-devops', 'https://r.example')).toBe(
+      'https://r.example/@devops%2Fskills-devops',
+    );
     expect(packumentUrl('pi-swarm', 'https://r.example')).toBe('https://r.example/pi-swarm');
   });
 });
@@ -63,8 +69,16 @@ describe('parseSearch (a recorded answer of the registry)', () => {
   });
 
   it('reads what a package contains from the pi key when the registry has it', () => {
-    expect(results[0]).toMatchObject({ exact: true, contains: ['extensions', 'skills'], brings: { extensions: 2, skills: 1, prompts: 0, themes: 0 } });
-    expect(results[3]).toMatchObject({ exact: true, contains: ['extensions', 'prompts'], brings: { extensions: 1, skills: 0, prompts: 1, themes: 0 } });
+    expect(results[0]).toMatchObject({
+      exact: true,
+      contains: ['extensions', 'skills'],
+      brings: { extensions: 2, skills: 1, prompts: 0, themes: 0 },
+    });
+    expect(results[3]).toMatchObject({
+      exact: true,
+      contains: ['extensions', 'prompts'],
+      brings: { extensions: 1, skills: 0, prompts: 1, themes: 0 },
+    });
   });
 
   it('guesses from the keywords when it does not, and says it is a guess', () => {
@@ -88,7 +102,8 @@ describe('parseSearch (a recorded answer of the registry)', () => {
 describe('the kind filter', () => {
   const { results } = parseSearch(fixture);
   it('keeps what contains the kind, and what might', () => {
-    const names = (kind: Parameters<typeof matchesKind>[1]) => results.filter((r) => matchesKind(r, kind)).map((r) => r.name);
+    const names = (kind: Parameters<typeof matchesKind>[1]) =>
+      results.filter((r) => matchesKind(r, kind)).map((r) => r.name);
     expect(names('all')).toHaveLength(4);
     expect(names('skills')).toEqual(['pi-subagents', '@devops/skills-devops']);
     expect(names('prompts')).toEqual(['pi-review-bot']);
@@ -100,7 +115,12 @@ describe('the kind filter', () => {
     expect(kindsFromKeywords(['pi-package'])).toEqual([]);
   });
   it('counts a pi key: a string once, a list by its entries, an exclusion not at all', () => {
-    expect(bringsOfManifest({ extensions: './a.ts', skills: ['./s', './t'], themes: ['!./x.json'] })).toEqual({ extensions: 1, skills: 2, prompts: 0, themes: 0 });
+    expect(bringsOfManifest({ extensions: './a.ts', skills: ['./s', './t'], themes: ['!./x.json'] })).toEqual({
+      extensions: 1,
+      skills: 2,
+      prompts: 0,
+      themes: 0,
+    });
     expect(bringsOfManifest(undefined)).toBeUndefined();
   });
 });
@@ -113,7 +133,15 @@ describe('the package document', () => {
     readme: 'README OF THE DOCUMENT',
     versions: {
       '0.4.0': { name: 'pi-subagents', version: '0.4.0', description: 'old' },
-      '0.5.0': { name: 'pi-subagents', version: '0.5.0', description: 'Run pi in sub-threads.', license: 'MIT', author: { name: 'nicolo' }, repository: { type: 'git', url: 'git+https://github.com/nicolo/pi-subagents.git' }, pi: { extensions: ['./a.ts'], skills: ['./skills'] } },
+      '0.5.0': {
+        name: 'pi-subagents',
+        version: '0.5.0',
+        description: 'Run pi in sub-threads.',
+        license: 'MIT',
+        author: { name: 'nicolo' },
+        repository: { type: 'git', url: 'git+https://github.com/nicolo/pi-subagents.git' },
+        pi: { extensions: ['./a.ts'], skills: ['./skills'] },
+      },
     },
   };
   it('reads the latest version, its README and what it adds', () => {
@@ -143,14 +171,23 @@ describe('the package document', () => {
 describe('readmeUrlOfGit', () => {
   it('knows GitHub in its usual spellings and a ref', () => {
     const raw = 'https://raw.githubusercontent.com/x/y/HEAD/README.md';
-    for (const source of ['git:github.com/x/y', 'https://github.com/x/y', 'https://github.com/x/y.git', 'git@github.com:x/y.git', 'github.com/x/y']) expect(readmeUrlOfGit(source), source).toBe(raw);
+    for (const source of [
+      'git:github.com/x/y',
+      'https://github.com/x/y',
+      'https://github.com/x/y.git',
+      'git@github.com:x/y.git',
+      'github.com/x/y',
+    ])
+      expect(readmeUrlOfGit(source), source).toBe(raw);
     expect(readmeUrlOfGit('git:github.com/x/y@v1.2')).toBe('https://raw.githubusercontent.com/x/y/v1.2/README.md');
     expect(readmeUrlOfGit('git:gitlab.com/x/y')).toBeUndefined();
   });
 });
 
 describe('getJson', () => {
-  const answer = (status: number, body: unknown): Fetcher => async () => ({ ok: status < 300, status, json: async () => body, text: async () => JSON.stringify(body) });
+  const answer =
+    (status: number, body: unknown): Fetcher =>
+    async () => ({ ok: status < 300, status, json: async () => body, text: async () => JSON.stringify(body) });
   it('answers with the JSON', async () => {
     expect(await getJson('http://x', answer(200, { a: 1 }))).toEqual({ a: 1 });
   });
@@ -163,7 +200,8 @@ describe('getJson', () => {
     ).rejects.toThrow('Could not reach the registry (ECONNREFUSED).');
   });
   it('gives up after the timeout', async () => {
-    const slow: Fetcher = (_url, init) => new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted'))));
+    const slow: Fetcher = (_url, init) =>
+      new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(new Error('aborted'))));
     await expect(getJson('http://x', slow, 20)).rejects.toThrow('did not answer in time');
   });
 });

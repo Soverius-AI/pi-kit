@@ -11,7 +11,16 @@ import { SECRET_STORE } from './tokens';
  * existing encrypted profiles retain access to their original key. Migration is never automatic.
  */
 @Global()
-@Module({ providers: [{ provide: SECRET_STORE, inject: [CONFIG], useFactory: (config: BackendConfig) => startupSecretStore(config.dataDir) }], exports: [SECRET_STORE] })
+@Module({
+  providers: [
+    {
+      provide: SECRET_STORE,
+      inject: [CONFIG],
+      useFactory: (config: BackendConfig) => startupSecretStore(config.dataDir),
+    },
+  ],
+  exports: [SECRET_STORE],
+})
 export class SecretStoreModule {}
 
 /** The policy around the store: resolvers, the launcher, what Settings shows. */

@@ -1,5 +1,13 @@
 import { existsSync } from 'node:fs';
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import {
   type SkillDraft,
   type SkillVerification,
@@ -29,7 +37,17 @@ import * as git from '../worktree/worktree-git';
 import { WorktreeService } from '../worktree/worktree.service';
 import { LearnService } from './learn.service';
 import { restampVerified, writeScratchSkill } from './skill-files';
-import { type PlannedCheck, compareDiffs, firstPromptOf, modelOfSession, parseDiff, planChecks, skillHash, tailOf, verdict } from './verify-rules';
+import {
+  type PlannedCheck,
+  compareDiffs,
+  firstPromptOf,
+  modelOfSession,
+  parseDiff,
+  planChecks,
+  skillHash,
+  tailOf,
+  verdict,
+} from './verify-rules';
 
 /** Keep only the report's output tail in memory; output volume never terminates a command. */
 const OUTPUT_TAIL_CHARS = 800;
@@ -78,7 +96,12 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
     this.learn.useVerifier(this);
     this.outcomes.excludeThreads((threadId) => this.meta.isVerificationThread(threadId));
     // A verification that was running when the app closed has nobody left to finish it: it says so, and its scratch worktree goes.
-    for (const draft of this.drafts.verifying()) void this.recover(draft).catch((error: unknown) => this.logger.warn(`Could not recover the verification of ${draft.name}: ${error instanceof Error ? error.message : String(error)}`));
+    for (const draft of this.drafts.verifying())
+      void this.recover(draft).catch((error: unknown) =>
+        this.logger.warn(
+          `Could not recover the verification of ${draft.name}: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -86,14 +109,21 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
     const active = [...this.active.values()];
     for (const entry of active) {
       entry.abort.abort();
-      if (entry.threadId && this.sessions.has(entry.threadId)) void this.sessions.abort(entry.threadId).catch(() => undefined);
+      if (entry.threadId && this.sessions.has(entry.threadId))
+        void this.sessions.abort(entry.threadId).catch(() => undefined);
     }
     await Promise.allSettled(active.map((entry) => entry.done));
   }
 
   private async recover(draft: SkillDraft): Promise<void> {
     const record = draft.verification;
-    this.drafts.setVerification(draft.id, { ...(record ?? { state: 'error' }), state: 'error', phase: undefined, finishedAt: Date.now(), error: 'The app was closed while the skill was being verified.' });
+    this.drafts.setVerification(draft.id, {
+      ...(record ?? { state: 'error' }),
+      state: 'error',
+      phase: undefined,
+      finishedAt: Date.now(),
+      error: 'The app was closed while the skill was being verified.',
+    });
     this.status.touch(draft.threadId);
     const row = record?.threadId ? this.threadRows.get(record.threadId) : undefined;
     if (row) await this.cleanup(row, row.branch ?? undefined);
@@ -112,7 +142,16 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
     const row = this.threadRows.get(draft.threadId);
     const outcome = this.outcomes.get(draft.threadId);
     const busy = this.active.has(draftId) || draft.verification?.state === 'running';
-    const blank: VerifyPlan = { canVerify: false, prompt: '', base: outcome?.base ?? null, head: outcome?.head ?? null, files: outcome?.files.length ?? 0, checks: [], model: null, busy };
+    const blank: VerifyPlan = {
+      canVerify: false,
+      prompt: '',
+      base: outcome?.base ?? null,
+      head: outcome?.head ?? null,
+      files: outcome?.files.length ?? 0,
+      checks: [],
+      model: null,
+      busy,
+    };
     if (!row) return { ...blank, reason: 'The thread of this draft is gone.' };
     let prompt: string;
     let model: string | null;
@@ -124,15 +163,28 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
       model = used ? `${used.provider}/${used.modelId}` : null;
       if (outcome) checks = planChecks((await this.learn.transcriptOf(draft.threadId)).checks, this.foldersOf(row));
     } catch (error) {
-      return { ...blank, reason: `The thread cannot be read: ${error instanceof Error ? error.message : String(error)}` };
+      return {
+        ...blank,
+        reason: `The thread cannot be read: ${error instanceof Error ? error.message : String(error)}`,
+      };
     }
     const facts = { ...blank, prompt, model, checks };
     if (draft.state === 'discarded') return { ...facts, reason: 'This draft was discarded. Reopen it to verify it.' };
     if (busy) return { ...facts, reason: 'This draft is being verified now.' };
-    if (!outcome) return { ...facts, reason: 'The thread has no outcome yet (merged, committed or a pull request), so there is no commit to replay from and nothing to compare with.' };
+    if (!outcome)
+      return {
+        ...facts,
+        reason:
+          'The thread has no outcome yet (merged, committed or a pull request), so there is no commit to replay from and nothing to compare with.',
+      };
     if (!prompt) return { ...facts, reason: 'The thread has no first prompt to replay.' };
-    if (!(await git.toplevel(row.cwd))) return { ...facts, reason: 'The project folder is not a git repository any more.' };
-    if (!(await git.refExists(row.cwd, outcome.base)) || !(await git.refExists(row.cwd, outcome.head))) return { ...facts, reason: 'The commits of the outcome are not in the repository any more (rewritten or garbage collected).' };
+    if (!(await git.toplevel(row.cwd)))
+      return { ...facts, reason: 'The project folder is not a git repository any more.' };
+    if (!(await git.refExists(row.cwd, outcome.base)) || !(await git.refExists(row.cwd, outcome.head)))
+      return {
+        ...facts,
+        reason: 'The commits of the outcome are not in the repository any more (rewritten or garbage collected).',
+      };
     return { ...facts, canVerify: true };
   }
 
@@ -146,8 +198,12 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
     if (this.closing) throw new ConflictException('The app is closing.');
     let draft = this.requireDraft(draftId);
     if (draft.state === 'discarded') throw new ConflictException('This draft was discarded. Reopen it first.');
-    if (this.starting.has(draftId) || this.active.has(draftId) || draft.verification?.state === 'running') throw new ConflictException('This draft is being verified already.');
-    if (body.text !== undefined && draft.state === 'approved') throw new ConflictException('The skill is approved: its text is the file that was written. Edit the skill, or verify it as it is.');
+    if (this.starting.has(draftId) || this.active.has(draftId) || draft.verification?.state === 'running')
+      throw new ConflictException('This draft is being verified already.');
+    if (body.text !== undefined && draft.state === 'approved')
+      throw new ConflictException(
+        'The skill is approved: its text is the file that was written. Edit the skill, or verify it as it is.',
+      );
     this.starting.add(draftId);
     try {
       if (body.text !== undefined) {
@@ -163,7 +219,12 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
       const prompt = body.prompt?.trim() || plan.prompt;
       const outcome = this.outcomes.get(draft.threadId);
       if (!outcome) throw new ConflictException('The thread has no outcome.');
-      const warnings = outcome.baseSource === 'estimated' ? ['The base commit was estimated from the thread’s first message, so the replay may not start where the thread did.'] : [];
+      const warnings =
+        outcome.baseSource === 'estimated'
+          ? [
+              'The base commit was estimated from the thread’s first message, so the replay may not start where the thread did.',
+            ]
+          : [];
       const record: SkillVerification = {
         ...(draft.verification?.requested ? { requested: true } : {}),
         state: 'running',
@@ -201,14 +262,20 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
     const entry = this.active.get(draftId);
     if (!entry) throw new ConflictException('This draft is not being verified.');
     entry.abort.abort();
-    if (entry.threadId && this.sessions.has(entry.threadId)) void this.sessions.abort(entry.threadId).catch(() => undefined);
+    if (entry.threadId && this.sessions.has(entry.threadId))
+      void this.sessions.abort(entry.threadId).catch(() => undefined);
     this.status.touch(draft.threadId);
     return this.requireDraft(draftId);
   }
 
   // ---- the work
 
-  private async execute(draftId: string, entry: Active, started: SkillVerification, plan: VerifyPlan): Promise<SkillVerification> {
+  private async execute(
+    draftId: string,
+    entry: Active,
+    started: SkillVerification,
+    plan: VerifyPlan,
+  ): Promise<SkillVerification> {
     let record = started;
     const update = (patch: Partial<SkillVerification>): void => {
       record = { ...record, ...patch };
@@ -228,9 +295,16 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
 
       // 1. the scratch worktree and its thread
       let scratch = '';
-      const detail = await this.threads.create(project, `Verify: ${draft.name}`, { base: outcome.base }, undefined, { setup: 'skip', onId: (threadId) => this.meta.markVerificationThread(threadId, draftId) }).catch((error: unknown) => {
-        throw new VerifyError(`Could not make the scratch worktree: ${error instanceof Error ? error.message : String(error)}`);
-      });
+      const detail = await this.threads
+        .create(project, `Verify: ${draft.name}`, { base: outcome.base }, undefined, {
+          setup: 'skip',
+          onId: (threadId) => this.meta.markVerificationThread(threadId, draftId),
+        })
+        .catch((error: unknown) => {
+          throw new VerifyError(
+            `Could not make the scratch worktree: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
       entry.threadId = detail.id;
       scratch = detail.worktree?.path ?? '';
       created = { row: this.threadRows.get(detail.id) as ThreadRow, branch: detail.worktree?.branch ?? undefined };
@@ -241,7 +315,13 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
       const setup = this.worktrees.settingsOf(project).setup;
       if (setup) {
         const result = await this.shell(setup, scratch, entry);
-        if (result.exitCode !== 0) update({ warnings: [...(record.warnings ?? []), `The project’s setup command failed (${result.exitCode === null ? 'it did not finish' : `exit ${result.exitCode}`}), so the checks may not run.`] });
+        if (result.exitCode !== 0)
+          update({
+            warnings: [
+              ...(record.warnings ?? []),
+              `The project’s setup command failed (${result.exitCode === null ? 'it did not finish' : `exit ${result.exitCode}`}), so the checks may not run.`,
+            ],
+          });
         if (stopped()) return await this.finish(draftId, record, 'stopped');
       }
 
@@ -250,14 +330,24 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
 
       // The name pi lists the skill by in the scratch worktree: its own, unless pi has a skill of that name already (the approved copy), which would shadow it.
       const text = draft.text;
-      const taken = await this.resources.overview(scratch).then((o) => o.items.some((item) => item.type === 'skills' && item.name === draft.name)).catch(() => false);
+      const taken = await this.resources
+        .overview(scratch)
+        .then((o) => o.items.some((item) => item.type === 'skills' && item.name === draft.name))
+        .catch(() => false);
       const pinned = taken ? `${draft.name}-replay`.slice(0, 64) : draft.name;
       writeScratchSkill(scratch, pinned, taken ? setSkillName(text, pinned) : text, this.worktrees.rootOf(project));
 
       await this.threads.openSession(detail.id);
       if (plan.model) {
         const [provider, ...rest] = plan.model.split('/');
-        await this.sessions.setModel(detail.id, { provider, modelId: rest.join('/') }).catch(() => update({ warnings: [...(record.warnings ?? []), `The thread’s model ${plan.model} is not available now, so the replay used pi’s default.`] }));
+        await this.sessions.setModel(detail.id, { provider, modelId: rest.join('/') }).catch(() =>
+          update({
+            warnings: [
+              ...(record.warnings ?? []),
+              `The thread’s model ${plan.model} is not available now, so the replay used pi’s default.`,
+            ],
+          }),
+        );
       }
       const used = this.sessions.stats(detail.id).model;
       const usedLabel = used ? `${used.provider}/${used.id}` : undefined;
@@ -265,30 +355,44 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
       // The replay counts under the attendant's daily cap when it runs on the attendant's own model.
       const attendantModel = await this.attendant.modelLabel();
       const onAttendantModel = !!usedLabel && usedLabel === attendantModel;
-      if (onAttendantModel && this.attendant.capReached()) throw new VerifyError('The attendant’s daily cost cap is reached, and this replay would use its model. Try again tomorrow, or raise the cap in Settings › Attendant.');
+      if (onAttendantModel && this.attendant.capReached())
+        throw new VerifyError(
+          'The attendant’s daily cost cap is reached, and this replay would use its model. Try again tomorrow, or raise the cap in Settings › Attendant.',
+        );
       if (stopped()) return await this.finish(draftId, record, 'stopped');
 
       // 2. the run
       update({ phase: 'run' });
       const mainBefore = await this.snapshot(project);
       if (stopped()) return await this.finish(draftId, record, 'stopped');
-      const run = await this.agui.runHeadless(detail.id, record.prompt ?? plan.prompt, { cwd: scratch, chips: [{ kind: 'skill', name: pinned, pinned: true }] });
+      const run = await this.agui.runHeadless(detail.id, record.prompt ?? plan.prompt, {
+        cwd: scratch,
+        chips: [{ kind: 'skill', name: pinned, pinned: true }],
+      });
       const usage = this.usageOf(detail.id);
       if (run.status === 'aborted' || stopped()) return await this.finish(draftId, { ...record, ...usage }, 'stopped');
       if (run.status === 'error') throw new VerifyError(`The replay failed: ${run.error ?? 'pi reported an error.'}`);
       if (run.status === 'interrupted') {
         const question = this.sessions.pendingDialogs(detail.id)[0]?.request.title;
         await this.sessions.abort(detail.id).catch(() => undefined);
-        throw new VerifyError(`pi stopped to ask a question${question ? ` (“${question}”)` : ''} and nobody can answer a replay. A skill that makes pi ask is not reproducing the thread.`);
+        throw new VerifyError(
+          `pi stopped to ask a question${question ? ` (“${question}”)` : ''} and nobody can answer a replay. A skill that makes pi ask is not reproducing the thread.`,
+        );
       }
 
       // 3. the comparison
       update({ phase: 'compare', ...usage });
-      const [expected, actual] = await Promise.all([this.diffOf(project, ['diff', '--no-renames', '-U0', `${outcome.base}..${outcome.head}`]), this.replayDiff(scratch, outcome.base, pinned)]);
+      const [expected, actual] = await Promise.all([
+        this.diffOf(project, ['diff', '--no-renames', '-U0', `${outcome.base}..${outcome.head}`]),
+        this.replayDiff(scratch, outcome.base, pinned),
+      ]);
       const comparison = compareDiffs(parseDiff(expected), parseDiff(actual));
       const warnings = [...(record.warnings ?? [])];
       const mainAfter = await this.snapshot(project);
-      if (mainBefore !== mainAfter) warnings.push('Something in the project folder changed while the replay ran. If it was not you, the replay wrote outside its scratch worktree: look at `git status` there.');
+      if (mainBefore !== mainAfter)
+        warnings.push(
+          'Something in the project folder changed while the replay ran. If it was not you, the replay wrote outside its scratch worktree: look at `git status` there.',
+        );
       if (stopped()) return await this.finish(draftId, { ...record, ...usage }, 'stopped');
 
       // 4. the checks of the original thread, again, in the scratch worktree (which holds the replay's result)
@@ -300,7 +404,10 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
       }
       if (stopped()) return await this.finish(draftId, { ...record, ...usage }, 'stopped');
 
-      const result = verdict(comparison, rerun.map((c) => ({ originalPassed: c.originalPassed, state: c.state })));
+      const result = verdict(
+        comparison,
+        rerun.map((c) => ({ originalPassed: c.originalPassed, state: c.state })),
+      );
       const done: SkillVerification = {
         ...record,
         ...usage,
@@ -316,21 +423,49 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
         warnings,
       };
       done.summary = verificationSummary(done);
-      if (onAttendantModel) this.attendant.note('learn', origin, `Verified the skill ${draft.name}: ${result}. ${done.summary}`, 'done', { model: usedLabel as string, inputTokens: usage.tokens ?? 0, outputTokens: 0, cost: usage.cost ?? 0 });
+      if (onAttendantModel)
+        this.attendant.note('learn', origin, `Verified the skill ${draft.name}: ${result}. ${done.summary}`, 'done', {
+          model: usedLabel as string,
+          inputTokens: usage.tokens ?? 0,
+          outputTokens: 0,
+          cost: usage.cost ?? 0,
+        });
       else this.attendant.note('learn', origin, `Verified the skill ${draft.name}: ${result}. ${done.summary}`, 'done');
       return await this.finish(draftId, done, 'done');
     } catch (error) {
-      const message = error instanceof VerifyError ? error.message : `The verification failed: ${error instanceof Error ? error.message : String(error)}`;
-      if (!(error instanceof VerifyError)) this.logger.warn(`Verification of ${draftId} failed: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      const message =
+        error instanceof VerifyError
+          ? error.message
+          : `The verification failed: ${error instanceof Error ? error.message : String(error)}`;
+      if (!(error instanceof VerifyError))
+        this.logger.warn(
+          `Verification of ${draftId} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+        );
       return await this.finish(draftId, { ...record, ...this.usageOfSafe(entry.threadId) }, 'error', message);
     } finally {
-      if (created) await this.cleanup(created.row, created.branch).catch((error: unknown) => this.logger.warn(`Could not remove the scratch worktree: ${error instanceof Error ? error.message : String(error)}`));
+      if (created)
+        await this.cleanup(created.row, created.branch).catch((error: unknown) =>
+          this.logger.warn(
+            `Could not remove the scratch worktree: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
     }
   }
 
   /** Writes the end of a verification: the record, the verified marker in the draft text (and in the written file when approved), and the state push. */
-  private async finish(draftId: string, record: SkillVerification, state: 'done' | 'stopped' | 'error', error?: string): Promise<SkillVerification> {
-    const final: SkillVerification = { ...record, state, phase: undefined, finishedAt: record.finishedAt ?? Date.now(), ...(error ? { error } : {}) };
+  private async finish(
+    draftId: string,
+    record: SkillVerification,
+    state: 'done' | 'stopped' | 'error',
+    error?: string,
+  ): Promise<SkillVerification> {
+    const final: SkillVerification = {
+      ...record,
+      state,
+      phase: undefined,
+      finishedAt: record.finishedAt ?? Date.now(),
+      ...(error ? { error } : {}),
+    };
     this.drafts.setVerification(draftId, final);
     const draft = this.drafts.get(draftId);
     if (draft) {
@@ -338,7 +473,8 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
       if (state === 'done') {
         const text = stampVerified(draft.text, final);
         if (text !== draft.text) this.drafts.edit(draftId, { text });
-        if (draft.state === 'approved' && draft.path) restampVerified(draft.path, { name: draft.name, threadId: draft.threadId }, final);
+        if (draft.state === 'approved' && draft.path)
+          restampVerified(draft.path, { name: draft.name, threadId: draft.threadId }, final);
       }
       this.status.touch(draft.threadId);
     }
@@ -366,7 +502,10 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
 
   /** Everything in the project folder git could tell apart: what a run that wrote there would change. */
   private async snapshot(project: string): Promise<string> {
-    const [head, status] = await Promise.all([git.run(project, ['rev-parse', 'HEAD']), git.run(project, ['status', '--porcelain=v1', '-z', '--untracked-files=all'])]);
+    const [head, status] = await Promise.all([
+      git.run(project, ['rev-parse', 'HEAD']),
+      git.run(project, ['status', '--porcelain=v1', '-z', '--untracked-files=all']),
+    ]);
     return `${head.stdout.trim()}\n${status.stdout}`;
   }
 
@@ -384,7 +523,16 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async runCheck(check: PlannedCheck, cwd: string, entry: Active): Promise<VerifiedCheck> {
-    if (check.skip) return { command: check.command, originalPassed: check.originalPassed, state: 'skipped', exitCode: null, seconds: 0, output: '', note: check.skip };
+    if (check.skip)
+      return {
+        command: check.command,
+        originalPassed: check.originalPassed,
+        state: 'skipped',
+        exitCode: null,
+        seconds: 0,
+        output: '',
+        note: check.skip,
+      };
     const started = Date.now();
     const result = await this.shell(check.command, cwd, entry);
     const seconds = Math.round((Date.now() - started) / 100) / 10;
@@ -401,7 +549,11 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** A cancellable shell command whose complete process group belongs to this verification. */
-  private async shell(command: string, cwd: string, entry: Active): Promise<{ exitCode: number | null; output: string }> {
+  private async shell(
+    command: string,
+    cwd: string,
+    entry: Active,
+  ): Promise<{ exitCode: number | null; output: string }> {
     let output = '';
     const windows = process.platform === 'win32';
     try {
@@ -413,7 +565,9 @@ export class VerifyService implements OnModuleInit, OnModuleDestroy {
         signal: entry.abort.signal,
         env: { ...process.env, CI: '1', PI_KIT_VERIFY: '1' },
         // One extra character lets tailOf mark truncation, without buffering the command's full output.
-        onOutput: (chunk) => { output = (output + chunk).slice(-(OUTPUT_TAIL_CHARS + 1)); },
+        onOutput: (chunk) => {
+          output = (output + chunk).slice(-(OUTPUT_TAIL_CHARS + 1));
+        },
       });
       return { exitCode: result.code, output };
     } catch (error) {

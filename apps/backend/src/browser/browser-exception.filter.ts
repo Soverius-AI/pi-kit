@@ -1,4 +1,13 @@
-import { ArgumentsHost, BadGatewayException, BadRequestException, Catch, ExceptionFilter, GatewayTimeoutException, RequestTimeoutException, ServiceUnavailableException } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  BadGatewayException,
+  BadRequestException,
+  Catch,
+  ExceptionFilter,
+  GatewayTimeoutException,
+  RequestTimeoutException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { BrowserOperationError } from '@pi-kit/protocol';
 import type { Response } from 'express';
 

@@ -69,7 +69,10 @@ export class SessionQueue {
     return this.edit((queue) => {
       const merged = mergeQueue(this.snapshot());
       if (!merged) return queue;
-      const input = { text: merged.text, images: [...queue.steering, ...queue.followUp].flatMap((entry) => entry.images) };
+      const input = {
+        text: merged.text,
+        images: [...queue.steering, ...queue.followUp].flatMap((entry) => entry.images),
+      };
       return merged.kind === 'steer' ? { steering: [input], followUp: [] } : { steering: [], followUp: [input] };
     });
   }
@@ -79,7 +82,9 @@ export class SessionQueue {
   }
 
   private send(kind: QueueKind, input: QueuedInput, source?: 'extension'): Promise<'queued' | 'handled'> {
-    const images = input.images.length ? input.images.map((image) => ({ type: 'image' as const, ...image })) : undefined;
+    const images = input.images.length
+      ? input.images.map((image) => ({ type: 'image' as const, ...image }))
+      : undefined;
     const sent = { key: kind === 'steer' ? ('steering' as const) : ('followUp' as const), images: input.images };
     return this.sending.run(sent, () => this.session[kind](input.text, images, source ? { source } : undefined));
   }
@@ -91,7 +96,10 @@ export class SessionQueue {
       const before = this.entries[key];
       const texts = queue[key];
       const consumed = Math.max(0, before.length - texts.length);
-      return texts.map((text, index) => ({ text, images: before[consumed + index]?.images ?? (sent?.key === key ? sent.images : []) }));
+      return texts.map((text, index) => ({
+        text,
+        images: before[consumed + index]?.images ?? (sent?.key === key ? sent.images : []),
+      }));
     };
     this.entries = { steering: sync('steering'), followUp: sync('followUp') };
   }

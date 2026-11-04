@@ -28,7 +28,13 @@ export interface AutocompleteProvider {
     cursorCol: number,
     options: { signal: AbortSignal; force?: boolean },
   ): Promise<AutocompleteSuggestions | null>;
-  applyCompletion(lines: string[], cursorLine: number, cursorCol: number, item: AutocompleteItem, prefix: string): AutocompleteResult;
+  applyCompletion(
+    lines: string[],
+    cursorLine: number,
+    cursorCol: number,
+    item: AutocompleteItem,
+    prefix: string,
+  ): AutocompleteResult;
 }
 
 /** What `ctx.ui.addAutocompleteProvider` takes: it wraps the provider built so far and returns the one that goes on top. */
@@ -49,7 +55,10 @@ export const baseProvider: AutocompleteProvider = {
 };
 
 /** Stacks the factories in the order the extensions added them (the last one is asked first). A factory that throws is skipped. */
-export function buildAutocompleteChain(factories: readonly AutocompleteProviderFactory[], onError?: (error: unknown) => void): AutocompleteProvider {
+export function buildAutocompleteChain(
+  factories: readonly AutocompleteProviderFactory[],
+  onError?: (error: unknown) => void,
+): AutocompleteProvider {
   let provider = baseProvider;
   for (const factory of factories) {
     try {
@@ -62,7 +71,8 @@ export function buildAutocompleteChain(factories: readonly AutocompleteProviderF
 }
 
 /** Where a caret at (`line`, `col`) sits in `lines` joined with newlines. */
-const offsetOf = (lines: readonly string[], line: number, col: number): number => lines.slice(0, line).reduce((sum, l) => sum + l.length + 1, 0) + col;
+const offsetOf = (lines: readonly string[], line: number, col: number): number =>
+  lines.slice(0, line).reduce((sum, l) => sum + l.length + 1, 0) + col;
 
 export interface CompleteOptions {
   /** Aborts the provider; the answer is then empty. Defaults to a fresh signal that fires after `timeoutMs`. */
@@ -117,7 +127,10 @@ export async function completeThroughChain(
       value: item.value,
       label: typeof item.label === 'string' && item.label ? item.label : item.value,
       ...(item.description ? { description: item.description } : {}),
-      insert: { text: applied.lines.join('\n'), cursor: offsetOf(applied.lines, applied.cursorLine, applied.cursorCol) },
+      insert: {
+        text: applied.lines.join('\n'),
+        cursor: offsetOf(applied.lines, applied.cursorLine, applied.cursorCol),
+      },
     });
   }
   return { prefix: suggestions.prefix, items };

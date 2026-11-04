@@ -4,10 +4,7 @@
   "sourceRoot": "libs/threads/feature-worktree/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:threads",
-    "type:feature"
-  ],
+  "tags": ["scope:threads", "type:feature"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"

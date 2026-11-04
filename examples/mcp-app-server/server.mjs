@@ -129,7 +129,8 @@ const FORM_HTML = String.raw`<!doctype html>
 const TOOLS = () => [
   {
     name: 'open_issue_form',
-    description: 'Opens a form for the user to create an issue. Optionally prefill the title. The form is shown to the user; the issue is created when they press the button.',
+    description:
+      'Opens a form for the user to create an issue. Optionally prefill the title. The form is shown to the user; the issue is created when they press the button.',
     inputSchema: { type: 'object', properties: { title: { type: 'string', description: 'Suggested issue title' } } },
     ...(hostShowsUi ? { _meta: { ui: { resourceUri: RESOURCE_URI }, 'ui/resourceUri': RESOURCE_URI } } : {}),
   },
@@ -138,7 +139,11 @@ const TOOLS = () => [
     description: 'Creates an issue in the in-memory tracker and returns its id.',
     inputSchema: {
       type: 'object',
-      properties: { title: { type: 'string' }, team: { type: 'string' }, priority: { type: 'string', enum: ['Low', 'Medium', 'High', 'Urgent'] } },
+      properties: {
+        title: { type: 'string' },
+        team: { type: 'string' },
+        priority: { type: 'string', enum: ['Low', 'Medium', 'High', 'Urgent'] },
+      },
       required: ['title'],
     },
     annotations: { destructiveHint: false },
@@ -148,14 +153,27 @@ const TOOLS = () => [
 function callTool(name, args = {}) {
   if (name === 'open_issue_form') {
     const title = typeof args.title === 'string' ? args.title : '';
-    return { content: [{ type: 'text', text: title ? `Opened the issue form, prefilled with "${title}".` : 'Opened the issue form.' }], structuredContent: { title } };
+    return {
+      content: [
+        { type: 'text', text: title ? `Opened the issue form, prefilled with "${title}".` : 'Opened the issue form.' },
+      ],
+      structuredContent: { title },
+    };
   }
   if (name === 'create_issue') {
     const title = String(args.title ?? '').trim();
     if (!title) return { isError: true, content: [{ type: 'text', text: 'An issue needs a title.' }] };
-    const issue = { id: `ISSUE-${issues.length + 1}`, title, team: String(args.team ?? 'Platform'), priority: String(args.priority ?? 'High') };
+    const issue = {
+      id: `ISSUE-${issues.length + 1}`,
+      title,
+      team: String(args.team ?? 'Platform'),
+      priority: String(args.priority ?? 'High'),
+    };
     issues.push(issue);
-    return { content: [{ type: 'text', text: `Created ${issue.id}: ${issue.title} (${issue.team}, ${issue.priority}).` }], structuredContent: issue };
+    return {
+      content: [{ type: 'text', text: `Created ${issue.id}: ${issue.title} (${issue.team}, ${issue.priority}).` }],
+      structuredContent: issue,
+    };
   }
   return undefined;
 }
@@ -165,12 +183,15 @@ function handle(message) {
   switch (method) {
     case 'initialize':
       hostShowsUi = Boolean(params?.capabilities?.extensions?.[UI_EXTENSION]);
-      process.stderr.write(`client ${params?.clientInfo?.name ?? '?'} ${hostShowsUi ? 'supports' : 'does not announce'} MCP Apps\n`);
+      process.stderr.write(
+        `client ${params?.clientInfo?.name ?? '?'} ${hostShowsUi ? 'supports' : 'does not announce'} MCP Apps\n`,
+      );
       return {
         protocolVersion: params?.protocolVersion ?? '2025-06-18',
         capabilities: { tools: {}, resources: {} },
         serverInfo: { name: 'issues-demo', version: '1.0.0' },
-        instructions: 'A toy issue tracker. open_issue_form shows a form to the user; do not call create_issue yourself unless asked.',
+        instructions:
+          'A toy issue tracker. open_issue_form shows a form to the user; do not call create_issue yourself unless asked.',
       };
     case 'ping':
       return {};
@@ -186,7 +207,8 @@ function handle(message) {
     case 'resources/templates/list':
       return { resourceTemplates: [] };
     case 'resources/read':
-      if (params?.uri !== RESOURCE_URI) throw Object.assign(new Error(`Unknown resource: ${params?.uri}`), { code: -32002 });
+      if (params?.uri !== RESOURCE_URI)
+        throw Object.assign(new Error(`Unknown resource: ${params?.uri}`), { code: -32002 });
       return { contents: [{ uri: RESOURCE_URI, mimeType: MIME, text: FORM_HTML, _meta: { ui: { csp: {} } } }] };
     default:
       if (id === undefined) return undefined; // a notification
@@ -204,10 +226,13 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   try {
     const result = handle(message);
-    if (message.id !== undefined) process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: message.id, result })}\n`);
+    if (message.id !== undefined)
+      process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: message.id, result })}\n`);
   } catch (error) {
     if (message.id !== undefined) {
-      process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: message.id, error: { code: error.code ?? -32603, message: error.message } })}\n`);
+      process.stdout.write(
+        `${JSON.stringify({ jsonrpc: '2.0', id: message.id, error: { code: error.code ?? -32603, message: error.message } })}\n`,
+      );
     }
   }
 });

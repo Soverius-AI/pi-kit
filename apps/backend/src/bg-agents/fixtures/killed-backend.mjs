@@ -25,13 +25,37 @@ const { BgAgentsService } = await jiti.import('../bg-agents.service.ts');
 setInterval(() => undefined, 1000); // a waiting Harness holds no handle of its own; the backend's server does this
 const database = new DatabaseService({ dataDir: dir }, { key });
 const agents = new BgAgentsRepository(database);
-const service = new BgAgentsService({ dataDir: dir }, database, agents, { cwdOf: () => dir, deliver: async () => undefined, allowed: async () => undefined, isolate: async () => { throw new Error('no worktrees here'); }, discard: async () => undefined }, new BgAgentRunner(new EventLogRepository(database)));
+const service = new BgAgentsService(
+  { dataDir: dir },
+  database,
+  agents,
+  {
+    cwdOf: () => dir,
+    deliver: async () => undefined,
+    allowed: async () => undefined,
+    isolate: async () => {
+      throw new Error('no worktrees here');
+    },
+    discard: async () => undefined,
+  },
+  new BgAgentRunner(new EventLogRepository(database)),
+);
 const models = createModels();
 const faux = fauxProvider();
 models.setProvider(faux.provider);
-faux.setResponses([fauxAssistantMessage([fauxToolCall('bash', { command })], { stopReason: 'toolUse' }), fauxAssistantMessage('Done in the first process.')]);
+faux.setResponses([
+  fauxAssistantMessage([fauxToolCall('bash', { command })], { stopReason: 'toolUse' }),
+  fauxAssistantMessage('Done in the first process.'),
+]);
 await service.open(models);
-const row = await service.spawn({ threadId: 't1', name: 'tester', role: 'tester', brief: 'Run the command.', permission: 'edit', model: `${faux.getModel().provider}/${faux.getModel().id}` });
+const row = await service.spawn({
+  threadId: 't1',
+  name: 'tester',
+  role: 'tester',
+  brief: 'Run the command.',
+  permission: 'edit',
+  model: `${faux.getModel().provider}/${faux.getModel().id}`,
+});
 for (;;) {
   if (agents.get(row.id)?.cleanup) break;
   await new Promise((resolve) => setTimeout(resolve, 25));

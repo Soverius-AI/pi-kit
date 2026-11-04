@@ -19,7 +19,11 @@ export interface MediaAccess {
 
 export const MICROPHONE_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone';
 
-export async function requestMicrophone(platform: NodeJS.Platform, access: MediaAccess, explainRefusal: (status: string) => Promise<void>): Promise<MicrophoneAccess> {
+export async function requestMicrophone(
+  platform: NodeJS.Platform,
+  access: MediaAccess,
+  explainRefusal: (status: string) => Promise<void>,
+): Promise<MicrophoneAccess> {
   if (platform !== 'darwin') return { granted: true, status: 'granted' };
   let status = access.getMediaAccessStatus('microphone');
   if (status === 'granted') return { granted: true, status };

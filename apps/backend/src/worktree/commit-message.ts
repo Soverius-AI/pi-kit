@@ -9,8 +9,10 @@ export interface ChangedPath {
 const SUBJECT_MAX = 72;
 const LIST_MAX = 20;
 
-const verb = (badge: ChangedPath['badge']): string => ({ A: 'Add', U: 'Add', D: 'Remove', R: 'Rename', M: 'Update', C: 'Resolve' })[badge];
-const word = (badge: ChangedPath['badge']): string => ({ A: 'added', U: 'added', D: 'removed', R: 'renamed', M: 'modified', C: 'conflicted' })[badge];
+const verb = (badge: ChangedPath['badge']): string =>
+  ({ A: 'Add', U: 'Add', D: 'Remove', R: 'Rename', M: 'Update', C: 'Resolve' })[badge];
+const word = (badge: ChangedPath['badge']): string =>
+  ({ A: 'added', U: 'added', D: 'removed', R: 'renamed', M: 'modified', C: 'conflicted' })[badge];
 
 function cut(text: string, max: number): string {
   if (text.length <= max) return text;
@@ -34,7 +36,10 @@ export function generateCommitMessage(options: { title?: string | null; files: r
   } else {
     const kinds = new Set(files.map((f) => verb(f.badge)));
     const lead = kinds.size === 1 ? [...kinds][0] : 'Update';
-    subject = names.length <= 3 ? `${lead} ${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : `${lead} ${names.slice(0, 2).join(', ')} and ${names.length - 2} more files`;
+    subject =
+      names.length <= 3
+        ? `${lead} ${names.slice(0, -1).join(', ')} and ${names.at(-1)}`
+        : `${lead} ${names.slice(0, 2).join(', ')} and ${names.length - 2} more files`;
   }
   const lines = files.slice(0, LIST_MAX).map((f) => `- ${word(f.badge)} ${f.path}`);
   if (files.length > LIST_MAX) lines.push(`- and ${files.length - LIST_MAX} more files`);

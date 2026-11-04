@@ -3,7 +3,14 @@ import { SkillsEntrySchema, skillChipsOf } from './skills';
 
 describe('skillChipsOf', () => {
   it('reads forwardedProps.skills in order, each skill or template once', () => {
-    const chips = skillChipsOf({ skills: [{ kind: 'skill', name: 'a', pinned: true }, { kind: 'prompt', name: 'a' }, { kind: 'skill', name: 'a', pinned: false }, { kind: 'skill', name: 'b', scope: 'project' }] });
+    const chips = skillChipsOf({
+      skills: [
+        { kind: 'skill', name: 'a', pinned: true },
+        { kind: 'prompt', name: 'a' },
+        { kind: 'skill', name: 'a', pinned: false },
+        { kind: 'skill', name: 'b', scope: 'project' },
+      ],
+    });
     expect(chips).toEqual([
       { kind: 'skill', name: 'a', pinned: true },
       { kind: 'prompt', name: 'a', pinned: false },
@@ -18,7 +25,9 @@ describe('skillChipsOf', () => {
     expect(skillChipsOf({ skills: 'alpha' })).toEqual([]);
     expect(skillChipsOf({ skills: [{ kind: 'extension', name: 'x' }] })).toEqual([]);
     expect(skillChipsOf({ skills: [{ kind: 'skill', name: '' }] })).toEqual([]);
-    expect(skillChipsOf({ skills: Array.from({ length: 13 }, (_, i) => ({ kind: 'skill', name: `s${i}` })) })).toEqual([]);
+    expect(skillChipsOf({ skills: Array.from({ length: 13 }, (_, i) => ({ kind: 'skill', name: `s${i}` })) })).toEqual(
+      [],
+    );
   });
 });
 

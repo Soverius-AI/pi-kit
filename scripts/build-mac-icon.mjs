@@ -10,7 +10,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 if (process.platform !== 'darwin') {
-  throw new Error('Generating icon.icns requires macOS (sips and iconutil). Use the committed icon.icns when packaging elsewhere.');
+  throw new Error(
+    'Generating icon.icns requires macOS (sips and iconutil). Use the committed icon.icns when packaging elsewhere.',
+  );
 }
 
 const resources = fileURLToPath(new URL('../apps/desktop/build/', import.meta.url));
@@ -22,7 +24,9 @@ try {
     for (const scale of [1, 2]) {
       const pixels = String(size * scale);
       const name = `icon_${size}x${size}${scale === 2 ? '@2x' : ''}.png`;
-      execFileSync('sips', ['-z', pixels, pixels, join(resources, 'icon.png'), '--out', join(iconset, name)], { stdio: 'pipe' });
+      execFileSync('sips', ['-z', pixels, pixels, join(resources, 'icon.png'), '--out', join(iconset, name)], {
+        stdio: 'pipe',
+      });
     }
   }
   execFileSync('iconutil', ['-c', 'icns', iconset, '-o', join(resources, 'icon.icns')], { stdio: 'inherit' });

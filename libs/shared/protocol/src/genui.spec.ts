@@ -32,7 +32,12 @@ describe('uiResourceUriOf', () => {
 
 describe('proxied MCP requests', () => {
   it('recognises the forwarded prop and validates it', () => {
-    const request = { serverHash: mcpServerHash('issues'), serverId: 'issues', method: 'tools/call', params: { name: 'x' } };
+    const request = {
+      serverHash: mcpServerHash('issues'),
+      serverId: 'issues',
+      method: 'tools/call',
+      params: { name: 'x' },
+    };
     expect(proxiedMcpRequestOf({ __proxiedMCPRequest: request })).toEqual(request);
     expect(proxiedMcpRequestOf({ __proxiedMCPRequest: { method: 1 } })).toBeUndefined();
     expect(proxiedMcpRequestOf({})).toBeUndefined();

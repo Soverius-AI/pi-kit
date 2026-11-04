@@ -4,7 +4,11 @@ import { DesktopBridge } from './desktop-bridge';
 describe('DesktopBridge', () => {
   const realSend = process.send;
   const bridges: DesktopBridge[] = [];
-  const createBridge = () => { const bridge = new DesktopBridge(); bridges.push(bridge); return bridge; };
+  const createBridge = () => {
+    const bridge = new DesktopBridge();
+    bridges.push(bridge);
+    return bridge;
+  };
   afterEach(() => {
     for (const bridge of bridges.splice(0)) bridge.onModuleDestroy();
     vi.useRealTimers();
@@ -16,7 +20,10 @@ describe('DesktopBridge', () => {
     process.send = vi.fn() as never; // the Nx dev server forks the backend with a channel, but no Electron is on the other end
     const bridge = createBridge();
     expect(bridge.available).toBe(false);
-    expect(await bridge.openPath('/x/file.ts')).toEqual({ opened: false, reason: expect.stringContaining('desktop app') });
+    expect(await bridge.openPath('/x/file.ts')).toEqual({
+      opened: false,
+      reason: expect.stringContaining('desktop app'),
+    });
     expect(process.send).not.toHaveBeenCalled();
   });
 
@@ -26,22 +33,50 @@ describe('DesktopBridge', () => {
     process.send = ((message: { type: string; id: string; path: string }) => {
       sent.push(message);
       // Electron main: shell.openPath succeeded for the first request, failed for the second.
-      queueMicrotask(() => process.emit('message', { type: 'desktop-answer', id: message.id, ...(sent.length === 2 ? { error: 'No application is set for this file type.' } : {}) } as never, undefined as never));
+      queueMicrotask(() =>
+        process.emit(
+          'message',
+          {
+            type: 'desktop-answer',
+            id: message.id,
+            ...(sent.length === 2 ? { error: 'No application is set for this file type.' } : {}),
+          } as never,
+          undefined as never,
+        ),
+      );
       return true;
     }) as never;
     const bridge = createBridge();
     expect(bridge.available).toBe(true);
     expect(await bridge.openPath('/work/a.ts')).toEqual({ opened: true });
-    expect(await bridge.openPath('/work/b.xyz')).toEqual({ opened: false, reason: 'No application is set for this file type.' });
-    expect(sent.map((m) => [m.type, m.path])).toEqual([['open-path', '/work/a.ts'], ['open-path', '/work/b.xyz']]);
+    expect(await bridge.openPath('/work/b.xyz')).toEqual({
+      opened: false,
+      reason: 'No application is set for this file type.',
+    });
+    expect(sent.map((m) => [m.type, m.path])).toEqual([
+      ['open-path', '/work/a.ts'],
+      ['open-path', '/work/b.xyz'],
+    ]);
   });
 
   it('correlates concurrent browser requests and cancels an aborted action in Electron', async () => {
     process.env['PI_KIT_DESKTOP'] = '1';
     const sent: { type: string; id: string; threadId?: string; request?: unknown }[] = [];
-    process.send = ((message: typeof sent[number]) => { sent.push(message); return true; }) as never;
+    process.send = ((message: (typeof sent)[number]) => {
+      sent.push(message);
+      return true;
+    }) as never;
     const bridge = createBridge();
-    const state = { available: true, threadId: 'chat', open: false, url: '', title: '', loading: false, canGoBack: false, canGoForward: false };
+    const state = {
+      available: true,
+      threadId: 'chat',
+      open: false,
+      url: '',
+      title: '',
+      loading: false,
+      canGoBack: false,
+      canGoForward: false,
+    };
     const reading = bridge.browser('chat');
     const abort = new AbortController();
     const navigating = bridge.browser('chat', { action: 'navigate', url: 'http://localhost:3000' }, abort.signal);
@@ -50,7 +85,11 @@ describe('DesktopBridge', () => {
     await rejected;
     expect(sent[2]).toEqual({ type: 'browser-cancel', id: sent[1].id });
     // A late action response must not settle the unrelated state request.
-    process.emit('message', { type: 'desktop-answer', id: sent[1].id, result: { state: { ...state, open: true } } } as never, undefined as never);
+    process.emit(
+      'message',
+      { type: 'desktop-answer', id: sent[1].id, result: { state: { ...state, open: true } } } as never,
+      undefined as never,
+    );
     process.emit('message', { type: 'desktop-answer', id: sent[0].id, result: { state } } as never, undefined as never);
     expect(await reading).toEqual({ state });
     expect(sent[1].request).toEqual({ action: 'navigate', url: 'http://localhost:3000' });
@@ -75,7 +114,10 @@ describe('DesktopBridge', () => {
       expect.objectContaining({ status: 'rejected', reason: expect.objectContaining({ code: 'unavailable' }) }),
       expect.objectContaining({ status: 'rejected', reason: expect.objectContaining({ code: 'unavailable' }) }),
     ]);
-    expect(results[2]).toEqual({ status: 'fulfilled', value: { opened: false, reason: 'The desktop connection closed.' } });
+    expect(results[2]).toEqual({
+      status: 'fulfilled',
+      value: { opened: false, reason: 'The desktop connection closed.' },
+    });
     expect(bridge.available).toBe(false);
     expect(process.listenerCount('message')).toBe(before);
     expect(process.listenerCount('disconnect')).toBe(beforeDisconnect);
@@ -91,11 +133,18 @@ describe('DesktopBridge', () => {
       const invalid = bridge.browser('chat', { action: 'navigate', url: 'file:///secret' });
       const failed = expect(invalid).rejects.toMatchObject({ code: 'invalid', message: 'Blocked page' });
       const id = (process.send as ReturnType<typeof vi.fn>).mock.calls[0][0].id;
-      process.emit('message', { type: 'desktop-answer', id, errorCode: 'invalid', error: 'Blocked page' } as never, undefined as never);
+      process.emit(
+        'message',
+        { type: 'desktop-answer', id, errorCode: 'invalid', error: 'Blocked page' } as never,
+        undefined as never,
+      );
       await failed;
-      process.send = vi.fn(() => { throw new Error('EPIPE'); }) as never;
+      process.send = vi.fn(() => {
+        throw new Error('EPIPE');
+      }) as never;
       await expect(bridge.browser('chat')).rejects.toMatchObject({ code: 'unavailable' });
-    } finally { bridge.onModuleDestroy(); }
+    } finally {
+      bridge.onModuleDestroy();
+    }
   });
-
 });

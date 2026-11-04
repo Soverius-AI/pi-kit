@@ -29,13 +29,20 @@ export function runProcess(options: RunOptions): Promise<RunResult> {
   if (options.signal?.aborted) return Promise.resolve({ code: null, signal: null, cancelled: true });
   return new Promise((resolve, reject) => {
     const grouped = options.processGroup && process.platform !== 'win32';
-    const child = spawn(options.command, options.args, { cwd: options.cwd, env: options.env ?? process.env, stdio: ['ignore', 'pipe', 'pipe'], detached: grouped, windowsHide: true });
+    const child = spawn(options.command, options.args, {
+      cwd: options.cwd,
+      env: options.env ?? process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: grouped,
+      windowsHide: true,
+    });
     let cancelled = false;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
     const kill = (signal: NodeJS.Signals): void => {
       try {
         // Windows has no process groups: a managed runtime's tree (llama-swap and the llama-server it started) ends through taskkill.
-        if (options.processGroup && process.platform === 'win32' && child.pid && child.exitCode === null) spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
+        if (options.processGroup && process.platform === 'win32' && child.pid && child.exitCode === null)
+          spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
         else if (grouped && child.pid) process.kill(-child.pid, signal);
         else child.kill(signal);
       } catch (error) {
@@ -52,7 +59,9 @@ export function runProcess(options: RunOptions): Promise<RunResult> {
     };
     if (options.signal?.aborted) abort();
     else options.signal?.addEventListener('abort', abort, { once: true });
-    child.once('spawn', () => { if (child.pid) options.onStart?.(child.pid); });
+    child.once('spawn', () => {
+      if (child.pid) options.onStart?.(child.pid);
+    });
     for (const stream of ['stdout', 'stderr'] as const) {
       let pending = '';
       child[stream].setEncoding('utf8');

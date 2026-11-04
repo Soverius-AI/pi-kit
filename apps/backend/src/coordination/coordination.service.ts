@@ -66,7 +66,9 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
     try {
       this.leases.take(start.threadId, start.cwd, path, now);
     } catch (error) {
-      this.logger.warn(`Could not record the lease on ${path}: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(
+        `Could not record the lease on ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -87,7 +89,10 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
       const otherFolder = folderOf(other);
       const sameFolder = otherFolder === folder;
       const state = this.status.stateOf(other).activity;
-      const files = this.leases.activeOf(other.id, now).filter((l) => l.cwd === otherFolder).map((l) => ({ path: l.path, at: l.at }));
+      const files = this.leases
+        .activeOf(other.id, now)
+        .filter((l) => l.cwd === otherFolder)
+        .map((l) => ({ path: l.path, at: l.at }));
       const modified = fileMtime(other.sessionPath);
       const recent = modified !== null && now - modified < LEASE_TTL_MS;
       const terminal = other.origin === 'cli' && !this.sessions.has(other.id) && recent;
@@ -98,7 +103,7 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
         title: other.title ?? other.preview ?? 'Untitled thread',
         state: terminal ? 'terminal' : state,
         relation: sameFolder ? 'same-folder' : 'worktree',
-        branch: other.worktreePath ? currentBranch(other.worktreePath) ?? other.branch : null,
+        branch: other.worktreePath ? (currentBranch(other.worktreePath) ?? other.branch) : null,
         files,
         ...(terminal && modified !== null ? { lastActiveAt: modified } : {}),
       });
@@ -121,7 +126,13 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
       if (lease.threadId === threadId) continue;
       const owner = this.threads.get(lease.threadId);
       if (!owner || owner.archived) continue;
-      out.push({ path: lease.path, threadId: lease.threadId, title: owner.title ?? owner.preview ?? 'Untitled thread', since: lease.since, at: lease.at });
+      out.push({
+        path: lease.path,
+        threadId: lease.threadId,
+        title: owner.title ?? owner.preview ?? 'Untitled thread',
+        since: lease.since,
+        at: lease.at,
+      });
     }
     return out;
   }
@@ -132,7 +143,9 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
     try {
       return buildSection(this.others(threadId), Date.now());
     } catch (error) {
-      this.logger.warn(`Could not build the section for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(
+        `Could not build the section for ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return undefined;
     }
   }
@@ -141,14 +154,21 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
     try {
       const mine = this.touched.get(threadId);
       if (!mine || mine.size === 0) return [];
-      const others: OtherLease[] = this.leasesFor(threadId).map((l) => ({ threadId: l.threadId, title: l.title, path: l.path, at: l.at }));
+      const others: OtherLease[] = this.leasesFor(threadId).map((l) => ({
+        threadId: l.threadId,
+        title: l.title,
+        path: l.path,
+        at: l.at,
+      }));
       const told = this.told.get(threadId) ?? new Map<string, number>();
       const notices = computeNotices({ touched: mine, leases: others, told });
       for (const notice of notices) told.set(notice.path, notice.at);
       this.told.set(threadId, told);
       return notices.map((n) => n.text);
     } catch (error) {
-      this.logger.warn(`Could not work out the notices for ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(
+        `Could not work out the notices for ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return [];
     }
   }

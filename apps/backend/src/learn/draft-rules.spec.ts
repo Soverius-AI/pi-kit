@@ -8,7 +8,9 @@ describe('keyTerms', () => {
     expect(keyTerms(FIRST)).toEqual(['database', 'migration', 'invoices', 'table', 'test', 'runner']);
     expect(keyTerms('Fix the thing')).toEqual(['thing']);
     expect(keyTerms('a b c')).toEqual([]);
-    expect(keyTerms(Array.from({ length: 30 }, (_, i) => `word${String.fromCharCode(97 + (i % 26))}${i}`).join(' '))).toHaveLength(12);
+    expect(
+      keyTerms(Array.from({ length: 30 }, (_, i) => `word${String.fromCharCode(97 + (i % 26))}${i}`).join(' ')),
+    ).toHaveLength(12);
   });
 });
 
@@ -47,16 +49,29 @@ describe('worthADraft (the rule: tool calls, size, no matching skill)', () => {
   });
 
   it('is no below either threshold, and says which', () => {
-    expect(worthADraft({ ...facts, toolCalls: 5 })).toEqual({ worth: false, reason: 'Only 5 tool calls (a draft needs 6).' });
-    expect(worthADraft({ ...facts, changedLines: 9 })).toEqual({ worth: false, reason: 'Only 9 changed lines (a draft needs 10).' });
+    expect(worthADraft({ ...facts, toolCalls: 5 })).toEqual({
+      worth: false,
+      reason: 'Only 5 tool calls (a draft needs 6).',
+    });
+    expect(worthADraft({ ...facts, changedLines: 9 })).toEqual({
+      worth: false,
+      reason: 'Only 9 changed lines (a draft needs 10).',
+    });
   });
 
   it('is no when a skill that pi has already covers the prompt', () => {
-    const verdict = worthADraft({ ...facts, skills: [{ name: 'db-migrations', description: 'Use when adding a database migration or changing a table schema' }] });
+    const verdict = worthADraft({
+      ...facts,
+      skills: [
+        { name: 'db-migrations', description: 'Use when adding a database migration or changing a table schema' },
+      ],
+    });
     expect(verdict).toEqual({ worth: false, reason: 'The skill db-migrations already covers this.' });
   });
 
   it('is yes when the skills pi has are about something else', () => {
-    expect(worthADraft({ ...facts, skills: [{ name: 'pdf-tools', description: 'Read, merge and split PDF files' }] })).toEqual({ worth: true });
+    expect(
+      worthADraft({ ...facts, skills: [{ name: 'pdf-tools', description: 'Read, merge and split PDF files' }] }),
+    ).toEqual({ worth: true });
   });
 });

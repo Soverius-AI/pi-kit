@@ -4,11 +4,29 @@ import { describe, expect, it } from 'vitest';
 import { MAX_STEPS, isCheckCommand, reduceTranscript, targetOf } from './transcript';
 
 const chain = (...messages: unknown[]): PiSessionEntry[] =>
-  messages.map((message, i) => ({ type: 'message', id: `m${i}`, parentId: i === 0 ? null : `m${i - 1}`, timestamp: '2026-10-17T10:00:00.000Z', message }));
+  messages.map((message, i) => ({
+    type: 'message',
+    id: `m${i}`,
+    parentId: i === 0 ? null : `m${i - 1}`,
+    timestamp: '2026-10-17T10:00:00.000Z',
+    message,
+  }));
 
 const user = (text: string) => ({ role: 'user', content: text });
-const call = (callId: string, name: string, args: Record<string, unknown>) => ({ role: 'assistant', content: [{ type: 'text', text: 'ok' }, { type: 'toolCall', id: callId, name, arguments: args }] });
-const result = (callId: string, toolName: string, text: string, isError = false) => ({ role: 'toolResult', toolCallId: callId, toolName, content: [{ type: 'text', text }], isError });
+const call = (callId: string, name: string, args: Record<string, unknown>) => ({
+  role: 'assistant',
+  content: [
+    { type: 'text', text: 'ok' },
+    { type: 'toolCall', id: callId, name, arguments: args },
+  ],
+});
+const result = (callId: string, toolName: string, text: string, isError = false) => ({
+  role: 'toolResult',
+  toolCallId: callId,
+  toolName,
+  content: [{ type: 'text', text }],
+  isError,
+});
 
 const base = { threadId: 't1', title: 'Add a migration', cwd: '/p', leafId: null };
 
@@ -33,7 +51,17 @@ describe('reduceTranscript', () => {
     result('c7', 'bash', 'a b'),
   );
 
-  const transcript = reduceTranscript({ ...base, entries, outcome: { base: 'a'.repeat(40), head: 'b'.repeat(40), diff: 'diff --git a/db/0003.sql\n+CREATE TABLE invoices (id INTEGER);', changedLines: 12, commitMessage: 'Add the invoices table' } });
+  const transcript = reduceTranscript({
+    ...base,
+    entries,
+    outcome: {
+      base: 'a'.repeat(40),
+      head: 'b'.repeat(40),
+      diff: 'diff --git a/db/0003.sql\n+CREATE TABLE invoices (id INTEGER);',
+      changedLines: 12,
+      commitMessage: 'Add the invoices table',
+    },
+  });
 
   it('keeps what the person asked, in order', () => {
     expect(transcript.prompts).toEqual(['Add a migration for the invoices table, with a test', 'Also run the linter']);
@@ -53,7 +81,16 @@ describe('reduceTranscript', () => {
   });
 
   it('records the error and the step that recovered it', () => {
-    expect(transcript.errors).toEqual([{ step: 3, tool: 'bash', target: 'npm test', message: 'FAIL migration 0003 missing from the index exit code 1', recovered: true, recoveredBy: 5 }]);
+    expect(transcript.errors).toEqual([
+      {
+        step: 3,
+        tool: 'bash',
+        target: 'npm test',
+        message: 'FAIL migration 0003 missing from the index exit code 1',
+        recovered: true,
+        recoveredBy: 5,
+      },
+    ]);
   });
 
   it('records the checks that were run and whether they passed (a plain ls is no check)', () => {
@@ -65,7 +102,13 @@ describe('reduceTranscript', () => {
   });
 
   it('carries the outcome’s diff, size and commit message', () => {
-    expect(transcript).toMatchObject({ changedLines: 12, commitMessage: 'Add the invoices table', base: 'a'.repeat(40), head: 'b'.repeat(40), truncated: false });
+    expect(transcript).toMatchObject({
+      changedLines: 12,
+      commitMessage: 'Add the invoices table',
+      base: 'a'.repeat(40),
+      head: 'b'.repeat(40),
+      truncated: false,
+    });
     expect(transcript.diff).toContain('+CREATE TABLE invoices');
   });
 
@@ -74,8 +117,13 @@ describe('reduceTranscript', () => {
   });
 
   it('marks an error that never recovered', () => {
-    const t = reduceTranscript({ ...base, entries: chain(user('x'), call('c1', 'bash', { command: 'make build' }), result('c1', 'bash', 'boom', true)) });
-    expect(t.errors).toEqual([{ step: 1, tool: 'bash', target: 'make build', message: 'boom', recovered: false, recoveredBy: null }]);
+    const t = reduceTranscript({
+      ...base,
+      entries: chain(user('x'), call('c1', 'bash', { command: 'make build' }), result('c1', 'bash', 'boom', true)),
+    });
+    expect(t.errors).toEqual([
+      { step: 1, tool: 'bash', target: 'make build', message: 'boom', recovered: false, recoveredBy: null },
+    ]);
     expect(t.diff).toBeNull();
     expect(t.changedLines).toBe(0);
   });
@@ -90,7 +138,14 @@ describe('reduceTranscript', () => {
   });
 
   it('counts a command the person ran with ! as a step, and as a check when it is one', () => {
-    const t = reduceTranscript({ ...base, entries: chain(user('x'), { role: 'bashExecution', command: 'pytest -q', output: 'ok', exitCode: 0 }, { role: 'bashExecution', command: 'vitest run', output: 'no', exitCode: 1 }) });
+    const t = reduceTranscript({
+      ...base,
+      entries: chain(
+        user('x'),
+        { role: 'bashExecution', command: 'pytest -q', output: 'ok', exitCode: 0 },
+        { role: 'bashExecution', command: 'vitest run', output: 'no', exitCode: 1 },
+      ),
+    });
     expect(t.checks).toEqual([
       { step: 1, command: 'pytest -q', passed: true },
       { step: 2, command: 'vitest run', passed: false },
@@ -125,7 +180,13 @@ describe('redaction runs before anything leaves', () => {
   const t = reduceTranscript({
     ...base,
     entries,
-    outcome: { base: null, head: null, diff: `+API_KEY=${key}\n+other`, changedLines: 2, commitMessage: `Use ${github}` },
+    outcome: {
+      base: null,
+      head: null,
+      diff: `+API_KEY=${key}\n+other`,
+      changedLines: 2,
+      commitMessage: `Use ${github}`,
+    },
   });
 
   it('masks keys in the prompts, targets, error messages, diff and commit message', () => {
@@ -145,7 +206,11 @@ describe('redaction runs before anything leaves', () => {
   });
 
   it('applies the user’s own patterns too', () => {
-    const custom = reduceTranscript({ ...base, entries: chain(user('the ticket is ACME-12345-SECRET')), patterns: [{ kind: 'ticket', pattern: /ACME-\d+-SECRET/g }] });
+    const custom = reduceTranscript({
+      ...base,
+      entries: chain(user('the ticket is ACME-12345-SECRET')),
+      patterns: [{ kind: 'ticket', pattern: /ACME-\d+-SECRET/g }],
+    });
     expect(custom.prompts[0]).toMatch(/\[redacted ticket/);
     expect(custom.redactions).toBe(1);
   });
@@ -163,17 +228,36 @@ describe('helpers', () => {
   });
 
   it('knows a check command from any other', () => {
-    for (const yes of ['npm test', 'npm run lint', 'pnpm build', 'npx vitest run', 'pytest -x', 'cargo test', 'go test ./...', 'make check', 'tsc --noEmit', 'node --test e2e']) expect(isCheckCommand(yes), yes).toBe(true);
-    for (const no of ['ls', 'cat package.json', 'git status', 'npm install', 'echo hello']) expect(isCheckCommand(no), no).toBe(false);
+    for (const yes of [
+      'npm test',
+      'npm run lint',
+      'pnpm build',
+      'npx vitest run',
+      'pytest -x',
+      'cargo test',
+      'go test ./...',
+      'make check',
+      'tsc --noEmit',
+      'node --test e2e',
+    ])
+      expect(isCheckCommand(yes), yes).toBe(true);
+    for (const no of ['ls', 'cat package.json', 'git status', 'npm install', 'echo hello'])
+      expect(isCheckCommand(no), no).toBe(false);
   });
 });
 
 describe('turns: what the Meat Proxy Score’s ledger reads', () => {
   const at = (seconds: number) => new Date(Date.UTC(2026, 9, 17, 10, 0, seconds)).toISOString();
   const timed = (items: { at: number; entry: Record<string, unknown> }[]): PiSessionEntry[] =>
-    items.map(({ at: seconds, entry }, i) => ({ id: `e${i}`, parentId: i === 0 ? null : `e${i - 1}`, timestamp: at(seconds), ...entry }) as PiSessionEntry);
+    items.map(
+      ({ at: seconds, entry }, i) =>
+        ({ id: `e${i}`, parentId: i === 0 ? null : `e${i - 1}`, timestamp: at(seconds), ...entry }) as PiSessionEntry,
+    );
   const msg = (seconds: number, message: unknown) => ({ at: seconds, entry: { type: 'message', message } });
-  const custom = (seconds: number, customType: string, data: unknown) => ({ at: seconds, entry: { type: 'custom', customType, data } });
+  const custom = (seconds: number, customType: string, data: unknown) => ({
+    at: seconds,
+    entry: { type: 'custom', customType, data },
+  });
   const said = (text: string) => ({ role: 'assistant', content: [{ type: 'text', text }] });
 
   const entries = timed([
@@ -189,21 +273,40 @@ describe('turns: what the Meat Proxy Score’s ledger reads', () => {
     msg(127, result('c3', 'edit', 'ok')),
     msg(128, said('Reverted the README.')),
     // a review batch with a skill chip on the next message: the custom entries come first
-    custom(200, 'pi-kit.review', { comments: [{ id: 'k1', file: 'notes/alpha.md', side: 'new', line: 2, snippet: 'The first note.', text: 'Say FIRST here' }] }),
+    custom(200, 'pi-kit.review', {
+      comments: [
+        { id: 'k1', file: 'notes/alpha.md', side: 'new', line: 2, snippet: 'The first note.', text: 'Say FIRST here' },
+      ],
+    }),
     msg(200, user('Review comments:\n- notes/alpha.md:2 Say FIRST here')),
     msg(201, call('c4', 'bash', { command: 'npm test' })),
     msg(202, result('c4', 'bash', 'green')),
     msg(203, said('Done.')),
     // a follow-up that pi picked up from the queue the moment it finished
-    custom(203, 'pi-kit.skills', { chips: [{ kind: 'skill', name: 'pdf-tools', pinned: false }], text: 'also use the skill' }),
+    custom(203, 'pi-kit.skills', {
+      chips: [{ kind: 'skill', name: 'pdf-tools', pinned: false }],
+      text: 'also use the skill',
+    }),
     msg(203, user('<skill name="pdf-tools">long expanded instructions</skill>\n\nalso use the skill')),
   ]);
 
-  const t = reduceTranscript({ ...base, entries, folder: '/p', answers: [{ at: Date.parse(at(126)), method: 'confirm', title: 'Allow edit?', status: 'resolved', confirmed: true }] });
+  const t = reduceTranscript({
+    ...base,
+    entries,
+    folder: '/p',
+    answers: [
+      { at: Date.parse(at(126)), method: 'confirm', title: 'Allow edit?', status: 'resolved', confirmed: true },
+    ],
+  });
   const turns = t.turns ?? [];
 
   it('has one turn per user message, numbered, with the tool calls that followed', () => {
-    expect(turns.map((x) => [x.n, x.toolCalls])).toEqual([[1, 2], [2, 1], [3, 1], [4, 0]]);
+    expect(turns.map((x) => [x.n, x.toolCalls])).toEqual([
+      [1, 2],
+      [2, 1],
+      [3, 1],
+      [4, 0],
+    ]);
     expect(t.prompts).toHaveLength(4);
   });
 
@@ -230,14 +333,18 @@ describe('turns: what the Meat Proxy Score’s ledger reads', () => {
   });
 
   it('attaches the review comments and the chips of the entries written right before a message, and shows the sentence as it was typed', () => {
-    expect(turns[2]?.review).toEqual([{ file: 'notes/alpha.md', side: 'new', line: 2, text: 'Say FIRST here', snippet: 'The first note.' }]);
+    expect(turns[2]?.review).toEqual([
+      { file: 'notes/alpha.md', side: 'new', line: 2, text: 'Say FIRST here', snippet: 'The first note.' },
+    ]);
     expect(turns[0]?.review).toBeNull();
     expect(turns[3]?.chips).toEqual([{ kind: 'skill', name: 'pdf-tools' }]);
     expect(turns[3]?.text).toBe('also use the skill');
   });
 
   it('puts a dialog the person answered on the message pi was working on', () => {
-    expect(turns[1]?.answers).toEqual([{ method: 'confirm', title: 'Allow edit?', status: 'resolved', confirmed: true }]);
+    expect(turns[1]?.answers).toEqual([
+      { method: 'confirm', title: 'Allow edit?', status: 'resolved', confirmed: true },
+    ]);
     expect(turns[0]?.answers).toEqual([]);
   });
 
@@ -248,7 +355,9 @@ describe('turns: what the Meat Proxy Score’s ledger reads', () => {
       folder: '/p',
       entries: timed([
         msg(0, user(`My key is ${key}`)),
-        custom(10, 'pi-kit.review', { comments: [{ id: 'k', file: 'a.ts', side: 'new', line: 1, snippet: 'x', text: `use ${key}` }] }),
+        custom(10, 'pi-kit.review', {
+          comments: [{ id: 'k', file: 'a.ts', side: 'new', line: 1, snippet: 'x', text: `use ${key}` }],
+        }),
         msg(10, user('see the comment')),
       ]),
       answers: [{ at: Date.parse(at(5)), method: 'input', title: 'Token?', status: 'resolved', value: key }],
@@ -266,7 +375,13 @@ describe('turns: what the Meat Proxy Score’s ledger reads', () => {
   });
 
   it('a session without timestamps still has its turns', () => {
-    const plain = reduceTranscript({ ...base, entries: chain(user('one'), call('c1', 'read', { path: 'a' }), result('c1', 'read', 'x'), user('two')) });
-    expect(plain.turns?.map((x) => [x.n, x.gapMs === null || typeof x.gapMs === 'number'])).toEqual([[1, true], [2, true]]);
+    const plain = reduceTranscript({
+      ...base,
+      entries: chain(user('one'), call('c1', 'read', { path: 'a' }), result('c1', 'read', 'x'), user('two')),
+    });
+    expect(plain.turns?.map((x) => [x.n, x.gapMs === null || typeof x.gapMs === 'number'])).toEqual([
+      [1, true],
+      [2, true],
+    ]);
   });
 });

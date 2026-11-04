@@ -12,7 +12,9 @@ const transcript = {
     { n: 2, tool: 'bash', target: 'npm test', outcome: 'error' },
     { n: 3, tool: 'bash', target: 'npm test', outcome: 'ok' },
   ],
-  errors: [{ step: 2, tool: 'bash', target: 'npm test', message: 'migration 0003 missing', recovered: true, recoveredBy: 3 }],
+  errors: [
+    { step: 2, tool: 'bash', target: 'npm test', message: 'migration 0003 missing', recovered: true, recoveredBy: 3 },
+  ],
   checks: [
     { step: 2, command: 'npm test', passed: false },
     { step: 3, command: 'npm test', passed: true },
@@ -43,27 +45,40 @@ describe('the analysis prompt', () => {
   });
 
   it('says so when the thread has no outcome', () => {
-    expect(transcriptToText({ ...transcript, diff: null, commitMessage: null, base: null, head: null })).toContain('no outcome yet');
+    expect(transcriptToText({ ...transcript, diff: null, commitMessage: null, base: null, head: null })).toContain(
+      'no outcome yet',
+    );
     expect(transcriptToText({ ...transcript, diff: '' })).toContain('could not be read');
   });
 
   it('reads the two sections from the markers, whatever stands before them', () => {
-    const loaded = loadPrompt({ prompt: 'ignored {{skeleton}}\n<!-- system -->\nS {{skeleton}}\n<!-- user -->\nU {{transcript}}', skeleton: 'SHAPE\n' });
+    const loaded = loadPrompt({
+      prompt: 'ignored {{skeleton}}\n<!-- system -->\nS {{skeleton}}\n<!-- user -->\nU {{transcript}}',
+      skeleton: 'SHAPE\n',
+    });
     expect(loaded).toEqual({ system: 'S SHAPE', user: 'U {{transcript}}' });
   });
 });
 
 describe('parseDraftReply', () => {
-  const skill = '---\nname: add-a-migration\ndescription: Use when adding a table with its migration\n---\n\n# Add a migration\n\n## Steps\n1. Write the SQL\n';
+  const skill =
+    '---\nname: add-a-migration\ndescription: Use when adding a table with its migration\n---\n\n# Add a migration\n\n## Steps\n1. Write the SQL\n';
 
   it('reads a SKILL.md', () => {
     const parsed = parseDraftReply(skill);
-    expect(parsed).toMatchObject({ ok: true, name: 'add-a-migration', description: 'Use when adding a table with its migration' });
+    expect(parsed).toMatchObject({
+      ok: true,
+      name: 'add-a-migration',
+      description: 'Use when adding a table with its migration',
+    });
     expect(parsed.text).toBe(`${skill.trim()}\n`.replace('---\n\n#', '---\n\n#'));
   });
 
   it('finds the skill inside a code fence and after a line of chatter', () => {
-    expect(parseDraftReply(`Here is the skill:\n\n\`\`\`markdown\n${skill}\`\`\`\n`)).toMatchObject({ ok: true, name: 'add-a-migration' });
+    expect(parseDraftReply(`Here is the skill:\n\n\`\`\`markdown\n${skill}\`\`\`\n`)).toMatchObject({
+      ok: true,
+      name: 'add-a-migration',
+    });
     expect(parseDraftReply(`Sure!\n${skill}`)).toMatchObject({ ok: true, name: 'add-a-migration' });
   });
 
@@ -74,14 +89,30 @@ describe('parseDraftReply', () => {
   });
 
   it('names a skill from its title when the model left the name out', () => {
-    expect(parseDraftReply('---\ndescription: Use when X\n---\n\n# Rotate the Logs\n\nDo it.\n')).toMatchObject({ ok: true, name: 'rotate-the-logs' });
+    expect(parseDraftReply('---\ndescription: Use when X\n---\n\n# Rotate the Logs\n\nDo it.\n')).toMatchObject({
+      ok: true,
+      name: 'rotate-the-logs',
+    });
   });
 
   it('refuses what is not a skill, and passes on a SKIP with its reason', () => {
-    expect(parseDraftReply('I could not find anything.')).toMatchObject({ ok: false, reason: expect.stringContaining('frontmatter') });
-    expect(parseDraftReply('---\nname: x\n---\n\nBody')).toMatchObject({ ok: false, reason: expect.stringContaining('description') });
-    expect(parseDraftReply('---\nname: x\ndescription: d\n---\n')).toMatchObject({ ok: false, reason: expect.stringContaining('instructions') });
-    expect(parseDraftReply('SKIP: too specific to this repository')).toEqual({ ok: false, skip: true, reason: 'too specific to this repository' });
+    expect(parseDraftReply('I could not find anything.')).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('frontmatter'),
+    });
+    expect(parseDraftReply('---\nname: x\n---\n\nBody')).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('description'),
+    });
+    expect(parseDraftReply('---\nname: x\ndescription: d\n---\n')).toMatchObject({
+      ok: false,
+      reason: expect.stringContaining('instructions'),
+    });
+    expect(parseDraftReply('SKIP: too specific to this repository')).toEqual({
+      ok: false,
+      skip: true,
+      reason: 'too specific to this repository',
+    });
   });
 });
 

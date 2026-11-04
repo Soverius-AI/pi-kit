@@ -2,7 +2,17 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { bringsText, installCommand } from '@pi-kit/protocol';
-import { entryWithEnabled, folderOf, groupBrings, isEntryEnabled, nameOfSource, normalizeSource, originOf, resourceName, sourceIdentity } from './package-rules';
+import {
+  entryWithEnabled,
+  folderOf,
+  groupBrings,
+  isEntryEnabled,
+  nameOfSource,
+  normalizeSource,
+  originOf,
+  resourceName,
+  sourceIdentity,
+} from './package-rules';
 
 describe('sourceIdentity', () => {
   it('ignores the version of an npm package', () => {
@@ -11,7 +21,14 @@ describe('sourceIdentity', () => {
     expect(sourceIdentity('npm:@scope/pkg')).toBe('npm:@scope/pkg');
   });
   it('treats every spelling of one repository as one', () => {
-    const same = ['git:github.com/x/y', 'https://github.com/x/y', 'https://github.com/x/y.git', 'git@github.com:x/y.git', 'git:github.com/x/y@v1', 'ssh://git@github.com/x/y'];
+    const same = [
+      'git:github.com/x/y',
+      'https://github.com/x/y',
+      'https://github.com/x/y.git',
+      'git@github.com:x/y.git',
+      'git:github.com/x/y@v1',
+      'ssh://git@github.com/x/y',
+    ];
     for (const source of same) expect(sourceIdentity(source), source).toBe('git:github.com/x/y');
     expect(sourceIdentity('git:github.com/x/z')).not.toBe('git:github.com/x/y');
   });
@@ -59,16 +76,30 @@ describe('resourceName', () => {
 });
 
 describe('groupBrings', () => {
-  const res = (path: string, source: string, scope = 'user', origin = 'package') => ({ path, metadata: { scope, origin, source } });
+  const res = (path: string, source: string, scope = 'user', origin = 'package') => ({
+    path,
+    metadata: { scope, origin, source },
+  });
   it('counts what each package brings, once per file, and ignores top-level files', () => {
     const groups = groupBrings({
-      extensions: [res('/a/extensions/one.ts', 'npm:a'), res('/a/extensions/one.ts', 'npm:a'), res('/a/extensions/two.ts', 'npm:a'), res('/u/ext.ts', 'local', 'user', 'top-level')],
+      extensions: [
+        res('/a/extensions/one.ts', 'npm:a'),
+        res('/a/extensions/one.ts', 'npm:a'),
+        res('/a/extensions/two.ts', 'npm:a'),
+        res('/u/ext.ts', 'local', 'user', 'top-level'),
+      ],
       skills: [res('/a/skills/s1/SKILL.md', 'npm:a'), res('/b/skills/s1/SKILL.md', 'npm:b', 'project')],
       prompts: [],
       themes: [res('/b/themes/night.json', 'npm:b', 'project')],
     });
     expect([...groups.keys()].sort()).toEqual(['project:npm:b', 'user:npm:a']);
-    expect(groups.get('user:npm:a')).toMatchObject({ extensions: 2, skills: 1, prompts: 0, themes: 0, names: { extensions: ['one', 'two'], skills: ['s1'] } });
+    expect(groups.get('user:npm:a')).toMatchObject({
+      extensions: 2,
+      skills: 1,
+      prompts: 0,
+      themes: 0,
+      names: { extensions: ['one', 'two'], skills: ['s1'] },
+    });
     expect(groups.get('project:npm:b')).toMatchObject({ extensions: 0, skills: 1, themes: 1 });
   });
   it('says it in words', () => {
@@ -85,7 +116,9 @@ describe('the switch of a package', () => {
     expect(isEntryEnabled(off)).toBe(false);
     expect(isEntryEnabled('npm:a')).toBe(true);
     expect(entryWithEnabled(off, true)).toBe('npm:a');
-    expect(entryWithEnabled({ source: 'npm:a', autoload: false, extensions: [], skills: [], prompts: [], themes: [] }, true)).toEqual({ source: 'npm:a', autoload: false });
+    expect(
+      entryWithEnabled({ source: 'npm:a', autoload: false, extensions: [], skills: [], prompts: [], themes: [] }, true),
+    ).toEqual({ source: 'npm:a', autoload: false });
   });
   it('a filter that only narrows a package is still on, and survives being switched on', () => {
     const narrowed = { source: 'npm:a', extensions: ['extensions/*.ts'], skills: [] };

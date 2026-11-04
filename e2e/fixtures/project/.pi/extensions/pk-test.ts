@@ -2,7 +2,6 @@
 // a toolbar action and a suggestion over the shared event bus.
 const FRUITS = ['apple', 'apricot', 'banana', 'blueberry'];
 
-
 export default function (pi: any) {
   pi.registerCommand('pk-colour-status', {
     description: 'Set a colored extension status (pi-kit test)',
@@ -53,12 +52,28 @@ export default function (pi: any) {
         const before = (lines[cursorLine] ?? '').slice(0, cursorCol);
         const match = /^\/pk-fruit (\S*)$/.exec(before);
         if (!match) return current.getSuggestions(lines, cursorLine, cursorCol, options);
-        const items = FRUITS.filter((fruit) => fruit.startsWith(match[1])).map((fruit) => ({ value: fruit, label: fruit, description: 'fruit' }));
+        const items = FRUITS.filter((fruit) => fruit.startsWith(match[1])).map((fruit) => ({
+          value: fruit,
+          label: fruit,
+          description: 'fruit',
+        }));
         return items.length > 0 ? { items, prefix: match[1] } : null;
       },
     }));
     // A toolbar button and a suggestion pill in the composer, over pi's shared event bus.
-    pi.events.emit('pi-kit:composer', { op: 'action', id: 'pk-hello', label: 'Say hello', icon: 'Hi', text: '/pk-fruit ' });
-    pi.events.emit('pi-kit:composer', { op: 'suggestion', id: 'pk-suggest', title: 'Ask for a fruit', text: '/pk-fruit apple', send: false });
+    pi.events.emit('pi-kit:composer', {
+      op: 'action',
+      id: 'pk-hello',
+      label: 'Say hello',
+      icon: 'Hi',
+      text: '/pk-fruit ',
+    });
+    pi.events.emit('pi-kit:composer', {
+      op: 'suggestion',
+      id: 'pk-suggest',
+      title: 'Ask for a fruit',
+      text: '/pk-fruit apple',
+      send: false,
+    });
   });
 }

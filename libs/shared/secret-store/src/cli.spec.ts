@@ -95,7 +95,11 @@ describe('pi-kit-secret', () => {
 });
 
 describe('the launcher on PATH', () => {
-  const electron = { runtime: '/Applications/pi-kit.app/Contents/MacOS/pi-kit', electron: true, script: '/Applications/pi-kit.app/Contents/Resources/backend/pi-kit-secret.cjs' };
+  const electron = {
+    runtime: '/Applications/pi-kit.app/Contents/MacOS/pi-kit',
+    electron: true,
+    script: '/Applications/pi-kit.app/Contents/Resources/backend/pi-kit-secret.cjs',
+  };
 
   it('starts the bundle with Electron’s Node in the packaged app (POSIX)', () => {
     expect(launcherScript('darwin', electron)).toBe(
@@ -104,13 +108,23 @@ describe('the launcher on PATH', () => {
   });
 
   it('starts it with node in development, and quotes a path with a quote in it', () => {
-    const script = launcherScript('linux', { runtime: '/usr/bin/node', electron: false, script: "/home/o'neil/pi-kit/dist/apps/secret-cli/pi-kit-secret.cjs" });
-    expect(script).toContain(`exec '/usr/bin/node' '/home/o'\\''neil/pi-kit/dist/apps/secret-cli/pi-kit-secret.cjs' "$@"`);
+    const script = launcherScript('linux', {
+      runtime: '/usr/bin/node',
+      electron: false,
+      script: "/home/o'neil/pi-kit/dist/apps/secret-cli/pi-kit-secret.cjs",
+    });
+    expect(script).toContain(
+      `exec '/usr/bin/node' '/home/o'\\''neil/pi-kit/dist/apps/secret-cli/pi-kit-secret.cjs' "$@"`,
+    );
     expect(script).not.toContain('ELECTRON_RUN_AS_NODE');
   });
 
   it('is a .cmd file on Windows with CRLF line endings', () => {
-    const script = launcherScript('win32', { runtime: 'C:\\Program Files\\pi-kit\\pi-kit.exe', electron: true, script: 'C:\\Program Files\\pi-kit\\resources\\backend\\pi-kit-secret.cjs' });
+    const script = launcherScript('win32', {
+      runtime: 'C:\\Program Files\\pi-kit\\pi-kit.exe',
+      electron: true,
+      script: 'C:\\Program Files\\pi-kit\\resources\\backend\\pi-kit-secret.cjs',
+    });
     expect(script).toBe(
       `@echo off\r\nrem Written by pi-kit (Settings > Advanced). Reads and writes pi-kit's entries in the Windows Credential Manager.\r\nset ELECTRON_RUN_AS_NODE=1\r\n"C:\\Program Files\\pi-kit\\pi-kit.exe" "C:\\Program Files\\pi-kit\\resources\\backend\\pi-kit-secret.cjs" %*\r\n`,
     );
@@ -121,7 +135,9 @@ describe('the launcher on PATH', () => {
   it('installs into ~/.local/bin, or the local app data folder on Windows', () => {
     expect(defaultInstallDir('darwin', {}, '/Users/ada')).toBe('/Users/ada/.local/bin');
     expect(defaultInstallDir('linux', {}, '/home/ada')).toBe('/home/ada/.local/bin');
-    expect(defaultInstallDir('win32', { LOCALAPPDATA: 'C:\\Users\\ada\\AppData\\Local' }, 'C:\\Users\\ada')).toBe('C:\\Users\\ada\\AppData\\Local\\pi-kit\\bin');
+    expect(defaultInstallDir('win32', { LOCALAPPDATA: 'C:\\Users\\ada\\AppData\\Local' }, 'C:\\Users\\ada')).toBe(
+      'C:\\Users\\ada\\AppData\\Local\\pi-kit\\bin',
+    );
   });
 });
 
@@ -129,17 +145,25 @@ describe('explicit launcher store', () => {
   const target = { runtime: '/usr/bin/node', electron: false, script: '/tmp/cli.cjs' };
   it('propagates native choices on POSIX and Windows', () => {
     expect(launcherScript('darwin', { ...target, secretStore: 'macos' })).toContain("PI_KIT_SECRET_STORE='macos' exec");
-    expect(launcherScript('win32', { ...target, secretStore: 'legacy' })).toContain('set "PI_KIT_SECRET_STORE=legacy"\r\n');
+    expect(launcherScript('win32', { ...target, secretStore: 'legacy' })).toContain(
+      'set "PI_KIT_SECRET_STORE=legacy"\r\n',
+    );
     expect(launcherScript('darwin', target)).not.toContain('PI_KIT_SECRET_STORE');
   });
   it('quotes shell metacharacters in file paths and rejects unsafe Windows settings', () => {
-    expect(launcherScript('linux', { ...target, secretStore: "file:/tmp/o'neil/$(id);&" })).toContain("PI_KIT_SECRET_STORE='file:/tmp/o'\\''neil/$(id);&'");
+    expect(launcherScript('linux', { ...target, secretStore: "file:/tmp/o'neil/$(id);&" })).toContain(
+      "PI_KIT_SECRET_STORE='file:/tmp/o'\\''neil/$(id);&'",
+    );
     for (const setting of ['unknown', 'file:', 'file:x\ncommand', 'file:x\0']) {
       expect(() => launcherScript('linux', { ...target, secretStore: setting })).toThrow(/Invalid secret store/);
     }
     for (const suffix of ['%PATH%', '!VAR!', '"', '&calc', '|calc', '^', '<x', '>x']) {
-      expect(() => launcherScript('win32', { ...target, secretStore: `file:C:\\${suffix}` })).toThrow(/Invalid secret store/);
+      expect(() => launcherScript('win32', { ...target, secretStore: `file:C:\\${suffix}` })).toThrow(
+        /Invalid secret store/,
+      );
     }
-    expect(launcherScript('win32', { ...target, secretStore: 'file:C:\\with spaces\\store.json' })).toContain('set "PI_KIT_SECRET_STORE=file:C:\\with spaces\\store.json"\r\n');
+    expect(launcherScript('win32', { ...target, secretStore: 'file:C:\\with spaces\\store.json' })).toContain(
+      'set "PI_KIT_SECRET_STORE=file:C:\\with spaces\\store.json"\r\n',
+    );
   });
 });

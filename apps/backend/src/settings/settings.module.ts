@@ -10,5 +10,9 @@ import { SettingsController } from './settings.controller';
  * The settings module: pi's settings, sign-in and trust, the stored secrets, and the diagnostics the bug-report
  * dialog shows.
  */
-@Module({ imports: [DbModule, PiModule, ThreadsModule], controllers: [SettingsController, SecretsController], providers: [DiagnosticsService] })
+@Module({
+  imports: [DbModule, PiModule, ThreadsModule],
+  controllers: [SettingsController, SecretsController],
+  providers: [DiagnosticsService],
+})
 export class SettingsModule {}

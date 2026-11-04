@@ -34,7 +34,14 @@ const observeSurface = (page) =>
       const host = document.querySelector(selector);
       const marks = window.__surface;
       if (host && marks.host === undefined) marks.host = performance.now();
-      if (host && marks.host !== undefined && marks.visible === undefined && !host.classList.contains('surface-pending') && host.querySelector('table tbody tr')) marks.visible = performance.now();
+      if (
+        host &&
+        marks.host !== undefined &&
+        marks.visible === undefined &&
+        !host.classList.contains('surface-pending') &&
+        host.querySelector('table tbody tr')
+      )
+        marks.visible = performance.now();
       requestAnimationFrame(look);
     };
     look();
@@ -56,7 +63,10 @@ async function clickAndStop(app, locator) {
   await page.waitForFunction(() => {
     const users = document.querySelectorAll('pk-turn[role="user"]');
     const prompt = users[users.length - 1]?.getAttribute('data-block');
-    return !!prompt && [...document.querySelectorAll('pk-turn[role="pi"]')].some((turn) => turn.getAttribute('data-after') === prompt);
+    return (
+      !!prompt &&
+      [...document.querySelectorAll('pk-turn[role="pi"]')].some((turn) => turn.getAttribute('data-after') === prompt)
+    );
   }, undefined);
   page.off('request', onRequest);
   const stop = page.getByTestId('stop');
@@ -68,7 +78,10 @@ async function clickAndStop(app, locator) {
   }
   await idle(page, h, 60_000);
   assert.equal(await page.locator('pk-turn[role="user"]').count(), turnsBefore + 1, 'one new user turn');
-  return { actions: bodies.map((body) => JSON.parse(body).forwardedProps?.a2uiAction).filter(Boolean), user: await page.locator('pk-turn[role="user"]').last().innerText() };
+  return {
+    actions: bodies.map((body) => JSON.parse(body).forwardedProps?.a2uiAction).filter(Boolean),
+    user: await page.locator('pk-turn[role="user"]').last().innerText(),
+  };
 }
 
 describe('an A2UI surface is drawn by CopilotKit', () => {
@@ -77,15 +90,25 @@ describe('an A2UI surface is drawn by CopilotKit', () => {
     await h.newThread();
     await observeSurface(page);
     await h.startPrompt('Which e2e specs fail right now? Use the show_failing_specs tool.');
-    await page.locator('pk-genui-frame').first().waitFor({ timeout: 120_000 }).catch(async () => {
-      await idle(page, h);
-      await h.startPrompt('Call the show_failing_specs tool now.');
-      await page.locator('pk-genui-frame').first().waitFor();
-    });
+    await page
+      .locator('pk-genui-frame')
+      .first()
+      .waitFor({ timeout: 120_000 })
+      .catch(async () => {
+        await idle(page, h);
+        await h.startPrompt('Call the show_failing_specs tool now.');
+        await page.locator('pk-genui-frame').first().waitFor();
+      });
     await idle(page, h);
     const marks = await page.evaluate(() => window.__surface);
-    assert.ok(marks.host !== undefined && marks.visible !== undefined, `the surface was never revealed: ${JSON.stringify(marks)}`);
-    assert.ok(marks.visible - marks.host < 500, `the surface stayed hidden for ${Math.round(marks.visible - marks.host)} ms`);
+    assert.ok(
+      marks.host !== undefined && marks.visible !== undefined,
+      `the surface was never revealed: ${JSON.stringify(marks)}`,
+    );
+    assert.ok(
+      marks.visible - marks.host < 500,
+      `the surface stayed hidden for ${Math.round(marks.visible - marks.host)} ms`,
+    );
 
     // CopilotKit's renderer, the catalog's Card as the frame, the table with its three rows, and nothing of pi-kit's own around it.
     assert.equal(await page.locator('copilot-a2ui-activity-renderer').count(), 1);
@@ -111,7 +134,10 @@ describe('an A2UI surface is drawn by CopilotKit', () => {
     await page.locator('pk-genui-frame').first().waitFor();
     await page.waitForFunction(() => window.__surface?.visible !== undefined, undefined);
     const marks = await page.evaluate(() => window.__surface);
-    assert.ok(marks.visible - marks.host < 500, `the stored surface stayed hidden for ${Math.round(marks.visible - marks.host)} ms`);
+    assert.ok(
+      marks.visible - marks.host < 500,
+      `the stored surface stayed hidden for ${Math.round(marks.visible - marks.host)} ms`,
+    );
     assert.equal(await page.locator(`${FRAME} table tbody tr`).count(), 3);
   });
 
@@ -128,7 +154,10 @@ describe('an A2UI surface is drawn by CopilotKit', () => {
 
   it('runs one row from the table', async () => {
     const { page } = app;
-    const { actions, user } = await clickAndStop(app, page.getByRole('row', { name: /export\.spec\.ts:58/ }).getByRole('button', { name: 'Run' }));
+    const { actions, user } = await clickAndStop(
+      app,
+      page.getByRole('row', { name: /export\.spec\.ts:58/ }).getByRole('button', { name: 'Run' }),
+    );
     assert.equal(actions.length, 1);
     assert.equal(actions[0].userAction.name, 'rerun_spec');
     assert.equal(actions[0].userAction.context.spec, 'export.spec.ts:58');

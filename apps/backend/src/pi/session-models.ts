@@ -16,7 +16,10 @@ export interface SessionModelChange {
 const VIRTUAL_MODEL_API = 'pi-virtual';
 
 /** The levels a model accepts: pi-ai's `getSupportedThinkingLevels`, which the SDK does not export. A model that does not think has only `off`. */
-function supportedLevels(model: { reasoning: boolean; thinkingLevelMap?: Partial<Record<string, string | null>> }): ThinkingLevel[] {
+function supportedLevels(model: {
+  reasoning: boolean;
+  thinkingLevelMap?: Partial<Record<string, string | null>>;
+}): ThinkingLevel[] {
   if (!model.reasoning) return ['off'];
   return THINKING_LEVELS.filter((level) => {
     const mapped = model.thinkingLevelMap?.[level];
@@ -45,7 +48,11 @@ export class SessionModels {
     const available = await session.modelRuntime.getAvailable();
     const scope = this.scope(session);
     const settings = session.settingsManager;
-    const defaults = { provider: settings.getDefaultProvider(), id: settings.getDefaultModel(), thinkingLevel: settings.getDefaultThinkingLevel() as ThinkingLevel | undefined };
+    const defaults = {
+      provider: settings.getDefaultProvider(),
+      id: settings.getDefaultModel(),
+      thinkingLevel: settings.getDefaultThinkingLevel() as ThinkingLevel | undefined,
+    };
     const models: ModelInfo[] = available.map((m) => ({
       provider: m.provider,
       id: m.id,
@@ -65,7 +72,11 @@ export class SessionModels {
       current: session.model ? { provider: session.model.provider, id: session.model.id } : null,
       thinkingLevel: session.thinkingLevel as ThinkingLevel,
       thinkingLevels: (session.supportsThinking() ? session.getAvailableThinkingLevels() : []) as ThinkingLevel[],
-      pinned: scope.map((s) => ({ provider: s.model.provider, id: s.model.id, ...(s.thinkingLevel ? { thinkingLevel: s.thinkingLevel as ThinkingLevel } : {}) })),
+      pinned: scope.map((s) => ({
+        provider: s.model.provider,
+        id: s.model.id,
+        ...(s.thinkingLevel ? { thinkingLevel: s.thinkingLevel as ThinkingLevel } : {}),
+      })),
       defaults: {
         ...(defaults.provider ? { provider: defaults.provider } : {}),
         ...(defaults.id ? { id: defaults.id } : {}),
@@ -84,7 +95,9 @@ export class SessionModels {
         return;
       }
       const pi = await loadPi();
-      const { scopedModels, diagnostics } = await pi.resolveModelScopeWithDiagnostics(patterns, session.modelRuntime, { signal: AbortSignal.timeout(15_000) });
+      const { scopedModels, diagnostics } = await pi.resolveModelScopeWithDiagnostics(patterns, session.modelRuntime, {
+        signal: AbortSignal.timeout(15_000),
+      });
       for (const d of diagnostics) this.logger.warn(`Model scope: ${d.message}`);
       session.setScopedModels(scopedModels);
     } catch (error) {
@@ -131,7 +144,9 @@ export class SessionModels {
    */
   contextWindowLookup(session: AgentSession): (provider: string | undefined, model: string) => number | undefined {
     return (provider, model) =>
-      provider ? session.modelRuntime.getModel(provider, model)?.contextWindow : session.modelRuntime.getAvailableSnapshot().find((m) => m.id === model)?.contextWindow;
+      provider
+        ? session.modelRuntime.getModel(provider, model)?.contextWindow
+        : session.modelRuntime.getAvailableSnapshot().find((m) => m.id === model)?.contextWindow;
   }
 
   /**
@@ -142,6 +157,8 @@ export class SessionModels {
     const pi = await loadPi();
     this.windowRuntime ??= pi.ModelRuntime.create();
     const runtime = await this.windowRuntime;
-    return provider ? runtime.getModel(provider, model)?.contextWindow : runtime.getModels().find((m) => m.id === model)?.contextWindow;
+    return provider
+      ? runtime.getModel(provider, model)?.contextWindow
+      : runtime.getModels().find((m) => m.id === model)?.contextWindow;
   }
 }

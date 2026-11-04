@@ -13,7 +13,11 @@ let app, fake, releaseDraft, world, backend, log;
 let learnCalls = 0;
 async function call(method, path, body) {
   const { token } = await (await fetch(`${API}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const response = await fetch(`${API}/api${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const response = await fetch(`${API}/api${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
   const result = await response.json();
   assert.ok(response.ok, `${method} ${path}: ${JSON.stringify(result)}`);
   return result;
@@ -22,33 +26,57 @@ async function until(check, label, timeout = 15000) {
   const end = Date.now() + timeout;
   do {
     if (await check()) return;
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
   } while (Date.now() < end);
   assert.fail(`Timed out: ${label}`);
 }
-const row = title => app.page.locator('.pk-thread', { hasText: title }).first();
+const row = (title) => app.page.locator('.pk-thread', { hasText: title }).first();
 const review = () => app.page.getByTestId('review-dialog');
 
 before(async () => {
-  fake = await startFakeModel({ answer: body => {
-    if (!JSON.stringify(body.messages?.[0] ?? '').includes('reusable skill')) return 'Ready.';
-    learnCalls++;
-    return new Promise(resolve => { releaseDraft = () => resolve(CANNED_SKILL); });
-  } });
+  fake = await startFakeModel({
+    answer: (body) => {
+      if (!JSON.stringify(body.messages?.[0] ?? '').includes('reusable skill')) return 'Ready.';
+      learnCalls++;
+      return new Promise((resolve) => {
+        releaseDraft = () => resolve(CANNED_SKILL);
+      });
+    },
+  });
   // Own the model, settings and backend lifetime; the shared restart suite may already have stopped its backend.
   world = createWorld({ setup: ({ agent }) => registerFakeModel(agent, fake.url) });
   log = openSync(join(world.base, 'learning-backend.log'), 'w');
-  backend = spawn('node', ['dist/apps/backend/main.js'], { cwd: root, env: { ...process.env, ...world.env, NODE_ENV: 'development', PI_KIT_PORT: new URL(API).port, PI_KIT_ORIGIN: env.base }, stdio: ['ignore', log, log], detached: true });
+  backend = spawn('node', ['dist/apps/backend/main.js'], {
+    cwd: root,
+    env: {
+      ...process.env,
+      ...world.env,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(API).port,
+      PI_KIT_ORIGIN: env.base,
+    },
+    stdio: ['ignore', log, log],
+    detached: true,
+  });
   await until(() => isUp(`${API}/api/dev/token`, { Origin: env.base }), 'the isolated learning backend', 60000);
   app = await openApp({ backend: API });
-  await call('PATCH', '/attendant/settings', { enabled: false, model: { provider: FAKE_PROVIDER, modelId: FAKE_MODEL } });
+  await call('PATCH', '/attendant/settings', {
+    enabled: false,
+    model: { provider: FAKE_PROVIDER, modelId: FAKE_MODEL },
+  });
 });
 after(async () => {
   releaseDraft?.();
   await app?.close();
   if (backend?.exitCode === null) {
-    const exited = new Promise(resolve => backend.once('exit', resolve));
-    const deadline = setTimeout(() => { try { process.kill(-backend.pid, 'SIGKILL'); } catch { /* Already stopped. */ } }, 10000);
+    const exited = new Promise((resolve) => backend.once('exit', resolve));
+    const deadline = setTimeout(() => {
+      try {
+        process.kill(-backend.pid, 'SIGKILL');
+      } catch {
+        /* Already stopped. */
+      }
+    }, 10000);
     backend.kill('SIGTERM');
     await exited;
     clearTimeout(deadline);
@@ -82,25 +110,37 @@ it('drafts in a persistent learning chat while another chat stays usable, then r
   await composer.fill('Keep this draft in the other chat.');
   assert.equal(await review().count(), 0, 'learning does not overlay another chat');
   releaseDraft();
-  await until(async () => (await call('GET', `/threads/${source.id}/skill-draft`)).state === 'pending', 'the completed skill draft');
+  await until(
+    async () => (await call('GET', `/threads/${source.id}/skill-draft`)).state === 'pending',
+    'the completed skill draft',
+  );
   assert.equal(await composer.inputValue(), 'Keep this draft in the other chat.');
   await app.page.getByRole('heading', { name: 'Other chat', exact: true }).waitFor();
 
-  const workspaces = (await call('GET', '/threads')).filter(thread => thread.learning?.sourceThreadId === source.id);
+  const workspaces = (await call('GET', '/threads')).filter((thread) => thread.learning?.sourceThreadId === source.id);
   assert.equal(workspaces.length, 1);
-  const again = await Promise.all([call('POST', `/threads/${source.id}/learning-thread`), call('POST', `/threads/${source.id}/learning-thread`)]);
-  assert.deepEqual(again.map(thread => thread.id), [workspaces[0].id, workspaces[0].id]);
+  const again = await Promise.all([
+    call('POST', `/threads/${source.id}/learning-thread`),
+    call('POST', `/threads/${source.id}/learning-thread`),
+  ]);
+  assert.deepEqual(
+    again.map((thread) => thread.id),
+    [workspaces[0].id, workspaces[0].id],
+  );
   await row('Learn: Learning source').click();
   await app.page.getByTestId('skill-text').waitFor();
   assert.match(await app.page.getByTestId('skill-text').inputValue(), /name: add-notes-with-an-index/);
-  const edited = await app.page.getByTestId('skill-text').inputValue() + '\nKeep this review edit.\n';
+  const edited = (await app.page.getByTestId('skill-text').inputValue()) + '\nKeep this review edit.\n';
   await app.page.getByTestId('skill-text').fill(edited);
   await row('Other chat').click();
   await composer.waitFor();
   await row('Learn: Learning source').click();
   await app.page.getByTestId('skill-text').waitFor();
   assert.equal(await app.page.getByTestId('skill-text').inputValue(), edited);
-  await until(async () => (await call('GET', '/settings')).thread === workspaces[0].id, 'the learning selection to be persisted');
+  await until(
+    async () => (await call('GET', '/settings')).thread === workspaces[0].id,
+    'the learning selection to be persisted',
+  );
   await app.page.reload();
   await app.page.getByTestId('skill-text').waitFor();
   assert.match(await app.page.getByTestId('skill-text').inputValue(), /name: add-notes-with-an-index/);
@@ -111,12 +151,17 @@ it('drafts in a persistent learning chat while another chat stays usable, then r
 
 it('creates one workspace for concurrent opens and reopens its archived sidebar entry', async () => {
   const source = await call('POST', '/threads', { cwd: world.project, title: 'Concurrent learning source' });
-  const opened = await Promise.all(Array.from({ length: 3 }, () => call('POST', `/threads/${source.id}/learning-thread`)));
-  assert.equal(new Set(opened.map(thread => thread.id)).size, 1);
+  const opened = await Promise.all(
+    Array.from({ length: 3 }, () => call('POST', `/threads/${source.id}/learning-thread`)),
+  );
+  assert.equal(new Set(opened.map((thread) => thread.id)).size, 1);
   assert.deepEqual(opened[0].learning, { sourceThreadId: source.id });
   await call('PATCH', `/threads/${opened[0].id}`, { archived: true });
   const reopened = await call('POST', `/threads/${source.id}/learning-thread`);
   assert.equal(reopened.id, opened[0].id);
   assert.equal(reopened.archived, false);
-  assert.equal((await call('GET', '/threads')).filter(thread => thread.learning?.sourceThreadId === source.id).length, 1);
+  assert.equal(
+    (await call('GET', '/threads')).filter((thread) => thread.learning?.sourceThreadId === source.id).length,
+    1,
+  );
 });

@@ -11,7 +11,13 @@ describe('ModelStore (the consented, pinned download of Whistle)', () => {
   let fixture: string;
   const content = Buffer.from('a stand-in for the 17 MB model'.repeat(40));
   const sha = createHash('sha256').update(content).digest('hex');
-  const spec = (over: Partial<ReturnType<typeof whistleSpec>> = {}) => ({ ...WHISTLE, url: pathToFileURL(fixture).href, bytes: content.length, sha256: sha, ...over });
+  const spec = (over: Partial<ReturnType<typeof whistleSpec>> = {}) => ({
+    ...WHISTLE,
+    url: pathToFileURL(fixture).href,
+    bytes: content.length,
+    sha256: sha,
+    ...over,
+  });
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'pi-kit-model-'));
@@ -22,7 +28,14 @@ describe('ModelStore (the consented, pinned download of Whistle)', () => {
 
   it('is missing until someone asks: creating the store and reading its status writes nothing', () => {
     const store = new ModelStore(join(dir, 'data'), spec());
-    expect(store.status()).toMatchObject({ state: 'missing', file: 'whistle.cact', name: 'Whistle', license: 'Apache-2.0', bytes: content.length, sha256: sha });
+    expect(store.status()).toMatchObject({
+      state: 'missing',
+      file: 'whistle.cact',
+      name: 'Whistle',
+      license: 'Apache-2.0',
+      bytes: content.length,
+      sha256: sha,
+    });
     expect(store.present).toBe(false);
     expect(existsSync(join(dir, 'data'))).toBe(false);
   });
@@ -32,7 +45,10 @@ describe('ModelStore (the consented, pinned download of Whistle)', () => {
     const done = store.download();
     expect(store.status().state).toBe('downloading');
     await done;
-    expect(store.status()).toMatchObject({ state: 'ready', path: join(dir, 'data', 'models', 'whistle', 'whistle.cact') });
+    expect(store.status()).toMatchObject({
+      state: 'ready',
+      path: join(dir, 'data', 'models', 'whistle', 'whistle.cact'),
+    });
     expect(statSync(store.path).size).toBe(content.length);
     expect(statSync(store.path).mode & 0o777).toBe(0o600);
     expect(readdirSync(join(dir, 'data', 'models', 'whistle'))).toEqual(['whistle.cact']);
@@ -87,10 +103,16 @@ describe('ModelStore (the consented, pinned download of Whistle)', () => {
 
   it('pins the real file, and only a test environment may point elsewhere', () => {
     const real = whistleSpec({});
-    expect(real.url).toBe('https://huggingface.co/Cactus-Compute/whistle/resolve/b358ddadd89b7a713b5aa131f23032d3cca1b251/whistle.cact');
+    expect(real.url).toBe(
+      'https://huggingface.co/Cactus-Compute/whistle/resolve/b358ddadd89b7a713b5aa131f23032d3cca1b251/whistle.cact',
+    );
     expect(real.bytes).toBe(16_919_407);
     expect(real.sha256).toBe('b6e02f048568ac5d01a2042556c658061e699acbc0aa2a1439f52f3d461dffeb');
-    const test = whistleSpec({ PI_KIT_WHISTLE_URL: 'file:///x', PI_KIT_WHISTLE_SHA256: 'ab', PI_KIT_WHISTLE_BYTES: '12' });
+    const test = whistleSpec({
+      PI_KIT_WHISTLE_URL: 'file:///x',
+      PI_KIT_WHISTLE_SHA256: 'ab',
+      PI_KIT_WHISTLE_BYTES: '12',
+    });
     expect(test).toMatchObject({ url: 'file:///x', sha256: 'ab', bytes: 12 });
     expect(whistleSpec({ NODE_ENV: 'production', PI_KIT_WHISTLE_URL: 'file:///x' }).url).toBe(real.url);
   });

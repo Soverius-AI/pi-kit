@@ -16,7 +16,11 @@ export class CoordinationController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get what runs next to a thread', description: "Returns the leases other threads hold on files of the thread's folder, and the other agents working there." })
+  @ApiOperation({
+    summary: 'Get what runs next to a thread',
+    description:
+      "Returns the leases other threads hold on files of the thread's folder, and the other agents working there.",
+  })
   @Responds(CoordinationSchema)
   @Fails({ 404: 'There is no such thread.' })
   get(@Param('id') id: string): Coordination {

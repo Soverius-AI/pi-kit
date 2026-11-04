@@ -17,16 +17,27 @@ describe('endsWithQuestion', () => {
 describe('replyOptions', () => {
   it('reads "A, B or C?"', () => {
     expect(replyOptions('Should I use Vitest, Jest or Mocha?')).toEqual(['Vitest', 'Jest', 'Mocha']);
-    expect(replyOptions('All set. Do you want the Observable version or the generator?')).toEqual(['the Observable version', 'the generator']);
+    expect(replyOptions('All set. Do you want the Observable version or the generator?')).toEqual([
+      'the Observable version',
+      'the generator',
+    ]);
     expect(replyOptions('Do you prefer tabs, or spaces?')).toEqual(['tabs', 'spaces']);
   });
   it('reads a list right above the question', () => {
-    expect(replyOptions('There are two ways:\n\n1. Rebase - keeps history linear\n2. Merge - keeps the branches\n\nWhich one?')).toEqual(['Rebase', 'Merge']);
+    expect(
+      replyOptions(
+        'There are two ways:\n\n1. Rebase - keeps history linear\n2. Merge - keeps the branches\n\nWhich one?',
+      ),
+    ).toEqual(['Rebase', 'Merge']);
     expect(replyOptions('Options:\n- **Alpha**\n- **Beta**\nWhich do you want?')).toEqual(['Alpha', 'Beta']);
   });
   it('offers nothing for a question that lists nothing, or a long sentence', () => {
     expect(replyOptions('Shall I continue?')).toEqual([]);
-    expect(replyOptions('Do you want me to refactor the whole module so that every caller gets the new signature or leave it?')).toEqual([]);
+    expect(
+      replyOptions(
+        'Do you want me to refactor the whole module so that every caller gets the new signature or leave it?',
+      ),
+    ).toEqual([]);
     expect(replyOptions('Done.')).toEqual([]);
   });
 });

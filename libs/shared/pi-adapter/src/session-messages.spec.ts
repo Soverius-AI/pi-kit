@@ -63,12 +63,18 @@ describe('sessionToMessages (recorded session file)', () => {
   });
 
   it('gives every assistant message a pi.turn_usage activity from its stored usage', () => {
-    const usage = messages.filter((m) => m.role === 'activity' && (m as { activityType?: string }).activityType === 'pi.turn_usage');
-    const assistants = entries.filter((e) => e.type === 'message' && (e['message'] as { role: string }).role === 'assistant');
+    const usage = messages.filter(
+      (m) => m.role === 'activity' && (m as { activityType?: string }).activityType === 'pi.turn_usage',
+    );
+    const assistants = entries.filter(
+      (e) => e.type === 'message' && (e['message'] as { role: string }).role === 'assistant',
+    );
     expect(usage).toHaveLength(assistants.length);
     expect(usage.map((u) => u.id)).toEqual(assistants.map((a) => `usage:${a.id}`));
     const stored = (assistants[0]['message'] as { usage: { input: number; cacheRead: number } }).usage;
-    expect((usage[0] as unknown as { content: { input: number; cacheRead: number; model?: string } }).content).toMatchObject({ input: stored.input, cacheRead: stored.cacheRead });
+    expect(
+      (usage[0] as unknown as { content: { input: number; cacheRead: number; model?: string } }).content,
+    ).toMatchObject({ input: stored.input, cacheRead: stored.cacheRead });
   });
 
   it('produces messages AG-UI accepts in a MESSAGES_SNAPSHOT inside a run', async () => {
@@ -82,11 +88,24 @@ describe('sessionToMessages (recorded session file)', () => {
 });
 
 describe('sessionToMessages (edge cases)', () => {
-  const entry = (extra: Record<string, unknown>): PiSessionEntry => ({ type: 'message', id: 'e1', parentId: null, ...extra });
+  const entry = (extra: Record<string, unknown>): PiSessionEntry => ({
+    type: 'message',
+    id: 'e1',
+    parentId: null,
+    ...extra,
+  });
 
   it('maps images, error results, extra text blocks and display-only custom messages', () => {
     const out = sessionToMessages([
-      entry({ message: { role: 'user', content: [{ type: 'text', text: 'look' }, { type: 'image', data: 'AAAA', mimeType: 'image/png' }] } }),
+      entry({
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'look' },
+            { type: 'image', data: 'AAAA', mimeType: 'image/png' },
+          ],
+        },
+      }),
       entry({
         id: 'e2',
         message: {
@@ -98,18 +117,29 @@ describe('sessionToMessages (edge cases)', () => {
           ],
         },
       }),
-      entry({ id: 'e3', message: { role: 'toolResult', toolCallId: 'c1', isError: true, content: [{ type: 'text', text: 'ENOENT' }] } }),
+      entry({
+        id: 'e3',
+        message: { role: 'toolResult', toolCallId: 'c1', isError: true, content: [{ type: 'text', text: 'ENOENT' }] },
+      }),
       { type: 'custom_message', id: 'e4', parentId: 'e3', customType: 'x', content: 'note', display: true },
       { type: 'custom_message', id: 'e5', parentId: 'e4', customType: 'x', content: 'hidden', display: false },
     ]);
     expect(out[0]).toMatchObject({
       role: 'user',
-      content: [{ type: 'text', text: 'look' }, { type: 'image', source: { type: 'data', value: 'AAAA' } }],
+      content: [
+        { type: 'text', text: 'look' },
+        { type: 'image', source: { type: 'data', value: 'AAAA' } },
+      ],
     });
     expect(out[1]).toMatchObject({ id: 'e2', role: 'assistant', content: 'one' });
     expect(out[2]).toMatchObject({ id: 'e2:1', role: 'assistant', content: 'two' });
     expect(out[3]).toMatchObject({ role: 'tool', error: 'ENOENT' });
-    expect(out[4]).toMatchObject({ id: 'tool:c1', role: 'activity', activityType: 'pi.tool', content: { status: 'error', toolName: 'read' } });
+    expect(out[4]).toMatchObject({
+      id: 'tool:c1',
+      role: 'activity',
+      activityType: 'pi.tool',
+      content: { status: 'error', toolName: 'read' },
+    });
     expect(out[5]).toMatchObject({ id: 'e4', content: 'note' });
     expect(out).toHaveLength(6);
   });
@@ -129,20 +159,64 @@ describe('sessionToMessages (edge cases)', () => {
           ],
         },
       }),
-      entry({ id: 't1', message: { role: 'toolResult', toolCallId: 'c1', toolName: 'bash', isError: true, durationMs: 40, timestamp: 1000, content: [{ type: 'text', text: 'boom\n\nCommand exited with code 1' }] } }),
-      entry({ id: 't2', message: { role: 'toolResult', toolCallId: 'c2', toolName: 'edit', content: [{ type: 'text', text: 'ok' }], details: { patch } } }),
-      entry({ id: 't3', message: { role: 'toolResult', toolCallId: 'c3', toolName: 'write', content: [{ type: 'text', text: 'ok' }] } }),
-      entry({ id: 'b1', message: { role: 'bashExecution', command: 'ls', output: 'f\n', exitCode: 0, cancelled: false, truncated: false } }),
-      { type: 'compaction', id: 'k1', parentId: 'b1', firstKeptEntryId: 'u1', tokensBefore: 5000, summary: 'earlier work' },
+      entry({
+        id: 't1',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'c1',
+          toolName: 'bash',
+          isError: true,
+          durationMs: 40,
+          timestamp: 1000,
+          content: [{ type: 'text', text: 'boom\n\nCommand exited with code 1' }],
+        },
+      }),
+      entry({
+        id: 't2',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'c2',
+          toolName: 'edit',
+          content: [{ type: 'text', text: 'ok' }],
+          details: { patch },
+        },
+      }),
+      entry({
+        id: 't3',
+        message: { role: 'toolResult', toolCallId: 'c3', toolName: 'write', content: [{ type: 'text', text: 'ok' }] },
+      }),
+      entry({
+        id: 'b1',
+        message: {
+          role: 'bashExecution',
+          command: 'ls',
+          output: 'f\n',
+          exitCode: 0,
+          cancelled: false,
+          truncated: false,
+        },
+      }),
+      {
+        type: 'compaction',
+        id: 'k1',
+        parentId: 'b1',
+        firstKeptEntryId: 'u1',
+        tokensBefore: 5000,
+        summary: 'earlier work',
+      },
     ]);
-    const act = (id: string) => out.find((m) => m.id === id) as unknown as { activityType: string; content: Record<string, unknown> };
+    const act = (id: string) =>
+      out.find((m) => m.id === id) as unknown as { activityType: string; content: Record<string, unknown> };
     expect(act('tool:c1').content).toMatchObject({ status: 'error', durationMs: 40, startedAt: 960 });
     expect(act('bash:c1').content).toMatchObject({ command: 'false', exitCode: 1, running: false });
     expect(act('diff:c2').content).toMatchObject({ path: 'a.ts', toolCallId: 'c2' });
     expect((act('diff:c2').content['hunks'] as unknown[]).length).toBe(1);
     expect(act('diff:c3').content).toMatchObject({ path: 'b.ts', written: true });
     expect(act('bash:user:b1').content).toMatchObject({ command: 'ls', output: 'f\n', exitCode: 0, user: true });
-    expect(act('compaction:u1')).toMatchObject({ activityType: 'pi.compaction', content: { tokensBefore: 5000, summary: 'earlier work' } });
+    expect(act('compaction:u1')).toMatchObject({
+      activityType: 'pi.compaction',
+      content: { tokensBefore: 5000, summary: 'earlier work' },
+    });
     expect(out.at(-1)?.id).toBe('compaction:u1');
   });
 
@@ -153,11 +227,17 @@ describe('sessionToMessages (edge cases)', () => {
       entry({ id: 'u2', message: { role: 'user', content: 'next' } }),
     ]);
     expect(out.map((m) => m.id)).toEqual(['u1', 'branch-summary:s1', 'u2']);
-    expect(out[1]).toMatchObject({ role: 'activity', activityType: 'pi.branch_summary', content: { summary: 'The other branch tried X.' } });
+    expect(out[1]).toMatchObject({
+      role: 'activity',
+      activityType: 'pi.branch_summary',
+      content: { summary: 'The other branch tried X.' },
+    });
   });
 
   it('puts the review batch of a pi-kit.review custom entry right after the user message it was sent with', () => {
-    const comments = [{ id: 'c1', file: 'src/a.ts', side: 'new', line: 12, snippet: 'const x = 1;', text: 'Name this constant.' }];
+    const comments = [
+      { id: 'c1', file: 'src/a.ts', side: 'new', line: 12, snippet: 'const x = 1;', text: 'Name this constant.' },
+    ];
     const branch: PiSessionEntry[] = [
       { type: 'custom', id: 'r1', customType: 'pi-kit.review', data: { comments } },
       { type: 'message', id: 'u1', message: { role: 'user', content: 'I reviewed your changes and left 1 comment.' } },
@@ -173,10 +253,14 @@ describe('sessionToMessages (edge cases)', () => {
   });
 
   it('shows a skill invocation as the user typed it, not as the skill file pi stored', () => {
-    const block = '<skill name="pdf-tools" location="/s/pdf/SKILL.md">\nReferences are relative to /s/pdf.\n\nDo PDF things.\n</skill>';
+    const block =
+      '<skill name="pdf-tools" location="/s/pdf/SKILL.md">\nReferences are relative to /s/pdf.\n\nDo PDF things.\n</skill>';
     const out = sessionToMessages([
       entry({ id: 'u1', message: { role: 'user', content: block } }),
-      entry({ id: 'u2', message: { role: 'user', content: [{ type: 'text', text: `${block}\n\nmerge a.pdf b.pdf` }] } }),
+      entry({
+        id: 'u2',
+        message: { role: 'user', content: [{ type: 'text', text: `${block}\n\nmerge a.pdf b.pdf` }] },
+      }),
     ]);
     expect(out[0]).toMatchObject({ content: '/skill:pdf-tools' });
     expect(out[1]).toMatchObject({ content: '/skill:pdf-tools merge a.pdf b.pdf' });
@@ -185,7 +269,10 @@ describe('sessionToMessages (edge cases)', () => {
   it('shows several skill blocks of a message with chips as the invocations they stand for', () => {
     const a = '<skill name="alpha" location="/s/a/SKILL.md">\nReferences are relative to /s/a.\n\nAlpha.\n</skill>';
     const b = '<skill name="beta" location="/s/b/SKILL.md">\nReferences are relative to /s/b.\n\nBeta.\n</skill>';
-    const out = sessionToMessages([entry({ id: 'u1', message: { role: 'user', content: `${a}\n\n${b}\n\ndo it` } }), entry({ id: 'u2', message: { role: 'user', content: `${a}\n\n${b}` } })]);
+    const out = sessionToMessages([
+      entry({ id: 'u1', message: { role: 'user', content: `${a}\n\n${b}\n\ndo it` } }),
+      entry({ id: 'u2', message: { role: 'user', content: `${a}\n\n${b}` } }),
+    ]);
     expect(out[0]).toMatchObject({ content: '/skill:alpha /skill:beta do it' });
     expect(out[1]).toMatchObject({ content: '/skill:alpha /skill:beta' });
   });
@@ -197,13 +284,30 @@ describe('sessionToMessages (edge cases)', () => {
     ];
     const out = sessionToMessages([
       { type: 'custom', id: 's1', customType: 'pi-kit.skills', data: { chips, text: 'check @a.ts' } },
-      { type: 'message', id: 'u1', message: { role: 'user', content: [{ type: 'text', text: '<skill name="alpha" location="/s/SKILL.md">\nx\n</skill>\n\nReview.\n\ncheck @a.ts' }, { type: 'image', data: 'AAAA', mimeType: 'image/png' }] } },
+      {
+        type: 'message',
+        id: 'u1',
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: '<skill name="alpha" location="/s/SKILL.md">\nx\n</skill>\n\nReview.\n\ncheck @a.ts',
+            },
+            { type: 'image', data: 'AAAA', mimeType: 'image/png' },
+          ],
+        },
+      },
       { type: 'message', id: 'a1', message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] } },
       // a malformed entry changes nothing
       { type: 'custom', id: 's2', customType: 'pi-kit.skills', data: { chips: [], text: 'x' } },
       { type: 'message', id: 'u2', message: { role: 'user', content: 'plain' } },
       { type: 'custom', id: 's3', customType: 'pi-kit.skills', data: { chips: [chips[0]], text: '' } },
-      { type: 'message', id: 'u3', message: { role: 'user', content: '<skill name="alpha" location="/s/SKILL.md">\nx\n</skill>' } },
+      {
+        type: 'message',
+        id: 'u3',
+        message: { role: 'user', content: '<skill name="alpha" location="/s/SKILL.md">\nx\n</skill>' },
+      },
     ] as PiSessionEntry[]);
     expect(out.map((m) => m.role)).toEqual(['user', 'activity', 'assistant', 'user', 'user', 'activity']);
     expect(out[0]).toMatchObject({ id: 'u1', content: [{ type: 'text', text: 'check @a.ts' }, { type: 'image' }] });
@@ -215,7 +319,14 @@ describe('sessionToMessages (edge cases)', () => {
 
   it('drops the file contents the composer inlined for @paths, keeping what the user typed', () => {
     const out = sessionToMessages([
-      entry({ id: 'u1', message: { role: 'user', content: '<file name="/w/a.ts">\nexport const a = 1;\n\n</file>\n<file name="/w/b.ts">\nb\n\n</file>\nwhat is in @a.ts and @b.ts?' } }),
+      entry({
+        id: 'u1',
+        message: {
+          role: 'user',
+          content:
+            '<file name="/w/a.ts">\nexport const a = 1;\n\n</file>\n<file name="/w/b.ts">\nb\n\n</file>\nwhat is in @a.ts and @b.ts?',
+        },
+      }),
     ]);
     expect(out[0]).toMatchObject({ content: 'what is in @a.ts and @b.ts?' });
   });
@@ -223,7 +334,11 @@ describe('sessionToMessages (edge cases)', () => {
   it('answers a tool call the conversation moved past, but not one that is still the last thing', () => {
     const call = entry({
       id: 'a1',
-      message: { role: 'assistant', content: [{ type: 'toolCall', id: 'c9', name: 'bash', arguments: {} }], stopReason: 'toolUse' },
+      message: {
+        role: 'assistant',
+        content: [{ type: 'toolCall', id: 'c9', name: 'bash', arguments: {} }],
+        stopReason: 'toolUse',
+      },
     });
     const next = entry({ id: 'u2', message: { role: 'user', content: 'continue' } });
 
@@ -237,17 +352,37 @@ describe('sessionToMessages (edge cases)', () => {
 
   it('returns nothing for an empty branch and skips assistant messages without content', () => {
     expect(sessionToMessages([])).toEqual([]);
-    expect(sessionToMessages([entry({ message: { role: 'assistant', content: [], stopReason: 'aborted' } })])).toEqual([]);
+    expect(sessionToMessages([entry({ message: { role: 'assistant', content: [], stopReason: 'aborted' } })])).toEqual(
+      [],
+    );
   });
 });
 
 describe('sessionToMessages (generative UI)', () => {
   const ops = [{ version: 'v0.9', createSurface: { surfaceId: 's1', catalogId: 'c' } }];
   const turn = (details: unknown, text = 'Showed it.', callName = 'show'): PiSessionEntry[] => [
-    { type: 'message', id: 'a1', parentId: null, message: { role: 'assistant', content: [{ type: 'toolCall', id: 'call1', name: callName, arguments: { q: 1 } }] } },
-    { type: 'message', id: 'r1', parentId: 'a1', message: { role: 'toolResult', toolCallId: 'call1', toolName: callName, content: [{ type: 'text', text }], details, isError: false } },
+    {
+      type: 'message',
+      id: 'a1',
+      parentId: null,
+      message: { role: 'assistant', content: [{ type: 'toolCall', id: 'call1', name: callName, arguments: { q: 1 } }] },
+    },
+    {
+      type: 'message',
+      id: 'r1',
+      parentId: 'a1',
+      message: {
+        role: 'toolResult',
+        toolCallId: 'call1',
+        toolName: callName,
+        content: [{ type: 'text', text }],
+        details,
+        isError: false,
+      },
+    },
   ];
-  const surfaces = (out: Message[], type: string) => out.filter((m) => m.role === 'activity' && (m as { activityType?: string }).activityType === type);
+  const surfaces = (out: Message[], type: string) =>
+    out.filter((m) => m.role === 'activity' && (m as { activityType?: string }).activityType === type);
 
   it('rebuilds an a2ui-surface activity from details.a2ui_operations or from a JSON result text, under the id the stream used', () => {
     const fromDetails = sessionToMessages(turn({ a2ui_operations: ops }));
@@ -255,21 +390,33 @@ describe('sessionToMessages (generative UI)', () => {
       { id: 'a2ui-surface-call1', role: 'activity', activityType: 'a2ui-surface', content: { a2ui_operations: ops } },
     ]);
     const fromText = sessionToMessages(turn(undefined, JSON.stringify({ a2ui_operations: ops })));
-    expect(surfaces(fromText, 'a2ui-surface')[0]).toMatchObject({ id: 'a2ui-surface-call1', content: { a2ui_operations: ops } });
+    expect(surfaces(fromText, 'a2ui-surface')[0]).toMatchObject({
+      id: 'a2ui-surface-call1',
+      content: { a2ui_operations: ops },
+    });
     expect(surfaces(sessionToMessages(turn({ other: 1 })), 'a2ui-surface')).toHaveLength(0);
   });
 
   it('rebuilds a stored surface with its data as an object, whichever way the extension wrote it', () => {
     const specs = [{ spec: 'export.spec.ts:41' }];
-    const model = (path: string, value: unknown) => ({ version: 'v0.9', updateDataModel: { surfaceId: 's1', path, value } });
-    const contentOf = (details: unknown) => (surfaces(sessionToMessages(turn(details)), 'a2ui-surface')[0] as unknown as { content: { a2ui_operations: unknown[] } }).content.a2ui_operations;
+    const model = (path: string, value: unknown) => ({
+      version: 'v0.9',
+      updateDataModel: { surfaceId: 's1', path, value },
+    });
+    const contentOf = (details: unknown) =>
+      (
+        surfaces(sessionToMessages(turn(details)), 'a2ui-surface')[0] as unknown as {
+          content: { a2ui_operations: unknown[] };
+        }
+      ).content.a2ui_operations;
     expect(contentOf({ a2ui_operations: [...ops, model('/specs', specs)] })).toEqual([...ops, model('/', { specs })]);
     expect(contentOf({ a2ui_operations: [...ops, model('/', { specs })] })).toEqual([...ops, model('/', { specs })]);
   });
 
   it('rebuilds an mcp-apps activity when the lookup knows the tool, with the stored result and the call input', () => {
     const entries = turn({ server: 'issues', tool: 'open_form' }, 'Form opened', 'mcp__issues__open_form');
-    const mcpApp = (server: string, tool: string) => (server === 'issues' && tool === 'open_form' ? 'ui://issues/form' : undefined);
+    const mcpApp = (server: string, tool: string) =>
+      server === 'issues' && tool === 'open_form' ? 'ui://issues/form' : undefined;
     expect(surfaces(sessionToMessages(entries, { mcpApp }), 'mcp-apps')).toEqual([
       {
         id: 'mcp-app:call1',
@@ -293,12 +440,32 @@ describe("a background agent's report in the session file", () => {
   it('is a user-side note attributed to the agent, with the id its live envelope used', async () => {
     const entries: PiSessionEntry[] = [
       { type: 'message', id: 'u1', parentId: null, message: { role: 'user', content: 'go' } },
-      { type: 'custom_message', id: 'r1', parentId: 'u1', customType: 'pikit.agent-report', display: true, content: 'Report from agent "tester": done', details: { agentId: '7', name: 'tester', reportId: 'rep-1' } } as unknown as PiSessionEntry,
-      { type: 'custom_message', id: 'n1', parentId: 'r1', customType: 'pi-kit:coordination', display: true, content: 'note' } as unknown as PiSessionEntry,
+      {
+        type: 'custom_message',
+        id: 'r1',
+        parentId: 'u1',
+        customType: 'pikit.agent-report',
+        display: true,
+        content: 'Report from agent "tester": done',
+        details: { agentId: '7', name: 'tester', reportId: 'rep-1' },
+      } as unknown as PiSessionEntry,
+      {
+        type: 'custom_message',
+        id: 'n1',
+        parentId: 'r1',
+        customType: 'pi-kit:coordination',
+        display: true,
+        content: 'note',
+      } as unknown as PiSessionEntry,
     ];
     const messages = sessionToMessages(entries);
     expect(messages.map((m) => m.id)).toEqual(['u1', 'r1', 'n1']);
-    expect(messages[1]).toMatchObject({ role: 'user', content: 'Report from agent "tester": done', subagentRunId: '7/rep-1', metadata: { piKitSubagentName: 'tester' } });
+    expect(messages[1]).toMatchObject({
+      role: 'user',
+      content: 'Report from agent "tester": done',
+      subagentRunId: '7/rep-1',
+      metadata: { piKitSubagentName: 'tester' },
+    });
     expect(messages[1]).not.toHaveProperty('subagentName');
     expect((messages[2] as { subagentRunId?: string }).subagentRunId).toBeUndefined();
 

@@ -56,7 +56,15 @@
         "toolCalls": 1,
         "files": ["notes/alpha.md"],
         "chips": [],
-        "review": [{ "file": "notes/alpha.md", "side": "new", "line": 2, "text": "Say \"first\" in this line.", "snippet": "The first note." }],
+        "review": [
+          {
+            "file": "notes/alpha.md",
+            "side": "new",
+            "line": 2,
+            "text": "Say \"first\" in this line.",
+            "snippet": "The first note."
+          }
+        ],
         "answers": [],
         "previous": "mapRow now rejects negative totals."
       },

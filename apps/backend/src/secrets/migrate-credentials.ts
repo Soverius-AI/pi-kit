@@ -15,30 +15,42 @@ function helper(value: string): string {
 export function migrateResolvers(value: unknown): unknown {
   if (typeof value === 'string') return helper(value);
   if (Array.isArray(value)) return value.map(migrateResolvers);
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, migrateResolvers(item)]));
+  if (value && typeof value === 'object')
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, migrateResolvers(item)]));
   return value;
 }
 
 /** Verify native writes before atomically replacing config; a concurrent editor's changes win. */
 export async function migrateCredentialFile(path: string, store: SecretStore, auth = false): Promise<void> {
   if (!existsSync(path)) return;
-  if (lstatSync(path).isSymbolicLink()) throw new Error('Credential migration requires a regular configuration file; the original was retained.');
+  if (lstatSync(path).isSymbolicLink())
+    throw new Error('Credential migration requires a regular configuration file; the original was retained.');
   const original = readFileSync(path, 'utf8');
   let parsed: unknown;
-  try { parsed = JSON.parse(original) as unknown; }
-  catch { throw new Error('The credential configuration is invalid JSON. The original was retained.'); }
+  try {
+    parsed = JSON.parse(original) as unknown;
+  } catch {
+    throw new Error('The credential configuration is invalid JSON. The original was retained.');
+  }
   if (auth && parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
     for (const [account, entry] of Object.entries(parsed)) {
       if (!isProviderAccount(account) || !entry || typeof entry !== 'object') continue;
       const credential = entry as { type?: string; key?: string };
-      if (credential.type !== 'api_key' || typeof credential.key !== 'string' || keyStorageOf(credential.key) !== 'auth.json') continue;
+      if (
+        credential.type !== 'api_key' ||
+        typeof credential.key !== 'string' ||
+        keyStorageOf(credential.key) !== 'auth.json'
+      )
+        continue;
       const value = credential.key;
       if (store.migrateValue) await store.migrateValue(account, value);
       else {
         const existing = await store.get(account);
         if (existing === undefined) await store.set(account, value);
-        else if (existing !== value) throw new Error('An existing credential differs. The original configuration was retained.');
-        if (await store.get(account) !== value) throw new Error('Credential migration could not be verified. The original configuration was retained.');
+        else if (existing !== value)
+          throw new Error('An existing credential differs. The original configuration was retained.');
+        if ((await store.get(account)) !== value)
+          throw new Error('Credential migration could not be verified. The original configuration was retained.');
       }
       credential.key = `!pi-kit-secret get ${account}`;
     }
@@ -48,7 +60,8 @@ export async function migrateCredentialFile(path: string, store: SecretStore, au
   const temporary = `${path}.touch-id-${randomUUID()}.tmp`;
   try {
     writeFileSync(temporary, next, { mode: 0o600, flag: 'wx' });
-    if (readFileSync(path, 'utf8') !== original) throw new Error('The configuration changed during credential migration. Retry after saving it.');
+    if (readFileSync(path, 'utf8') !== original)
+      throw new Error('The configuration changed during credential migration. Retry after saving it.');
     renameSync(temporary, path);
   } finally {
     rmSync(temporary, { force: true });

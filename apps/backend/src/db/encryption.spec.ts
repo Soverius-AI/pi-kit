@@ -1,5 +1,15 @@
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DB_KEY_ACCOUNT } from '@pi-kit/protocol';
@@ -15,8 +25,16 @@ const SECRET = 'sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123';
 /** A database file as the version before 8l wrote it: plaintext, WAL, with rows in the tables the app has. */
 function plainFixture(dir: string): string {
   const service = new DatabaseService({ dataDir: dir });
-  service.db.prepare("INSERT INTO threads (id, session_path, cwd, created_at, updated_at) VALUES ('t1', '/s/1.jsonl', '/p', 1, 1)").run();
-  service.db.prepare("INSERT INTO thread_events (thread_id, seq, run_id, event_json, type) VALUES ('t1', 1, 'r1', ?, 'TEXT_MESSAGE_CONTENT')").run(JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', delta: `my key is ${SECRET}` }));
+  service.db
+    .prepare(
+      "INSERT INTO threads (id, session_path, cwd, created_at, updated_at) VALUES ('t1', '/s/1.jsonl', '/p', 1, 1)",
+    )
+    .run();
+  service.db
+    .prepare(
+      "INSERT INTO thread_events (thread_id, seq, run_id, event_json, type) VALUES ('t1', 1, 'r1', ?, 'TEXT_MESSAGE_CONTENT')",
+    )
+    .run(JSON.stringify({ type: 'TEXT_MESSAGE_CONTENT', delta: `my key is ${SECRET}` }));
   service.db.prepare("INSERT INTO settings (key, value_json) VALUES ('theme', '\"dark\"')").run();
   service.onApplicationShutdown();
   return join(dir, DB_FILE);
@@ -51,13 +69,18 @@ describe('encrypting pi-kit’s database', () => {
     const service = await DatabaseService.create({ dataDir: dir }, store);
     expect(service.protection).toMatchObject({ state: 'encrypted', path: file });
     expect(service.db.prepare('SELECT count(*) AS n FROM threads').get()).toEqual({ n: 1 });
-    expect(service.db.prepare("SELECT value_json FROM settings WHERE key = 'theme'").get()).toEqual({ value_json: '"dark"' });
-    expect((service.db.prepare('SELECT event_json FROM thread_events').get() as { event_json: string }).event_json).toContain(SECRET);
+    expect(service.db.prepare("SELECT value_json FROM settings WHERE key = 'theme'").get()).toEqual({
+      value_json: '"dark"',
+    });
+    expect(
+      (service.db.prepare('SELECT event_json FROM thread_events').get() as { event_json: string }).event_json,
+    ).toContain(SECRET);
     service.onApplicationShutdown();
 
     expect(isPlainDatabase(file)).toBe(false);
     // The secret is not readable anywhere on disk: not in the file, not in a leftover of the migration.
-    for (const name of readdirSync(dir)) expect(readFileSync(join(dir, name)).includes(Buffer.from(SECRET)), `${name} holds the plaintext`).toBe(false);
+    for (const name of readdirSync(dir))
+      expect(readFileSync(join(dir, name)).includes(Buffer.from(SECRET)), `${name} holds the plaintext`).toBe(false);
     expect(readdirSync(dir).filter((n) => n.includes('plaintext') || n.includes('encrypting'))).toEqual([]);
     const key = store.get(DB_KEY_ACCOUNT) as string;
     expect(key).toMatch(/^[0-9a-f]{64}$/);
@@ -96,13 +119,17 @@ describe('encrypting pi-kit’s database', () => {
     const file = join(dir, DB_FILE);
     const before = readFileSync(file);
     const read = store.get.bind(store);
-    store.get = () => { throw new Error('Credential access denied'); };
+    store.get = () => {
+      throw new Error('Credential access denied');
+    };
     await expect(DatabaseService.create({ dataDir: dir }, store)).rejects.toThrow(/Credential access denied/);
     expect(readFileSync(file)).toEqual(before);
     expect(readdirSync(dir).some((name) => name.includes('unreadable'))).toBe(false);
     store.get = read;
     const reopened = await DatabaseService.create({ dataDir: dir }, store);
-    expect(reopened.db.prepare("SELECT value_json FROM settings WHERE key = 'preserved'").get()).toEqual({ value_json: '1' });
+    expect(reopened.db.prepare("SELECT value_json FROM settings WHERE key = 'preserved'").get()).toEqual({
+      value_json: '1',
+    });
     reopened.onApplicationShutdown();
   });
 
@@ -114,9 +141,16 @@ describe('encrypting pi-kit’s database', () => {
     const file = join(dir, DB_FILE);
     const before = readFileSync(file);
     const biometric: SecretStore = {
-      kind: 'keychain', label: 'Touch ID', protected: true, available: () => true,
-      get: async () => { throw new Error('Authentication cancelled'); },
-      set: async () => undefined, delete: async () => false, list: async () => [],
+      kind: 'keychain',
+      label: 'Touch ID',
+      protected: true,
+      available: () => true,
+      get: async () => {
+        throw new Error('Authentication cancelled');
+      },
+      set: async () => undefined,
+      delete: async () => false,
+      list: async () => [],
     };
     await expect(DatabaseService.create({ dataDir: dir }, biometric)).rejects.toThrow(/cancelled/);
     biometric.get = async () => newDatabaseKey();
@@ -126,7 +160,15 @@ describe('encrypting pi-kit’s database', () => {
   });
 
   it('without a credential store the file stays plaintext and says why', async () => {
-    const none: SecretStore = { kind: 'none', label: 'none', available: () => false, get: () => undefined, set: () => undefined, delete: () => false, list: () => [] };
+    const none: SecretStore = {
+      kind: 'none',
+      label: 'none',
+      available: () => false,
+      get: () => undefined,
+      set: () => undefined,
+      delete: () => false,
+      list: () => [],
+    };
     const service = await DatabaseService.create({ dataDir: dir }, none);
     expect(service.protection.state).toBe('plain');
     expect(service.protection.reason).toMatch(/no credential store/i);
@@ -137,7 +179,18 @@ describe('encrypting pi-kit’s database', () => {
   });
 
   it('a store that refuses the key keeps the file plaintext instead of locking the person out', async () => {
-    const locked: SecretStore = { ...new MemorySecretStore(), kind: 'keychain', label: 'macOS Keychain', available: () => true, get: () => undefined, set: () => { throw new Error('The keychain is locked'); }, delete: () => false, list: () => [] };
+    const locked: SecretStore = {
+      ...new MemorySecretStore(),
+      kind: 'keychain',
+      label: 'macOS Keychain',
+      available: () => true,
+      get: () => undefined,
+      set: () => {
+        throw new Error('The keychain is locked');
+      },
+      delete: () => false,
+      list: () => [],
+    };
     const service = await DatabaseService.create({ dataDir: dir }, locked);
     expect(service.protection).toMatchObject({ state: 'plain', reason: expect.stringContaining('keychain is locked') });
     service.onApplicationShutdown();
@@ -161,7 +214,9 @@ describe('encrypting pi-kit’s database', () => {
     expect(lost.get(DB_KEY_ACCOUNT)).toBe(wrongKey);
     process.env['PI_KIT_DB_KEY'] = oldKey;
     const recovered = await DatabaseService.create({ dataDir: dir }, lost);
-    expect(recovered.db.prepare("SELECT value_json FROM settings WHERE key = 'keep'").get()).toEqual({ value_json: '1' });
+    expect(recovered.db.prepare("SELECT value_json FROM settings WHERE key = 'keep'").get()).toEqual({
+      value_json: '1',
+    });
     recovered.onApplicationShutdown();
   });
 
@@ -208,8 +263,12 @@ describe('encrypting pi-kit’s database', () => {
     const service = await DatabaseService.create({ dataDir: dir }, store, false);
     expect(service.protection.state).toBe('encrypted');
     expect(service.db.prepare('SELECT count(*) AS n FROM threads').get()).toEqual({ n: 1 });
-    expect((service.db.prepare('SELECT event_json FROM thread_events').get() as { event_json: string }).event_json).toContain(SECRET);
-    expect(service.db.prepare("SELECT value_json FROM settings WHERE key = 'theme'").get()).toEqual({ value_json: '"dark"' });
+    expect(
+      (service.db.prepare('SELECT event_json FROM thread_events').get() as { event_json: string }).event_json,
+    ).toContain(SECRET);
+    expect(service.db.prepare("SELECT value_json FROM settings WHERE key = 'theme'").get()).toEqual({
+      value_json: '"dark"',
+    });
     service.onApplicationShutdown();
     expect(isPlainDatabase(file)).toBe(false);
     expect(readFileSync(file)).toEqual(bytes);
@@ -231,14 +290,18 @@ describe('encrypting pi-kit’s database', () => {
       reader.pragma("cipher='chacha20'");
       reader.pragma(`key="x'${key}'"`);
       reader.exec('BEGIN');
-      expect(reader.prepare("SELECT value_json FROM settings WHERE key = 'snapshot'").get()).toEqual({ value_json: '1' });
+      expect(reader.prepare("SELECT value_json FROM settings WHERE key = 'snapshot'").get()).toEqual({
+        value_json: '1',
+      });
       const bytes = readFileSync(file);
       const service = await DatabaseService.create({ dataDir: dir }, store, false);
       try {
         expect(service.protection.state).toBe('encrypted');
         expect(readFileSync(file)).toEqual(bytes);
         service.db.prepare("UPDATE settings SET value_json = '2' WHERE key = 'snapshot'").run();
-        expect(reader.prepare("SELECT value_json FROM settings WHERE key = 'snapshot'").get()).toEqual({ value_json: '1' });
+        expect(reader.prepare("SELECT value_json FROM settings WHERE key = 'snapshot'").get()).toEqual({
+          value_json: '1',
+        });
       } finally {
         service.onApplicationShutdown();
       }
@@ -247,33 +310,41 @@ describe('encrypting pi-kit’s database', () => {
     }
     const reopened = await DatabaseService.create({ dataDir: dir }, store, false);
     try {
-      expect(reopened.db.prepare("SELECT value_json FROM settings WHERE key = 'snapshot'").get()).toEqual({ value_json: '2' });
+      expect(reopened.db.prepare("SELECT value_json FROM settings WHERE key = 'snapshot'").get()).toEqual({
+        value_json: '2',
+      });
       expect(isPlainDatabase(file)).toBe(false);
     } finally {
       reopened.onApplicationShutdown();
     }
   });
 
-  it.each(['denied', 'wrong', 'missing'] as const)('opt-out with a %s original key preserves the encrypted file unchanged', async (failure) => {
-    plainFixture(dir);
-    const store = new MemorySecretStore();
-    (await DatabaseService.create({ dataDir: dir }, store)).onApplicationShutdown();
-    const originalKey = store.get(DB_KEY_ACCOUNT) as string;
-    const file = join(dir, DB_FILE);
-    const bytes = readFileSync(file);
-    const names = readdirSync(dir);
-    if (failure === 'denied') vi.spyOn(store, 'get').mockImplementation(() => { throw new Error('denied'); });
-    else if (failure === 'wrong') store.set(DB_KEY_ACCOUNT, newDatabaseKey());
-    else store.delete(DB_KEY_ACCOUNT);
-    await expect(DatabaseService.create({ dataDir: dir }, store, false)).rejects.toThrow();
-    expect(readFileSync(file)).toEqual(bytes);
-    expect(readdirSync(dir)).toEqual(names);
-    vi.restoreAllMocks();
-    store.set(DB_KEY_ACCOUNT, originalKey);
-    const recovered = await DatabaseService.create({ dataDir: dir }, store);
-    expect(recovered.db.prepare('SELECT count(*) AS n FROM threads').get()).toEqual({ n: 1 });
-    recovered.onApplicationShutdown();
-  });
+  it.each(['denied', 'wrong', 'missing'] as const)(
+    'opt-out with a %s original key preserves the encrypted file unchanged',
+    async (failure) => {
+      plainFixture(dir);
+      const store = new MemorySecretStore();
+      (await DatabaseService.create({ dataDir: dir }, store)).onApplicationShutdown();
+      const originalKey = store.get(DB_KEY_ACCOUNT) as string;
+      const file = join(dir, DB_FILE);
+      const bytes = readFileSync(file);
+      const names = readdirSync(dir);
+      if (failure === 'denied')
+        vi.spyOn(store, 'get').mockImplementation(() => {
+          throw new Error('denied');
+        });
+      else if (failure === 'wrong') store.set(DB_KEY_ACCOUNT, newDatabaseKey());
+      else store.delete(DB_KEY_ACCOUNT);
+      await expect(DatabaseService.create({ dataDir: dir }, store, false)).rejects.toThrow();
+      expect(readFileSync(file)).toEqual(bytes);
+      expect(readdirSync(dir)).toEqual(names);
+      vi.restoreAllMocks();
+      store.set(DB_KEY_ACCOUNT, originalKey);
+      const recovered = await DatabaseService.create({ dataDir: dir }, store);
+      expect(recovered.db.prepare('SELECT count(*) AS n FROM threads').get()).toEqual({ n: 1 });
+      recovered.onApplicationShutdown();
+    },
+  );
 
   it('reuses a background-only encrypted database key to encrypt the main database despite opt-out', async () => {
     const file = join(dir, BG_DB_FILE);
@@ -303,25 +374,28 @@ describe('encrypting pi-kit’s database', () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
-  it.each(['wrong', 'missing'] as const)('preserves a background-only encrypted file with a %s original key', async (failure) => {
-    const file = join(dir, BG_DB_FILE);
-    const background = new Database(file);
-    try {
-      background.pragma("cipher='chacha20'");
-      background.pragma(`key="x'${newDatabaseKey()}'"`);
-      background.exec('CREATE TABLE retained (value TEXT)');
-    } finally {
-      background.close();
-    }
-    const bytes = readFileSync(file);
-    const store = new MemorySecretStore();
-    if (failure === 'wrong') store.set(DB_KEY_ACCOUNT, newDatabaseKey());
-    const set = vi.spyOn(store, 'set');
-    await expect(DatabaseService.create({ dataDir: dir }, store, false)).rejects.toThrow();
-    expect(readFileSync(file)).toEqual(bytes);
-    expect(readdirSync(dir)).toEqual([BG_DB_FILE]);
-    expect(set).not.toHaveBeenCalled();
-  });
+  it.each(['wrong', 'missing'] as const)(
+    'preserves a background-only encrypted file with a %s original key',
+    async (failure) => {
+      const file = join(dir, BG_DB_FILE);
+      const background = new Database(file);
+      try {
+        background.pragma("cipher='chacha20'");
+        background.pragma(`key="x'${newDatabaseKey()}'"`);
+        background.exec('CREATE TABLE retained (value TEXT)');
+      } finally {
+        background.close();
+      }
+      const bytes = readFileSync(file);
+      const store = new MemorySecretStore();
+      if (failure === 'wrong') store.set(DB_KEY_ACCOUNT, newDatabaseKey());
+      const set = vi.spyOn(store, 'set');
+      await expect(DatabaseService.create({ dataDir: dir }, store, false)).rejects.toThrow();
+      expect(readFileSync(file)).toEqual(bytes);
+      expect(readdirSync(dir)).toEqual([BG_DB_FILE]);
+      expect(set).not.toHaveBeenCalled();
+    },
+  );
 
   it('PI_KIT_DB_KEY opens an encrypted file whose entry was lost, and writes the key back into the store', async () => {
     const store = new MemorySecretStore();
@@ -380,13 +454,16 @@ describe('the migration keeps the old file until the new one is verified', () =>
   });
 });
 
-
 describe('interrupted database transitions fail closed at startup', () => {
   it.each([
-    [DB_FILE, '.encrypted', false], [DB_FILE, '.plaintext', false],
-    [DB_FILE, '.encrypted', true], [DB_FILE, '.plaintext', true],
-    [BG_DB_FILE, '.encrypted', false], [BG_DB_FILE, '.plaintext', false],
-    [BG_DB_FILE, '.encrypted', true], [BG_DB_FILE, '.plaintext', true],
+    [DB_FILE, '.encrypted', false],
+    [DB_FILE, '.plaintext', false],
+    [DB_FILE, '.encrypted', true],
+    [DB_FILE, '.plaintext', true],
+    [BG_DB_FILE, '.encrypted', false],
+    [BG_DB_FILE, '.plaintext', false],
+    [BG_DB_FILE, '.encrypted', true],
+    [BG_DB_FILE, '.plaintext', true],
   ] as const)('retains %s%s without creating a replacement (encryption enabled=%s)', async (name, suffix, enabled) => {
     const dir = scratch();
     const file = plainFixture(dir);
@@ -398,7 +475,9 @@ describe('interrupted database transitions fail closed at startup', () => {
     const names = readdirSync(dir);
     const store = new MemorySecretStore();
     const calls = ['available', 'get', 'set', 'delete'].map((method) => vi.spyOn(store, method as 'get'));
-    await expect(DatabaseService.create({ dataDir: dir }, store, enabled)).rejects.toThrow(/interrupted database protection transition/);
+    await expect(DatabaseService.create({ dataDir: dir }, store, enabled)).rejects.toThrow(
+      /interrupted database protection transition/,
+    );
     expect(existsSync(join(dir, DB_FILE))).toBe(false);
     expect(existsSync(join(dir, BG_DB_FILE))).toBe(false);
     expect(readFileSync(retained)).toEqual(bytes);
@@ -406,21 +485,28 @@ describe('interrupted database transitions fail closed at startup', () => {
     for (const call of calls) expect(call).not.toHaveBeenCalled();
   });
 
-  it.each(['.encrypting', '.decrypting'] as const)('also preserves incomplete %s copies before creating a new database', async (suffix) => {
-    const dir = scratch();
-    const retained = join(dir, `${DB_FILE}${suffix}`);
-    writeFileSync(retained, 'incomplete transition data');
-    await expect(DatabaseService.create({ dataDir: dir }, new MemorySecretStore(), false)).rejects.toThrow(/interrupted database protection transition/);
-    expect(readdirSync(dir)).toEqual([`${DB_FILE}${suffix}`]);
-    expect(readFileSync(retained, 'utf8')).toBe('incomplete transition data');
-  });
+  it.each(['.encrypting', '.decrypting'] as const)(
+    'also preserves incomplete %s copies before creating a new database',
+    async (suffix) => {
+      const dir = scratch();
+      const retained = join(dir, `${DB_FILE}${suffix}`);
+      writeFileSync(retained, 'incomplete transition data');
+      await expect(DatabaseService.create({ dataDir: dir }, new MemorySecretStore(), false)).rejects.toThrow(
+        /interrupted database protection transition/,
+      );
+      expect(readdirSync(dir)).toEqual([`${DB_FILE}${suffix}`]);
+      expect(readFileSync(retained, 'utf8')).toBe('incomplete transition data');
+    },
+  );
 });
 
 describe('existing database file permissions', () => {
   it('closes its opened connection when post-open initialization fails', () => {
     const dir = scratch();
     const close = vi.spyOn(Database.prototype, 'close');
-    const pragma = vi.spyOn(Database.prototype, 'pragma').mockImplementationOnce(() => { throw new Error('post-open failure'); });
+    const pragma = vi.spyOn(Database.prototype, 'pragma').mockImplementationOnce(() => {
+      throw new Error('post-open failure');
+    });
     try {
       expect(() => new DatabaseService({ dataDir: dir })).toThrow('post-open failure');
       expect(close).toHaveBeenCalledTimes(1);
@@ -444,5 +530,4 @@ describe('existing database file permissions', () => {
       service.onApplicationShutdown();
     }
   });
-
 });

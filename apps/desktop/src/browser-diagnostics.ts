@@ -1,11 +1,24 @@
 import { randomUUID } from 'node:crypto';
 import type { NativeImage, WebContents } from 'electron';
-import { BROWSER_STEP_TIMEOUT_MS, BrowserInspectionSchema, BrowserOperationError, DEFAULT_SCREENSHOT_FORMAT, DEFAULT_SCREENSHOT_QUALITY, type BrowserAction, type BrowserInspection, type BrowserLog, type BrowserResult } from '@pi-kit/protocol';
+import {
+  BROWSER_STEP_TIMEOUT_MS,
+  BrowserInspectionSchema,
+  BrowserOperationError,
+  DEFAULT_SCREENSHOT_FORMAT,
+  DEFAULT_SCREENSHOT_QUALITY,
+  type BrowserAction,
+  type BrowserInspection,
+  type BrowserLog,
+  type BrowserResult,
+} from '@pi-kit/protocol';
 
 import { encodeScreenshot } from './screenshot-encoder';
 import { browserStep } from './browser-step';
 
-interface RemoteResult { result: { value?: unknown; objectId?: string }; exceptionDetails?: { text: string } }
+interface RemoteResult {
+  result: { value?: unknown; objectId?: string };
+  exceptionDetails?: { text: string };
+}
 
 // Static code runs inside the sandboxed page; no application bridge or page-authored IPC is involved.
 const describeElement = `function(scrollIntoView) {
@@ -37,7 +50,11 @@ export class BrowserDiagnostics {
   private readonly lifetime = new AbortController();
   readonly ready: Promise<void>;
 
-  constructor(private readonly wc: WebContents, private readonly refs: Map<string, number>, private readonly stepTimeoutMs = BROWSER_STEP_TIMEOUT_MS) {
+  constructor(
+    private readonly wc: WebContents,
+    private readonly refs: Map<string, number>,
+    private readonly stepTimeoutMs = BROWSER_STEP_TIMEOUT_MS,
+  ) {
     wc.once('destroyed', () => this.lifetime.abort());
     wc.on('did-start-navigation', (details) => {
       if (!details.isMainFrame) return;
@@ -48,7 +65,9 @@ export class BrowserDiagnostics {
       this.logs.length = 0;
       void this.cancelInspect();
     });
-    wc.on('console-message', (details) => this.log(details.level, details.message, details.sourceId, details.lineNumber));
+    wc.on('console-message', (details) =>
+      this.log(details.level, details.message, details.sourceId, details.lineNumber),
+    );
     wc.on('before-input-event', (event, input) => {
       if (this.inspecting && input.type === 'keyDown' && input.key === 'Escape') {
         event.preventDefault();
@@ -62,10 +81,25 @@ export class BrowserDiagnostics {
         if (node) void this.select(node).catch(() => this.cancelInspect());
       }
       if (method === 'Runtime.exceptionThrown') {
-        const detail = (params as { exceptionDetails: { text: string; exception?: { description?: string }; url?: string; lineNumber?: number; stackTrace?: { callFrames: { url: string; lineNumber: number }[] } } }).exceptionDetails;
+        const detail = (
+          params as {
+            exceptionDetails: {
+              text: string;
+              exception?: { description?: string };
+              url?: string;
+              lineNumber?: number;
+              stackTrace?: { callFrames: { url: string; lineNumber: number }[] };
+            };
+          }
+        ).exceptionDetails;
         const frame = detail.stackTrace?.callFrames.find((item) => item.url);
         const line = detail.url ? detail.lineNumber : frame?.lineNumber;
-        this.log('error', detail.exception?.description ?? detail.text, detail.url || frame?.url, line === undefined ? undefined : line + 1);
+        this.log(
+          'error',
+          detail.exception?.description ?? detail.text,
+          detail.url || frame?.url,
+          line === undefined ? undefined : line + 1,
+        );
       }
     });
     this.ready = this.command('Runtime.enable').then(() => undefined);
@@ -75,7 +109,15 @@ export class BrowserDiagnostics {
 
   private log(level: string, message: string, source?: string, line?: number): void {
     const kind = level === 'error' || level === 'warning' || level === 'debug' ? level : 'info';
-    this.logs.push({ id: randomUUID(), documentId: this.documentId, time: Date.now(), level: kind, message: message.slice(0, 2000), ...(source ? { source: source.slice(0, 1000) } : {}), ...(line === undefined ? {} : { line }) });
+    this.logs.push({
+      id: randomUUID(),
+      documentId: this.documentId,
+      time: Date.now(),
+      level: kind,
+      message: message.slice(0, 2000),
+      ...(source ? { source: source.slice(0, 1000) } : {}),
+      ...(line === undefined ? {} : { line }),
+    });
     if (this.logs.length > 100) this.logs.shift();
   }
 
@@ -94,13 +136,18 @@ export class BrowserDiagnostics {
   }
 
   assertDocument(expected: string | undefined): void {
-    if (this.wc.isDestroyed() || (expected && expected !== this.documentId)) throw new BrowserOperationError('cancelled', 'The browser navigated. Capture fresh context from the current page.');
+    if (this.wc.isDestroyed() || (expected && expected !== this.documentId))
+      throw new BrowserOperationError(
+        'cancelled',
+        'The browser navigated. Capture fresh context from the current page.',
+      );
   }
 
   async inspect(action: BrowserAction): Promise<void> {
     if (action.ref) {
       const node = this.refs.get(action.ref);
-      if (!node) throw new BrowserOperationError('invalid', 'Unknown or stale element reference. Take a new snapshot first.');
+      if (!node)
+        throw new BrowserOperationError('invalid', 'Unknown or stale element reference. Take a new snapshot first.');
       await this.select(node);
       return;
     }
@@ -112,8 +159,19 @@ export class BrowserDiagnostics {
     if (generation !== this.generation) return;
     this.inspecting = true;
     try {
-      await this.command('Overlay.setInspectMode', { mode: 'searchForNode', highlightConfig: { showInfo: true, showStyles: true, contentColor: { r: 85, g: 150, b: 240, a: 0.25 }, borderColor: { r: 85, g: 150, b: 240, a: 0.8 } } });
-    } catch (error) { this.inspecting = false; throw error; }
+      await this.command('Overlay.setInspectMode', {
+        mode: 'searchForNode',
+        highlightConfig: {
+          showInfo: true,
+          showStyles: true,
+          contentColor: { r: 85, g: 150, b: 240, a: 0.25 },
+          borderColor: { r: 85, g: 150, b: 240, a: 0.8 },
+        },
+      });
+    } catch (error) {
+      this.inspecting = false;
+      throw error;
+    }
   }
 
   async cancelInspect(): Promise<void> {
@@ -130,10 +188,18 @@ export class BrowserDiagnostics {
     const resolved = await this.command<{ object: { objectId: string } }>('DOM.resolveNode', { backendNodeId: node });
     const objectId = resolved.object.objectId;
     try {
-      const result = await this.command<RemoteResult>('Runtime.callFunctionOn', { objectId, functionDeclaration: describeElement, arguments: [{ value: scrollIntoView }], returnByValue: true });
-      if (result.exceptionDetails) throw new BrowserOperationError('invalid', 'The selected element is detached. Inspect it again.');
+      const result = await this.command<RemoteResult>('Runtime.callFunctionOn', {
+        objectId,
+        functionDeclaration: describeElement,
+        arguments: [{ value: scrollIntoView }],
+        returnByValue: true,
+      });
+      if (result.exceptionDetails)
+        throw new BrowserOperationError('invalid', 'The selected element is detached. Inspect it again.');
       return result.result.value;
-    } finally { await this.command('Runtime.releaseObject', { objectId }).catch(() => undefined); }
+    } finally {
+      await this.command('Runtime.releaseObject', { objectId }).catch(() => undefined);
+    }
   }
 
   private async select(node: number): Promise<void> {
@@ -141,7 +207,7 @@ export class BrowserDiagnostics {
     const generation = this.generation;
     const documentId = this.documentId;
     const ref = `${randomUUID()}:selected`;
-    const result = BrowserInspectionSchema.parse({ ...await this.describe(node) as object, ref, documentId });
+    const result = BrowserInspectionSchema.parse({ ...((await this.describe(node)) as object), ref, documentId });
     this.assertDocument(documentId);
     if (generation !== this.generation) return;
     this.refs.set(ref, node);
@@ -149,7 +215,12 @@ export class BrowserDiagnostics {
     this.inspection = result;
   }
 
-  async capture(scope: BrowserAction['scope'] = 'viewport', format: BrowserAction['format'] = DEFAULT_SCREENSHOT_FORMAT, quality: BrowserAction['quality'] = DEFAULT_SCREENSHOT_QUALITY, signal?: AbortSignal): Promise<NonNullable<BrowserResult['screenshot']>> {
+  async capture(
+    scope: BrowserAction['scope'] = 'viewport',
+    format: BrowserAction['format'] = DEFAULT_SCREENSHOT_FORMAT,
+    quality: BrowserAction['quality'] = DEFAULT_SCREENSHOT_QUALITY,
+    signal?: AbortSignal,
+  ): Promise<NonNullable<BrowserResult['screenshot']>> {
     const documentId = this.documentId;
     const lifetime = new AbortController();
     const destroyed = (): void => lifetime.abort();
@@ -174,23 +245,45 @@ export class BrowserDiagnostics {
     }
   }
 
-  private async capturePixels(scope: BrowserAction['scope'], check: () => void, signal: AbortSignal): Promise<NativeImage> {
+  private async capturePixels(
+    scope: BrowserAction['scope'],
+    check: () => void,
+    signal: AbortSignal,
+  ): Promise<NativeImage> {
     // Cancellation releases the action queue immediately. Finish restoring an older capture's
     // virtual viewport before another capture can change it.
-    const pending = this.pixelCapture.then(() => { check(); return this.captureNativePixels(scope, check, signal); });
-    this.pixelCapture = pending.then(() => undefined, () => undefined);
+    const pending = this.pixelCapture.then(() => {
+      check();
+      return this.captureNativePixels(scope, check, signal);
+    });
+    this.pixelCapture = pending.then(
+      () => undefined,
+      () => undefined,
+    );
     return pending;
   }
 
   /** Commit a tiny compositor frame, even if no native panel is currently visible.
    * This also refreshes hit testing and accessibility after DOM changes. */
   async render(signal?: AbortSignal): Promise<void> {
-    const metrics = await this.command<{ cssLayoutViewport: { pageX: number; pageY: number } }>('Page.getLayoutMetrics');
+    const metrics = await this.command<{ cssLayoutViewport: { pageX: number; pageY: number } }>(
+      'Page.getLayoutMetrics',
+    );
     await browserStep(
-      () => this.command('Page.captureScreenshot', {
-        format: 'jpeg', quality: 10, fromSurface: true, captureBeyondViewport: false,
-        clip: { x: metrics.cssLayoutViewport.pageX, y: metrics.cssLayoutViewport.pageY, width: 1, height: 1, scale: 1 },
-      }),
+      () =>
+        this.command('Page.captureScreenshot', {
+          format: 'jpeg',
+          quality: 10,
+          fromSurface: true,
+          captureBeyondViewport: false,
+          clip: {
+            x: metrics.cssLayoutViewport.pageX,
+            y: metrics.cssLayoutViewport.pageY,
+            width: 1,
+            height: 1,
+            scale: 1,
+          },
+        }),
       'The browser could not render a frame. Navigate to the project again to retry.',
       { signal, timeoutMs: this.stepTimeoutMs, interrupted: () => this.retire() },
     );
@@ -209,11 +302,19 @@ export class BrowserDiagnostics {
     } catch (cause) {
       if (cause instanceof BrowserOperationError) throw cause;
       this.retire();
-      throw new BrowserOperationError('failed', 'The browser could not capture rendered pixels. Navigate to the project again to retry.', { cause });
+      throw new BrowserOperationError(
+        'failed',
+        'The browser could not capture rendered pixels. Navigate to the project again to retry.',
+        { cause },
+      );
     }
   }
 
-  private async captureNativePixels(scope: BrowserAction['scope'], check: () => void, signal: AbortSignal): Promise<NativeImage> {
+  private async captureNativePixels(
+    scope: BrowserAction['scope'],
+    check: () => void,
+    signal: AbortSignal,
+  ): Promise<NativeImage> {
     if (scope === 'viewport') return this.pixels(undefined, signal);
     const metrics = await this.command<{
       cssContentSize: { x: number; y: number; width: number; height: number };
@@ -223,11 +324,12 @@ export class BrowserDiagnostics {
     check();
     let clip = metrics.cssContentSize;
     if (scope === 'selection') {
-      if (!this.selectedNode || !this.inspection) throw new BrowserOperationError('invalid', 'Inspect an element before capturing its selection.');
+      if (!this.selectedNode || !this.inspection)
+        throw new BrowserOperationError('invalid', 'Inspect an element before capturing its selection.');
       const node = this.selectedNode;
       const ref = this.inspection.ref;
       const describe = async (scrollIntoView = false): Promise<void> => {
-        const value = await this.describe(node, scrollIntoView) as { viewport: typeof metrics.cssLayoutViewport };
+        const value = (await this.describe(node, scrollIntoView)) as { viewport: typeof metrics.cssLayoutViewport };
         clip = BrowserInspectionSchema.parse({ ...value, ref, documentId: this.documentId }).bounds;
         metrics.cssLayoutViewport = value.viewport;
       };
@@ -235,7 +337,11 @@ export class BrowserDiagnostics {
       const originalViewport = metrics.cssLayoutViewport;
       let scrolled = false;
       try {
-        const outside = (): boolean => clip.x < metrics.cssLayoutViewport.pageX || clip.y < metrics.cssLayoutViewport.pageY || clip.x + clip.width > metrics.cssLayoutViewport.pageX + metrics.cssLayoutViewport.clientWidth || clip.y + clip.height > metrics.cssLayoutViewport.pageY + metrics.cssLayoutViewport.clientHeight;
+        const outside = (): boolean =>
+          clip.x < metrics.cssLayoutViewport.pageX ||
+          clip.y < metrics.cssLayoutViewport.pageY ||
+          clip.x + clip.width > metrics.cssLayoutViewport.pageX + metrics.cssLayoutViewport.clientWidth ||
+          clip.y + clip.height > metrics.cssLayoutViewport.pageY + metrics.cssLayoutViewport.clientHeight;
         if (outside()) {
           scrolled = true;
           await describe(true);
@@ -248,7 +354,18 @@ export class BrowserDiagnostics {
         const x = (clip.x - viewport.pageX) * zoom;
         const y = (clip.y - viewport.pageY) * zoom;
         // Scroll positions are rounded CSS pixels, whereas DOM rectangles can have fractional edges.
-        if (clip.width <= 0 || clip.height <= 0 || clip.x < viewport.pageX - 1 || clip.y < viewport.pageY - 1 || clip.x + clip.width > viewport.pageX + viewport.clientWidth + 1 || clip.y + clip.height > viewport.pageY + viewport.clientHeight + 1) throw new BrowserOperationError('invalid', 'The selected element does not fit in the viewport. Zoom out or capture the whole page.');
+        if (
+          clip.width <= 0 ||
+          clip.height <= 0 ||
+          clip.x < viewport.pageX - 1 ||
+          clip.y < viewport.pageY - 1 ||
+          clip.x + clip.width > viewport.pageX + viewport.clientWidth + 1 ||
+          clip.y + clip.height > viewport.pageY + viewport.clientHeight + 1
+        )
+          throw new BrowserOperationError(
+            'invalid',
+            'The selected element does not fit in the viewport. Zoom out or capture the whole page.',
+          );
         const left = Math.max(0, Math.floor(x));
         const top = Math.max(0, Math.floor(y));
         const right = Math.min(Math.ceil(viewport.clientWidth * zoom), Math.ceil(x + clip.width * zoom));
@@ -256,10 +373,25 @@ export class BrowserDiagnostics {
         check();
         return await this.pixels({ x: left, y: top, width: right - left, height: bottom - top }, signal);
       } finally {
-        if (scrolled && !this.wc.isDestroyed()) await this.command('Runtime.evaluate', { expression: `window.scrollTo({left:${originalViewport.pageX},top:${originalViewport.pageY},behavior:'instant'})` });
+        if (scrolled && !this.wc.isDestroyed())
+          await this.command('Runtime.evaluate', {
+            expression: `window.scrollTo({left:${originalViewport.pageX},top:${originalViewport.pageY},behavior:'instant'})`,
+          });
       }
     }
-    if (clip.width <= 0 || clip.height <= 0 || clip.x < 0 || clip.y < 0 || clip.width * clip.height > 16_000_000 || clip.width > 10_000 || clip.height > 16_000) throw new BrowserOperationError('invalid', 'This capture is too large or has no visible area. Choose the viewport or a smaller element.');
+    if (
+      clip.width <= 0 ||
+      clip.height <= 0 ||
+      clip.x < 0 ||
+      clip.y < 0 ||
+      clip.width * clip.height > 16_000_000 ||
+      clip.width > 10_000 ||
+      clip.height > 16_000
+    )
+      throw new BrowserOperationError(
+        'invalid',
+        'This capture is too large or has no visible area. Choose the viewport or a smaller element.',
+      );
     check();
     const viewport = metrics.cssLayoutViewport;
     const density = metrics.layoutViewport.clientWidth / viewport.clientWidth;
@@ -279,9 +411,10 @@ export class BrowserDiagnostics {
     } finally {
       if (!this.wc.isDestroyed()) {
         await this.command('Emulation.clearDeviceMetricsOverride');
-        if (viewport.pageX || viewport.pageY) await this.command('Runtime.evaluate', {
-          expression: `window.scrollTo({left:${viewport.pageX},top:${viewport.pageY},behavior:'instant'})`,
-        });
+        if (viewport.pageX || viewport.pageY)
+          await this.command('Runtime.evaluate', {
+            expression: `window.scrollTo({left:${viewport.pageX},top:${viewport.pageY},behavior:'instant'})`,
+          });
       }
     }
   }

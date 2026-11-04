@@ -7,7 +7,8 @@ export const DEFAULT_WORKTREE_ROOT = '~/.pi-kit/worktrees';
 /** Branches of thread worktrees live under this prefix. */
 export const BRANCH_PREFIX = 'pi-kit/';
 
-const expandHome = (path: string, home: string): string => (path === '~' ? home : path.startsWith('~/') ? join(home, path.slice(2)) : path);
+const expandHome = (path: string, home: string): string =>
+  path === '~' ? home : path.startsWith('~/') ? join(home, path.slice(2)) : path;
 
 /** Lower case, letters and digits, single dashes, at most `max` characters; empty when the text has nothing usable. */
 export function slugify(text: string, max = 40): string {
@@ -27,7 +28,13 @@ export function repoSlug(projectCwd: string): string {
 
 /** The slug of a thread's worktree folder and branch: from its title when it has one, else from its id. */
 export function threadSlug(title: string | undefined, threadId: string): string {
-  return slugify(title ?? '', 40) || `thread-${threadId.replace(/[^a-z0-9]/gi, '').slice(0, 8).toLowerCase()}`;
+  return (
+    slugify(title ?? '', 40) ||
+    `thread-${threadId
+      .replace(/[^a-z0-9]/gi, '')
+      .slice(0, 8)
+      .toLowerCase()}`
+  );
 }
 
 /** `<prefix><slug>`; the prefix is the project's, `pi-kit/` unless it says otherwise (an empty prefix is allowed). */
@@ -45,7 +52,14 @@ export function normalizePrefix(prefix: string | null | undefined): string {
  * What a new worktree's folder and branch are named after, and the branch: `detached` has no branch; a `typed` name is the branch exactly as typed (the folder is its
  * slug); otherwise `<prefix><slug>` where the slug comes from `name` (the first message), else the title, else the thread id. `slug` is the folder's name.
  */
-export function worktreeNames(options: { name?: string; title?: string; threadId: string; prefix?: string; typed?: string; detached?: boolean }): { slug: string; branch: (slug: string) => string | null } {
+export function worktreeNames(options: {
+  name?: string;
+  title?: string;
+  threadId: string;
+  prefix?: string;
+  typed?: string;
+  detached?: boolean;
+}): { slug: string; branch: (slug: string) => string | null } {
   const source = options.typed ? options.typed : (options.name ?? options.title);
   const slug = threadSlug(source, options.threadId);
   if (options.detached) return { slug, branch: () => null };
@@ -60,7 +74,12 @@ export const localBaseName = (base: string): string => base.replace(/^origin\//,
  * The worktree root: the project's own setting, else `PI_KIT_WORKTREE_ROOT`, else `~/.pi-kit/worktrees`. A relative setting is resolved against the
  * project's folder (it is a path inside or next to the project the person typed), `~` against the home folder.
  */
-export function resolveRoot(options: { setting?: string | null; env?: NodeJS.ProcessEnv; home?: string; projectCwd?: string }): string {
+export function resolveRoot(options: {
+  setting?: string | null;
+  env?: NodeJS.ProcessEnv;
+  home?: string;
+  projectCwd?: string;
+}): string {
   const home = options.home ?? homedir();
   const env = options.env ?? process.env;
   const chosen = options.setting?.trim() || env['PI_KIT_WORKTREE_ROOT']?.trim() || DEFAULT_WORKTREE_ROOT;
@@ -69,7 +88,11 @@ export function resolveRoot(options: { setting?: string | null; env?: NodeJS.Pro
 }
 
 /** The branch a worktree is cut from: what the person asked for, else the project's setting, else the branch that is checked out. `undefined` on a detached `HEAD` with no setting. */
-export function resolveBase(options: { requested?: string | null; setting?: string | null; current?: string | null }): string | undefined {
+export function resolveBase(options: {
+  requested?: string | null;
+  setting?: string | null;
+  current?: string | null;
+}): string | undefined {
   return options.requested?.trim() || options.setting?.trim() || options.current?.trim() || undefined;
 }
 
@@ -87,4 +110,5 @@ export function uniqueSlug(slug: string, taken: (candidate: string) => boolean):
 }
 
 /** `<root>/<repo-slug>/<thread-slug>`. */
-export const worktreePath = (root: string, projectCwd: string, slug: string): string => join(root, repoSlug(projectCwd), slug);
+export const worktreePath = (root: string, projectCwd: string, slug: string): string =>
+  join(root, repoSlug(projectCwd), slug);

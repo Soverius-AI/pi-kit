@@ -141,7 +141,11 @@ export class BackendWatchdog {
         void handle.exited.then((info) => this.ended(generation, `the backend exited (${describe(info)})`));
       },
       (error: unknown) => {
-        if (generation === this.generation) this.ended(generation, `the backend did not start (${error instanceof Error ? error.message : String(error)})`);
+        if (generation === this.generation)
+          this.ended(
+            generation,
+            `the backend did not start (${error instanceof Error ? error.message : String(error)})`,
+          );
       },
     );
   }

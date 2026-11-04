@@ -7,5 +7,9 @@ import { SetupService } from './setup.service';
 import { LocalRuntimeModule } from './local-runtime.module';
 
 /** First-run onboarding: the setup calls the cards need, the LiteLLM connection, and the local runtime wizard. */
-@Module({ imports: [DbModule, PiModule, LocalRuntimeModule], controllers: [SetupController, LiteLlmController], providers: [SetupService] })
+@Module({
+  imports: [DbModule, PiModule, LocalRuntimeModule],
+  controllers: [SetupController, LiteLlmController],
+  providers: [SetupService],
+})
 export class SetupModule {}

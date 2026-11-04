@@ -20,13 +20,29 @@ export function browserStep<T>(
       if (finished) return;
       // Reject with the original reason even if retiring a native page throws.
       finish(false, error);
-      try { options.interrupted?.(error); } catch { /* already destroyed */ }
+      try {
+        options.interrupted?.(error);
+      } catch {
+        /* already destroyed */
+      }
     };
     const cancel = (): void => interrupt(new BrowserOperationError('cancelled', 'Browser action cancelled.'));
-    const timer = setTimeout(() => interrupt(new BrowserOperationError('timeout', message)), options.timeoutMs ?? BROWSER_STEP_TIMEOUT_MS);
-    if (options.signal?.aborted) { cancel(); return; }
+    const timer = setTimeout(
+      () => interrupt(new BrowserOperationError('timeout', message)),
+      options.timeoutMs ?? BROWSER_STEP_TIMEOUT_MS,
+    );
+    if (options.signal?.aborted) {
+      cancel();
+      return;
+    }
     options.signal?.addEventListener('abort', cancel, { once: true });
-    try { void work().then((value) => finish(true, value), (error: unknown) => finish(false, error)); }
-    catch (error) { finish(false, error); }
+    try {
+      void work().then(
+        (value) => finish(true, value),
+        (error: unknown) => finish(false, error),
+      );
+    } catch (error) {
+      finish(false, error);
+    }
   });
 }

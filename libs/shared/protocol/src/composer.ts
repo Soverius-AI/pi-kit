@@ -12,27 +12,33 @@ export const FeedbackRatingSchema = z.enum(['up', 'down']);
 export type FeedbackRating = z.infer<typeof FeedbackRatingSchema>;
 
 /** `messageId` is the pi entry id of the assistant message (the AG-UI message id once the run's history snapshot is applied). */
-export const FeedbackEntrySchema = z.object({
-  messageId: z.string(),
-  rating: FeedbackRatingSchema,
-  updatedAt: z.number(),
-}).meta({ id: 'FeedbackEntry' });
+export const FeedbackEntrySchema = z
+  .object({
+    messageId: z.string(),
+    rating: FeedbackRatingSchema,
+    updatedAt: z.number(),
+  })
+  .meta({ id: 'FeedbackEntry' });
 export type FeedbackEntry = z.infer<typeof FeedbackEntrySchema>;
 
 /** `rating: null` clears the message's rating. */
-export const PutFeedbackSchema = z.object({
-  messageId: z.string().min(1),
-  rating: FeedbackRatingSchema.nullable(),
-}).meta({ id: 'PutFeedback' });
+export const PutFeedbackSchema = z
+  .object({
+    messageId: z.string().min(1),
+    rating: FeedbackRatingSchema.nullable(),
+  })
+  .meta({ id: 'PutFeedback' });
 export type PutFeedback = z.infer<typeof PutFeedbackSchema>;
 
 // ---- argument completion: POST /api/threads/:id/complete
 
 /** Single-line composer text and the caret position in it (a character offset). */
-export const CompleteRequestSchema = z.object({
-  text: z.string(),
-  cursor: z.number().int().nonnegative(),
-}).meta({ id: 'CompleteRequest' });
+export const CompleteRequestSchema = z
+  .object({
+    text: z.string(),
+    cursor: z.number().int().nonnegative(),
+  })
+  .meta({ id: 'CompleteRequest' });
 export type CompleteRequest = z.infer<typeof CompleteRequestSchema>;
 
 export const CompleteItemSchema = z.object({
@@ -44,11 +50,13 @@ export const CompleteItemSchema = z.object({
 });
 export type CompleteItem = z.infer<typeof CompleteItemSchema>;
 
-export const CompleteResponseSchema = z.object({
-  /** The text before the caret that the items replace. */
-  prefix: z.string(),
-  items: z.array(CompleteItemSchema),
-}).meta({ id: 'CompleteResponse' });
+export const CompleteResponseSchema = z
+  .object({
+    /** The text before the caret that the items replace. */
+    prefix: z.string(),
+    items: z.array(CompleteItemSchema),
+  })
+  .meta({ id: 'CompleteResponse' });
 export type CompleteResponse = z.infer<typeof CompleteResponseSchema>;
 
 /** At most this many items are returned. */
@@ -88,7 +96,9 @@ export const ComposerRemoveSchema = z.object({
   id: z.string().min(1),
 });
 
-export const ComposerRegistrationSchema = z.discriminatedUnion('op', [ComposerActionSchema, ComposerSuggestionSchema, ComposerRemoveSchema]).meta({ id: 'ComposerRegistration' });
+export const ComposerRegistrationSchema = z
+  .discriminatedUnion('op', [ComposerActionSchema, ComposerSuggestionSchema, ComposerRemoveSchema])
+  .meta({ id: 'ComposerRegistration' });
 export type ComposerRegistration = z.infer<typeof ComposerRegistrationSchema>;
 export type ComposerAction = z.infer<typeof ComposerActionSchema>;
 export type ComposerSuggestion = z.infer<typeof ComposerSuggestionSchema>;

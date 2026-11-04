@@ -1,4 +1,13 @@
-import { addProjectConfiguration, generateFiles, joinPathFragments, logger, offsetFromRoot, updateJson, workspaceRoot, type Tree } from '@nx/devkit';
+import {
+  addProjectConfiguration,
+  generateFiles,
+  joinPathFragments,
+  logger,
+  offsetFromRoot,
+  updateJson,
+  workspaceRoot,
+  type Tree,
+} from '@nx/devkit';
 import { join } from 'node:path';
 
 /**
@@ -21,8 +30,9 @@ export interface DomainLibSchema {
 }
 
 const RULES: Record<LibraryType, string> = {
-  api: 'What other domains may import: a facade over the domain\'s store and selected types. May use this domain\'s `data` and `util` and `scope:shared`.',
-  feature: 'A lazy entry: container components wired to the stores, one per lazy chunk. May use `feature`, `ui`, `data`, `util` of this domain, `scope:shared`, and the `api` of other domains.',
+  api: "What other domains may import: a facade over the domain's store and selected types. May use this domain's `data` and `util` and `scope:shared`.",
+  feature:
+    'A lazy entry: container components wired to the stores, one per lazy chunk. May use `feature`, `ui`, `data`, `util` of this domain, `scope:shared`, and the `api` of other domains.',
   ui: 'Presentational components: inputs and outputs only, no store, no HTTP. May use `ui`, `util` and `scope:shared`.',
   data: 'The SignalStores, direct generated API operations and mappers. May use `data`, `util`, `scope:shared` and the `api` of other domains.',
   util: 'Pure functions of the domain. May use `util` and `scope:shared`.',
@@ -36,10 +46,16 @@ const NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 export function describeLibrary(options: DomainLibSchema) {
   const { domain, type, name } = options;
   if (!NAME.test(domain)) throw new Error(`--domain must be lower-case words joined by "-" (got "${domain}")`);
-  if (domain === 'shared') throw new Error('The kernel (libs/shared/*) is not a domain; create its libraries by hand and tag them scope:shared.');
-  if (!LIBRARY_TYPES.includes(type)) throw new Error(`--type must be one of ${LIBRARY_TYPES.join(', ')} (got "${type}")`);
-  if (type === 'feature' && !name) throw new Error('A feature library needs --name (libs/<domain>/feature-<name>), e.g. --name sidebar');
-  if (type !== 'feature' && name) throw new Error(`Only feature libraries take --name; ${type} is one per domain (libs/${domain}/${type})`);
+  if (domain === 'shared')
+    throw new Error(
+      'The kernel (libs/shared/*) is not a domain; create its libraries by hand and tag them scope:shared.',
+    );
+  if (!LIBRARY_TYPES.includes(type))
+    throw new Error(`--type must be one of ${LIBRARY_TYPES.join(', ')} (got "${type}")`);
+  if (type === 'feature' && !name)
+    throw new Error('A feature library needs --name (libs/<domain>/feature-<name>), e.g. --name sidebar');
+  if (type !== 'feature' && name)
+    throw new Error(`Only feature libraries take --name; ${type} is one per domain (libs/${domain}/${type})`);
   if (name && !NAME.test(name)) throw new Error(`--name must be lower-case words joined by "-" (got "${name}")`);
   const dirName = name ? `${type}-${name}` : type;
   return {
@@ -54,7 +70,7 @@ export function describeLibrary(options: DomainLibSchema) {
 /** Adds `domain` to the `const domains = [...]` list of eslint.config.mjs (the scope rule needs one entry per domain). */
 function registerDomain(tree: Tree, domain: string): 'added' | 'present' | 'missing-list' {
   const file = 'eslint.config.mjs';
-  const source = tree.exists(file) ? tree.read(file, 'utf-8') ?? '' : '';
+  const source = tree.exists(file) ? (tree.read(file, 'utf-8') ?? '') : '';
   const match = /const domains = \[([\s\S]*?)\n\];/.exec(source);
   if (!match) return 'missing-list';
   if ([...match[1].matchAll(/"([^"]+)"/g)].some((m) => m[1] === domain)) return 'present';
@@ -101,7 +117,16 @@ export default async function domainLibGenerator(tree: Tree, options: DomainLibS
     targets,
   });
 
-  const substitutions = { tmpl: '', offset: offsetFromRoot(root), domain, type, projectName, alias, rule: RULES[type], dirName };
+  const substitutions = {
+    tmpl: '',
+    offset: offsetFromRoot(root),
+    domain,
+    type,
+    projectName,
+    alias,
+    rule: RULES[type],
+    dirName,
+  };
   generateFiles(tree, join(TEMPLATES, 'common'), root, substitutions);
   generateFiles(tree, join(TEMPLATES, testing), root, substitutions);
 
@@ -115,6 +140,11 @@ export default async function domainLibGenerator(tree: Tree, options: DomainLibS
 
   const registered = registerDomain(tree, domain);
   if (registered === 'added') logger.info(`Added "${domain}" to the domains list in eslint.config.mjs.`);
-  if (registered === 'missing-list') logger.warn(`eslint.config.mjs has no \`const domains = [...]\` list; add "${domain}" to it so the scope rule applies to the new library.`);
-  logger.info(`Created ${root} (${alias}, tags scope:${domain} type:${type}, ${testing} tests). Check: pnpm exec nx run ${projectName}:lint`);
+  if (registered === 'missing-list')
+    logger.warn(
+      `eslint.config.mjs has no \`const domains = [...]\` list; add "${domain}" to it so the scope rule applies to the new library.`,
+    );
+  logger.info(
+    `Created ${root} (${alias}, tags scope:${domain} type:${type}, ${testing} tests). Check: pnpm exec nx run ${projectName}:lint`,
+  );
 }

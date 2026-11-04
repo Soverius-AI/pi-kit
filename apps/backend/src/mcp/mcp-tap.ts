@@ -12,7 +12,14 @@ import { uiResourceUriOf } from '@pi-kit/protocol';
  * that does not). There is still one process (stdio) or one session (HTTP) per server, pi's own.
  */
 
-type JsonRpcMessage = Record<string, unknown> & { jsonrpc?: string; id?: string | number; method?: string; params?: unknown; result?: unknown; error?: unknown };
+type JsonRpcMessage = Record<string, unknown> & {
+  jsonrpc?: string;
+  id?: string | number;
+  method?: string;
+  params?: unknown;
+  result?: unknown;
+  error?: unknown;
+};
 
 /** The part of pi's `McpTransport` (`@earendil-works/pi-mcp`) the tap touches. */
 export interface TappableTransport {
@@ -25,7 +32,6 @@ export const MCP_UI_EXTENSION = 'io.modelcontextprotocol/ui';
 /** The MIME type of an MCP App resource. */
 export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app';
 
-
 export interface McpToolMeta {
   /** `_meta` of the tool as the server listed it. */
   meta?: Record<string, unknown>;
@@ -33,7 +39,8 @@ export interface McpToolMeta {
   description?: string;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** What the tap has seen of one server over its current connection. */
 interface ServerState {
@@ -142,9 +149,13 @@ export class McpTap {
         const id = message.params['requestId'];
         if (typeof id === 'string' || typeof id === 'number') pending.delete(id);
       }
-      if (message.id !== undefined && (message.method === 'initialize' || message.method === 'tools/list' || message.method === 'resources/read')) {
+      if (
+        message.id !== undefined &&
+        (message.method === 'initialize' || message.method === 'tools/list' || message.method === 'resources/read')
+      ) {
         pending.set(message.id, { method: message.method, params: message.params });
-        if (message.method === 'tools/list' && (!isRecord(message.params) || !message.params['cursor'])) this.state(server).listed = false;
+        if (message.method === 'tools/list' && (!isRecord(message.params) || !message.params['cursor']))
+          this.state(server).listed = false;
         if (message.method === 'initialize') out = withUiCapability(message);
       }
       return transport.send(out as never, options);
@@ -168,7 +179,11 @@ export class McpTap {
     });
   }
 
-  private observe(server: string, message: JsonRpcMessage, pending: Map<string | number, { method: string; params: unknown }>): void {
+  private observe(
+    server: string,
+    message: JsonRpcMessage,
+    pending: Map<string | number, { method: string; params: unknown }>,
+  ): void {
     if (message.id === undefined || typeof message.method === 'string') return;
     const request = pending.get(message.id);
     if (!request) return;
@@ -193,9 +208,17 @@ export class McpTap {
       if (!cursor) state.tools = new Map();
       for (const tool of result['tools']) {
         if (isRecord(tool) && typeof tool['name'] === 'string') {
-          const text = typeof tool['description'] === 'string' && tool['description'].trim() ? tool['description'] : typeof tool['title'] === 'string' ? tool['title'] : '';
+          const text =
+            typeof tool['description'] === 'string' && tool['description'].trim()
+              ? tool['description']
+              : typeof tool['title'] === 'string'
+                ? tool['title']
+                : '';
           const description = text.split('\n')[0].trim().slice(0, 200);
-          state.tools.set(tool['name'], { ...(isRecord(tool['_meta']) ? { meta: tool['_meta'] } : {}), ...(description ? { description } : {}) });
+          state.tools.set(tool['name'], {
+            ...(isRecord(tool['_meta']) ? { meta: tool['_meta'] } : {}),
+            ...(description ? { description } : {}),
+          });
         }
       }
       const next = result['nextCursor'];
@@ -219,7 +242,10 @@ export function withUiCapability(message: JsonRpcMessage): JsonRpcMessage {
     ...message,
     params: {
       ...params,
-      capabilities: { ...capabilities, extensions: { ...extensions, [MCP_UI_EXTENSION]: { mimeTypes: [MCP_APP_MIME_TYPE] } } },
+      capabilities: {
+        ...capabilities,
+        extensions: { ...extensions, [MCP_UI_EXTENSION]: { mimeTypes: [MCP_APP_MIME_TYPE] } },
+      },
     },
   };
 }

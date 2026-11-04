@@ -7,10 +7,12 @@ import { z } from 'zod';
 export const QueueKindSchema = z.enum(['steer', 'followUp']);
 export type QueueKind = z.infer<typeof QueueKindSchema>;
 
-export const QueueSnapshotSchema = z.object({
-  steering: z.array(z.string()),
-  followUp: z.array(z.string()),
-}).meta({ id: 'QueueSnapshot' });
+export const QueueSnapshotSchema = z
+  .object({
+    steering: z.array(z.string()),
+    followUp: z.array(z.string()),
+  })
+  .meta({ id: 'QueueSnapshot' });
 export type QueueSnapshot = z.infer<typeof QueueSnapshotSchema>;
 
 /** One message of the queue, as a row of the bar. */
@@ -27,11 +29,13 @@ export const queueItems = (queue: QueueSnapshot): QueueItem[] => [
 ];
 
 /** `POST /threads/:id/queue/promote` and `.../remove`: the message is named by list, position and text, so a queue that moved on is not edited blindly. */
-export const QueueTargetSchema = z.object({
-  kind: QueueKindSchema,
-  index: z.number().int().nonnegative(),
-  text: z.string(),
-}).meta({ id: 'QueueTarget' });
+export const QueueTargetSchema = z
+  .object({
+    kind: QueueKindSchema,
+    index: z.number().int().nonnegative(),
+    text: z.string(),
+  })
+  .meta({ id: 'QueueTarget' });
 export type QueueTarget = z.infer<typeof QueueTargetSchema>;
 
 /**

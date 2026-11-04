@@ -3,30 +3,21 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "apps/secret-cli/src",
-  "tags": [
-    "scope:backend"
-  ],
+  "tags": ["scope:backend"],
   "targets": {
     "build": {
       "executor": "@nx/esbuild:esbuild",
-      "outputs": [
-        "{options.outputPath}"
-      ],
+      "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/apps/secret-cli",
         "main": "apps/secret-cli/src/main.ts",
         "outputFileName": "pi-kit-secret.cjs",
         "tsConfig": "apps/secret-cli/tsconfig.app.json",
         "platform": "node",
-        "format": [
-          "cjs"
-        ],
+        "format": ["cjs"],
         "bundle": true,
         "thirdParty": true,
-        "external": [
-          "@napi-rs/keyring",
-          "keychain-store"
-        ],
+        "external": ["@napi-rs/keyring", "keychain-store"],
         "target": "node24",
         "sourcemap": false,
         "generatePackageJson": false,
@@ -45,10 +36,7 @@
     "test": {
       "executor": "nx:run-commands",
       "cache": true,
-      "inputs": [
-        "default",
-        "^production"
-      ],
+      "inputs": ["default", "^production"],
       "options": {
         "command": "vitest run",
         "cwd": "apps/secret-cli"

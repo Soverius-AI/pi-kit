@@ -18,12 +18,13 @@ export const isTerminal = (event: BaseEvent): boolean =>
  */
 export const isAborted = (event: BaseEvent): boolean =>
   (event.type === EventType.RUN_ERROR && loose(event).code === 'aborted') ||
-  (event.type === EventType.RUN_FINISHED && ((event as { outcome?: { type?: string } }).outcome?.type === 'cancelled' || (event as { result?: { aborted?: boolean } }).result?.aborted === true));
+  (event.type === EventType.RUN_FINISHED &&
+    ((event as { outcome?: { type?: string } }).outcome?.type === 'cancelled' ||
+      (event as { result?: { aborted?: boolean } }).result?.aborted === true));
 
 /** `RUN_FINISHED` that ends the run for an extension dialog: pi is waiting, the next run resumes it. */
 export const isInterrupt = (event: BaseEvent): boolean =>
-  event.type === EventType.RUN_FINISHED &&
-  (event as { outcome?: { type?: string } }).outcome?.type === 'interrupt';
+  event.type === EventType.RUN_FINISHED && (event as { outcome?: { type?: string } }).outcome?.type === 'interrupt';
 
 export const messagesSnapshot = (messages: Message[]): BaseEvent =>
   ({ type: EventType.MESSAGES_SNAPSHOT, messages }) as BaseEvent;
@@ -33,10 +34,7 @@ export const messagesSnapshot = (messages: Message[]): BaseEvent =>
  * terminal `RUN_ERROR` unless the events already end the run. Used when the process died mid-run
  * (`aborted`) and when a run's observable ends or fails without a terminal event.
  */
-export function closeRun(
-  events: readonly BaseEvent[],
-  terminal: { message: string; code: string },
-): BaseEvent[] {
+export function closeRun(events: readonly BaseEvent[], terminal: { message: string; code: string }): BaseEvent[] {
   const openText = new Set<string>();
   const openReasoningMessage = new Set<string>();
   const openReasoning = new Set<string>();
@@ -144,7 +142,10 @@ export function compactableIndices(events: readonly BaseEvent[]): number[] {
     }
     // `sessionToMessages()` carries the tool, bash, diff, compaction, A2UI, Open UI and MCP App activities, so the streamed
     // ones (one snapshot per streamed output chunk) are covered too. Widgets only exist in the stream.
-    if ((type === EventType.ACTIVITY_SNAPSHOT || type === EventType.ACTIVITY_DELTA) && (events[i] as { activityType?: string }).activityType !== 'pi.widget') {
+    if (
+      (type === EventType.ACTIVITY_SNAPSHOT || type === EventType.ACTIVITY_DELTA) &&
+      (events[i] as { activityType?: string }).activityType !== 'pi.widget'
+    ) {
       drop.push(i);
       continue;
     }

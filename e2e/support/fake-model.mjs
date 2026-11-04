@@ -12,7 +12,10 @@ export const FAKE_PROVIDER = 'learn-fake';
 export const FAKE_MODEL = 'canned';
 
 /** A skill for the notes tasks: `name` is its name; `first` is step 1, the line a test changes to make a different skill. */
-export function cannedSkill({ name = 'add-notes-with-an-index', first = '1. Create each note in its own file under the notes folder, one tool call per file.' } = {}) {
+export function cannedSkill({
+  name = 'add-notes-with-an-index',
+  first = '1. Create each note in its own file under the notes folder, one tool call per file.',
+} = {}) {
   return `---
 name: ${name}
 description: Use when adding several short notes to a project and keeping an index of them
@@ -39,7 +42,8 @@ ${first}
 /** The skill the fake model drafts: a small, valid SKILL.md. */
 export const CANNED_SKILL = cannedSkill();
 
-const textOfContent = (content) => (typeof content === 'string' ? content : (content ?? []).map((part) => part.text ?? '').join('\n'));
+const textOfContent = (content) =>
+  typeof content === 'string' ? content : (content ?? []).map((part) => part.text ?? '').join('\n');
 
 /** The text of the first user message of a request (what a thread was asked), skill blocks and all. */
 export const firstUserMessage = (body) => textOfContent((body.messages ?? []).find((m) => m.role === 'user')?.content);
@@ -64,7 +68,10 @@ export function notesAgent(body, { slowMs = 20_000 } = {}) {
   if (limit) files = files.slice(0, NUMBER_WORDS[limit.toLowerCase()] ?? Number(limit));
   const check = /`(node --test[^`]*)`/.exec(prompt)?.[1];
   const turns = (body.messages ?? []).filter((m) => m.role === 'assistant' && m.tool_calls?.length).length;
-  const reply = (value) => (/take your time/i.test(prompt) && turns === 0 ? new Promise((resolve) => setTimeout(() => resolve(value), slowMs)) : value);
+  const reply = (value) =>
+    /take your time/i.test(prompt) && turns === 0
+      ? new Promise((resolve) => setTimeout(() => resolve(value), slowMs))
+      : value;
   if (turns === 0 && files.length > 0) {
     return reply({
       toolCalls: files.map((path, i) => ({
@@ -74,7 +81,8 @@ export function notesAgent(body, { slowMs = 20_000 } = {}) {
       })),
     });
   }
-  if (turns <= 1 && check && turns === (files.length > 0 ? 1 : 0)) return { toolCalls: [{ name: 'bash', arguments: { command: check } }] };
+  if (turns <= 1 && check && turns === (files.length > 0 ? 1 : 0))
+    return { toolCalls: [{ name: 'bash', arguments: { command: check } }] };
   return 'Done.';
 }
 
@@ -107,10 +115,26 @@ export async function startFakeModel({ answer = () => CANNED_SKILL, port = 0 } =
       if (res.destroyed || res.socket?.destroyed) return;
       const text = typeof given === 'string' ? given : (given?.text ?? '');
       const reasoning = typeof given === 'string' ? '' : (given?.reasoning ?? '');
-      const toolCalls = typeof given === 'string' ? [] : (given?.toolCalls ?? []).map((call, i) => ({ id: `call_${++calls}_${i}`, type: 'function', function: { name: call.name, arguments: JSON.stringify(call.arguments ?? {}) } }));
+      const toolCalls =
+        typeof given === 'string'
+          ? []
+          : (given?.toolCalls ?? []).map((call, i) => ({
+              id: `call_${++calls}_${i}`,
+              type: 'function',
+              function: { name: call.name, arguments: JSON.stringify(call.arguments ?? {}) },
+            }));
       const size = text.length + reasoning.length + toolCalls.reduce((n, c) => n + c.function.arguments.length, 0);
-      const usage = { prompt_tokens: 120, completion_tokens: Math.max(1, Math.ceil(size / 4)), total_tokens: 120 + Math.ceil(size / 4) };
-      const base = { id: 'chatcmpl-fake', object: 'chat.completion.chunk', created: Math.floor(Date.now() / 1000), model: FAKE_MODEL };
+      const usage = {
+        prompt_tokens: 120,
+        completion_tokens: Math.max(1, Math.ceil(size / 4)),
+        total_tokens: 120 + Math.ceil(size / 4),
+      };
+      const base = {
+        id: 'chatcmpl-fake',
+        object: 'chat.completion.chunk',
+        created: Math.floor(Date.now() / 1000),
+        model: FAKE_MODEL,
+      };
       const finish = toolCalls.length > 0 ? 'tool_calls' : 'stop';
       if (body.stream) {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
@@ -124,15 +148,43 @@ export async function startFakeModel({ answer = () => CANNED_SKILL, port = 0 } =
         for (let i = 0; i < text.length; i += 80) {
           if (res.destroyed || res.socket?.destroyed) return;
           send({ choices: [{ index: 0, delta: { content: text.slice(i, i + 80) }, finish_reason: null }] });
-          if (typeof given !== 'string' && given?.chunkMs) await new Promise((resolve) => setTimeout(resolve, given.chunkMs));
+          if (typeof given !== 'string' && given?.chunkMs)
+            await new Promise((resolve) => setTimeout(resolve, given.chunkMs));
         }
-        if (toolCalls.length > 0) send({ choices: [{ index: 0, delta: { tool_calls: toolCalls.map((call, index) => ({ index, ...call })) }, finish_reason: null }] });
+        if (toolCalls.length > 0)
+          send({
+            choices: [
+              {
+                index: 0,
+                delta: { tool_calls: toolCalls.map((call, index) => ({ index, ...call })) },
+                finish_reason: null,
+              },
+            ],
+          });
         send({ choices: [{ index: 0, delta: {}, finish_reason: finish }], usage });
         res.write('data: [DONE]\n\n');
         res.end();
       } else {
         res.setHeader('content-type', 'application/json');
-        res.end(JSON.stringify({ ...base, object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: text, ...(reasoning ? { reasoning_content: reasoning } : {}), ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}) }, finish_reason: finish }], usage }));
+        res.end(
+          JSON.stringify({
+            ...base,
+            object: 'chat.completion',
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: 'assistant',
+                  content: text,
+                  ...(reasoning ? { reasoning_content: reasoning } : {}),
+                  ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+                },
+                finish_reason: finish,
+              },
+            ],
+            usage,
+          }),
+        );
       }
     });
   });
@@ -156,7 +208,19 @@ export function registerFakeModel(agentDir, url) {
   const file = join(agentDir, 'models.json');
   const models = JSON.parse(readFileSync(file, 'utf8'));
   // A price per million tokens, so what a thread or a background agent spent is a number the tests can look at (UC-10).
-  models.providers[FAKE_PROVIDER] = { baseUrl: url, api: 'openai-completions', apiKey: 'fake', models: [{ id: FAKE_MODEL, name: 'Canned draft', contextWindow: 32768, cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 } }] };
+  models.providers[FAKE_PROVIDER] = {
+    baseUrl: url,
+    api: 'openai-completions',
+    apiKey: 'fake',
+    models: [
+      {
+        id: FAKE_MODEL,
+        name: 'Canned draft',
+        contextWindow: 32768,
+        cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+      },
+    ],
+  };
   writeFileSync(file, JSON.stringify(models, null, 2));
 }
 
@@ -190,14 +254,17 @@ export function cannedLabels(prompt) {
     }
     break;
   }
-  const corrected = new Set([...prompt.matchAll(/^- (\S+) @@[^\n]*the person says (specified|corrected|manual)/gm)].map((m) => m[1]));
+  const corrected = new Set(
+    [...prompt.matchAll(/^- (\S+) @@[^\n]*the person says (specified|corrected|manual)/gm)].map((m) => m[1]),
+  );
   const out = [];
   for (const line of lines) {
     const hunk = /^(h\d+) \| (\S+) \| @@/.exec(line);
     if (!hunk) continue;
     const [, key, file] = hunk;
     if (corrected.has(file)) out.push(`${key} | specified | prompt 2 | you said so`);
-    else if (file === 'notes/alpha.md') out.push(`${key} | corrected | review ${review} | the review comment asked for this wording`);
+    else if (file === 'notes/alpha.md')
+      out.push(`${key} | corrected | review ${review} | the review comment asked for this wording`);
     else if (file === 'notes/beta.md') out.push(`${key} | specified | prompt 1 | the first prompt named this file`);
     else out.push(`${key} | autonomous | none | nobody asked for this`);
   }

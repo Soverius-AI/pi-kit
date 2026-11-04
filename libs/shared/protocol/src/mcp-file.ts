@@ -86,7 +86,16 @@ export function parseJson(text: string): { ok: true; parsed: ParsedJson } | { ok
           i += 6;
           continue;
         }
-        const map: Record<string, string> = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
+        const map: Record<string, string> = {
+          '"': '"',
+          '\\': '\\',
+          '/': '/',
+          b: '\b',
+          f: '\f',
+          n: '\n',
+          r: '\r',
+          t: '\t',
+        };
         if (next === undefined || !(next in map)) throw new Stop(i, `"\\${next ?? ''}" is not a JSON escape.`);
         out += map[next];
         i += 2;
@@ -172,7 +181,10 @@ export function parseJson(text: string): { ok: true; parsed: ParsedJson } | { ok
       i += number[0].length;
       return Number(number[0]);
     }
-    throw new Stop(i, c === undefined ? 'The file ends where a value is expected.' : `Expected a value, found ${describe()}.`);
+    throw new Stop(
+      i,
+      c === undefined ? 'The file ends where a value is expected.' : `Expected a value, found ${describe()}.`,
+    );
   };
   try {
     const root = value([]);
@@ -185,7 +197,11 @@ export function parseJson(text: string): { ok: true; parsed: ParsedJson } | { ok
         at: (path) => {
           const found = places.get(pathKey(path));
           if (path.length === 0) return 0;
-          return found ? (typeof path[path.length - 1] === 'string' ? (found.key ?? found.value) : found.value) : undefined;
+          return found
+            ? typeof path[path.length - 1] === 'string'
+              ? (found.key ?? found.value)
+              : found.value
+            : undefined;
         },
       },
     };
@@ -199,24 +215,33 @@ export function parseJson(text: string): { ok: true; parsed: ParsedJson } | { ok
 
 const exposureError = `must be one of ${MCP_EXPOSURES.join(', ')}.`;
 const Exposure = z.union([z.enum(MCP_EXPOSURES), z.literal('codemode-deferred')], { error: () => exposureError });
-const Strings = z.record(z.string(), z.string({ error: 'must be text.' }), { error: 'must be an object of text values.' });
+const Strings = z.record(z.string(), z.string({ error: 'must be text.' }), {
+  error: 'must be an object of text values.',
+});
 
 /** One entry of `mcpServers`. An entry with neither `command`, `url` nor `type` is a project override of `enabled` / `exposure` (checked per file, below). */
 export const McpEntryFileSchema = z.looseObject(
   {
-  type: z.enum(['stdio', 'http', 'streamable-http'], { error: (issue) => (issue.input === 'sse' ? 'the legacy SSE transport is not supported; use the streamable HTTP address (often /mcp).' : 'must be stdio, http or streamable-http.') }).optional(),
-  command: z.string({ error: 'must be text.' }).min(1, 'must not be empty.').optional(),
-  args: z.array(z.string({ error: 'must be text.' }), { error: 'must be a list of text.' }).optional(),
-  env: Strings.optional(),
-  cwd: z.string({ error: 'must be text.' }).optional(),
-  url: z.string({ error: 'must be text.' }).min(1, 'must not be empty.').optional(),
-  headers: Strings.optional(),
-  oauth: z.looseObject({}, { error: 'must be an object.' }).optional(),
-  timeout: z.number({ error: 'must be a number of seconds.' }).positive('must be more than zero.').optional(),
-  enabled: z.boolean({ error: 'must be true or false.' }).optional(),
-  exposure: Exposure.optional(),
-  toolExposure: z.record(z.string(), Exposure, { error: 'must be an object of exposures.' }).optional(),
-  description: z.string({ error: 'must be text.' }).optional(),
+    type: z
+      .enum(['stdio', 'http', 'streamable-http'], {
+        error: (issue) =>
+          issue.input === 'sse'
+            ? 'the legacy SSE transport is not supported; use the streamable HTTP address (often /mcp).'
+            : 'must be stdio, http or streamable-http.',
+      })
+      .optional(),
+    command: z.string({ error: 'must be text.' }).min(1, 'must not be empty.').optional(),
+    args: z.array(z.string({ error: 'must be text.' }), { error: 'must be a list of text.' }).optional(),
+    env: Strings.optional(),
+    cwd: z.string({ error: 'must be text.' }).optional(),
+    url: z.string({ error: 'must be text.' }).min(1, 'must not be empty.').optional(),
+    headers: Strings.optional(),
+    oauth: z.looseObject({}, { error: 'must be an object.' }).optional(),
+    timeout: z.number({ error: 'must be a number of seconds.' }).positive('must be more than zero.').optional(),
+    enabled: z.boolean({ error: 'must be true or false.' }).optional(),
+    exposure: Exposure.optional(),
+    toolExposure: z.record(z.string(), Exposure, { error: 'must be an object of exposures.' }).optional(),
+    description: z.string({ error: 'must be text.' }).optional(),
   },
   { error: 'must be an object.' },
 );
@@ -238,7 +263,11 @@ export interface McpFileCheck {
   problems: McpFileProblem[];
 }
 
-const label = (path: readonly PropertyKey[]): string => path.map((p) => (typeof p === 'number' ? `[${p}]` : String(p))).join('.').replace(/\.\[/g, '[');
+const label = (path: readonly PropertyKey[]): string =>
+  path
+    .map((p) => (typeof p === 'number' ? `[${p}]` : String(p)))
+    .join('.')
+    .replace(/\.\[/g, '[');
 
 /**
  * Checks the text of an `mcp.json`: JSON first (one problem at most: the parser stops), then the shape. `scope` decides whether an entry without `command` or `url` is an error (the
@@ -247,10 +276,19 @@ const label = (path: readonly PropertyKey[]): string => path.map((p) => (typeof 
 export function checkMcpFile(text: string, scope: 'user' | 'project'): McpFileCheck {
   if (text.trim() === '') return { ok: true, problems: [] };
   const syntax = parseJson(text);
-  if (!syntax.ok) return { ok: false, problems: [{ ...positionOf(text, syntax.error.offset), message: syntax.error.message }] };
+  if (!syntax.ok)
+    return { ok: false, problems: [{ ...positionOf(text, syntax.error.offset), message: syntax.error.message }] };
   const { parsed } = syntax;
   if (typeof parsed.value !== 'object' || parsed.value === null || Array.isArray(parsed.value)) {
-    return { ok: false, problems: [{ ...positionOf(text, parsed.at([]) ?? 0), message: 'The file must be a JSON object with an "mcpServers" object in it.' }] };
+    return {
+      ok: false,
+      problems: [
+        {
+          ...positionOf(text, parsed.at([]) ?? 0),
+          message: 'The file must be a JSON object with an "mcpServers" object in it.',
+        },
+      ],
+    };
   }
   const problems: McpFileProblem[] = [];
   const add = (path: readonly (string | number)[], message: string): void => {
@@ -264,22 +302,32 @@ export function checkMcpFile(text: string, scope: 'user' | 'project'): McpFileCh
     for (const issue of result.error.issues) {
       const path = issue.path.filter((p): p is string | number => typeof p !== 'symbol');
       const where = label(path);
-      add(path, path.length === 0 ? issue.message : issue.code === 'invalid_key' ? issue.message : `${where.split('.').pop()} ${issue.message}`.replace(/\s+/g, ' ').replace(/ \./g, '.'));
+      add(
+        path,
+        path.length === 0
+          ? issue.message
+          : issue.code === 'invalid_key'
+            ? issue.message
+            : `${where.split('.').pop()} ${issue.message}`.replace(/\s+/g, ' ').replace(/ \./g, '.'),
+      );
     }
   }
   // What a schema of fields cannot say: an entry needs to run something.
   const servers = (parsed.value as { mcpServers?: unknown }).mcpServers;
   if (typeof servers === 'object' && servers !== null && !Array.isArray(servers)) {
     for (const [name, raw] of Object.entries(servers)) {
-      if (!MCP_SERVER_NAME.test(name)) add(['mcpServers', name], `Server name "${name}" may contain only letters, digits, "_" and "-".`);
+      if (!MCP_SERVER_NAME.test(name))
+        add(['mcpServers', name], `Server name "${name}" may contain only letters, digits, "_" and "-".`);
       if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
         continue;
       }
       const entry = raw as Record<string, unknown>;
       const hasTarget = typeof entry['command'] === 'string' || typeof entry['url'] === 'string';
       const override = entry['command'] === undefined && entry['url'] === undefined && entry['type'] === undefined;
-      if (!hasTarget && !(scope === 'project' && override)) add(['mcpServers', name], `Server "${name}" needs a "command" or a "url".`);
-      if (typeof entry['command'] === 'string' && typeof entry['url'] === 'string') add(['mcpServers', name, 'url'], `Server "${name}" has both "command" and "url"; use one.`);
+      if (!hasTarget && !(scope === 'project' && override))
+        add(['mcpServers', name], `Server "${name}" needs a "command" or a "url".`);
+      if (typeof entry['command'] === 'string' && typeof entry['url'] === 'string')
+        add(['mcpServers', name, 'url'], `Server "${name}" has both "command" and "url"; use one.`);
     }
   }
   problems.sort((a, b) => a.line - b.line || a.column - b.column);
@@ -327,5 +375,7 @@ export const McpFileScopeQuerySchema = z.object({ scope: z.enum(['user', 'projec
 export type McpFileScopeQuery = z.infer<typeof McpFileScopeQuerySchema>;
 
 /** What a save of the file answers: the file as it is now and the servers after pi read it again. */
-export const McpFileSavedSchema = z.object({ file: McpFileSchema, message: z.string().optional(), overview: McpOverviewSchema }).meta({ id: 'McpFileSaved' });
+export const McpFileSavedSchema = z
+  .object({ file: McpFileSchema, message: z.string().optional(), overview: McpOverviewSchema })
+  .meta({ id: 'McpFileSaved' });
 export type McpFileSaved = z.infer<typeof McpFileSavedSchema>;

@@ -39,7 +39,8 @@ export interface Job {
 export function planSteps(targets: readonly UpdateTarget[], options: { managed: boolean }): Step[] {
   const want = new Set(targets);
   const steps: Step[] = [];
-  const add = (kind: StepKind, rows: UpdateTarget[]): void => void steps.push({ kind, targets: rows, state: 'pending' });
+  const add = (kind: StepKind, rows: UpdateTarget[]): void =>
+    void steps.push({ kind, targets: rows, state: 'pending' });
   if (want.has('pi') && want.has('packages')) {
     if (options.managed) add('pi-all', ['pi', 'packages']);
     else {
@@ -53,7 +54,12 @@ export function planSteps(targets: readonly UpdateTarget[], options: { managed: 
   return steps;
 }
 
-export function createJob(id: string, targets: readonly UpdateTarget[], now: number, options: { managed: boolean }): Job {
+export function createJob(
+  id: string,
+  targets: readonly UpdateTarget[],
+  now: number,
+  options: { managed: boolean },
+): Job {
   return { id, targets: [...targets], state: 'running', startedAt: now, steps: planSteps(targets, options) };
 }
 
@@ -67,7 +73,12 @@ export function startStep(job: Job, index: number): Job {
   return withStep(job, index, (step) => ({ ...step, state: 'running' }));
 }
 
-export function finishStep(job: Job, index: number, result: { ok: true; detail?: string } | { ok: false; error: string; cancelled?: boolean }, now: number): Job {
+export function finishStep(
+  job: Job,
+  index: number,
+  result: { ok: true; detail?: string } | { ok: false; error: string; cancelled?: boolean },
+  now: number,
+): Job {
   const next = withStep(job, index, (step) =>
     result.ok
       ? { ...step, state: 'done', ...(result.detail ? { detail: result.detail } : {}) }
@@ -79,12 +90,20 @@ export function finishStep(job: Job, index: number, result: { ok: true; detail?:
 /** Cancels the running step and everything after it. A job that already ended stays as it was. */
 export function cancelJob(job: Job, now: number): Job {
   if (job.state !== 'running') return job;
-  return { ...job, state: 'cancelled', finishedAt: now, steps: job.steps.map((step) => (step.state === 'pending' || step.state === 'running' ? { ...step, state: 'cancelled' as const } : step)) };
+  return {
+    ...job,
+    state: 'cancelled',
+    finishedAt: now,
+    steps: job.steps.map((step) =>
+      step.state === 'pending' || step.state === 'running' ? { ...step, state: 'cancelled' as const } : step,
+    ),
+  };
 }
 
 /** The job as a whole once no step is pending or running: failed if any step failed, else done. */
 function settle(job: Job, now: number): Job {
-  if (job.state !== 'running' || job.steps.some((step) => step.state === 'pending' || step.state === 'running')) return job;
+  if (job.state !== 'running' || job.steps.some((step) => step.state === 'pending' || step.state === 'running'))
+    return job;
   return { ...job, state: job.steps.some((step) => step.state === 'failed') ? 'failed' : 'done', finishedAt: now };
 }
 
@@ -97,12 +116,27 @@ export function rowStates(job: Job): Partial<Record<UpdateTarget, UpdateRowState
   const out: Partial<Record<UpdateTarget, UpdateRowState>> = {};
   for (const step of job.steps) {
     const state: UpdateRowState | undefined =
-      step.state === 'running' ? 'running' : step.state === 'done' ? 'done' : step.state === 'failed' ? 'failed' : step.state === 'cancelled' ? 'cancelled' : undefined;
+      step.state === 'running'
+        ? 'running'
+        : step.state === 'done'
+          ? 'done'
+          : step.state === 'failed'
+            ? 'failed'
+            : step.state === 'cancelled'
+              ? 'cancelled'
+              : undefined;
     if (state) for (const target of step.targets) out[target] = state;
   }
   return out;
 }
 
 export function toJob(job: Job, logPath?: string): UpdateJob {
-  return { id: job.id, targets: job.targets, state: job.state, startedAt: job.startedAt, ...(job.finishedAt ? { finishedAt: job.finishedAt } : {}), ...(logPath ? { logPath } : {}) };
+  return {
+    id: job.id,
+    targets: job.targets,
+    state: job.state,
+    startedAt: job.startedAt,
+    ...(job.finishedAt ? { finishedAt: job.finishedAt } : {}),
+    ...(logPath ? { logPath } : {}),
+  };
 }

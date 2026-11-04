@@ -26,7 +26,45 @@ import { ThreadsRepository } from './threads.repository';
  * table or two, and the redaction that runs before text is kept. Every module that touches a table imports it.
  */
 @Module({
-  providers: [{ provide: DatabaseService, inject: [CONFIG, SECRET_STORE], useFactory: (config: BackendConfig, store: SecretStore) => DatabaseService.create(config, store, encryptionEnabled(config.dataDir, store)) }, ThreadsRepository, EventLogRepository, MetaRepository, ChangesRepository, FeedbackRepository, AttendantRepository, RedactionService, TerminalReplayRepository, LeasesRepository, OutcomesRepository, SkillDraftsRepository, SkillUsesRepository, SignalsRepository, AgentSpansRepository, MaintenanceRepository],
-  exports: [DatabaseService, ThreadsRepository, EventLogRepository, MetaRepository, ChangesRepository, FeedbackRepository, AttendantRepository, RedactionService, TerminalReplayRepository, LeasesRepository, OutcomesRepository, SkillDraftsRepository, SkillUsesRepository, SignalsRepository, AgentSpansRepository],
+  providers: [
+    {
+      provide: DatabaseService,
+      inject: [CONFIG, SECRET_STORE],
+      useFactory: (config: BackendConfig, store: SecretStore) =>
+        DatabaseService.create(config, store, encryptionEnabled(config.dataDir, store)),
+    },
+    ThreadsRepository,
+    EventLogRepository,
+    MetaRepository,
+    ChangesRepository,
+    FeedbackRepository,
+    AttendantRepository,
+    RedactionService,
+    TerminalReplayRepository,
+    LeasesRepository,
+    OutcomesRepository,
+    SkillDraftsRepository,
+    SkillUsesRepository,
+    SignalsRepository,
+    AgentSpansRepository,
+    MaintenanceRepository,
+  ],
+  exports: [
+    DatabaseService,
+    ThreadsRepository,
+    EventLogRepository,
+    MetaRepository,
+    ChangesRepository,
+    FeedbackRepository,
+    AttendantRepository,
+    RedactionService,
+    TerminalReplayRepository,
+    LeasesRepository,
+    OutcomesRepository,
+    SkillDraftsRepository,
+    SkillUsesRepository,
+    SignalsRepository,
+    AgentSpansRepository,
+  ],
 })
 export class DbModule {}

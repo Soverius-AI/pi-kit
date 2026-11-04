@@ -1,4 +1,12 @@
-import { type CallHandler, type ExecutionContext, Inject, Injectable, Logger, type NestInterceptor, InternalServerErrorException } from '@nestjs/common';
+import {
+  type CallHandler,
+  type ExecutionContext,
+  Inject,
+  Injectable,
+  Logger,
+  type NestInterceptor,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { map, type Observable } from 'rxjs';
 import type { z } from 'zod';
@@ -32,7 +40,9 @@ export class ContractSerializerInterceptor implements NestInterceptor {
         const result = schema.safeParse(value);
         if (result.success) return result.data;
         const request = context.switchToHttp().getRequest<{ method?: string; url?: string }>();
-        this.log.error(`${request.method} ${request.url}: the response does not match its schema: ${issueMessages(result.error.issues).join('; ')}`);
+        this.log.error(
+          `${request.method} ${request.url}: the response does not match its schema: ${issueMessages(result.error.issues).join('; ')}`,
+        );
         if (this.config.dev) throw new InternalServerErrorException();
         return value;
       }),

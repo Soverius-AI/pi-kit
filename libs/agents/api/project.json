@@ -4,10 +4,7 @@
   "sourceRoot": "libs/agents/api/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:agents",
-    "type:api"
-  ],
+  "tags": ["scope:agents", "type:api"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"

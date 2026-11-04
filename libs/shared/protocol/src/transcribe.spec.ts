@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createSseParser, emptyTranscript, mergePartial, transcriptText, TranscribeStreamEventSchema, type SseMessage } from './transcribe';
+import {
+  createSseParser,
+  emptyTranscript,
+  mergePartial,
+  transcriptText,
+  TranscribeStreamEventSchema,
+  type SseMessage,
+} from './transcribe';
 
 describe('mergePartial (the live text of a streaming transcription)', () => {
   it('appends committed words with a space and replaces the pending tail every time', () => {
@@ -62,7 +69,14 @@ describe('createSseParser', () => {
   });
 
   it('carries the stream events the backend sends', () => {
-    const [message] = collect(['event: partial\ndata: {"type":"partial","text":"hi","pending":"there","receivedSeconds":1}\n\n']);
-    expect(TranscribeStreamEventSchema.parse(JSON.parse(message.data))).toEqual({ type: 'partial', text: 'hi', pending: 'there', receivedSeconds: 1 });
+    const [message] = collect([
+      'event: partial\ndata: {"type":"partial","text":"hi","pending":"there","receivedSeconds":1}\n\n',
+    ]);
+    expect(TranscribeStreamEventSchema.parse(JSON.parse(message.data))).toEqual({
+      type: 'partial',
+      text: 'hi',
+      pending: 'there',
+      receivedSeconds: 1,
+    });
   });
 });

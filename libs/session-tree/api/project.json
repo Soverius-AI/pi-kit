@@ -4,10 +4,7 @@
   "sourceRoot": "libs/session-tree/api/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:session-tree",
-    "type:api"
-  ],
+  "tags": ["scope:session-tree", "type:api"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"

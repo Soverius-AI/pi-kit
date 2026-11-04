@@ -35,7 +35,12 @@ export interface ResolveInput {
 /** pi's own rule for its agent folder (`getAgentDir`): `PI_CODING_AGENT_DIR` with `~` expanded, else `~/.pi/agent`. */
 export function agentDirOf(env: NodeJS.ProcessEnv): string {
   const configured = env['PI_CODING_AGENT_DIR'];
-  if (configured) return configured === '~' ? homedir() : configured.startsWith('~/') ? join(homedir(), configured.slice(2)) : configured;
+  if (configured)
+    return configured === '~'
+      ? homedir()
+      : configured.startsWith('~/')
+        ? join(homedir(), configured.slice(2))
+        : configured;
   return join(homedir(), '.pi', 'agent');
 }
 
@@ -81,7 +86,11 @@ function packageDirIn(dir: string): string | undefined {
 
 function readMarker(root: string): boolean {
   try {
-    const marker = JSON.parse(readFileSync(join(root, MANAGED_MARKER), 'utf8')) as { kind?: string; schemaVersion?: number; layout?: string };
+    const marker = JSON.parse(readFileSync(join(root, MANAGED_MARKER), 'utf8')) as {
+      kind?: string;
+      schemaVersion?: number;
+      layout?: string;
+    };
     return marker.kind === 'pi-managed-install' && marker.schemaVersion === 1 && marker.layout === 'releases-v1';
   } catch {
     return false;
@@ -89,7 +98,10 @@ function readMarker(root: string): boolean {
 }
 
 /** The releases of pi's managed install, oldest first by name; `undefined` when there is no valid install. */
-export function readManagedInstall(agentDir: string, range: PiSdkRange): NonNullable<PiResolution['managed']> | undefined {
+export function readManagedInstall(
+  agentDir: string,
+  range: PiSdkRange,
+): NonNullable<PiResolution['managed']> | undefined {
   const root = join(agentDir, 'install');
   if (!existsSync(root) || !readMarker(root)) return undefined;
   let current: string | undefined;
@@ -108,7 +120,8 @@ export function readManagedInstall(agentDir: string, range: PiSdkRange): NonNull
     .sort((a, b) => compareVersions(a, b) ?? 0)
     .map((version) => {
       const dir = join(root, 'releases', version);
-      const intact = existsSync(join(dir, 'package.json')) && piPackageVersion(join(dir, 'node_modules', PI_PACKAGE)) === version;
+      const intact =
+        existsSync(join(dir, 'package.json')) && piPackageVersion(join(dir, 'node_modules', PI_PACKAGE)) === version;
       return { version, dir, intact, inRange: inRange(version, range) };
     });
   return { root, ...(current ? { current } : {}), releases };
@@ -121,7 +134,12 @@ export function resolvePi(input: ResolveInput): PiResolution {
   const base = { bundled: { version: bundledVersion, packageDir: bundledDir }, range, notes };
   const managed = readManagedInstall(agentDir, range);
   const withManaged = { ...base, ...(managed ? { managed } : {}), ...(input.pinned ? { pinned: input.pinned } : {}) };
-  const use = (source: PiResolution['source'], version: string, packageDir: string): PiResolution => ({ source, version, packageDir, ...withManaged });
+  const use = (source: PiResolution['source'], version: string, packageDir: string): PiResolution => ({
+    source,
+    version,
+    packageDir,
+    ...withManaged,
+  });
 
   // 1. the developer override
   const override = env['PI_KIT_PI_DIR']?.trim();
@@ -143,15 +161,20 @@ export function resolvePi(input: ResolveInput): PiResolution {
       notes.push(`Pinned to pi ${release.version} in Settings › Advanced.`);
       return use('managed', release.version, join(release.dir, 'node_modules', PI_PACKAGE));
     }
-    notes.push(`The pinned release pi ${input.pinned} is not available${release && !release.intact ? ' (its folder is incomplete)' : ''}; following the newest.`);
+    notes.push(
+      `The pinned release pi ${input.pinned} is not available${release && !release.intact ? ' (its folder is incomplete)' : ''}; following the newest.`,
+    );
   }
 
   // 2. pi's managed install
   if (managed) {
-    const eligible = (r: ManagedRelease): boolean => r.intact && r.inRange && (compareVersions(r.version, bundledVersion) ?? -1) >= 0;
+    const eligible = (r: ManagedRelease): boolean =>
+      r.intact && r.inRange && (compareVersions(r.version, bundledVersion) ?? -1) >= 0;
     const currentRelease = managed.current ? managed.releases.find((r) => r.version === managed.current) : undefined;
-    const chosen = currentRelease && eligible(currentRelease) ? currentRelease : [...managed.releases].reverse().find(eligible);
-    if (currentRelease && !currentRelease.intact) notes.push(`pi ${currentRelease.version} is installed (the pi command runs it) but its folder is incomplete.`);
+    const chosen =
+      currentRelease && eligible(currentRelease) ? currentRelease : [...managed.releases].reverse().find(eligible);
+    if (currentRelease && !currentRelease.intact)
+      notes.push(`pi ${currentRelease.version} is installed (the pi command runs it) but its folder is incomplete.`);
     else if (currentRelease && !currentRelease.inRange) {
       const above = (compareVersions(currentRelease.version, range.min) ?? 0) > 0;
       notes.push(
@@ -160,7 +183,9 @@ export function resolvePi(input: ResolveInput): PiResolution {
           : `pi ${currentRelease.version} is installed, this pi-kit needs ${range.min} or newer; using ${chosen ? `pi ${chosen.version}` : `the bundled ${bundledVersion}`}.`,
       );
     } else if (currentRelease && (compareVersions(currentRelease.version, bundledVersion) ?? 0) < 0) {
-      notes.push(`pi ${currentRelease.version} is installed, older than the bundled ${bundledVersion}; using the bundled copy.`);
+      notes.push(
+        `pi ${currentRelease.version} is installed, older than the bundled ${bundledVersion}; using the bundled copy.`,
+      );
     }
     if (chosen) return use('managed', chosen.version, join(chosen.dir, 'node_modules', PI_PACKAGE));
   }
@@ -175,7 +200,8 @@ export function previousChoices(resolution: PiResolution): { release: string; la
     .filter((r) => r.intact && r.inRange && !(resolution.source === 'managed' && r.version === resolution.version))
     .sort((a, b) => compareVersions(b.version, a.version) ?? 0)
     .map((r) => ({ release: r.version, label: `pi ${r.version} (managed install)` }));
-  if (resolution.source !== 'bundled') choices.push({ release: 'bundled', label: `pi ${resolution.bundled.version} (bundled with pi-kit)` });
+  if (resolution.source !== 'bundled')
+    choices.push({ release: 'bundled', label: `pi ${resolution.bundled.version} (bundled with pi-kit)` });
   return choices;
 }
 
@@ -188,5 +214,11 @@ export function siblingPackageDir(resolution: PiResolution, name: string): strin
 /** MCP from the selected SDK, with the app's bundled client as the fallback. */
 export function piMcpEntry(resolution: PiResolution): string {
   const installed = join(siblingPackageDir(resolution, 'pi-mcp'), 'dist', 'index.js');
-  return [join(resolution.packageDir, 'dist', 'mcp.js'), installed, join(resolution.bundled.packageDir, 'dist', 'mcp.js')].find((file) => existsSync(file)) ?? installed;
+  return (
+    [
+      join(resolution.packageDir, 'dist', 'mcp.js'),
+      installed,
+      join(resolution.bundled.packageDir, 'dist', 'mcp.js'),
+    ].find((file) => existsSync(file)) ?? installed
+  );
 }

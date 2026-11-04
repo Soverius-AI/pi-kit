@@ -15,11 +15,13 @@ let databases: DatabaseService[];
 let directories: string[];
 const database = (path: string): DatabaseService => {
   const db = new DatabaseService({ dataDir: path });
-  databases.push(db); directories.push(path);
+  databases.push(db);
+  directories.push(path);
   return db;
 };
 beforeEach(() => {
-  databases = []; directories = [];
+  databases = [];
+  directories = [];
   dir = mkdtempSync(join(tmpdir(), 'pk-compactor-'));
   log = new EventLogRepository(database(dir));
 });
@@ -36,10 +38,19 @@ function finishedRun(thread: string, run: number, deltas = 6): void {
   const add = (event: BaseEvent) => log.append(thread, runId, event);
   add(ev({ type: EventType.RUN_STARTED, threadId: thread, runId }));
   add(ev({ type: EventType.TEXT_MESSAGE_START, messageId: `m${run}`, role: 'assistant' }));
-  for (let i = 0; i < deltas; i++) add(ev({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: `m${run}`, delta: `chunk ${i} ` }));
+  for (let i = 0; i < deltas; i++)
+    add(ev({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: `m${run}`, delta: `chunk ${i} ` }));
   add(ev({ type: EventType.TEXT_MESSAGE_END, messageId: `m${run}` }));
   add(ev({ type: EventType.CUSTOM, name: 'pi.usage', value: { cost: 0, contextTokens: run } }));
-  add(messagesSnapshot(Array.from({ length: run * 2 }, (_, i) => ({ id: `x${i}`, role: i % 2 ? 'assistant' : 'user', content: `m ${i}` })) as never));
+  add(
+    messagesSnapshot(
+      Array.from({ length: run * 2 }, (_, i) => ({
+        id: `x${i}`,
+        role: i % 2 ? 'assistant' : 'user',
+        content: `m ${i}`,
+      })) as never,
+    ),
+  );
   add(ev({ type: EventType.RUN_FINISHED, threadId: thread, runId }));
 }
 
@@ -56,7 +67,10 @@ describe('LogCompactor, per run pass', () => {
       finishedRunInto(reference, run);
       const stored = reference.read('t');
       const drop = compactableIndices(stored.map((s) => s.event));
-      reference.deleteSeqs('t', drop.map((i) => stored[i].seq));
+      reference.deleteSeqs(
+        't',
+        drop.map((i) => stored[i].seq),
+      );
     }
     expect(log.read('t').map((s) => s.event)).toEqual(reference.read('t').map((s) => s.event));
   });
@@ -123,7 +137,8 @@ describe('LogCompactor, collapse', () => {
     finishedRun('t', 2);
     // the last run has no snapshot (it is still going, or was killed)
     log.append('t', 'r3', ev({ type: EventType.RUN_STARTED, threadId: 't', runId: 'r3' }));
-    for (let i = 0; i < 20; i++) log.append('t', 'r3', ev({ type: EventType.CUSTOM, name: 'pi.usage', value: { cost: 0 } }));
+    for (let i = 0; i < 20; i++)
+      log.append('t', 'r3', ev({ type: EventType.CUSTOM, name: 'pi.usage', value: { cost: 0 } }));
     const before = log.count('t');
     expect(compactor.compact('t').collapsed).toBe(0);
     expect(log.count('t')).toBeGreaterThanOrEqual(before - 20);
@@ -132,7 +147,8 @@ describe('LogCompactor, collapse', () => {
 
   it('keeps the toolbar registrations of extensions when the run that holds them is collapsed away', () => {
     const compactor = new LogCompactor(log, { maxRows: 60, keepRuns: 3 });
-    const composer = (event: Record<string, unknown>) => ev({ type: EventType.CUSTOM, name: 'pi.composer', value: event });
+    const composer = (event: Record<string, unknown>) =>
+      ev({ type: EventType.CUSTOM, name: 'pi.composer', value: event });
     finishedRun('t', 1);
     log.append('t', 'r1', composer({ op: 'action', id: 'hello', label: 'Say hello', text: '/hello ' }));
     log.append('t', 'r1', composer({ op: 'suggestion', id: 'gone', title: 'Old', text: 'x' }));

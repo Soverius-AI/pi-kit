@@ -27,7 +27,12 @@ let service: LearnedSkillsService;
 let useListener: ((threadId: string, used: SkillUse[]) => void) | undefined;
 let outcomeListener: ((threadId: string, kind: 'merged' | 'committed' | 'pr', firstTime: boolean) => void) | undefined;
 let running: Set<string>;
-let learn: { retire: ReturnType<typeof vi.fn>; unretire: ReturnType<typeof vi.fn>; saveApproved: ReturnType<typeof vi.fn>; syncApprovedText: ReturnType<typeof vi.fn> };
+let learn: {
+  retire: ReturnType<typeof vi.fn>;
+  unretire: ReturnType<typeof vi.fn>;
+  saveApproved: ReturnType<typeof vi.fn>;
+  syncApprovedText: ReturnType<typeof vi.fn>;
+};
 let verify: { start: ReturnType<typeof vi.fn> };
 
 function addThread(id: string, title?: string): void {
@@ -77,7 +82,16 @@ beforeEach(() => {
     },
     get: () => ({ base: BASE, head: HEAD }),
   };
-  service = new LearnedSkillsService(drafts, uses, rows, sessions as never, outcomes as never, meta, learn as never, verify as never);
+  service = new LearnedSkillsService(
+    drafts,
+    uses,
+    rows,
+    sessions as never,
+    outcomes as never,
+    meta,
+    learn as never,
+    verify as never,
+  );
   service.onModuleInit();
   addThread('origin', 'Add six notes');
   for (const id of ['u1', 'u2', 'u3', 'u4']) addThread(id);
@@ -88,7 +102,8 @@ afterEach(() => {
   rmSync(base, { recursive: true, force: true });
 });
 
-const used = (threadId: string, file: string, name = 'add-notes'): void => useListener?.(threadId, [{ name, path: file }]);
+const used = (threadId: string, file: string, name = 'add-notes'): void =>
+  useListener?.(threadId, [{ name, path: file }]);
 
 describe('recording the uses of a learned skill', () => {
   it('counts a prompt that used a skill whose file carries x-pi-kit.learnedFrom, per prompt and per thread', () => {
@@ -97,7 +112,15 @@ describe('recording the uses of a learned skill', () => {
     used('u1', file);
     used('u2', file);
     const [skill] = service.list();
-    expect(skill).toMatchObject({ id, name: 'add-notes', uses: 3, threads: 2, mergedAfterUse: 0, retiredAt: null, missing: false });
+    expect(skill).toMatchObject({
+      id,
+      name: 'add-notes',
+      uses: 3,
+      threads: 2,
+      mergedAfterUse: 0,
+      retiredAt: null,
+      missing: false,
+    });
     expect(skill.lastUsedAt).toBeGreaterThan(0);
     expect(skill.learnedFrom).toEqual({ threadId: 'origin', title: 'Add six notes', base: BASE, head: HEAD });
   });
@@ -128,7 +151,9 @@ describe('recording the uses of a learned skill', () => {
     const link = join(base, 'link');
     symlinkSync(project, link);
     expect(canonicalPath(join(link, '.pi', 'skills', 'add-notes', 'SKILL.md'))).toBe(file);
-    expect(canonicalPath(join(link, '.pi', 'skills', '.retired', 'x', 'SKILL.md'))).toBe(join(project, '.pi', 'skills', '.retired', 'x', 'SKILL.md'));
+    expect(canonicalPath(join(link, '.pi', 'skills', '.retired', 'x', 'SKILL.md'))).toBe(
+      join(project, '.pi', 'skills', '.retired', 'x', 'SKILL.md'),
+    );
   });
 });
 
@@ -177,7 +202,13 @@ describe('the flag', () => {
 
   it('flags a failed verification when none of the last three merged', () => {
     const { id, file } = approvedSkill();
-    drafts.setVerification(id, { state: 'done', result: 'failed', finishedAt: 5000, skillHash: skillHash(SKILL), score: 0.1 } as SkillVerification);
+    drafts.setVerification(id, {
+      state: 'done',
+      result: 'failed',
+      finishedAt: 5000,
+      skillHash: skillHash(SKILL),
+      score: 0.1,
+    } as SkillVerification);
     for (const t of ['u1', 'u2', 'u3']) {
       used(t, file);
       outcomeListener?.(t, 'committed', true);
@@ -199,9 +230,27 @@ describe('the last verification', () => {
   it('comes from the draft’s record, and says when the skill was edited after it', () => {
     const { id } = approvedSkill();
     expect(service.list()[0].verification).toBeNull();
-    drafts.setVerification(id, { state: 'done', result: 'pass', finishedAt: 7000, skillHash: skillHash(SKILL), summary: 'Reproduced 6 of 6 files.' } as SkillVerification);
-    expect(service.list()[0].verification).toEqual({ state: 'done', result: 'pass', at: 7000, summary: 'Reproduced 6 of 6 files.', stale: false });
-    drafts.setVerification(id, { state: 'done', result: 'pass', finishedAt: 7000, skillHash: 'another-text', summary: 's' } as SkillVerification);
+    drafts.setVerification(id, {
+      state: 'done',
+      result: 'pass',
+      finishedAt: 7000,
+      skillHash: skillHash(SKILL),
+      summary: 'Reproduced 6 of 6 files.',
+    } as SkillVerification);
+    expect(service.list()[0].verification).toEqual({
+      state: 'done',
+      result: 'pass',
+      at: 7000,
+      summary: 'Reproduced 6 of 6 files.',
+      stale: false,
+    });
+    drafts.setVerification(id, {
+      state: 'done',
+      result: 'pass',
+      finishedAt: 7000,
+      skillHash: 'another-text',
+      summary: 's',
+    } as SkillVerification);
     expect(service.list()[0].verification?.stale).toBe(true);
     drafts.setVerification(id, { state: 'running', phase: 'run' });
     expect(service.list()[0].verification).toEqual({ state: 'running', phase: 'run', stale: false });
@@ -209,10 +258,21 @@ describe('the last verification', () => {
 
   it('falls back to the x-pi-kit.verified block of the file when the record says only that a later try did not finish', () => {
     const { id, file } = approvedSkill();
-    const done = { state: 'done', result: 'partial', finishedAt: Date.UTC(2026, 9, 17, 9), files: { reproduced: 1, expected: 2, extra: 0 }, hunks: { matched: 1, expected: 2, actual: 1 } } as SkillVerification;
+    const done = {
+      state: 'done',
+      result: 'partial',
+      finishedAt: Date.UTC(2026, 9, 17, 9),
+      files: { reproduced: 1, expected: 2, extra: 0 },
+      hunks: { matched: 1, expected: 2, actual: 1 },
+    } as SkillVerification;
     writeFileSync(file, stampVerified(stampProvenance(SKILL, { learnedFrom: 'origin', base: BASE, head: HEAD }), done));
     drafts.setVerification(id, { state: 'error', error: 'The app was closed.', finishedAt: 9000 } as SkillVerification);
-    expect(service.list()[0].verification).toEqual({ state: 'done', result: 'partial', at: Date.UTC(2026, 9, 17, 9), stale: false });
+    expect(service.list()[0].verification).toEqual({
+      state: 'done',
+      result: 'partial',
+      at: Date.UTC(2026, 9, 17, 9),
+      stale: false,
+    });
     drafts.setVerification(id, null);
     expect(service.list()[0].verification?.result).toBe('partial');
   });
@@ -220,7 +280,11 @@ describe('the last verification', () => {
   it('says why a try ended without a result when the file states none', () => {
     const { id } = approvedSkill();
     drafts.setVerification(id, { state: 'stopped', finishedAt: 9000 } as SkillVerification);
-    expect(service.list()[0].verification).toMatchObject({ state: 'stopped', at: 9000, summary: expect.stringContaining('Stopped') });
+    expect(service.list()[0].verification).toMatchObject({
+      state: 'stopped',
+      at: 9000,
+      summary: expect.stringContaining('Stopped'),
+    });
   });
 });
 
@@ -228,7 +292,13 @@ describe('the list and the actions', () => {
   it('lists approved skills only, retired ones with their time, by name; a deleted thread leaves the title null', () => {
     approvedSkill('origin', 'b-skill');
     const a = approvedSkill('u1', 'a-skill');
-    const pending = drafts.insert({ threadId: 'u2', name: 'pending-skill', text: SKILL, scope: 'project', madeBy: 'person' });
+    const pending = drafts.insert({
+      threadId: 'u2',
+      name: 'pending-skill',
+      text: SKILL,
+      scope: 'project',
+      madeBy: 'person',
+    });
     drafts.setRetired(a.id, 4242);
     rows.delete('u1');
     expect(service.list().map((s) => s.name)).toEqual(['a-skill', 'b-skill']);

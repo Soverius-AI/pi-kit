@@ -19,7 +19,10 @@ export function foldComposer(events: Iterable<BaseEvent>): Map<string, ComposerR
 }
 
 /** Whether writing `registration` would change what a client reducing the log by id ends up with. */
-export function composerChanges(state: ReadonlyMap<string, ComposerRegistration>, registration: ComposerRegistration): boolean {
+export function composerChanges(
+  state: ReadonlyMap<string, ComposerRegistration>,
+  registration: ComposerRegistration,
+): boolean {
   if (registration.op === 'remove') return state.has(registration.id);
   const held = state.get(registration.id);
   return !held || JSON.stringify(held) !== JSON.stringify(registration);

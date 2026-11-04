@@ -20,12 +20,30 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-const draft = (threadId = 't1') => ({ threadId, name: 'add-a-migration', text: '---\nname: add-a-migration\ndescription: d\n---\nB\n', scope: 'project' as const, madeBy: 'attendant' as const, model: 'p/m' });
+const draft = (threadId = 't1') => ({
+  threadId,
+  name: 'add-a-migration',
+  text: '---\nname: add-a-migration\ndescription: d\n---\nB\n',
+  scope: 'project' as const,
+  madeBy: 'attendant' as const,
+  model: 'p/m',
+});
 
 describe('skill_drafts', () => {
   it('keeps a draft as pending with the model and no decision', () => {
     const made = drafts.insert(draft(), 1000);
-    expect(made).toMatchObject({ threadId: 't1', name: 'add-a-migration', state: 'pending', scope: 'project', madeBy: 'attendant', model: 'p/m', createdAt: 1000, decidedAt: null, path: null, verification: null });
+    expect(made).toMatchObject({
+      threadId: 't1',
+      name: 'add-a-migration',
+      state: 'pending',
+      scope: 'project',
+      madeBy: 'attendant',
+      model: 'p/m',
+      createdAt: 1000,
+      decidedAt: null,
+      path: null,
+      verification: null,
+    });
     expect(drafts.forThread('t1')).toEqual(made);
     expect(drafts.pending().map((d) => d.id)).toEqual([made.id]);
     expect(drafts.all().get('t1')?.id).toBe(made.id);
@@ -50,7 +68,12 @@ describe('skill_drafts', () => {
     const made = drafts.insert(draft());
     drafts.edit(made.id, { name: 'renamed', scope: 'user' });
     drafts.setVerification(made.id, { requested: true, state: 'not-run' });
-    expect(drafts.get(made.id)).toMatchObject({ name: 'renamed', scope: 'user', text: made.text, verification: { requested: true, state: 'not-run' } });
+    expect(drafts.get(made.id)).toMatchObject({
+      name: 'renamed',
+      scope: 'user',
+      text: made.text,
+      verification: { requested: true, state: 'not-run' },
+    });
     drafts.setVerification(made.id, null);
     expect(drafts.get(made.id)?.verification).toBeNull();
   });
@@ -76,7 +99,12 @@ describe('skill_drafts', () => {
   });
 
   it('is deleted with its thread', () => {
-    new ThreadsRepository(db).insertDraft({ id: 't1', sessionPath: join(dir, 't1.jsonl'), cwd: '/p', baseCommit: null });
+    new ThreadsRepository(db).insertDraft({
+      id: 't1',
+      sessionPath: join(dir, 't1.jsonl'),
+      cwd: '/p',
+      baseCommit: null,
+    });
     drafts.insert(draft());
     new ThreadsRepository(db).delete('t1');
     expect(drafts.forThread('t1')).toBeUndefined();
@@ -84,7 +112,13 @@ describe('skill_drafts', () => {
 
   it('is a badge for the thread state', () => {
     const made = drafts.insert(draft());
-    expect(draftBadge(made)).toEqual({ id: made.id, name: 'add-a-migration', state: 'pending', madeBy: 'attendant', verification: null });
+    expect(draftBadge(made)).toEqual({
+      id: made.id,
+      name: 'add-a-migration',
+      state: 'pending',
+      madeBy: 'attendant',
+      verification: null,
+    });
     expect(draftBadge(undefined)).toBeNull();
   });
 });
@@ -92,8 +126,16 @@ describe('skill_drafts', () => {
 describe('the suggestion kind `learn` (the table rebuild)', () => {
   it('accepts a learn suggestion and a learn action', () => {
     const attendant = new AttendantRepository(db);
-    const id = attendant.addSuggestion({ threadId: 't1', kind: 'learn', target: 'draft-1', text: 'add-a-migration', reason: 'r' });
-    expect(attendant.openSuggestions('t1')).toEqual([{ id, kind: 'learn', target: 'draft-1', text: 'add-a-migration', reason: 'r' }]);
+    const id = attendant.addSuggestion({
+      threadId: 't1',
+      kind: 'learn',
+      target: 'draft-1',
+      text: 'add-a-migration',
+      reason: 'r',
+    });
+    expect(attendant.openSuggestions('t1')).toEqual([
+      { id, kind: 'learn', target: 'draft-1', text: 'add-a-migration', reason: 'r' },
+    ]);
     attendant.closeLearn('draft-1', 'accepted');
     expect(attendant.openSuggestions('t1')).toEqual([]);
     attendant.addAction({ kind: 'learn', status: 'done', threadId: 't1', threadTitle: 'T', text: 'Drafted' });
@@ -101,7 +143,13 @@ describe('the suggestion kind `learn` (the table rebuild)', () => {
   });
 
   it('still refuses a kind it does not know', () => {
-    expect(() => db.db.prepare("INSERT INTO thread_suggestions (thread_id, kind, target, text, created_at) VALUES ('t', 'other', 'x', 'y', 1)").run()).toThrow(/CHECK/);
+    expect(() =>
+      db.db
+        .prepare(
+          "INSERT INTO thread_suggestions (thread_id, kind, target, text, created_at) VALUES ('t', 'other', 'x', 'y', 1)",
+        )
+        .run(),
+    ).toThrow(/CHECK/);
   });
 });
 

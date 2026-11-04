@@ -37,7 +37,8 @@ export class ComputerUseService {
     const supported = SUPPORTED_PLATFORMS.includes(this.platform);
     const enabled = mod?.isEnabled() ?? false;
     const host = mod?.host() ?? { name: 'pi-kit', kind: 'app' as const };
-    const adHoc = host.bundle && this.platform === 'darwin' && host.kind === 'app' ? await this.isAdHoc(host.bundle) : undefined;
+    const adHoc =
+      host.bundle && this.platform === 'darwin' && host.kind === 'app' ? await this.isAdHoc(host.bundle) : undefined;
     let permissions: ComputerUseState['permissions'] = null;
     if (mod && enabled && this.platform === 'darwin') {
       try {
@@ -45,7 +46,9 @@ export class ComputerUseService {
         this.screenFirstSeen ??= permissions.screenRecording;
         if (permissions.screenRecording && this.screenFirstSeen === false) this.screenChanged = true;
       } catch (error) {
-        this.logger.warn(`Could not read the macOS permissions: ${error instanceof Error ? error.message : String(error)}`);
+        this.logger.warn(
+          `Could not read the macOS permissions: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     return {
@@ -62,7 +65,8 @@ export class ComputerUseService {
 
   async setEnabled(enabled: boolean): Promise<ComputerUseState> {
     const mod = await this.required();
-    if (enabled && !SUPPORTED_PLATFORMS.includes(this.platform)) throw new NotFoundException(`Computer use supports macOS, Windows and Linux; this is ${this.platform}.`);
+    if (enabled && !SUPPORTED_PLATFORMS.includes(this.platform))
+      throw new NotFoundException(`Computer use supports macOS, Windows and Linux; this is ${this.platform}.`);
     mod.setEnabled(enabled);
     const reloaded = await this.sessions.reloadIdleSessions();
     this.logger.log(`Computer use is ${enabled ? 'on' : 'off'}; reloaded ${reloaded} idle session(s).`);
@@ -76,7 +80,9 @@ export class ComputerUseService {
     try {
       await mod.requestPermissions();
     } catch (error) {
-      this.logger.warn(`Could not ask macOS for the permissions: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(
+        `Could not ask macOS for the permissions: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     const pane = mod.PERMISSIONS.find((p) => p.key === permission)?.pane;
     if (pane) await this.openUrl(pane);

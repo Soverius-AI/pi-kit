@@ -7,10 +7,12 @@
 // tries a write it may not (UC-11) and messages tester (UC-6).
 import { userTextOf } from './fake-model.mjs';
 
-const textOf = (content) => (typeof content === 'string' ? content : (content ?? []).map((part) => part.text ?? '').join('\n'));
+const textOf = (content) =>
+  typeof content === 'string' ? content : (content ?? []).map((part) => part.text ?? '').join('\n');
 
 /** The background agent a request comes from, by the first line of its system prompt; `undefined` for the main agent. */
-export const agentOf = (body) => /^pikit-agent: (\S+)/m.exec(textOf((body.messages ?? []).find((m) => m.role === 'system')?.content))?.[1];
+export const agentOf = (body) =>
+  /^pikit-agent: (\S+)/m.exec(textOf((body.messages ?? []).find((m) => m.role === 'system')?.content))?.[1];
 
 /** Replies of the main agent to the turns the test extension starts (UC-0). */
 export const TURN_REPLIES = {
@@ -58,7 +60,9 @@ export function createScript({ slowBash = false, gateReports = false } = {}) {
     if (/as a user message/i.test(prompt)) return TURN_REPLIES.user;
     if (/^Report from agent/.test(prompt)) {
       if (gateReports) await gate('main:report'); // the crash test kills the backend while this answer is pending
-      const reports = (body.messages ?? []).filter((m) => m.role === 'user' && /^Report from agent/.test(textOf(m.content)));
+      const reports = (body.messages ?? []).filter(
+        (m) => m.role === 'user' && /^Report from agent/.test(textOf(m.content)),
+      );
       return reports.length >= 2 ? 'Both agents are done.' : 'Noted the report.';
     }
     // UC-4: a question from an agent: answered when the main agent knows, forwarded to the user when it is their call.
@@ -75,12 +79,39 @@ export function createScript({ slowBash = false, gateReports = false } = {}) {
       if (done.length === 0) {
         return {
           toolCalls: [
-            { name: 'agent_spawn', arguments: { name: 'tester', role: 'writes and runs the tests', permission: 'edit', brief: 'Write test/math.test.ts with node:test cases for add, sub, mul and greet of src/math.ts and src/greet.ts, then run `node --test test/*.test.ts` and report the result.' } },
-            { name: 'agent_spawn', arguments: { name: 'reviewer', role: 'reviews the code', permission: 'read-only', brief: 'Review src/: read every file and report what you would change.' } },
+            {
+              name: 'agent_spawn',
+              arguments: {
+                name: 'tester',
+                role: 'writes and runs the tests',
+                permission: 'edit',
+                brief:
+                  'Write test/math.test.ts with node:test cases for add, sub, mul and greet of src/math.ts and src/greet.ts, then run `node --test test/*.test.ts` and report the result.',
+              },
+            },
+            {
+              name: 'agent_spawn',
+              arguments: {
+                name: 'reviewer',
+                role: 'reviews the code',
+                permission: 'read-only',
+                brief: 'Review src/: read every file and report what you would change.',
+              },
+            },
           ],
         };
       }
-      if (done.length === 2) return tool('edit', { path: 'src/math.ts', edits: [{ oldText: 'export function sub(a: number, b: number): number {\n  return a - b;\n}', newText: 'export function sub(a: number, b: number): number {\n  return a - b;\n}\n\nexport function mul(a: number, b: number): number {\n  return a * b;\n}' }] });
+      if (done.length === 2)
+        return tool('edit', {
+          path: 'src/math.ts',
+          edits: [
+            {
+              oldText: 'export function sub(a: number, b: number): number {\n  return a - b;\n}',
+              newText:
+                'export function sub(a: number, b: number): number {\n  return a - b;\n}\n\nexport function mul(a: number, b: number): number {\n  return a * b;\n}',
+            },
+          ],
+        });
       return 'Started tester and reviewer.';
     }
     return 'Ready.';
@@ -101,20 +132,28 @@ test('greet', () => assert.equal(greet('Ann'), 'Hello, Ann'));
     const done = allResults(body);
     // A command the restart interrupted (UC-7): run it again, as a model would.
     const last = done.at(-1);
-    if (last && /interrupted/i.test(textOf(last.content))) return tool('bash', { command: slowBash ? 'sleep 8 && node --test test/*.test.ts' : 'node --test test/*.test.ts' });
+    if (last && /interrupted/i.test(textOf(last.content)))
+      return tool('bash', {
+        command: slowBash ? 'sleep 8 && node --test test/*.test.ts' : 'node --test test/*.test.ts',
+      });
     if (done.length === 0) return tool('write', { path: 'test/math.test.ts', content: TEST_FILE });
     if (done.length === 1) {
       await gate('tester:ask');
       return tool('ask', { question: 'Must mul accept bigint as well?', kind: 'main' });
     }
-    if (done.length === 2) return tool('ask', { question: 'Should the tests cover negative numbers too?', kind: 'main' });
+    if (done.length === 2)
+      return tool('ask', { question: 'Should the tests cover negative numbers too?', kind: 'main' });
     if (done.length === 3) {
       await gate('tester:bash');
       // The crash test kills the backend while this command runs: it must take a while, with a child of its own.
-      return tool('bash', { command: slowBash ? 'sleep 8 && node --test test/*.test.ts' : 'node --test test/*.test.ts' });
+      return tool('bash', {
+        command: slowBash ? 'sleep 8 && node --test test/*.test.ts' : 'node --test test/*.test.ts',
+      });
     }
-    if (done.length >= 4 && !done.slice(4).length) return tool('report', { text: 'Tests for add, sub, mul and greet pass.' });
-    if (done.length === 5 && /interrupted/i.test(textOf(done[3].content))) return tool('report', { text: 'Tests for add, sub, mul and greet pass.' });
+    if (done.length >= 4 && !done.slice(4).length)
+      return tool('report', { text: 'Tests for add, sub, mul and greet pass.' });
+    if (done.length === 5 && /interrupted/i.test(textOf(done[3].content)))
+      return tool('report', { text: 'Tests for add, sub, mul and greet pass.' });
     return 'Done.';
   };
 
@@ -124,9 +163,17 @@ test('greet', () => assert.equal(greet('Ann'), 'Hello, Ann'));
     if (done.length === 0) return tool('read', { path: 'src/greet.ts' });
     if (done.length === 1) {
       await gate('reviewer:ask');
-      return tool('ask', { question: 'greet has no punctuation. Change the output to "Hello, Ann!"? It would break callers.', kind: 'user', choices: ['Keep as is', 'Change it'] });
+      return tool('ask', {
+        question: 'greet has no punctuation. Change the output to "Hello, Ann!"? It would break callers.',
+        kind: 'user',
+        choices: ['Keep as is', 'Change it'],
+      });
     }
-    if (done.length === 2) return tool('write', { path: 'src/greet.ts', content: 'export function greet(name: string): string {\n  return `Hello, ${name}!`;\n}\n' });
+    if (done.length === 2)
+      return tool('write', {
+        path: 'src/greet.ts',
+        content: 'export function greet(name: string): string {\n  return `Hello, ${name}!`;\n}\n',
+      });
     if (done.length === 3) return tool('agent_list', {});
     if (done.length === 4) {
       const tester = JSON.parse(textOf(done[3].content)).find((agent) => agent.name === 'tester');

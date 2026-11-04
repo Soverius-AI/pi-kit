@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { localAddress, modelProviders } from './model-providers';
 
-type Status = { configured: boolean; source?: 'stored' | 'runtime' | 'environment' | 'fallback' | 'models_json_key' | 'models_json_command' };
+type Status = {
+  configured: boolean;
+  source?: 'stored' | 'runtime' | 'environment' | 'fallback' | 'models_json_key' | 'models_json_command';
+};
 const runtime = (table: Record<string, { name: string; subscription?: boolean; status: Status }>) =>
   ({
     getProvider: (id: string) => (table[id] ? { name: table[id].name } : undefined),

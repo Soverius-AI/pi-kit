@@ -6,30 +6,42 @@ vi.mock('./screenshot-encoder', () => ({ encodeScreenshot: vi.fn() }));
 import { BrowserDiagnostics } from './browser-diagnostics';
 import { encodeScreenshot } from './screenshot-encoder';
 
-beforeEach(() => { vi.mocked(encodeScreenshot).mockReset().mockResolvedValue({ data: 'encoded', mimeType: 'image/png' }); });
+beforeEach(() => {
+  vi.mocked(encodeScreenshot).mockReset().mockResolvedValue({ data: 'encoded', mimeType: 'image/png' });
+});
 
 function capturePage(capture: ReturnType<typeof vi.fn>, timeoutMs?: number) {
-  const sendCommand = vi.fn(async (method: string): Promise<unknown> => method === 'Page.getLayoutMetrics' ? {
-    cssContentSize: { x: 0, y: 0, width: 800, height: 1800 },
-    cssLayoutViewport: { pageX: 0, pageY: 100, clientWidth: 800, clientHeight: 600 },
-    layoutViewport: { clientWidth: 800 },
-  } : {});
+  const sendCommand = vi.fn(async (method: string): Promise<unknown> =>
+    method === 'Page.getLayoutMetrics'
+      ? {
+          cssContentSize: { x: 0, y: 0, width: 800, height: 1800 },
+          cssLayoutViewport: { pageX: 0, pageY: 100, clientWidth: 800, clientHeight: 600 },
+          layoutViewport: { clientWidth: 800 },
+        }
+      : {},
+  );
   let destroyed = false;
   const wc = Object.assign(new EventEmitter(), {
-    isDestroyed: () => destroyed, getZoomFactor: () => 1, capturePage: capture,
-    close: vi.fn(() => { destroyed = true; wc.emit('destroyed'); }),
+    isDestroyed: () => destroyed,
+    getZoomFactor: () => 1,
+    capturePage: capture,
+    close: vi.fn(() => {
+      destroyed = true;
+      wc.emit('destroyed');
+    }),
     debugger: Object.assign(new EventEmitter(), { isAttached: () => true, sendCommand }),
   });
   const refs = new Map<string, number>();
   return { wc, sendCommand, refs, diagnostics: new BrowserDiagnostics(wc as never, refs, timeoutMs) };
 }
 
-
 describe('native browser inspection', () => {
   it.each(['DOM.enable', 'Overlay.enable'])('honors cancellation while %s is still starting', async (pendingMethod) => {
     let finish!: () => void;
-    const pending = new Promise<void>((resolve) => { finish = resolve; });
-    const sendCommand = vi.fn((method: string) => method === pendingMethod ? pending : Promise.resolve({}));
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const sendCommand = vi.fn((method: string) => (method === pendingMethod ? pending : Promise.resolve({})));
     const wc = Object.assign(new EventEmitter(), {
       isDestroyed: () => false,
       debugger: Object.assign(new EventEmitter(), { isAttached: () => true, sendCommand }),
@@ -41,7 +53,10 @@ describe('native browser inspection', () => {
     finish();
     await starting;
     expect(diagnostics.inspecting).toBe(false);
-    expect(sendCommand).not.toHaveBeenCalledWith('Overlay.setInspectMode', expect.objectContaining({ mode: 'searchForNode' }));
+    expect(sendCommand).not.toHaveBeenCalledWith(
+      'Overlay.setInspectMode',
+      expect.objectContaining({ mode: 'searchForNode' }),
+    );
   });
 
   it('turns off the native overlay when Stop or Escape cancels an active picker', async () => {
@@ -69,14 +84,23 @@ describe('native browser inspection', () => {
     const capture = vi.fn(async () => ({}));
     const { diagnostics, sendCommand } = capturePage(capture);
     let prime!: () => void;
-    const primed = new Promise<void>((resolve) => { prime = resolve; });
+    const primed = new Promise<void>((resolve) => {
+      prime = resolve;
+    });
     const original = sendCommand.getMockImplementation();
-    sendCommand.mockImplementation(async (method) => method === 'Page.captureScreenshot' ? primed : original?.(method));
+    sendCommand.mockImplementation(async (method) =>
+      method === 'Page.captureScreenshot' ? primed : original?.(method),
+    );
     const result = diagnostics.capture('viewport', 'jpeg', 45);
-    await vi.waitFor(() => expect(sendCommand).toHaveBeenCalledWith('Page.captureScreenshot', {
-      format: 'jpeg', quality: 10, fromSurface: true, captureBeyondViewport: false,
-      clip: { x: 0, y: 100, width: 1, height: 1, scale: 1 },
-    }));
+    await vi.waitFor(() =>
+      expect(sendCommand).toHaveBeenCalledWith('Page.captureScreenshot', {
+        format: 'jpeg',
+        quality: 10,
+        fromSurface: true,
+        captureBeyondViewport: false,
+        clip: { x: 0, y: 100, width: 1, height: 1, scale: 1 },
+      }),
+    );
     expect(capture).not.toHaveBeenCalled();
     prime();
     await result;
@@ -85,8 +109,15 @@ describe('native browser inspection', () => {
   });
 
   it('retires a broken compositor instead of leaking UnknownVizError to the user', async () => {
-    const { diagnostics, wc } = capturePage(vi.fn(async () => { throw new Error('UnknownVizError'); }));
-    await expect(diagnostics.capture('fullpage')).rejects.toMatchObject({ code: 'failed', message: expect.stringContaining('rendered pixels') });
+    const { diagnostics, wc } = capturePage(
+      vi.fn(async () => {
+        throw new Error('UnknownVizError');
+      }),
+    );
+    await expect(diagnostics.capture('fullpage')).rejects.toMatchObject({
+      code: 'failed',
+      message: expect.stringContaining('rendered pixels'),
+    });
     expect(wc.close).toHaveBeenCalledOnce();
     expect(encodeScreenshot).not.toHaveBeenCalled();
   });
@@ -98,18 +129,39 @@ describe('native browser inspection', () => {
     const bounds = { x: 20.4, y: 250.4, width: 120, height: 80 };
     sendCommand.mockImplementation(async (method) => {
       if (method === 'DOM.resolveNode') return { object: { objectId: 'fixed' } };
-      if (method === 'Runtime.callFunctionOn') return { result: { value: { selector: '#fixed', tag: 'button', name: 'Fixed', role: 'button', bounds, viewport: { pageX: 0, pageY: 100, clientWidth: 800, clientHeight: 600 }, styles: {} } } };
+      if (method === 'Runtime.callFunctionOn')
+        return {
+          result: {
+            value: {
+              selector: '#fixed',
+              tag: 'button',
+              name: 'Fixed',
+              role: 'button',
+              bounds,
+              viewport: { pageX: 0, pageY: 100, clientWidth: 800, clientHeight: 600 },
+              styles: {},
+            },
+          },
+        };
       return original?.(method) ?? {};
     });
     refs.set('fixed', 1);
     await diagnostics.inspect({ action: 'inspect', ref: 'fixed' });
     await diagnostics.capture('selection');
-    expect(capture).toHaveBeenCalledWith({ x: 20, y: 150, width: 121, height: 81 }, { stayHidden: true, stayAwake: true });
+    expect(capture).toHaveBeenCalledWith(
+      { x: 20, y: 150, width: 121, height: 81 },
+      { stayHidden: true, stayAwake: true },
+    );
     expect(sendCommand.mock.calls.some(([method]) => method.startsWith('Emulation.'))).toBe(false);
   });
 
   it('cancels a permanently stuck native capture without waiting for it or reusing its metrics', async () => {
-    const capture = vi.fn(() => new Promise(() => { /* native capture never answers */ }));
+    const capture = vi.fn(
+      () =>
+        new Promise(() => {
+          /* native capture never answers */
+        }),
+    );
     const { diagnostics, wc, sendCommand } = capturePage(capture);
     const controller = new AbortController();
     const first = diagnostics.capture('fullpage', 'png', 80, controller.signal);
@@ -120,7 +172,9 @@ describe('native browser inspection', () => {
     expect(wc.close).toHaveBeenCalledOnce();
     await expect(diagnostics.capture('fullpage')).rejects.toMatchObject({ code: 'cancelled' });
     expect(capture).toHaveBeenCalledOnce();
-    expect(sendCommand.mock.calls.filter(([method]) => method === 'Emulation.setDeviceMetricsOverride')).toHaveLength(1);
+    expect(sendCommand.mock.calls.filter(([method]) => method === 'Emulation.setDeviceMetricsOverride')).toHaveLength(
+      1,
+    );
     // A replacement page has a separate capture queue and clean virtual viewport.
     const replacement = capturePage(vi.fn(async () => ({})));
     expect(await replacement.diagnostics.capture('fullpage')).toEqual({ data: 'encoded', mimeType: 'image/png' });
@@ -129,7 +183,12 @@ describe('native browser inspection', () => {
 
   it('times out native pixels before encoding, closes the page and ignores a late native reply', async () => {
     let finish!: (image: unknown) => void;
-    const capture = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+    const capture = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
     const { diagnostics, wc } = capturePage(capture, 50);
     await expect(diagnostics.capture('viewport')).rejects.toMatchObject({ code: 'timeout' });
     expect(wc.close).toHaveBeenCalledOnce();
@@ -140,7 +199,13 @@ describe('native browser inspection', () => {
 
   it('also bounds stalled layout/CDP responses, not just screenshot encoding', async () => {
     const { diagnostics, wc, sendCommand } = capturePage(vi.fn(), 50);
-    sendCommand.mockImplementation(async (method) => method === 'Page.getLayoutMetrics' ? new Promise(() => { /* CDP never settles */ }) : {});
+    sendCommand.mockImplementation(async (method) =>
+      method === 'Page.getLayoutMetrics'
+        ? new Promise(() => {
+            /* CDP never settles */
+          })
+        : {},
+    );
     await expect(diagnostics.capture('fullpage')).rejects.toMatchObject({ code: 'timeout' });
     expect(wc.close).toHaveBeenCalledOnce();
     expect(encodeScreenshot).not.toHaveBeenCalled();
@@ -148,7 +213,11 @@ describe('native browser inspection', () => {
 
   it('rejects an encoded result if the page navigated while the worker was running', async () => {
     let finish!: (result: { data: string; mimeType: 'image/png' }) => void;
-    vi.mocked(encodeScreenshot).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    vi.mocked(encodeScreenshot).mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
     const { diagnostics, wc } = capturePage(vi.fn(async () => ({})));
     const pending = diagnostics.capture('viewport');
     const rejected = expect(pending).rejects.toThrow('navigated');
@@ -157,5 +226,4 @@ describe('native browser inspection', () => {
     finish({ data: 'old document', mimeType: 'image/png' });
     await rejected;
   });
-
 });

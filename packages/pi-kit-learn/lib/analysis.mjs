@@ -15,19 +15,32 @@ export function loadPrompt(files = { prompt: read('prompts/analyze.md'), skeleto
   return { system: system.replace('{{skeleton}}', () => files.skeleton.trim()).trim(), user: user.trim() };
 }
 
-const line = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
+const line = (text) =>
+  String(text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 /** The transcript of `pi-kit:thread:transcript` as the text the model reads. */
 export function transcriptToText(t) {
   const out = [];
-  out.push('## What the developer asked', ...(t.prompts.length ? t.prompts.map((p, i) => `${i === 0 ? 'First prompt' : `Follow-up ${i}`}: ${line(p)}`) : ['(no prompt)']));
+  out.push(
+    '## What the developer asked',
+    ...(t.prompts.length
+      ? t.prompts.map((p, i) => `${i === 0 ? 'First prompt' : `Follow-up ${i}`}: ${line(p)}`)
+      : ['(no prompt)']),
+  );
   out.push('', `## What the agent did (${t.toolCalls} tool calls${t.truncated ? ', the list is cut' : ''})`);
   if (t.steps.length === 0) out.push('(no tool calls)');
-  for (const step of t.steps) out.push(`${step.n}. ${step.tool}${step.target ? ` ${step.target}` : ''}${step.outcome === 'error' ? '  [failed]' : ''}`);
+  for (const step of t.steps)
+    out.push(
+      `${step.n}. ${step.tool}${step.target ? ` ${step.target}` : ''}${step.outcome === 'error' ? '  [failed]' : ''}`,
+    );
   if (t.errors.length > 0) {
     out.push('', '## Errors and how they were handled');
     for (const error of t.errors) {
-      out.push(`- step ${error.step} (${error.tool}${error.target ? ` ${error.target}` : ''}): ${line(error.message)} ${error.recovered ? `-> recovered at step ${error.recoveredBy}` : '-> not recovered'}`);
+      out.push(
+        `- step ${error.step} (${error.tool}${error.target ? ` ${error.target}` : ''}): ${line(error.message)} ${error.recovered ? `-> recovered at step ${error.recoveredBy}` : '-> not recovered'}`,
+      );
     }
   }
   if (t.checks.length > 0) {
@@ -66,9 +79,12 @@ export function slug(text) {
  * `{ ok: false, skip: true, reason }` when the model found nothing to generalise, or `{ ok: false, reason }` when the answer is not a skill.
  */
 export function parseDraftReply(reply) {
-  let text = String(reply ?? '').replace(/\r\n/g, '\n').trim();
+  let text = String(reply ?? '')
+    .replace(/\r\n/g, '\n')
+    .trim();
   const skip = /^skip\s*:\s*(.*)$/im.exec(text);
-  if (skip && !text.includes('\n---\n') && !text.startsWith('---')) return { ok: false, skip: true, reason: skip[1].trim() || 'The model found nothing that generalises.' };
+  if (skip && !text.includes('\n---\n') && !text.startsWith('---'))
+    return { ok: false, skip: true, reason: skip[1].trim() || 'The model found nothing that generalises.' };
   const fenced = /```(?:markdown|md|yaml)?\n([\s\S]*?)\n```/.exec(text);
   if (fenced && /^---\s*\n/m.test(fenced[1])) text = fenced[1].trim();
   const start = text.search(/^---[ \t]*$/m);

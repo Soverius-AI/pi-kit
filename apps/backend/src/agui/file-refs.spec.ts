@@ -12,7 +12,9 @@ describe('expandFileRefs', () => {
   writeFileSync(join(cwd, 'bin.dat'), Buffer.from([1, 2, 0, 3]));
 
   it('inlines text files like pi does for @file arguments', () => {
-    expect(expandFileRefs(cwd, ['src/a.ts'])).toBe(`<file name="${join(cwd, 'src', 'a.ts')}">\nexport const a = 1;\n\n</file>\n`);
+    expect(expandFileRefs(cwd, ['src/a.ts'])).toBe(
+      `<file name="${join(cwd, 'src', 'a.ts')}">\nexport const a = 1;\n\n</file>\n`,
+    );
   });
 
   it('skips missing, empty, binary, duplicate and out-of-folder paths', () => {

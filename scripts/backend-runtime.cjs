@@ -4,4 +4,9 @@ exports.optionalNativePackages = ['keychain-store'];
 exports.nativePackages = ['@napi-rs/keyring', 'better-sqlite3-multiple-ciphers', 'node-pty'];
 // Optional framework branches we do not use. Keep their imports external so
 // Nest's existing optional-load handling still sees a missing package.
-exports.optionalImports = ['@nestjs/microservices', '@nestjs/websockets', '@fastify/static', 'class-transformer/storage'];
+exports.optionalImports = [
+  '@nestjs/microservices',
+  '@nestjs/websockets',
+  '@fastify/static',
+  'class-transformer/storage',
+];

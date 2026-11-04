@@ -11,7 +11,16 @@ import { agentDirOf } from '../pi/pi-resolution';
 import { PiUpdateService } from '../pi/pi-update.service';
 
 /** The switches that change what the backend does. Names and values only; no token, key or path of a secret is among them. */
-const FLAGS = ['NODE_ENV', 'PI_OFFLINE', 'PI_SKIP_VERSION_CHECK', 'PI_KIT_ALLOW_RESTART', 'PI_KIT_TRUSTED_CWDS', 'PI_CODING_AGENT_DIR', 'PI_KIT_PI_DIR', 'PI_KIT_DESKTOP'] as const;
+const FLAGS = [
+  'NODE_ENV',
+  'PI_OFFLINE',
+  'PI_SKIP_VERSION_CHECK',
+  'PI_KIT_ALLOW_RESTART',
+  'PI_KIT_TRUSTED_CWDS',
+  'PI_CODING_AGENT_DIR',
+  'PI_KIT_PI_DIR',
+  'PI_KIT_DESKTOP',
+] as const;
 
 /**
  * Settings › Advanced › Diagnostics: what a bug report needs to know about this backend, in one object the dialog shows and
@@ -39,10 +48,18 @@ export class DiagnosticsService {
         dev: this.config.dev,
       },
       app: { version: about.app.version, node: about.node, platform: platform(), arch: arch() },
-      pi: { version: about.pi.version, source: about.pi.source, packageDir: about.pi.packageDir, agentDir: agentDirOf(process.env) },
+      pi: {
+        version: about.pi.version,
+        source: about.pi.source,
+        packageDir: about.pi.packageDir,
+        agentDir: agentDirOf(process.env),
+      },
       paths: { dataDir: this.config.dataDir, database: this.database.path, logDir, defaultCwd: this.config.defaultCwd },
       logs: logFiles(logDir),
-      flags: FLAGS.filter((name) => process.env[name] !== undefined && process.env[name] !== '').map((name) => ({ name, value: process.env[name] as string })),
+      flags: FLAGS.filter((name) => process.env[name] !== undefined && process.env[name] !== '').map((name) => ({
+        name,
+        value: process.env[name] as string,
+      })),
     };
   }
 }

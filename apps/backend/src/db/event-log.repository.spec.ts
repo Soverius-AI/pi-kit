@@ -8,7 +8,12 @@ import { EventLogRepository } from './event-log.repository';
 
 const event: BaseEvent = { type: EventType.CUSTOM, name: 'test', value: {} } as BaseEvent;
 const cleanup: (() => void)[] = [];
-afterEach(() => cleanup.splice(0).reverse().forEach((close) => close()));
+afterEach(() =>
+  cleanup
+    .splice(0)
+    .reverse()
+    .forEach((close) => close()),
+);
 
 function writers() {
   const dir = mkdtempSync(join(tmpdir(), 'pk-event-writers-'));
@@ -30,26 +35,32 @@ describe('event sequence allocation', () => {
 
   it('keeps interleaved threads ordered across writers', async () => {
     const logs = writers();
-    await Promise.all(Array.from({ length: 16 }, async (_, thread) => {
-      let previous = 0;
-      for (let i = 0; i < 40; i++) {
-        await Promise.resolve();
-        const seq = logs[i % logs.length].append(`t${thread}`, 'r', event);
-        expect(seq).toBeGreaterThan(previous);
-        previous = seq;
-      }
-    }));
+    await Promise.all(
+      Array.from({ length: 16 }, async (_, thread) => {
+        let previous = 0;
+        for (let i = 0; i < 40; i++) {
+          await Promise.resolve();
+          const seq = logs[i % logs.length].append(`t${thread}`, 'r', event);
+          expect(seq).toBeGreaterThan(previous);
+          previous = seq;
+        }
+      }),
+    );
     for (let thread = 0; thread < 16; thread++) expect(logs[0].count(`t${thread}`)).toBe(40);
   });
 
   it('allocates after serialization, which may itself append an event', () => {
     const [log] = writers();
-    const outer = { type: EventType.CUSTOM, name: 'outer', value: {
-      toJSON: () => {
-        log.append('t', 'r', event);
-        return {};
+    const outer = {
+      type: EventType.CUSTOM,
+      name: 'outer',
+      value: {
+        toJSON: () => {
+          log.append('t', 'r', event);
+          return {};
+        },
       },
-    } } as BaseEvent;
+    } as BaseEvent;
     expect(log.append('t', 'r', outer)).toBe(2);
     expect(log.read('t').map((row) => row.seq)).toEqual([1, 2]);
   });

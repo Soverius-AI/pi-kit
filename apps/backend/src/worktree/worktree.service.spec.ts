@@ -25,7 +25,9 @@ const oldRoot = process.env['PI_KIT_WORKTREE_ROOT'];
 const oldGh = process.env['PI_KIT_GH'];
 
 const git = (cwd: string, ...args: string[]): string =>
-  execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { encoding: 'utf8' });
+  execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
+    encoding: 'utf8',
+  });
 
 beforeEach(() => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-wt-')));
@@ -48,7 +50,15 @@ beforeEach(() => {
   const status = { touch: vi.fn(), listChanged: vi.fn() } as unknown as ThreadStatusService;
   recorder = { recordMerged: vi.fn(), recordPullRequest: vi.fn() };
   const outcomes = recorder as unknown as OutcomesService;
-  service = new WorktreeService(meta, threads, sessions as unknown as PiSessionService, terminals as unknown as TerminalService, trust, status, outcomes);
+  service = new WorktreeService(
+    meta,
+    threads,
+    sessions as unknown as PiSessionService,
+    terminals as unknown as TerminalService,
+    trust,
+    status,
+    outcomes,
+  );
 });
 
 afterEach(() => {
@@ -63,7 +73,13 @@ afterEach(() => {
 /** A thread in a new worktree, as ThreadsService makes it. */
 async function newThread(id: string, title?: string): Promise<ThreadRow> {
   const facts = await service.create(project, { threadId: id, ...(title ? { title } : {}), request: {} });
-  threads.insertDraft({ id, sessionPath: join(base, `${id}.jsonl`), cwd: facts.path, ...(title ? { title } : {}), worktree: facts });
+  threads.insertDraft({
+    id,
+    sessionPath: join(base, `${id}.jsonl`),
+    cwd: facts.path,
+    ...(title ? { title } : {}),
+    worktree: facts,
+  });
   return threads.get(id) as ThreadRow;
 }
 
@@ -75,7 +91,9 @@ describe('create', () => {
     expect(row.baseBranch).toBe('main');
     expect(row.cwd).toBe(project);
     expect(existsSync(join(row.worktreePath as string, 'a.txt'))).toBe(true);
-    expect(git(row.worktreePath as string, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('pi-kit/fix-the-e2e-tests');
+    expect(git(row.worktreePath as string, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(
+      'pi-kit/fix-the-e2e-tests',
+    );
     // The main checkout is untouched.
     expect(git(project, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('main');
   });
@@ -110,13 +128,26 @@ describe('create', () => {
     mkdirSync(empty);
     git(empty, 'init', '-q', '-b', 'main');
     await expect(service.create(empty, { threadId: 'x', request: {} })).rejects.toThrow(/no commits/);
-    await expect(service.create(project, { threadId: 'x', request: { base: 'nope' } })).rejects.toThrow(/does not exist/);
+    await expect(service.create(project, { threadId: 'x', request: { base: 'nope' } })).rejects.toThrow(
+      /does not exist/,
+    );
   });
 
   it('describes the worktree for the thread list', async () => {
     const row = await newThread('77777777-aaaa', 'Describe me');
-    expect(service.describe(row)).toEqual({ path: row.worktreePath, branch: 'pi-kit/describe-me', base: 'main', exists: true });
-    expect(service.settingsOf(project)).toMatchObject({ root: null, base: null, setup: null, git: true, defaultRoot: join(base, 'worktrees') });
+    expect(service.describe(row)).toEqual({
+      path: row.worktreePath,
+      branch: 'pi-kit/describe-me',
+      base: 'main',
+      exists: true,
+    });
+    expect(service.settingsOf(project)).toMatchObject({
+      root: null,
+      base: null,
+      setup: null,
+      git: true,
+      defaultRoot: join(base, 'worktrees'),
+    });
   });
 });
 
@@ -127,12 +158,25 @@ describe('merge back', () => {
     writeFileSync(join(path, 'a.txt'), 'one\ntwo\n');
     writeFileSync(join(path, 'new.ts'), 'export {};\n');
     const state = await service.state(row);
-    expect(state).toMatchObject({ exists: true, dirty: 2, ahead: 0, behind: 0, baseCheckedOut: true, branch: 'pi-kit/reporting-adapter', base: 'main', gh: false });
+    expect(state).toMatchObject({
+      exists: true,
+      dirty: 2,
+      ahead: 0,
+      behind: 0,
+      baseCheckedOut: true,
+      branch: 'pi-kit/reporting-adapter',
+      base: 'main',
+      gh: false,
+    });
     const proposed = await service.message(row);
     expect(proposed.message.split('\n')[0]).toBe('Reporting adapter');
     expect(proposed.files).toBe(2);
 
-    const result = await service.merge(row, { mode: 'merge', message: 'Add the adapter\n\nWith a new module.', remove: true });
+    const result = await service.merge(row, {
+      mode: 'merge',
+      message: 'Add the adapter\n\nWith a new module.',
+      remove: true,
+    });
     expect(result).toMatchObject({ status: 'merged', removed: true, conflicts: [] });
     expect(result.commit).toMatch(/^[0-9a-f]+$/);
     // The merge back tells the outcome store: the merge commit is the thread's outcome.

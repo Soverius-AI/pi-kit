@@ -28,11 +28,22 @@ export class ComputerUsePackage extends PiKitPackage<ComputerUseHostModule> impl
   private readonly log = new Logger('ComputerUse');
 
   constructor(meta: MetaRepository) {
-    super(meta, { name: COMPUTER_USE_PACKAGE, folder: 'pi-computer-use', entry: 'lib/host.mjs', setting: 'computerUse', env: 'PI_KIT_COMPUTER_USE_PACKAGE', label: 'computer-use' });
+    super(meta, {
+      name: COMPUTER_USE_PACKAGE,
+      folder: 'pi-computer-use',
+      entry: 'lib/host.mjs',
+      setting: 'computerUse',
+      env: 'PI_KIT_COMPUTER_USE_PACKAGE',
+      label: 'computer-use',
+    });
   }
 
   onModuleInit(): void {
-    void this.ensureInstalled().catch((error: unknown) => this.log.warn(`Could not install the computer-use package: ${error instanceof Error ? error.message : String(error)}`));
+    void this.ensureInstalled().catch((error: unknown) =>
+      this.log.warn(
+        `Could not install the computer-use package: ${error instanceof Error ? error.message : String(error)}`,
+      ),
+    );
   }
 
   /** The host module of the installed package, or `undefined` when pi has none (removed, or never installed). */

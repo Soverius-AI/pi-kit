@@ -31,7 +31,9 @@ export class SkillUsesRepository {
 
   record(use: { learnedFrom: string; threadId: string }, now = Date.now()): void {
     // The outcome comes later: a use is "followed by" the outcome its thread lands after it, so a new use starts with none.
-    this.db.prepare('INSERT INTO skill_uses (learned_from, thread_id, at, outcome) VALUES (?, ?, ?, ?)').run(use.learnedFrom, use.threadId, now, null);
+    this.db
+      .prepare('INSERT INTO skill_uses (learned_from, thread_id, at, outcome) VALUES (?, ?, ?, ?)')
+      .run(use.learnedFrom, use.threadId, now, null);
   }
 
   /** The thread landed an outcome (or a later one replaced it): all its uses carry its kind. */
@@ -40,14 +42,25 @@ export class SkillUsesRepository {
   }
 
   summary(learnedFrom: string): SkillUseSummary {
-    const rows = this.db.prepare('SELECT thread_id, at, outcome FROM skill_uses WHERE learned_from = ? ORDER BY at ASC, id ASC').all(learnedFrom) as RawUse[];
+    const rows = this.db
+      .prepare('SELECT thread_id, at, outcome FROM skill_uses WHERE learned_from = ? ORDER BY at ASC, id ASC')
+      .all(learnedFrom) as RawUse[];
     const threads = new Map<string, { threadId: string; lastUseAt: number; outcome: UseOutcome | null }>();
     let merged = 0;
     for (const row of rows) {
       if (row.outcome === 'merged') merged += 1;
       const known = threads.get(row.thread_id);
-      threads.set(row.thread_id, { threadId: row.thread_id, lastUseAt: row.at, outcome: row.outcome ?? known?.outcome ?? null });
+      threads.set(row.thread_id, {
+        threadId: row.thread_id,
+        lastUseAt: row.at,
+        outcome: row.outcome ?? known?.outcome ?? null,
+      });
     }
-    return { uses: rows.length, mergedAfterUse: merged, lastUsedAt: rows.length > 0 ? rows[rows.length - 1].at : null, threads: [...threads.values()] };
+    return {
+      uses: rows.length,
+      mergedAfterUse: merged,
+      lastUsedAt: rows.length > 0 ? rows[rows.length - 1].at : null,
+      threads: [...threads.values()],
+    };
   }
 }

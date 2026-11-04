@@ -12,9 +12,19 @@ export class HealthController {
   constructor(private readonly agents: BgAgentsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Check the backend', description: 'Answers that the backend is up, with the id of this process and when it started, and whether this backend runs background agents (a second backend on the same data folder does not). A client that sees the boot id change knows the backend restarted.' })
+  @ApiOperation({
+    summary: 'Check the backend',
+    description:
+      'Answers that the backend is up, with the id of this process and when it started, and whether this backend runs background agents (a second backend on the same data folder does not). A client that sees the boot id change knows the backend restarted.',
+  })
   @Responds(HealthSchema)
   health(): Health {
-    return { status: 'ok', bootId: BOOT_ID, startedAt: STARTED_AT, pid: process.pid, backgroundAgents: this.agents.state() };
+    return {
+      status: 'ok',
+      bootId: BOOT_ID,
+      startedAt: STARTED_AT,
+      pid: process.pid,
+      backgroundAgents: this.agents.state(),
+    };
   }
 }

@@ -4,10 +4,7 @@
   "sourceRoot": "libs/chat/api/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:chat",
-    "type:api"
-  ],
+  "tags": ["scope:chat", "type:api"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"

@@ -1,5 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { DEFAULT_REDACTION, type RedactionConfig, RedactionConfigSchema, type RedactionPattern, compileUserPatterns, redactJsonl, redactText, redactValue } from '@pi-kit/protocol';
+import {
+  DEFAULT_REDACTION,
+  type RedactionConfig,
+  RedactionConfigSchema,
+  type RedactionPattern,
+  compileUserPatterns,
+  redactJsonl,
+  redactText,
+  redactValue,
+} from '@pi-kit/protocol';
 import { MetaRepository } from './meta.repository';
 import { ThreadsRepository } from './threads.repository';
 
@@ -90,19 +99,22 @@ export class RedactionService {
   html(cwd: string | undefined, html: string): { text: string; count: number } {
     if (!this.enabledForCwd(cwd)) return { text: html, count: 0 };
     let count = 0;
-    const text = html.replace(/(<script id="session-data" type="application\/json">)([A-Za-z0-9+/=]+)(<\/script>)/, (whole, open: string, data: string, close: string) => {
-      try {
-        const decoded = Buffer.from(data, 'base64').toString('utf8');
-        const value = JSON.parse(decoded) as unknown;
-        const before = JSON.stringify(value);
-        const after = JSON.stringify(redactValue(value, this.extra, new Set<string>()));
-        if (before === after) return whole;
-        count += 1;
-        return `${open}${Buffer.from(after).toString('base64')}${close}`;
-      } catch {
-        return whole;
-      }
-    });
+    const text = html.replace(
+      /(<script id="session-data" type="application\/json">)([A-Za-z0-9+/=]+)(<\/script>)/,
+      (whole, open: string, data: string, close: string) => {
+        try {
+          const decoded = Buffer.from(data, 'base64').toString('utf8');
+          const value = JSON.parse(decoded) as unknown;
+          const before = JSON.stringify(value);
+          const after = JSON.stringify(redactValue(value, this.extra, new Set<string>()));
+          if (before === after) return whole;
+          count += 1;
+          return `${open}${Buffer.from(after).toString('base64')}${close}`;
+        } catch {
+          return whole;
+        }
+      },
+    );
     return { text, count };
   }
 

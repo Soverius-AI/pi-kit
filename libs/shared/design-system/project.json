@@ -4,16 +4,11 @@
   "sourceRoot": "libs/shared/design-system/src",
   "prefix": "pk",
   "projectType": "library",
-  "tags": [
-    "scope:shared",
-    "type:ui"
-  ],
+  "tags": ["scope:shared", "type:ui"],
   "targets": {
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",
-      "outputs": [
-        "{workspaceRoot}/dist/{projectRoot}"
-      ],
+      "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
       "defaultConfiguration": "production",
       "options": {
         "project": "libs/shared/design-system/ng-package.json",
@@ -36,12 +31,8 @@
         "tsConfig": "libs/shared/design-system/tsconfig.spec.json",
         "buildTarget": "renderer:build:development",
         "runner": "vitest",
-        "include": [
-          "libs/shared/design-system/src/**/*.spec.ts"
-        ],
-        "setupFiles": [
-          "libs/shared/design-system/src/test-setup.ts"
-        ]
+        "include": ["libs/shared/design-system/src/**/*.spec.ts"],
+        "setupFiles": ["libs/shared/design-system/src/test-setup.ts"]
       }
     }
   }

@@ -8,7 +8,9 @@ import { inspectModels, repairModels } from './local-llama-swap-doctor';
 /** The doctor names what keeps a config from running; Repair changes only the lines an issue names. */
 describe('llama-swap config doctor', () => {
   let dir: string;
-  beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'pk-doctor-')); });
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'pk-doctor-'));
+  });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
   const config = (launcher: string) => `# my engines
@@ -48,7 +50,9 @@ models:
     expect(text).toContain('# keep me');
     expect(text).not.toContain('gone:');
     const after = parseDocument(text);
-    expect(after.getIn(['models', 'fine', 'cmd'])).toBe(`'${installed}' --model '${join(dir, 'fine.gguf')}' --port \${PORT}`);
+    expect(after.getIn(['models', 'fine', 'cmd'])).toBe(
+      `'${installed}' --model '${join(dir, 'fine.gguf')}' --port \${PORT}`,
+    );
     expect(after.getIn(['models', 'custom', 'cmd'])).toBe('my-engine --weights /nowhere.bin');
     expect(await inspectModels(after, { llamaServer: installed })).toEqual([]);
   });

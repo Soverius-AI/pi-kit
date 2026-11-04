@@ -21,13 +21,31 @@ export interface RedactionPattern {
 
 /** The shapes pi-kit knows. Every pattern is global; `lastIndex` is reset per use. */
 export const BUILTIN_PATTERNS: readonly RedactionPattern[] = [
-  { kind: 'private key block', hints: ['PRIVATE KEY'], pattern: /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY(?: BLOCK)?-----[\s\S]*?(?:-----END (?:[A-Z]+ )?PRIVATE KEY(?: BLOCK)?-----|$)/g, noTail: true },
+  {
+    kind: 'private key block',
+    hints: ['PRIVATE KEY'],
+    pattern:
+      /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY(?: BLOCK)?-----[\s\S]*?(?:-----END (?:[A-Z]+ )?PRIVATE KEY(?: BLOCK)?-----|$)/g,
+    noTail: true,
+  },
   { kind: 'openrouter key', hints: ['sk-or-'], pattern: /\bsk-or-(?:v\d+-)?[A-Za-z0-9_-]{24,}/g },
   { kind: 'anthropic key', hints: ['sk-ant-'], pattern: /\bsk-ant-[A-Za-z0-9_-]{24,}/g },
   { kind: 'openai key', hints: ['sk-'], pattern: /\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}/g },
-  { kind: 'github token', hints: ['ghp_', 'gho_', 'ghu_', 'ghs_', 'ghr_', 'github_pat_'], pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,})/g },
-  { kind: 'aws access key', hints: ['AKIA', 'ASIA', 'AGPA', 'AIDA', 'AROA', 'ANPA', 'ANVA'], pattern: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|ANPA|ANVA)[A-Z0-9]{16}\b/g },
-  { kind: 'aws secret key', hints: ['aws_secret_access_key', 'AWS_SECRET_ACCESS_KEY'], pattern: /(?<=aws_secret_access_key["']?\s*[:=]\s*["']?)[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])/gi },
+  {
+    kind: 'github token',
+    hints: ['ghp_', 'gho_', 'ghu_', 'ghs_', 'ghr_', 'github_pat_'],
+    pattern: /\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,})/g,
+  },
+  {
+    kind: 'aws access key',
+    hints: ['AKIA', 'ASIA', 'AGPA', 'AIDA', 'AROA', 'ANPA', 'ANVA'],
+    pattern: /\b(?:AKIA|ASIA|AGPA|AIDA|AROA|ANPA|ANVA)[A-Z0-9]{16}\b/g,
+  },
+  {
+    kind: 'aws secret key',
+    hints: ['aws_secret_access_key', 'AWS_SECRET_ACCESS_KEY'],
+    pattern: /(?<=aws_secret_access_key["']?\s*[:=]\s*["']?)[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])/gi,
+  },
   { kind: 'slack token', hints: ['xox', 'xapp-'], pattern: /\bxox[abprs]-[A-Za-z0-9-]{10,}|\bxapp-[A-Za-z0-9-]{10,}/g },
   { kind: 'google api key', hints: ['AIza'], pattern: /\bAIza[0-9A-Za-z_-]{35}\b/g },
   { kind: 'stripe key', hints: ['_live_'], pattern: /\b[sr]k_live_[0-9A-Za-z]{20,}/g },
@@ -52,13 +70,18 @@ export const RedactionConfigSchema = z.object({
 export type RedactionConfig = z.infer<typeof RedactionConfigSchema>;
 
 /** `GET` and `PUT /api/redaction`: the configuration as stored, and the patterns that could not be used (not a valid expression, or one that matches the empty string). */
-export const RedactionStateSchema = z.object({ config: RedactionConfigSchema, errors: z.array(z.string()) }).meta({ id: 'RedactionState' });
+export const RedactionStateSchema = z
+  .object({ config: RedactionConfigSchema, errors: z.array(z.string()) })
+  .meta({ id: 'RedactionState' });
 export type RedactionState = z.infer<typeof RedactionStateSchema>;
 
 export const DEFAULT_REDACTION: RedactionConfig = { patterns: [], offFor: [] };
 
 /** A user pattern compiled; the ones that are not valid expressions (or that match the empty string) are dropped, and named in `errors`. */
-export function compileUserPatterns(patterns: readonly UserRedactionPattern[]): { compiled: RedactionPattern[]; errors: string[] } {
+export function compileUserPatterns(patterns: readonly UserRedactionPattern[]): {
+  compiled: RedactionPattern[];
+  errors: string[];
+} {
   const compiled: RedactionPattern[] = [];
   const errors: string[] = [];
   for (const { name, regex } of patterns) {
@@ -82,7 +105,8 @@ export interface RedactionResult {
 }
 
 const tailOf = (match: string): string => (match.length >= 12 ? ` …${match.slice(-4)}` : '');
-export const maskFor = (kind: string, match: string, noTail = false): string => `[redacted ${kind}${noTail ? '' : tailOf(match)}]`;
+export const maskFor = (kind: string, match: string, noTail = false): string =>
+  `[redacted ${kind}${noTail ? '' : tailOf(match)}]`;
 
 /** Masks every known key shape (and `extra` patterns) in a piece of text. Text without a match comes back as the same string. */
 export function redactText(text: string, extra: readonly RedactionPattern[] = []): RedactionResult {
@@ -109,7 +133,11 @@ export const redact = (text: string, extra: readonly RedactionPattern[] = []): s
  * A JSON value with every string in it passed through `redactText` (an object or array that held no secret comes back as the same object; one that did is copied). `skip` names keys whose values are left alone
  * (ids, types and timestamps never carry a secret and are looked at often).
  */
-export function redactValue<T>(value: T, extra: readonly RedactionPattern[] = [], skip: ReadonlySet<string> = SKIPPED_KEYS): T {
+export function redactValue<T>(
+  value: T,
+  extra: readonly RedactionPattern[] = [],
+  skip: ReadonlySet<string> = SKIPPED_KEYS,
+): T {
   if (typeof value === 'string') return redactText(value, extra).text as T;
   if (Array.isArray(value)) {
     let changed = false;
@@ -135,7 +163,21 @@ export function redactValue<T>(value: T, extra: readonly RedactionPattern[] = []
 }
 
 /** Keys of AG-UI events and pi entries that hold ids, types and numbers, never text a person typed. */
-export const SKIPPED_KEYS: ReadonlySet<string> = new Set(['type', 'id', 'messageId', 'toolCallId', 'runId', 'threadId', 'parentId', 'role', 'timestamp', 'name', 'toolName', 'model', 'provider']);
+export const SKIPPED_KEYS: ReadonlySet<string> = new Set([
+  'type',
+  'id',
+  'messageId',
+  'toolCallId',
+  'runId',
+  'threadId',
+  'parentId',
+  'role',
+  'timestamp',
+  'name',
+  'toolName',
+  'model',
+  'provider',
+]);
 
 /** A JSON Lines file (pi's session format) with every line redacted; a line that is not JSON is redacted as text. */
 export function redactJsonl(text: string, extra: readonly RedactionPattern[] = []): { text: string; count: number } {

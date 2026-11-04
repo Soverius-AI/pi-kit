@@ -3,7 +3,9 @@ import { delimiter, join, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { Injectable, Logger } from '@nestjs/common';
 import type { TrustDecision, TrustList, TrustSource, TrustState } from '@pi-kit/protocol';
-import type { LoadExtensionsResult, ProjectTrustContext } from '@earendil-works/pi-coding-agent' with { 'resolution-mode': 'import' };
+import type { LoadExtensionsResult, ProjectTrustContext } from '@earendil-works/pi-coding-agent' with {
+  'resolution-mode': 'import',
+};
 import { loadPi } from './load-pi';
 import { scanTrustResources, trustDigest } from './trust-scan';
 
@@ -73,8 +75,10 @@ export class TrustService {
   async trustScratch(scratch: string, project: string): Promise<string | undefined> {
     const pi = await loadPi();
     if (pi.hasTrustRequiringProjectResources(scratch)) {
-      if (!(await this.sameResources(project, scratch))) return 'The project’s pi resources (extensions, skills, prompts, MCP servers) at the base commit differ from the ones in the project now, so the replay would run code nobody has looked at. Check out the base commit yourself and trust it there, or verify by hand.';
-      if (!(await this.folderTrusted(project))) return 'The project has pi resources that are not trusted yet. Trust the project (Settings › Advanced) first: the replay would load the same ones.';
+      if (!(await this.sameResources(project, scratch)))
+        return 'The project’s pi resources (extensions, skills, prompts, MCP servers) at the base commit differ from the ones in the project now, so the replay would run code nobody has looked at. Check out the base commit yourself and trust it there, or verify by hand.';
+      if (!(await this.folderTrusted(project)))
+        return 'The project has pi resources that are not trusted yet. Trust the project (Settings › Advanced) first: the replay would load the same ones.';
     }
     this.session.set(scratch, true);
     return undefined;
@@ -92,7 +96,11 @@ export class TrustService {
     const base = { cwd, hasResources, resources };
     if (!hasResources) return { ...base, status: 'trusted', source: 'none' };
     const answer = await this.decision(cwd, undefined);
-    return { ...base, status: answer.trusted === undefined ? 'ask' : answer.trusted ? 'trusted' : 'untrusted', source: answer.source };
+    return {
+      ...base,
+      status: answer.trusted === undefined ? 'ask' : answer.trusted ? 'trusted' : 'untrusted',
+      source: answer.source,
+    };
   }
 
   /**
@@ -173,7 +181,10 @@ export class TrustService {
     return new pi.ProjectTrustStore(pi.getAgentDir()).get(cwd);
   }
 
-  private async decision(folder: string, extensionsResult: LoadExtensionsResult | undefined): Promise<{ trusted: boolean | undefined; source: TrustSource }> {
+  private async decision(
+    folder: string,
+    extensionsResult: LoadExtensionsResult | undefined,
+  ): Promise<{ trusted: boolean | undefined; source: TrustSource }> {
     const cwd = await this.canonical(folder);
     if (overrideTrusts(cwd)) {
       this.logger.warn(`PI_KIT_TRUSTED_CWDS marks ${cwd} trusted (test flag).`);
@@ -183,7 +194,9 @@ export class TrustService {
     if (once !== undefined) return { trusted: once, source: 'session' };
     const pi = await loadPi();
     const store = new pi.ProjectTrustStore(pi.getAgentDir());
-    const fromExtension = extensionsResult ? await this.askExtensions(pi, cwd, extensionsResult) : await this.probe(pi, cwd);
+    const fromExtension = extensionsResult
+      ? await this.askExtensions(pi, cwd, extensionsResult)
+      : await this.probe(pi, cwd);
     if (fromExtension.trusted !== 'undecided') {
       const trusted = fromExtension.trusted === 'yes';
       if (fromExtension.remember) store.set(cwd, trusted);
@@ -191,7 +204,9 @@ export class TrustService {
     }
     const saved = store.get(cwd);
     if (saved !== null) return { trusted: saved, source: 'saved' };
-    const fallback = pi.SettingsManager.create(cwd, pi.getAgentDir(), { projectTrusted: false }).getDefaultProjectTrust();
+    const fallback = pi.SettingsManager.create(cwd, pi.getAgentDir(), {
+      projectTrusted: false,
+    }).getDefaultProjectTrust();
     if (fallback === 'always') return { trusted: true, source: 'default' };
     if (fallback === 'never') return { trusted: false, source: 'default' };
     return { trusted: undefined, source: 'none' };
@@ -208,7 +223,9 @@ export class TrustService {
           const loader = new pi.DefaultResourceLoader({ cwd, agentDir, settingsManager });
           return await this.askExtensions(pi, cwd, await loader.loadProjectTrustExtensions());
         } catch (error) {
-          this.logger.warn(`Could not ask the extensions about project trust: ${error instanceof Error ? error.message : String(error)}`);
+          this.logger.warn(
+            `Could not ask the extensions about project trust: ${error instanceof Error ? error.message : String(error)}`,
+          );
           return { trusted: 'undecided' as const, remember: false };
         }
       })();
@@ -228,15 +245,24 @@ export class TrustService {
       cwd,
       mode: 'rpc',
       hasUI: false,
-      ui: { select: async () => undefined, confirm: async () => false, input: async () => undefined, notify: () => undefined },
+      ui: {
+        select: async () => undefined,
+        confirm: async () => false,
+        input: async () => undefined,
+        notify: () => undefined,
+      },
     };
     for (const extension of result.extensions) {
       for (const handler of extension.handlers.get('project_trust') ?? []) {
         try {
-          const answer = (await (handler as (event: unknown, ctx: ProjectTrustContext) => Promise<{ trusted: Trusted; remember?: boolean }>)({ type: 'project_trust', cwd }, ctx)) ?? { trusted: 'undecided' };
+          const answer = (await (
+            handler as (event: unknown, ctx: ProjectTrustContext) => Promise<{ trusted: Trusted; remember?: boolean }>
+          )({ type: 'project_trust', cwd }, ctx)) ?? { trusted: 'undecided' };
           if (answer.trusted !== 'undecided') return { trusted: answer.trusted, remember: answer.remember === true };
         } catch (error) {
-          this.logger.warn(`Extension ${extension.path} failed in project_trust: ${error instanceof Error ? error.message : String(error)}`);
+          this.logger.warn(
+            `Extension ${extension.path} failed in project_trust: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
     }

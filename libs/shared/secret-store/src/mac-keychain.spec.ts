@@ -15,9 +15,13 @@ function world() {
     if (!data.has(account)) data.set(account, value);
     return data.get(account) as string;
   });
-  const set = vi.fn(async (account: string, value: string) => { data.set(account, value); });
+  const set = vi.fn(async (account: string, value: string) => {
+    data.set(account, value);
+  });
   const remove = vi.fn(async (account: string) => data.delete(account));
-  const status = vi.fn(async (account: string) => ({ status: data.has(account) ? 'requires-authentication' : 'missing' }));
+  const status = vi.fn(async (account: string) => ({
+    status: data.has(account) ? 'requires-authentication' : 'missing',
+  }));
   const open = vi.fn(() => ({ get, getOrCreate: ensure, set, remove, status }));
   const load = vi.fn((): MacKeychainModule => ({ openKeychainStore: open }));
   const store = new MacKeychainSecretStore({ PI_CODING_AGENT_DIR: agent }, legacy, load);
@@ -31,15 +35,30 @@ describe('Touch ID Keychain storage', () => {
     expect(w.store.accessStatus()).toEqual({ state: 'unknown' });
     expect(w.open).not.toHaveBeenCalled();
     await w.store.set('openrouter', 'fixture-key');
-    expect(w.open).toHaveBeenCalledWith({ keychainService: 'dev.pi-kit.app', authentication: { accessControl: 'user-presence' }, iCloudSync: false, mutableAccounts: ['openrouter'] });
+    expect(w.open).toHaveBeenCalledWith({
+      keychainService: 'dev.pi-kit.app',
+      authentication: { accessControl: 'user-presence' },
+      iCloudSync: false,
+      mutableAccounts: ['openrouter'],
+    });
     expect(readFileSync(join(w.agent, 'pi-kit-keychain-accounts.jsonl'), 'utf8')).not.toContain('fixture-key');
   });
 
   it('copies and verifies the database key and provider/connector secrets, retaining every original', async () => {
     const w = world();
-    for (const [account, value] of [[DB_KEY_ACCOUNT, 'a'.repeat(64)], ['openrouter', 'fixture-provider'], ['connector-github', 'fixture-connector']]) w.legacy.set(account, value);
+    for (const [account, value] of [
+      [DB_KEY_ACCOUNT, 'a'.repeat(64)],
+      ['openrouter', 'fixture-provider'],
+      ['connector-github', 'fixture-connector'],
+    ])
+      w.legacy.set(account, value);
     await w.store.migrate();
-    expect([...w.data].sort()).toEqual(w.legacy.list().map((account) => [account, w.legacy.get(account)]).sort());
+    expect([...w.data].sort()).toEqual(
+      w.legacy
+        .list()
+        .map((account) => [account, w.legacy.get(account)])
+        .sort(),
+    );
     expect(w.get).toHaveBeenCalledTimes(3);
     w.get.mockClear();
     await w.store.migrate();
@@ -51,7 +70,12 @@ describe('Touch ID Keychain storage', () => {
     w.legacy.set('openrouter', 'old-key');
     w.data.set('openrouter', 'new-key');
     const oldRead = vi.spyOn(w.legacy, 'get');
-    w.get.mockRejectedValueOnce(Object.assign(new Error('Could not read Keychain item'), { code: 'item_read_failed', details: { osStatus: -128 } }));
+    w.get.mockRejectedValueOnce(
+      Object.assign(new Error('Could not read Keychain item'), {
+        code: 'item_read_failed',
+        details: { osStatus: -128 },
+      }),
+    );
     await expect(w.store.get('openrouter')).rejects.toMatchObject({ access: { state: 'denied' } });
     await expect(w.store.get('openrouter')).rejects.toThrow();
     expect(w.get).toHaveBeenCalledTimes(1);
@@ -91,14 +115,21 @@ describe('Touch ID Keychain storage', () => {
     const w = world();
     const oldList = vi.spyOn(w.legacy, 'list');
     w.status.mockRejectedValueOnce(Object.assign(new Error('Invalid host'), { code: 'host_identity_invalid' }));
-    await expect(w.store.migrate()).rejects.toMatchObject({ access: { state: 'unavailable', reason: expect.stringContaining('Apple-signed') } });
+    await expect(w.store.migrate()).rejects.toMatchObject({
+      access: { state: 'unavailable', reason: expect.stringContaining('Apple-signed') },
+    });
     expect(oldList).not.toHaveBeenCalled();
   });
 
   it('serializes native operations so concurrent callers cannot stack consent dialogs', async () => {
     const w = world();
     let finish!: () => void;
-    w.set.mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }));
+    w.set.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
     const first = w.store.set('openrouter', 'one');
     const second = w.store.set('anthropic', 'two');
     await vi.waitFor(() => expect(w.set).toHaveBeenCalledTimes(1));

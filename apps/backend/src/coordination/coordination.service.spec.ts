@@ -20,13 +20,33 @@ let open: Set<string>;
 const PROJECT = '/proj';
 
 /** A thread of the project with a real session file (its mtime is what "recently active" reads). */
-function addThread(id: string, title: string, options: { cwd?: string; messages?: number; modifiedAgoMs?: number; worktree?: { path: string; branch: string }; cli?: boolean } = {}): void {
+function addThread(
+  id: string,
+  title: string,
+  options: {
+    cwd?: string;
+    messages?: number;
+    modifiedAgoMs?: number;
+    worktree?: { path: string; branch: string };
+    cli?: boolean;
+  } = {},
+): void {
   const sessionPath = join(dir, `${id}.jsonl`);
   writeFileSync(sessionPath, '{}\n');
   const modified = new Date(Date.now() - (options.modifiedAgoMs ?? 0));
   utimesSync(sessionPath, modified, modified);
   if (options.cli) {
-    threads.upsertFromSession({ id, sessionPath, cwd: options.cwd ?? PROJECT, title, preview: 'p', parentSessionPath: undefined, messageCount: options.messages ?? 2, createdAt: 1, updatedAt: 2 });
+    threads.upsertFromSession({
+      id,
+      sessionPath,
+      cwd: options.cwd ?? PROJECT,
+      title,
+      preview: 'p',
+      parentSessionPath: undefined,
+      messageCount: options.messages ?? 2,
+      createdAt: 1,
+      updatedAt: 2,
+    });
     return;
   }
   threads.insertDraft({
@@ -34,12 +54,21 @@ function addThread(id: string, title: string, options: { cwd?: string; messages?
     sessionPath,
     cwd: options.worktree?.path ?? options.cwd ?? PROJECT,
     title,
-    ...(options.worktree ? { worktree: { path: options.worktree.path, branch: options.worktree.branch, projectCwd: PROJECT, base: 'main' } } : {}),
+    ...(options.worktree
+      ? {
+          worktree: { path: options.worktree.path, branch: options.worktree.branch, projectCwd: PROJECT, base: 'main' },
+        }
+      : {}),
   });
   threads.recordRunEnd(id, { logMtime: null, messageCount: options.messages ?? 2, preview: undefined });
 }
 
-const start = (threadId: string, toolName: string, path: string, cwd = PROJECT): ToolStart => ({ threadId, cwd, toolName, args: { path } });
+const start = (threadId: string, toolName: string, path: string, cwd = PROJECT): ToolStart => ({
+  threadId,
+  cwd,
+  toolName,
+  args: { path },
+});
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'pk-coord-'));
@@ -49,8 +78,14 @@ beforeEach(() => {
   leases = new LeasesRepository(db);
   activity = {};
   open = new Set();
-  const sessions = { has: (id: string) => open.has(id), onToolStart: () => () => undefined, setCoordination: () => undefined } as unknown as PiSessionService;
-  const status = { stateOf: (row: { id: string }) => ({ activity: activity[row.id] ?? 'idle' }) } as unknown as ThreadStatusService;
+  const sessions = {
+    has: (id: string) => open.has(id),
+    onToolStart: () => () => undefined,
+    setCoordination: () => undefined,
+  } as unknown as PiSessionService;
+  const status = {
+    stateOf: (row: { id: string }) => ({ activity: activity[row.id] ?? 'idle' }),
+  } as unknown as ThreadStatusService;
   service = new CoordinationService(threads, leases, sessions, status);
 });
 afterEach(() => {
@@ -66,7 +101,12 @@ describe('capture', () => {
     service.record(start('a', 'read', 'src/c.ts'));
     service.record(start('a', 'bash', 'src/d.ts'));
     service.record(start('a', 'edit', '/elsewhere/x.ts'));
-    expect(leases.activeOf('a').map((l) => l.path).sort()).toEqual(['src/a.ts', 'src/b.ts']);
+    expect(
+      leases
+        .activeOf('a')
+        .map((l) => l.path)
+        .sort(),
+    ).toEqual(['src/a.ts', 'src/b.ts']);
   });
 });
 
@@ -106,9 +146,22 @@ describe('others', () => {
     addThread('w', 'W', { worktree: { path: '/wt/proj/w', branch: 'pi-kit/w' }, modifiedAgoMs: 1000 });
     addThread('cli', 'In a terminal', { cli: true, modifiedAgoMs: 30_000 });
     const found = service.others('a');
-    expect(found.find((o) => o.title === 'W')).toMatchObject({ relation: 'worktree', branch: 'pi-kit/w', state: 'idle' });
-    expect(found.find((o) => o.title === 'In a terminal')).toMatchObject({ state: 'terminal', relation: 'same-folder', files: [] });
-    expect(service.othersInfo('a').map((o) => o.state).sort()).toEqual(['idle', 'terminal']);
+    expect(found.find((o) => o.title === 'W')).toMatchObject({
+      relation: 'worktree',
+      branch: 'pi-kit/w',
+      state: 'idle',
+    });
+    expect(found.find((o) => o.title === 'In a terminal')).toMatchObject({
+      state: 'terminal',
+      relation: 'same-folder',
+      files: [],
+    });
+    expect(
+      service
+        .othersInfo('a')
+        .map((o) => o.state)
+        .sort(),
+    ).toEqual(['idle', 'terminal']);
   });
 
   it('does not call a command-line session in another folder of the repository "next to" a thread; a thread open in the app is not one', () => {
@@ -127,7 +180,9 @@ describe('the section and the notices', () => {
     expect(service.section('a')).toBeUndefined();
     addThread('b', 'Fix e2e');
     leases.take('b', PROJECT, 'src/a.ts');
-    expect(service.section('a')).toMatch(/^Other agents in this workspace[\s\S]*"Fix e2e" \(idle, this same folder\): edited src\/a\.ts[\s\S]*Rules:/);
+    expect(service.section('a')).toMatch(
+      /^Other agents in this workspace[\s\S]*"Fix e2e" \(idle, this same folder\): edited src\/a\.ts[\s\S]*Rules:/,
+    );
   });
 
   it('tells a thread once that another changed a file it read, and again only after another change', () => {

@@ -13,9 +13,12 @@ function validate(value: unknown, allowLegacy = false): SecurityPreferences {
   }
   const object = value as Record<string, unknown>;
   const allowed = allowLegacy ? ['credentialStoreEnabled', 'databaseEncryptionEnabled'] : ['credentialStoreEnabled'];
-  if (Object.keys(object).some((key) => !allowed.includes(key)) ||
-      !Object.hasOwn(object, 'credentialStoreEnabled') || typeof object['credentialStoreEnabled'] !== 'boolean' ||
-      (Object.hasOwn(object, 'databaseEncryptionEnabled') && typeof object['databaseEncryptionEnabled'] !== 'boolean')) {
+  if (
+    Object.keys(object).some((key) => !allowed.includes(key)) ||
+    !Object.hasOwn(object, 'credentialStoreEnabled') ||
+    typeof object['credentialStoreEnabled'] !== 'boolean' ||
+    (Object.hasOwn(object, 'databaseEncryptionEnabled') && typeof object['databaseEncryptionEnabled'] !== 'boolean')
+  ) {
     throw new Error('Invalid security.json: expected credentialStoreEnabled boolean with no unknown fields.');
   }
   return { credentialStoreEnabled: object['credentialStoreEnabled'] };
@@ -31,7 +34,9 @@ export function readSecurityPreferences(dataDir: string): SecurityPreferences | 
     throw new Error('Could not read security.json security preferences.', { cause: error });
   }
   let value: unknown;
-  try { value = JSON.parse(text); } catch {
+  try {
+    value = JSON.parse(text);
+  } catch {
     throw new Error('Invalid security.json: expected valid JSON security preferences.');
   }
   // Local 0.8.5 profiles may contain the withdrawn database flag; validate, then ignore it.
@@ -51,6 +56,10 @@ export function writeSecurityPreferences(dataDir: string, preferences: SecurityP
   } catch {
     throw new Error('Could not write security.json security preferences.');
   } finally {
-    try { unlinkSync(temporary); } catch { /* Renamed or not created. */ }
+    try {
+      unlinkSync(temporary);
+    } catch {
+      /* Renamed or not created. */
+    }
   }
 }

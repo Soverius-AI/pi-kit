@@ -2,7 +2,17 @@ import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { BACKGROUND_CONTEXT, type Context, withAbortSignal, withCancel } from '@earendil-works/chord/context';
-import { type Conversation, type ConversationId, createRegistry, type Harness as DurableHarness, Harness, type Submission, type SubmissionId, UsageDoc, watchEvents } from '@earendil-works/pi-durable';
+import {
+  type Conversation,
+  type ConversationId,
+  createRegistry,
+  type Harness as DurableHarness,
+  Harness,
+  type Submission,
+  type SubmissionId,
+  UsageDoc,
+  watchEvents,
+} from '@earendil-works/pi-durable';
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node';
 import { SqliteStorage } from '@earendil-works/pi-durable/storage/sqlite';
 import type { Models } from '@earendil-works/pi-ai';
@@ -91,8 +101,16 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     @Inject(THREAD_HOST) private readonly threads: ThreadHost,
     private readonly runner: BgAgentRunner,
   ) {
-    this.questions = new AgentQuestions(() => this.require(), this.agents, this.threads, (id) => this.changed(id));
-    this.runner.useActions({ send: (id, text, mode, requestId) => this.send(id, text, mode, requestId), stop: (id) => this.stop(id) });
+    this.questions = new AgentQuestions(
+      () => this.require(),
+      this.agents,
+      this.threads,
+      (id) => this.changed(id),
+    );
+    this.runner.useActions({
+      send: (id, text, mode, requestId) => this.send(id, text, mode, requestId),
+      stop: (id) => this.stop(id),
+    });
     this.runner.onLive = (id) => this.changed(id);
   }
 
@@ -108,7 +126,16 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
       // which is made again when the files it reads changed (a provider added in Settings, the e2e tests' fake model).
       const pi = await loadPi();
       const dir = pi.getAgentDir();
-      const stampOf = (): string => ['models.json', 'auth.json'].map((file) => { try { return statSync(join(dir, file)).mtimeMs; } catch { return 0; } }).join(':');
+      const stampOf = (): string =>
+        ['models.json', 'auth.json']
+          .map((file) => {
+            try {
+              return statSync(join(dir, file)).mtimeMs;
+            } catch {
+              return 0;
+            }
+          })
+          .join(':');
       let current = await createModelRuntime(pi);
       let stamp = stampOf();
       this.refreshModels = async () => {
@@ -153,7 +180,11 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     try {
       lock = takeOwnerLock(this.config.dataDir);
     } catch (error) {
-      if (error instanceof StoreOwnedError) throw new Error(`Another backend${error.pid === undefined ? '' : ` (pid ${error.pid})`} owns the background agents of this data folder.`, { cause: error });
+      if (error instanceof StoreOwnedError)
+        throw new Error(
+          `Another backend${error.pid === undefined ? '' : ` (pid ${error.pid})`} owns the background agents of this data folder.`,
+          { cause: error },
+        );
       throw error;
     }
     try {
@@ -161,10 +192,14 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
       registry.install(
         createAgentExtension({
           holds: this.holds,
-          cleanup: { begin: (id, intent) => this.patch(id, { cleanup: intent }), end: (id) => this.patch(id, { cleanup: null }) },
+          cleanup: {
+            begin: (id, intent) => this.patch(id, { cleanup: intent }),
+            end: (id) => this.patch(id, { cleanup: null }),
+          },
           report: (id, reportId, text) => this.report(id, reportId, text),
           asked: (id, questionId) => this.questions.asked(id, questionId),
-          askUser: (id, questionId, origin, text, choices, signal) => this.questions.askUser(id, questionId, origin, text, choices, signal),
+          askUser: (id, questionId, origin, text, choices, signal) =>
+            this.questions.askUser(id, questionId, origin, text, choices, signal),
           allowAll: (id) => this.allowAll(id),
           toolStarting: (id, call) => this.toolStarting(id, call),
           beforeRequest: (id) => this.beforeRequest(id),
@@ -183,7 +218,8 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
             const cwd = agent?.worktree?.path ?? (agent?.threadId ? this.folderOf(agent.threadId) : undefined);
             return cwd ? new NodeExecutionEnv({ cwd }) : undefined;
           },
-          onReport: (error) => this.logger.warn(`pi-durable reported: ${error instanceof Error ? error.message : String(error)}`),
+          onReport: (error) =>
+            this.logger.warn(`pi-durable reported: ${error instanceof Error ? error.message : String(error)}`),
         },
         ctx,
       );
@@ -209,7 +245,14 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     const harness = this.harness;
     this.harness = undefined;
     this.disabled = 'The backend is shutting down.';
-    if (harness) await harness.close(ctx).catch((error: unknown) => this.logger.warn(`Closing the agents store failed: ${error instanceof Error ? error.message : String(error)}`));
+    if (harness)
+      await harness
+        .close(ctx)
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `Closing the agents store failed: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
     this.lock?.release();
     this.lock = undefined;
   }
@@ -242,9 +285,18 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     if (refused) throw new Error(refused);
     await this.refreshModels?.();
     const permission = input.permission ?? 'read-only';
-    const record: AgentRecord = { threadId: input.threadId, name: input.name, role: input.role, brief: input.brief, permission, worktree: null, turns: 0 };
+    const record: AgentRecord = {
+      threadId: input.threadId,
+      name: input.name,
+      role: input.role,
+      brief: input.brief,
+      permission,
+      worktree: null,
+      turns: 0,
+    };
     const slash = input.model?.indexOf('/') ?? -1;
-    const [provider, modelId] = input.model && slash > 0 ? [input.model.slice(0, slash), input.model.slice(slash + 1)] : [];
+    const [provider, modelId] =
+      input.model && slash > 0 ? [input.model.slice(0, slash), input.model.slice(slash + 1)] : [];
     const conversation = await harness.createConversation(
       {
         ownership: { kind: 'ownerless' },
@@ -257,13 +309,28 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     );
     const id = String(conversation.id);
     this.agents.insert(
-      { id, threadId: input.threadId, name: input.name, role: input.role, model: input.model ?? null, permission, brief: input.brief, submissionId: null, status: 'active', createdAt: Date.now() },
+      {
+        id,
+        threadId: input.threadId,
+        name: input.name,
+        role: input.role,
+        model: input.model ?? null,
+        permission,
+        brief: input.brief,
+        submissionId: null,
+        status: 'active',
+        createdAt: Date.now(),
+      },
       this.epoch,
     );
     this.records.set(id, record);
-    if (permission === 'isolated') await this.writeRecord(id, { worktree: await this.threads.isolate(input.threadId, id, input.name) });
+    if (permission === 'isolated')
+      await this.writeRecord(id, { worktree: await this.threads.isolate(input.threadId, id, input.name) });
     await this.settingToWork(id, input.threadId);
-    const submission = await conversation.submit({ type: 'input', content: input.brief, requestId: `spawn:${id}` }, ctx);
+    const submission = await conversation.submit(
+      { type: 'input', content: input.brief, requestId: `spawn:${id}` },
+      ctx,
+    );
     this.patch(id, { submissionId: String(submission.id) });
     await this.attach(id);
     this.follow(id, submission);
@@ -275,7 +342,8 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     const conversation = await this.require().conversation(conversationId(id), ctx);
     const row = this.agents.get(id);
     if (!conversation || !row) throw new Error(`Agent ${id} does not exist.`);
-    if (row.status === 'stopped' || row.status === 'failed') throw new Error(`Agent ${id} is ${row.status}; start another.`);
+    if (row.status === 'stopped' || row.status === 'failed')
+      throw new Error(`Agent ${id} is ${row.status}; start another.`);
     // A finished agent that gets more to do is at work again: followed into its log before the input lands, and active in the panel.
     if (!this.runner.liveOf(id)) await this.attach(id);
     if (row.status === 'done') {
@@ -312,7 +380,12 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     const row = this.agents.get(id);
     if (!row) throw new Error(`Agent ${id} does not exist.`);
     this.patch(id, { report: text });
-    await this.threads.deliver(row.threadId, { customType: REPORT_MESSAGE, content: `Report from agent "${row.name}": ${text}`, display: true, details: { agentId: id, name: row.name, ref: reportId, reportId } });
+    await this.threads.deliver(row.threadId, {
+      customType: REPORT_MESSAGE,
+      content: `Report from agent "${row.name}": ${text}`,
+      display: true,
+      details: { agentId: id, name: row.name, ref: reportId, reportId },
+    });
   }
 
   /** `agent_reply`: the main agent's answer; refused for a user question. */
@@ -346,7 +419,13 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     const row = this.agents.get(id);
     const cwd = this.records.get(id)?.worktree?.path ?? (row ? this.folderOf(row.threadId) : undefined);
     if (!row || !cwd) return;
-    for (const listener of [...this.toolListeners]) listener({ threadId: row.threadId, cwd, toolName: call.name, args: (call.arguments ?? {}) as Record<string, unknown> });
+    for (const listener of [...this.toolListeners])
+      listener({
+        threadId: row.threadId,
+        cwd,
+        toolName: call.name,
+        args: (call.arguments ?? {}) as Record<string, unknown>,
+      });
   }
 
   /** Records the turn count and refreshes spend before a model request. */
@@ -359,17 +438,29 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
   }
 
   /** `agent_send` between agents: the same thread only, shown to the recipient as a message from the sender. */
-  private async sendFrom(fromId: string, toId: string, text: string, mode: 'steer' | 'followUp', requestId: string): Promise<void> {
+  private async sendFrom(
+    fromId: string,
+    toId: string,
+    text: string,
+    mode: 'steer' | 'followUp',
+    requestId: string,
+  ): Promise<void> {
     const from = this.agents.get(fromId);
     const to = this.agents.get(toId);
-    if (!from || !to || to.threadId !== from.threadId) throw new Error(`There is no agent ${toId} in your thread (agent_list names them).`);
+    if (!from || !to || to.threadId !== from.threadId)
+      throw new Error(`There is no agent ${toId} in your thread (agent_list names them).`);
     await this.recordOf(fromId);
     await this.send(toId, agentMessage({ id: fromId, name: from.name }, text), mode, requestId);
   }
 
   private listFor(id: string): { agentId: string; name: string; role: string; status: string }[] {
     const row = this.agents.get(id);
-    return row ? this.agents.byThread(row.threadId).filter((other) => other.id !== id).map((other) => ({ agentId: other.id, name: other.name, role: other.role, status: other.status })) : [];
+    return row
+      ? this.agents
+          .byThread(row.threadId)
+          .filter((other) => other.id !== id)
+          .map((other) => ({ agentId: other.id, name: other.name, role: other.role, status: other.status }))
+      : [];
   }
 
   private async recordOf(id: string): Promise<AgentRecord> {
@@ -402,10 +493,18 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
   async deleteAgent(id: string): Promise<void> {
     const row = this.agents.get(id);
     if (!row) return;
-    if (this.harness && (row.status === 'active' || row.status === 'blocked')) await this.stop(id).catch(() => undefined);
+    if (this.harness && (row.status === 'active' || row.status === 'blocked'))
+      await this.stop(id).catch(() => undefined);
     await this.runner.forget(id);
     const worktree = (this.harness ? await this.recordOf(id).catch(() => undefined) : undefined)?.worktree;
-    if (worktree) await this.threads.discard(worktree).catch((error: unknown) => this.logger.warn(`The worktree of agent ${id} stays: ${error instanceof Error ? error.message : String(error)}`));
+    if (worktree)
+      await this.threads
+        .discard(worktree)
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `The worktree of agent ${id} stays: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
     this.agents.remove(id);
     this.records.delete(id);
     this.changed(id, row.threadId);
@@ -417,7 +516,32 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     const live = this.runner.liveOf(id);
     const question = status === 'active' || status === 'blocked' ? this.questions.current(id) : null;
     const record = this.records.get(id);
-    return { id, threadId, name, role, model, permission, brief, status, createdAt, finishedAt, cost, report, blocked: this.holds.reasonOf(row.id) ?? null, activity: live?.activity ?? 'idle', tool: live?.tool ?? null, question, answered: this.questions.lastAnswer(id), turns: record?.turns ?? 0, worktree: record?.worktree?.path ?? null, tokens: record?.tokens ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, context: live && live.contextTokens !== null && (status === 'active' || status === 'blocked') ? { tokens: live.contextTokens, window: this.windowOf?.(model) ?? null } : null };
+    return {
+      id,
+      threadId,
+      name,
+      role,
+      model,
+      permission,
+      brief,
+      status,
+      createdAt,
+      finishedAt,
+      cost,
+      report,
+      blocked: this.holds.reasonOf(row.id) ?? null,
+      activity: live?.activity ?? 'idle',
+      tool: live?.tool ?? null,
+      question,
+      answered: this.questions.lastAnswer(id),
+      turns: record?.turns ?? 0,
+      worktree: record?.worktree?.path ?? null,
+      tokens: record?.tokens ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      context:
+        live && live.contextTokens !== null && (status === 'active' || status === 'blocked')
+          ? { tokens: live.contextTokens, window: this.windowOf?.(model) ?? null }
+          : null,
+    };
   }
 
   /** Aborts the agent's work, background tasks included; its row stays for History. */
@@ -432,7 +556,11 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
   async warm(threadId: string): Promise<void> {
     for (const row of this.agents.byThread(threadId)) {
       if (this.records.has(row.id) || !this.harness) continue;
-      try { await this.recordOf(row.id); } catch { /* a record that cannot be read shows zeros */ }
+      try {
+        await this.recordOf(row.id);
+      } catch {
+        /* a record that cannot be read shows zeros */
+      }
     }
   }
 
@@ -475,13 +603,24 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     if (!this.work || !folder || (await this.recordOf(id)).worktree) return;
     await this.work
       .started(id, threadId, folder)
-      .catch((error: unknown) => this.logger.warn(`The snapshot before agent ${id} failed: ${error instanceof Error ? error.message : String(error)}`));
+      .catch((error: unknown) =>
+        this.logger.warn(
+          `The snapshot before agent ${id} failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
   }
 
   private patch(id: string, patch: Parameters<BgAgentsRepository['update']>[2]): void {
     const was = this.agents.get(id)?.status;
-    if (!this.agents.update(id, this.epoch, patch)) this.logger.warn(`A newer backend owns agent ${id}; this write was dropped.`);
-    if (patch.status !== undefined || patch.report !== undefined || patch.cost !== undefined || patch.permission !== undefined) this.changed(id);
+    if (!this.agents.update(id, this.epoch, patch))
+      this.logger.warn(`A newer backend owns agent ${id}; this write was dropped.`);
+    if (
+      patch.status !== undefined ||
+      patch.report !== undefined ||
+      patch.cost !== undefined ||
+      patch.permission !== undefined
+    )
+      this.changed(id);
     if (patch.status && STOPPED.has(patch.status) && was && !STOPPED.has(was)) this.work?.ended(id);
   }
 
@@ -521,13 +660,17 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
       if (row.cleanup) {
         this.holds.hold(row.id, 'cleanup');
         this.patch(row.id, { status: 'blocked' });
-        this.logger.warn(`Agent ${row.name} (${row.id}) is held: its command "${row.cleanup.command}" may still run from before the restart.`);
+        this.logger.warn(
+          `Agent ${row.name} (${row.id}) is held: its command "${row.cleanup.command}" may still run from before the restart.`,
+        );
       } else {
         const loop = crashLoop(row.failures, now);
         if (loop.looping) {
           this.holds.hold(row.id, 'crash-loop');
           this.patch(row.id, { failures: loop.failures, status: 'blocked' });
-          this.logger.warn(`Agent ${row.name} (${row.id}) is held: it was interrupted ${loop.failures.length} times in ten minutes.`);
+          this.logger.warn(
+            `Agent ${row.name} (${row.id}) is held: it was interrupted ${loop.failures.length} times in ten minutes.`,
+          );
         } else {
           this.patch(row.id, { failures: loop.failures, status: 'active' });
         }
@@ -559,14 +702,29 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
           this.patch(id, { status: 'done', finishedAt: Date.now(), cost: await this.refreshUsage(id) });
           await this.runner.detach(id);
           const now = this.agents.get(id);
-          if (now?.status === 'done' && now.report == null) await this.ended(id, row.name, String(submission.id), `Agent "${row.name}" ended without a report.`);
+          if (now?.status === 'done' && now.report == null)
+            await this.ended(id, row.name, String(submission.id), `Agent "${row.name}" ended without a report.`);
         } else {
           const reason = typeof settled.detail === 'string' ? settled.detail : (settled.reason ?? null);
-          this.patch(id, { status: 'failed', finishedAt: Date.now(), cost: await this.refreshUsage(id), failures: [...row.failures, Date.now()], report: reason });
-          if (this.agents.get(id)?.status === 'failed') await this.ended(id, row.name, String(submission.id), `Agent "${row.name}" failed: ${reason ?? 'no reason given'}`);
+          this.patch(id, {
+            status: 'failed',
+            finishedAt: Date.now(),
+            cost: await this.refreshUsage(id),
+            failures: [...row.failures, Date.now()],
+            report: reason,
+          });
+          if (this.agents.get(id)?.status === 'failed')
+            await this.ended(
+              id,
+              row.name,
+              String(submission.id),
+              `Agent "${row.name}" failed: ${reason ?? 'no reason given'}`,
+            );
         }
       })
-      .catch((error: unknown) => this.logger.debug(`Following agent ${id} ended: ${error instanceof Error ? error.message : String(error)}`));
+      .catch((error: unknown) =>
+        this.logger.debug(`Following agent ${id} ended: ${error instanceof Error ? error.message : String(error)}`),
+      );
   }
 
   /**
@@ -579,14 +737,27 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     this.endings.add(`${id}/${ref}`);
     const row = this.agents.get(id);
     if (!row) return;
-    await this.threads.deliver(row.threadId, { customType: REPORT_MESSAGE, content: text, display: true, details: { agentId: id, name, ref } }).catch((error: unknown) => this.logger.warn(`Telling thread ${row.threadId} that agent ${id} ended failed: ${error instanceof Error ? error.message : String(error)}`));
+    await this.threads
+      .deliver(row.threadId, {
+        customType: REPORT_MESSAGE,
+        content: text,
+        display: true,
+        details: { agentId: id, name, ref },
+      })
+      .catch((error: unknown) =>
+        this.logger.warn(
+          `Telling thread ${row.threadId} that agent ${id} ended failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
   }
 
   /** Whether nothing waits in the agent's inbox: a settled input with a queued follow-up is not the end of the agent. */
   private async inboxEmpty(id: string): Promise<boolean> {
     try {
       const inspection = await this.require().inspect(ctx);
-      return !inspection.submissions.some((s) => String(s.conversationId) === id && (s.status === 'queued' || s.status === 'placed'));
+      return !inspection.submissions.some(
+        (s) => String(s.conversationId) === id && (s.status === 'queued' || s.status === 'placed'),
+      );
     } catch {
       return true;
     }
@@ -614,7 +785,11 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
   /** Writes the agent's tokens to its record and its cost to its row, so the panel shows live numbers. */
   private async refreshUsage(id: string): Promise<number> {
     const { cost, tokens } = await this.usageOf(id);
-    try { await this.writeRecord(id, { tokens }); } catch { /* a finished conversation may refuse the write; the row's cost still lands */ }
+    try {
+      await this.writeRecord(id, { tokens });
+    } catch {
+      /* a finished conversation may refuse the write; the row's cost still lands */
+    }
     if (this.agents.get(id)) this.patch(id, { cost });
     return cost;
   }

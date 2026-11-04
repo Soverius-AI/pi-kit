@@ -17,7 +17,22 @@
 // native file, the N-API marker, and, when the target is the machine we run on, a real load in Electron.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  closeSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,12 +42,54 @@ export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /** The supported release triples. Linux uses native runners because node-pty is built from source. */
 export const TRIPLES = {
-  'darwin-arm64': { platform: 'darwin', arch: 'arm64', keyring: 'darwin-arm64', cua: 'darwin-arm64', format: 'macho', machine: 0x0100000c },
-  'darwin-x64': { platform: 'darwin', arch: 'x64', keyring: 'darwin-x64', cua: 'darwin-x64', format: 'macho', machine: 0x01000007 },
-  'win32-x64': { platform: 'win32', arch: 'x64', keyring: 'win32-x64-msvc', cua: 'win32-x64-msvc', format: 'pe', machine: 0x8664 },
-  'win32-arm64': { platform: 'win32', arch: 'arm64', keyring: 'win32-arm64-msvc', cua: 'win32-arm64-msvc', format: 'pe', machine: 0xaa64 },
-  'linux-x64': { platform: 'linux', arch: 'x64', keyring: 'linux-x64-gnu', cua: 'linux-x64-gnu', format: 'elf', machine: 0x3e },
-  'linux-arm64': { platform: 'linux', arch: 'arm64', keyring: 'linux-arm64-gnu', cua: 'linux-arm64-gnu', format: 'elf', machine: 0xb7 },
+  'darwin-arm64': {
+    platform: 'darwin',
+    arch: 'arm64',
+    keyring: 'darwin-arm64',
+    cua: 'darwin-arm64',
+    format: 'macho',
+    machine: 0x0100000c,
+  },
+  'darwin-x64': {
+    platform: 'darwin',
+    arch: 'x64',
+    keyring: 'darwin-x64',
+    cua: 'darwin-x64',
+    format: 'macho',
+    machine: 0x01000007,
+  },
+  'win32-x64': {
+    platform: 'win32',
+    arch: 'x64',
+    keyring: 'win32-x64-msvc',
+    cua: 'win32-x64-msvc',
+    format: 'pe',
+    machine: 0x8664,
+  },
+  'win32-arm64': {
+    platform: 'win32',
+    arch: 'arm64',
+    keyring: 'win32-arm64-msvc',
+    cua: 'win32-arm64-msvc',
+    format: 'pe',
+    machine: 0xaa64,
+  },
+  'linux-x64': {
+    platform: 'linux',
+    arch: 'x64',
+    keyring: 'linux-x64-gnu',
+    cua: 'linux-x64-gnu',
+    format: 'elf',
+    machine: 0x3e,
+  },
+  'linux-arm64': {
+    platform: 'linux',
+    arch: 'arm64',
+    keyring: 'linux-arm64-gnu',
+    cua: 'linux-arm64-gnu',
+    format: 'elf',
+    machine: 0xb7,
+  },
 };
 
 export function tripleOf(platform, arch) {
@@ -44,7 +101,8 @@ export function tripleOf(platform, arch) {
 export const isHost = (triple) => triple === `${process.platform}-${process.arch}`;
 
 /** The Cua Driver SDK library's file name on each OS. */
-const cuaLibrary = (platform) => ({ win32: 'cua_driver_sdk.dll', darwin: 'libcua_driver_sdk.dylib', linux: 'libcua_driver_sdk.so' })[platform];
+const cuaLibrary = (platform) =>
+  ({ win32: 'cua_driver_sdk.dll', darwin: 'libcua_driver_sdk.dylib', linux: 'libcua_driver_sdk.so' })[platform];
 
 /** The `integrity` (sha512, base64) pnpm-lock.yaml records for `name@version`, or undefined. */
 function lockedIntegrity(name, version) {
@@ -78,9 +136,16 @@ async function packageDir(name, version, cacheDir, log, { registryOnly = false }
   }
   const slug = `${name.replace(/^@/, '').replace('/', '__')}-${version}`;
   const unpacked = join(cacheDir, slug, 'package');
-  if (existsSync(join(unpacked, 'package.json'))) return { dir: unpacked, source: `registry tarball ${name}@${version} (cached in ${relative(root, cacheDir) || cacheDir})` };
+  if (existsSync(join(unpacked, 'package.json')))
+    return {
+      dir: unpacked,
+      source: `registry tarball ${name}@${version} (cached in ${relative(root, cacheDir) || cacheDir})`,
+    };
   const integrity = lockedIntegrity(name, version);
-  if (!integrity) throw new Error(`pnpm-lock.yaml has no entry for ${name}@${version}; refusing to fetch an unpinned binary. Run pnpm install.`);
+  if (!integrity)
+    throw new Error(
+      `pnpm-lock.yaml has no entry for ${name}@${version}; refusing to fetch an unpinned binary. Run pnpm install.`,
+    );
   const work = mkdtempSync(join(tmpdir(), 'pi-kit-pack-'));
   try {
     log(`  fetching ${name}@${version} (registry tarball)`);
@@ -90,18 +155,21 @@ async function packageDir(name, version, cacheDir, log, { registryOnly = false }
     if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
     const bytes = Buffer.from(await response.arrayBuffer());
     const actual = sri(bytes);
-    if (actual !== integrity) throw new Error(`${name}@${version}: the downloaded tarball is ${actual}, pnpm-lock.yaml says ${integrity}`);
+    if (actual !== integrity)
+      throw new Error(`${name}@${version}: the downloaded tarball is ${actual}, pnpm-lock.yaml says ${integrity}`);
     const tarball = join(work, 'package.tgz');
     writeFileSync(tarball, bytes);
     rmSync(join(cacheDir, slug), { recursive: true, force: true });
     mkdirSync(join(cacheDir, slug), { recursive: true });
     // Windows: the system's bsdtar by its full path (a GNU tar earlier on PATH, as in a bash step on a CI runner, reads "C:\..." as host:file).
-    const tar = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+    const tar =
+      process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
     execFileSync(tar, ['-xzf', tarball, '-C', join(cacheDir, slug)], { stdio: 'inherit' });
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
-  if (!existsSync(join(unpacked, 'package.json'))) throw new Error(`${name}@${version}: the tarball has no package/ folder`);
+  if (!existsSync(join(unpacked, 'package.json')))
+    throw new Error(`${name}@${version}: the tarball has no package/ folder`);
   return { dir: unpacked, source: `registry tarball ${name}@${version}, integrity checked against pnpm-lock.yaml` };
 }
 
@@ -116,7 +184,8 @@ export async function provisionSqlitePrebuild({ sqlite, triple, cacheDir, log = 
     // Do not reuse the installed package: its prebuilds may be missing too.
     const pristine = await packageDir(name, version, cacheDir, log, { registryOnly: true });
     const binary = join(pristine.dir, 'prebuilds', wanted);
-    if (!existsSync(binary)) throw new Error(`No ${name} binary for ${triple}: prebuilds/${wanted} is not in the pinned package ${version}`);
+    if (!existsSync(binary))
+      throw new Error(`No ${name} binary for ${triple}: prebuilds/${wanted} is not in the pinned package ${version}`);
     mkdirSync(prebuilds, { recursive: true });
     cpSync(binary, join(prebuilds, wanted));
     source = pristine.source;
@@ -141,7 +210,11 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
   const keyringManifest = JSON.parse(readFileSync(join(modulesOut, '@napi-rs', 'keyring', 'package.json'), 'utf8'));
   const keyringName = `@napi-rs/keyring-${t.keyring}`;
   const keyringVersion = keyringManifest.optionalDependencies?.[keyringName];
-  if (!keyringVersion) fail('@napi-rs/keyring', `${keyringName} is not among its optionalDependencies (${Object.keys(keyringManifest.optionalDependencies ?? {}).join(', ')})`);
+  if (!keyringVersion)
+    fail(
+      '@napi-rs/keyring',
+      `${keyringName} is not among its optionalDependencies (${Object.keys(keyringManifest.optionalDependencies ?? {}).join(', ')})`,
+    );
   let keyring;
   try {
     keyring = await packageDir(keyringName, keyringVersion, cacheDir, log);
@@ -187,7 +260,8 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
     if (existsSync(mine)) {
       // The loader tries build/Release before prebuilds. Never leave a host build ahead of the selected target.
       prune('node-pty/build');
-      for (const entry of readdirSync(prebuilds)) if (entry !== triple) rmSync(join(prebuilds, entry), { recursive: true });
+      for (const entry of readdirSync(prebuilds))
+        if (entry !== triple) rmSync(join(prebuilds, entry), { recursive: true });
       // Debug symbols of the Windows binaries are 20+ MB per architecture and nothing loads them.
       (function dropSymbols(dir) {
         for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -203,13 +277,26 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
         if (!existsSync(helper)) fail('node-pty', `prebuilds/${triple}/spawn-helper is missing`);
         chmodSync(helper, 0o755);
       }
-      for (const file of readdirSync(mine)) if (file.endsWith('.node')) rows.push({ module: 'node-pty', file: `prebuilds/${triple}/${file}`, source: `prebuilds/${triple}/ in the npm tarball, ${version} (N-API)` });
+      for (const file of readdirSync(mine))
+        if (file.endsWith('.node'))
+          rows.push({
+            module: 'node-pty',
+            file: `prebuilds/${triple}/${file}`,
+            source: `prebuilds/${triple}/ in the npm tarball, ${version} (N-API)`,
+          });
     } else if (isHost(triple) && existsSync(join(pty, 'build', 'Release', 'pty.node'))) {
       // The npm tarball also contains macOS and Windows binaries. A Linux source build must not ship them.
       prune('node-pty/prebuilds');
-      rows.push({ module: 'node-pty', file: 'build/Release/pty.node', source: `compiled on this machine (node-gyp), ${version}` });
+      rows.push({
+        module: 'node-pty',
+        file: 'build/Release/pty.node',
+        source: `compiled on this machine (node-gyp), ${version}`,
+      });
     } else {
-      fail('node-pty', `prebuilds/${triple}/ is not in the package (it ships: ${existsSync(prebuilds) ? readdirSync(prebuilds).join(', ') : 'no prebuilds folder'}); ${t.platform === 'linux' ? 'run node-gyp rebuild in node_modules/node-pty on a Linux host first' : 'there is nothing to fetch'}`);
+      fail(
+        'node-pty',
+        `prebuilds/${triple}/ is not in the package (it ships: ${existsSync(prebuilds) ? readdirSync(prebuilds).join(', ') : 'no prebuilds folder'}); ${t.platform === 'linux' ? 'run node-gyp rebuild in node_modules/node-pty on a Linux host first' : 'there is nothing to fetch'}`,
+      );
     }
   }
 
@@ -228,7 +315,11 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
     const manifest = JSON.parse(readFileSync(join(driver.dir, 'package.json'), 'utf8'));
     const platformName = `@trycua/cua-driver-${t.cua}`;
     const platformVersion = manifest.optionalDependencies?.[platformName];
-    if (!platformVersion) fail('@trycua/cua-driver', `${platformName} is not among its optionalDependencies (${Object.keys(manifest.optionalDependencies ?? {}).join(', ')})`);
+    if (!platformVersion)
+      fail(
+        '@trycua/cua-driver',
+        `${platformName} is not among its optionalDependencies (${Object.keys(manifest.optionalDependencies ?? {}).join(', ')})`,
+      );
     const parts = [{ name: '@trycua/cua-driver', ...driver }];
     for (const [name, wanted] of [...Object.entries(manifest.dependencies ?? {}), [platformName, platformVersion]]) {
       try {
@@ -241,7 +332,11 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
     const platformDir = join(modulesOut, platformName);
     const library = cuaLibrary(t.platform);
     for (const file of [library, 'cua_driver_node_runtime.node']) {
-      if (!existsSync(join(platformDir, file))) fail('@trycua/cua-driver', `${platformName}@${platformVersion} has no ${file} (it ships: ${readdirSync(platformDir).join(', ')})`);
+      if (!existsSync(join(platformDir, file)))
+        fail(
+          '@trycua/cua-driver',
+          `${platformName}@${platformVersion} has no ${file} (it ships: ${readdirSync(platformDir).join(', ')})`,
+        );
       rows.push({ module: '@trycua/cua-driver', file: `${platformName}/${file}`, source: parts.at(-1).source });
     }
   }
@@ -255,14 +350,20 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
       if (os.name !== t.platform) rmSync(join(tuiNative, os.name), { recursive: true, force: true });
       else {
         const prebuilds = join(tuiNative, os.name, 'prebuilds');
-        if (existsSync(prebuilds)) for (const entry of readdirSync(prebuilds)) if (entry !== triple) rmSync(join(prebuilds, entry), { recursive: true, force: true });
+        if (existsSync(prebuilds))
+          for (const entry of readdirSync(prebuilds))
+            if (entry !== triple) rmSync(join(prebuilds, entry), { recursive: true, force: true });
       }
     }
     const folder = join(tuiNative, t.platform, 'prebuilds', triple);
     const node = existsSync(folder) ? readdirSync(folder).find((f) => f.endsWith('.node')) : undefined;
     if (!node) fail('@earendil-works/pi-tui', `native/${t.platform}/prebuilds/${triple}/ is not in the package`);
     const version = JSON.parse(readFileSync(join(piAssets, 'package.json'), 'utf8')).version;
-    rows.push({ module: '@earendil-works/pi-tui', file: `native/${t.platform}/prebuilds/${triple}/${node}`, source: `prebuilds in the npm tarball, ${version} (N-API)` });
+    rows.push({
+      module: '@earendil-works/pi-tui',
+      file: `native/${t.platform}/prebuilds/${triple}/${node}`,
+      source: `prebuilds in the npm tarball, ${version} (N-API)`,
+    });
   }
   return rows;
 }
@@ -290,14 +391,18 @@ export function readHeader(path) {
       const machines = Array.from({ length: count }, (_, i) => table.readUInt32BE(20 * i));
       return { format: 'macho', machine: machines[0], machines };
     }
-    if (n >= 0x14 && head.toString('latin1', 0, 4) === '\x7fELF') return { format: 'elf', machine: head.readUInt16LE(0x12) };
+    if (n >= 0x14 && head.toString('latin1', 0, 4) === '\x7fELF')
+      return { format: 'elf', machine: head.readUInt16LE(0x12) };
     return undefined;
   } finally {
     closeSync(fd);
   }
 }
 
-const describe = (h) => (h ? `${h.format} ${(h.machines ?? [h.machine]).map((m) => `0x${m.toString(16)}`).join('+')}` : 'not a PE, Mach-O or ELF file');
+const describe = (h) =>
+  h
+    ? `${h.format} ${(h.machines ?? [h.machine]).map((m) => `0x${m.toString(16)}`).join('+')}`
+    : 'not a PE, Mach-O or ELF file';
 
 /** Every file under `dir` for which `keep(name)` is true, as absolute paths. */
 function walk(dir, keep, out = []) {
@@ -312,13 +417,29 @@ function walk(dir, keep, out = []) {
 /** What each module must have left in the staged tree, per platform. */
 function expectedFiles(triple) {
   const t = TRIPLES[triple];
-  const list = [`@napi-rs/keyring-${t.keyring}`, `better-sqlite3-multiple-ciphers/prebuilds/${triple}.node`, `../assets/pi/native/${t.platform}/prebuilds/${triple}`];
-  if (t.platform === 'win32') list.push(`node-pty/prebuilds/${triple}/pty.node`, `node-pty/prebuilds/${triple}/conpty.node`);
-  else if (t.platform === 'darwin') list.push(`keychain-store/dist/keychain_store.darwin-${t.arch}.node`, `node-pty/prebuilds/${triple}/pty.node`, `node-pty/prebuilds/${triple}/spawn-helper`);
+  const list = [
+    `@napi-rs/keyring-${t.keyring}`,
+    `better-sqlite3-multiple-ciphers/prebuilds/${triple}.node`,
+    `../assets/pi/native/${t.platform}/prebuilds/${triple}`,
+  ];
+  if (t.platform === 'win32')
+    list.push(`node-pty/prebuilds/${triple}/pty.node`, `node-pty/prebuilds/${triple}/conpty.node`);
+  else if (t.platform === 'darwin')
+    list.push(
+      `keychain-store/dist/keychain_store.darwin-${t.arch}.node`,
+      `node-pty/prebuilds/${triple}/pty.node`,
+      `node-pty/prebuilds/${triple}/spawn-helper`,
+    );
   else if (t.platform === 'linux') list.push('node-pty/build/Release/pty.node');
   if (t.cua) {
     const library = cuaLibrary(t.platform);
-    list.push('@trycua/cua-driver/dist/index.js', '@ubjs/core/package.json', '@ubjs/node/typescript/dist/resolve-lib.js', `@trycua/cua-driver-${t.cua}/${library}`, `@trycua/cua-driver-${t.cua}/cua_driver_node_runtime.node`);
+    list.push(
+      '@trycua/cua-driver/dist/index.js',
+      '@ubjs/core/package.json',
+      '@ubjs/node/typescript/dist/resolve-lib.js',
+      `@trycua/cua-driver-${t.cua}/${library}`,
+      `@trycua/cua-driver-${t.cua}/cua_driver_node_runtime.node`,
+    );
   }
   return list;
 }
@@ -339,16 +460,23 @@ export function verifyStaged({ backend, triple, electron, log = console.log }) {
   for (const file of natives) {
     const header = readHeader(file);
     const where = relative(modules, file);
-    if (!header || header.format !== t.format || !(header.machines ?? [header.machine]).includes(t.machine)) problems.push(`${where} is ${describe(header)}, ${triple} needs ${t.format} 0x${t.machine.toString(16)}`);
+    if (!header || header.format !== t.format || !(header.machines ?? [header.machine]).includes(t.machine))
+      problems.push(`${where} is ${describe(header)}, ${triple} needs ${t.format} 0x${t.machine.toString(16)}`);
     // N-API: the binary imports napi_* and nothing from V8 or Node directly, so it does not depend on Electron's ABI.
     if (file.endsWith('.node')) {
       const bytes = readFileSync(file);
-      if (!bytes.includes('napi_')) problems.push(`${where} does not look like an N-API module (no napi_ symbols): it would need rebuilding for Electron's ABI`);
-      if (bytes.includes('node_module_register') || bytes.includes('_ZN2v8')) problems.push(`${where} links against V8 or Node directly (not N-API)`);
+      if (!bytes.includes('napi_'))
+        problems.push(
+          `${where} does not look like an N-API module (no napi_ symbols): it would need rebuilding for Electron's ABI`,
+        );
+      if (bytes.includes('node_module_register') || bytes.includes('_ZN2v8'))
+        problems.push(`${where} links against V8 or Node directly (not N-API)`);
     }
   }
   if (problems.length) throw new Error(`Native verification failed for ${triple}:\n  ${problems.join('\n  ')}`);
-  log(`  headers ok: ${natives.length} native files are ${t.format} 0x${t.machine.toString(16)} (${triple}), every .node is N-API`);
+  log(
+    `  headers ok: ${natives.length} native files are ${t.format} 0x${t.machine.toString(16)} (${triple}), every .node is N-API`,
+  );
 
   if (isHost(triple)) {
     if (!electron) throw new Error('verifyStaged needs the electron binary to load the host target');

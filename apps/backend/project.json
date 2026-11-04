@@ -3,20 +3,13 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "apps/backend/src",
   "projectType": "application",
-  "tags": [
-    "scope:backend"
-  ],
-  "implicitDependencies": [
-    "secret-cli",
-    "backend-runtime"
-  ],
+  "tags": ["scope:backend"],
+  "implicitDependencies": ["secret-cli", "backend-runtime"],
   "targets": {
     "build": {
       "executor": "@nx/esbuild:esbuild",
       "cache": true,
-      "dependsOn": [
-        "^build"
-      ],
+      "dependsOn": ["^build"],
       "inputs": [
         "production",
         "^production",
@@ -25,30 +18,19 @@
         "{workspaceRoot}/packages/pi-kit-meat-proxy/**/*",
         "{workspaceRoot}/packages/pi-computer-use/{package.json,README.md,extensions/*.ts,lib/*.mjs}"
       ],
-      "outputs": [
-        "{options.outputPath}"
-      ],
+      "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
       "options": {
         "outputPath": "dist/apps/backend",
         "main": "apps/backend/src/main.ts",
-        "additionalEntryPoints": [
-          "apps/backend/src/openapi.ts"
-        ],
+        "additionalEntryPoints": ["apps/backend/src/openapi.ts"],
         "tsConfig": "apps/backend/tsconfig.app.json",
         "platform": "node",
-        "format": [
-          "cjs"
-        ],
+        "format": ["cjs"],
         "target": "node24",
         "bundle": true,
         "thirdParty": true,
-        "external": [
-          "@napi-rs/keyring",
-          "better-sqlite3-multiple-ciphers",
-          "node-pty",
-          "keychain-store"
-        ],
+        "external": ["@napi-rs/keyring", "better-sqlite3-multiple-ciphers", "node-pty", "keychain-store"],
         "esbuildConfig": "apps/backend/esbuild.config.cjs",
         "metafile": true,
         "generatePackageJson": false,
@@ -95,9 +77,7 @@
       "continuous": true,
       "executor": "@nx/js:node",
       "defaultConfiguration": "development",
-      "dependsOn": [
-        "build"
-      ],
+      "dependsOn": ["build"],
       "options": {
         "buildTarget": "backend:build",
         "runBuildTargetDependencies": false
@@ -114,10 +94,7 @@
     "test": {
       "executor": "nx:run-commands",
       "cache": true,
-      "inputs": [
-        "default",
-        "^production"
-      ],
+      "inputs": ["default", "^production"],
       "options": {
         "command": "vitest run",
         "cwd": "apps/backend"

@@ -94,17 +94,22 @@ const head = (text: string): string => {
   return flat.length > HEAD_CHARS ? `${flat.slice(0, HEAD_CHARS)}…` : flat;
 };
 
-export function buildSessionTree(entries: readonly PiSessionEntry[], leafId: string | null, options: SessionTreeOptions = {}): SessionTree {
+export function buildSessionTree(
+  entries: readonly PiSessionEntry[],
+  leafId: string | null,
+  options: SessionTreeOptions = {},
+): SessionTree {
   const index = new Map<string, number>();
   entries.forEach((entry, i) => index.set(entry.id, i));
-  const byId = (id: string | null | undefined): PiSessionEntry | undefined => (id != null && index.has(id) ? entries[index.get(id) as number] : undefined);
+  const byId = (id: string | null | undefined): PiSessionEntry | undefined =>
+    id != null && index.has(id) ? entries[index.get(id) as number] : undefined;
 
   // ---- nodes and their parents (transparent entries skipped)
   // The initial prompt anchors the root. Later prompt-section snapshots are bookkeeping:
   // a changed coordination section must not insert a phantom turn between sibling user messages.
   const initialSystemId = entries.find((entry) => messageOf(entry)?.role === 'system')?.id;
-  const isNode = (entry: PiSessionEntry): boolean => NODE_TYPES.has(entry.type)
-    && (messageOf(entry)?.role !== 'system' || entry.id === initialSystemId);
+  const isNode = (entry: PiSessionEntry): boolean =>
+    NODE_TYPES.has(entry.type) && (messageOf(entry)?.role !== 'system' || entry.id === initialSystemId);
   const nodeParentMemo = new Map<string, string | null>();
   /** The nearest node strictly above the entry, `null` for a root (a parent that does not exist makes it one). */
   const nodeParent = (entry: PiSessionEntry): string | null => {
@@ -151,7 +156,8 @@ export function buildSessionTree(entries: readonly PiSessionEntry[], leafId: str
     unitOfNode.set(entry.id, unit);
   };
   const open = (entry: PiSessionEntry, parent: Unit): Unit => {
-    const kind: TreeRow['kind'] = entry.type === 'compaction' ? 'compaction' : entry.type === 'branch_summary' ? 'branch_summary' : 'turn';
+    const kind: TreeRow['kind'] =
+      entry.type === 'compaction' ? 'compaction' : entry.type === 'branch_summary' ? 'branch_summary' : 'turn';
     const unit: Unit = {
       id: entry.id,
       entries: [],
@@ -233,7 +239,8 @@ export function buildSessionTree(entries: readonly PiSessionEntry[], leafId: str
   // ---- branch summaries: a summary names the leaf it was written for (`fromId`); the abandoned branch holding it gets the text
   const groupSummary = new Map<Unit, string>();
   for (const entry of entries) {
-    if (entry.type !== 'branch_summary' || typeof entry['fromId'] !== 'string' || typeof entry['summary'] !== 'string') continue;
+    if (entry.type !== 'branch_summary' || typeof entry['fromId'] !== 'string' || typeof entry['summary'] !== 'string')
+      continue;
     let unit: Unit | undefined = unitOfEntry(entry['fromId']);
     if (!unit || unit.active) continue;
     while (unit.parent && !unit.parent.active) unit = unit.parent;
@@ -258,7 +265,9 @@ export function buildSessionTree(entries: readonly PiSessionEntry[], leafId: str
     id: string;
     letter: string;
   }
-  type Task = { kind: 'unit'; unit: Unit; lane: number; letter: string; run: string; group?: Group } | { kind: 'free'; lane: number };
+  type Task =
+    | { kind: 'unit'; unit: Unit; lane: number; letter: string; run: string; group?: Group }
+    | { kind: 'free'; lane: number };
   const stack: Task[] = [{ kind: 'unit', unit: root, lane: 0, letter: '', run: 'root' }];
   while (stack.length > 0) {
     const task = stack.pop() as Task;
@@ -282,7 +291,14 @@ export function buildSessionTree(entries: readonly PiSessionEntry[], leafId: str
       const childLetter = branchLetter(branches++);
       // A branch off the active path starts a group (folded into one row); deeper ones belong to the group they hang from.
       const childGroup: Group = unit.active ? { id: child.id, letter: childLetter.toUpperCase() } : (group as Group);
-      sideTasks.push({ kind: 'unit', unit: child, lane: childLane, letter: childLetter, run: child.id, group: childGroup });
+      sideTasks.push({
+        kind: 'unit',
+        unit: child,
+        lane: childLane,
+        letter: childLetter,
+        run: child.id,
+        group: childGroup,
+      });
     }
     const row = describe(unit, {
       lane,
@@ -330,7 +346,8 @@ export function buildSessionTree(entries: readonly PiSessionEntry[], leafId: str
     }
 
     // Stack is last in, first out: the continuing branch is pushed first so it is emitted after the side branches.
-    if (primary) stack.push({ kind: 'unit', unit: primary, lane, letter, run, ...(group && !unit.active ? { group } : {}) });
+    if (primary)
+      stack.push({ kind: 'unit', unit: primary, lane, letter, run, ...(group && !unit.active ? { group } : {}) });
     for (const t of sideTasks.reverse()) {
       stack.push({ kind: 'free', lane: t.lane });
       stack.push(t);
@@ -385,10 +402,17 @@ function describe(unit: Unit, facts: RowFacts): TreeRow {
     // The context after the turn is what the last answer was given with plus what it wrote: input, cache and output.
     if (usage) {
       const sum = (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
-      context = { tokens: typeof usage.totalTokens === 'number' && usage.totalTokens > 0 ? usage.totalTokens : sum, provider: message.provider, model: message.model };
+      context = {
+        tokens: typeof usage.totalTokens === 'number' && usage.totalTokens > 0 ? usage.totalTokens : sum,
+        provider: message.provider,
+        model: message.model,
+      };
     }
   }
-  const window = unit.kind === 'turn' && context?.model && context.tokens > 0 ? facts.contextWindow?.(context.provider, context.model) : undefined;
+  const window =
+    unit.kind === 'turn' && context?.model && context.tokens > 0
+      ? facts.contextWindow?.(context.provider, context.model)
+      : undefined;
 
   let preview: string;
   switch (unit.kind) {
@@ -405,7 +429,10 @@ function describe(unit: Unit, facts: RowFacts): TreeRow {
       break;
     default: {
       const message = first ? messageOf(first) : undefined;
-      const text = message?.role === 'user' ? userMessageText(message.content as string | { type: string; text?: string }[]) : textOfAny(first);
+      const text =
+        message?.role === 'user'
+          ? userMessageText(message.content as string | { type: string; text?: string }[])
+          : textOfAny(first);
       preview = head(text) || (message?.role === 'user' ? '(image)' : `(${message?.role ?? first?.type ?? 'entry'})`);
     }
   }
@@ -442,17 +469,30 @@ function describe(unit: Unit, facts: RowFacts): TreeRow {
     run: facts.run,
     ...(facts.group ? { group: facts.group.id, groupLetter: facts.group.letter } : {}),
     ...(facts.summary ? { summary: facts.summary } : {}),
-    ...(window && context ? { contextTokens: context.tokens, contextWindow: window, contextPct: Math.min(100, Math.round((context.tokens / window) * 100)) } : {}),
+    ...(window && context
+      ? {
+          contextTokens: context.tokens,
+          contextWindow: window,
+          contextPct: Math.min(100, Math.round((context.tokens / window) * 100)),
+        }
+      : {}),
   };
 }
 
 /** The model or thinking level of a turn differs from the one before it (nothing before it: nothing changed). */
 function changed(previous: RowFacts['previous'], model: string | undefined, thinking: string | undefined): boolean {
   if (!previous) return false;
-  return (!!model && !!previous.model && model !== previous.model) || (!!thinking && !!previous.thinking && thinking !== previous.thinking);
+  return (
+    (!!model && !!previous.model && model !== previous.model) ||
+    (!!thinking && !!previous.thinking && thinking !== previous.thinking)
+  );
 }
 
-const basename = (path: string): string => path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path;
+const basename = (path: string): string =>
+  path
+    .replace(/[\\/]+$/, '')
+    .split(/[\\/]/)
+    .pop() ?? path;
 
 /** What a tool call is about, in a few characters: a file name, the program a shell command runs. */
 function toolTarget(name: string, args: Record<string, unknown> | undefined): string | undefined {

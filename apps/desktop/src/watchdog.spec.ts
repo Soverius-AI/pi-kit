@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { BackendWatchdog, type BackendHandle, DEFAULT_WATCHDOG_OPTIONS, type WatchdogHost, type WatchdogOptions, type WatchdogStatus } from './watchdog';
+import {
+  BackendWatchdog,
+  type BackendHandle,
+  DEFAULT_WATCHDOG_OPTIONS,
+  type WatchdogHost,
+  type WatchdogOptions,
+  type WatchdogStatus,
+} from './watchdog';
 
 /** A fake host: a manual clock and timer queue, and backends the test can kill or hang. */
 class FakeHost implements WatchdogHost {
@@ -78,7 +85,11 @@ const settle = async () => {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 };
 
-const options = (patch: Partial<WatchdogOptions> = {}): WatchdogOptions => ({ ...DEFAULT_WATCHDOG_OPTIONS, pingIntervalMs: 0, ...patch });
+const options = (patch: Partial<WatchdogOptions> = {}): WatchdogOptions => ({
+  ...DEFAULT_WATCHDOG_OPTIONS,
+  pingIntervalMs: 0,
+  ...patch,
+});
 
 async function started(host: FakeHost, patch: Partial<WatchdogOptions> = {}): Promise<BackendWatchdog> {
   const dog = new BackendWatchdog(host, options(patch));
@@ -100,7 +111,12 @@ describe('BackendWatchdog', () => {
     const dog = await started(host);
     host.current?.die(null, 'SIGKILL');
     await settle();
-    expect(host.statuses.at(-1)).toMatchObject({ state: 'restarting', attempt: 1, delayMs: 500, reason: 'the backend exited (signal SIGKILL)' });
+    expect(host.statuses.at(-1)).toMatchObject({
+      state: 'restarting',
+      attempt: 1,
+      delayMs: 500,
+      reason: 'the backend exited (signal SIGKILL)',
+    });
     await host.advance(499);
     expect(host.launches).toBe(1);
     await host.advance(1);
@@ -167,7 +183,11 @@ describe('BackendWatchdog', () => {
     const dog = new BackendWatchdog(host, options({ baseDelayMs: 50, maxFailures: 2 }));
     dog.start();
     await settle();
-    expect(host.statuses.at(-1)).toMatchObject({ state: 'restarting', attempt: 1, reason: 'the backend did not start (did not become healthy within 30s)' });
+    expect(host.statuses.at(-1)).toMatchObject({
+      state: 'restarting',
+      attempt: 1,
+      reason: 'the backend did not start (did not become healthy within 30s)',
+    });
     await host.advance(50);
     await host.advance(100);
     expect(host.statuses.at(-1)?.state).toBe('failed');

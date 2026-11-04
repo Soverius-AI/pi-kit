@@ -18,7 +18,16 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { env, openApp } from './support/app.mjs';
-import { CANNED_SKILL, FAKE_MODEL, FAKE_PROVIDER, cannedLabels, isScorePrompt, registerFakeModel, startFakeModel, userTextOf } from './support/fake-model.mjs';
+import {
+  CANNED_SKILL,
+  FAKE_MODEL,
+  FAKE_PROVIDER,
+  cannedLabels,
+  isScorePrompt,
+  registerFakeModel,
+  startFakeModel,
+  userTextOf,
+} from './support/fake-model.mjs';
 import { gitIn, writeWorktreeProject } from './support/worktree-world.mjs';
 
 const NAME = 'score-app';
@@ -30,7 +39,11 @@ let id;
 
 async function call(method, path, body) {
   const { token } = await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${env.api}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const res = await fetch(`${env.api}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
   return { status: res.status, body: res.status === 204 ? undefined : await res.json().catch(() => undefined) };
 }
 
@@ -39,7 +52,8 @@ const spawned = [];
 async function ensureBackend() {
   const up = async () => {
     try {
-      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })).ok;
+      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } }))
+        .ok;
     } catch {
       return false;
     }
@@ -47,7 +61,13 @@ async function ensureBackend() {
   if (await up()) return;
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: 'ignore',
     detached: true,
   });
@@ -61,12 +81,20 @@ const pi = (...args) =>
     env: { ...process.env, PI_CODING_AGENT_DIR: env.agentDir, PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1' },
     encoding: 'utf8',
   });
-const packageFolder = (name) => JSON.parse(readFileSync(join(env.agentDir, 'settings.json'), 'utf8')).packages.map(String).find((p) => p.includes(name));
+const packageFolder = (name) =>
+  JSON.parse(readFileSync(join(env.agentDir, 'settings.json'), 'utf8'))
+    .packages.map(String)
+    .find((p) => p.includes(name));
 
 before(async () => {
   await ensureBackend();
   fake = await startFakeModel({
-    answer: (body) => (isScorePrompt(body) ? cannedLabels(userTextOf(body)) : JSON.stringify(body.messages?.[0] ?? '').includes('reusable skill') ? CANNED_SKILL : 'Notes work'),
+    answer: (body) =>
+      isScorePrompt(body)
+        ? cannedLabels(userTextOf(body))
+        : JSON.stringify(body.messages?.[0] ?? '').includes('reusable skill')
+          ? CANNED_SKILL
+          : 'Notes work',
   });
   registerFakeModel(env.agentDir, fake.url);
   app = await openApp();
@@ -131,7 +159,9 @@ async function plainThread(title) {
   await app.page.getByRole('button', { name: `New thread in ${NAME}` }).click();
   await box().waitFor();
   await app.h.settle(500);
-  const created = (await threads()).filter((t) => !t.title && t.messageCount === 0).sort((a, b) => b.createdAt - a.createdAt)[0];
+  const created = (await threads())
+    .filter((t) => !t.title && t.messageCount === 0)
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
   assert.ok(created, 'the new thread is listed');
   await call('PATCH', `/api/threads/${created.id}`, { title });
   await eventually(async () => (await rowOf(title).count()) > 0, `the row of ${title}`);
@@ -177,7 +207,9 @@ describe('the package', () => {
     assert.match(listed.stdout, /pi-kit-learn/, listed.stdout);
     const folder = packageFolder('pi-kit-meat-proxy');
     assert.ok(folder, 'the package is in pi’s settings');
-    assert.ok(existsSync(join(folder.startsWith('/') ? folder : join(env.agentDir, folder), 'extensions', 'meat-proxy.ts')));
+    assert.ok(
+      existsSync(join(folder.startsWith('/') ? folder : join(env.agentDir, folder), 'extensions', 'meat-proxy.ts')),
+    );
 
     id = await plainThread(TITLE);
     await rowOf(TITLE).click();
@@ -193,12 +225,19 @@ describe('a finished thread: two prompts, a review comment and a hand edit', () 
 
   it('the person works with pi, edits a file by hand and commits; the attendant scores the outcome by itself', async () => {
     // The attendant on with the fake model, looking only when an outcome lands.
-    await call('PATCH', '/api/attendant/settings', { enabled: true, model: { provider: FAKE_PROVIDER, modelId: FAKE_MODEL }, dailyCostCap: null, when: { onEnd: false, onInterrupt: false, everyMinutes: 0 } });
+    await call('PATCH', '/api/attendant/settings', {
+      enabled: true,
+      model: { provider: FAKE_PROVIDER, modelId: FAKE_MODEL },
+      dailyCostCap: null,
+      when: { onEnd: false, onInterrupt: false, everyMinutes: 0 },
+    });
     await prompt(
       'Use the write tool twice. First create notes/alpha.md with exactly three lines: "# Alpha", "The first note.", "It has two lines of text." ' +
         'Then create notes/beta.md with exactly two lines: "# Beta", "The second note." Then say done in one short sentence.',
     );
-    await prompt('Use the write tool once to create notes/index.md that lists the two notes, one bullet per note, two lines in all. Then say done in one short sentence.');
+    await prompt(
+      'Use the write tool once to create notes/index.md that lists the two notes, one bullet per note, two lines in all. Then say done in one short sentence.',
+    );
 
     // A review comment on a line of alpha.md, sent to pi as a message of its own.
     await app.h.openPanel('Changes');
@@ -210,7 +249,11 @@ describe('a finished thread: two prompts, a review comment and a hand edit', () 
     await app.page.getByRole('button', { name: '1 review comment' }).waitFor();
     await idle();
     await app.h.closePanel();
-    assert.equal(readFileSync(join(project, 'notes', 'alpha.md'), 'utf8').includes('FIRST'), true, 'pi applied the review comment');
+    assert.equal(
+      readFileSync(join(project, 'notes', 'alpha.md'), 'utf8').includes('FIRST'),
+      true,
+      'pi applied the review comment',
+    );
 
     // A file the person writes by hand, after pi stopped (the folder watcher sees it; no run is writing).
     await app.h.settle(4000);
@@ -222,15 +265,21 @@ describe('a finished thread: two prompts, a review comment and a hand edit', () 
     gitIn(project, 'commit', '-q', '-m', 'Add notes');
 
     // The outcome lands, the attendant scores it.
-    outcome = (await eventually(async () => {
-      const got = await call('GET', `/api/threads/${id}/outcome`);
-      return got.status === 200 ? got : undefined;
-    }, 'the committed outcome')).body;
+    outcome = (
+      await eventually(async () => {
+        const got = await call('GET', `/api/threads/${id}/outcome`);
+        return got.status === 200 ? got : undefined;
+      }, 'the committed outcome')
+    ).body;
     assert.equal(outcome.kind, 'committed');
-    const scored = await eventually(async () => {
-      const got = await scoreOf();
-      return got.status === 200 ? got.body : undefined;
-    }, 'the attendant’s score', 120_000);
+    const scored = await eventually(
+      async () => {
+        const got = await scoreOf();
+        return got.status === 200 ? got.body : undefined;
+      },
+      'the attendant’s score',
+      120_000,
+    );
     assert.equal(scorePrompts().length, 1, 'one model call for the attribution');
 
     // What the model was sent: the ledger (the review comment, the hand edit), the hunks of the files pi touched; the hand-edited file is not listed.
@@ -244,15 +293,26 @@ describe('a finished thread: two prompts, a review comment and a hand edit', () 
 
     // Every hunk is labelled, and the label traces to an input.
     const byFile = Object.fromEntries(scored.hunks.map((h) => [h.file, h]));
-    assert.deepEqual(Object.keys(byFile).sort(), ['notes/alpha.md', 'notes/beta.md', 'notes/gamma.md', 'notes/index.md']);
+    assert.deepEqual(Object.keys(byFile).sort(), [
+      'notes/alpha.md',
+      'notes/beta.md',
+      'notes/gamma.md',
+      'notes/index.md',
+    ]);
     assert.equal(byFile['notes/alpha.md'].label, 'corrected');
     assert.equal(byFile['notes/alpha.md'].input, 'review');
     assert.equal(byFile['notes/beta.md'].label, 'specified');
     assert.equal(byFile['notes/beta.md'].input, 'first-prompt');
     assert.equal(byFile['notes/index.md'].label, 'autonomous');
     assert.equal(byFile['notes/index.md'].input, 'none');
-    assert.deepEqual([byFile['notes/gamma.md'].label, byFile['notes/gamma.md'].input, byFile['notes/gamma.md'].by], ['manual', 'hand', 'ledger']);
-    assert.ok(scored.hunks.every((h) => h.trace.length > 0), 'every label says why');
+    assert.deepEqual(
+      [byFile['notes/gamma.md'].label, byFile['notes/gamma.md'].input, byFile['notes/gamma.md'].by],
+      ['manual', 'hand', 'ledger'],
+    );
+    assert.ok(
+      scored.hunks.every((h) => h.trace.length > 0),
+      'every label says why',
+    );
 
     // The score is the line-weighted share of specified, corrected and manual hunks.
     const lines = numstat(outcome.base, outcome.head);
@@ -262,14 +322,27 @@ describe('a finished thread: two prompts, a review comment and a hand edit', () 
     assert.equal(scored.scores.vibe, 100 - scored.scores.meat);
     assert.equal(scored.scores.hunks, 4);
     assert.equal(scored.scores.steered, 3);
-    assert.match(scored.scores.line, new RegExp(`^${scored.scores.meat} % steered: 3 of 4 hunks, 1 by the first prompt, 1 by review comments, 1 by hand$`));
+    assert.match(
+      scored.scores.line,
+      new RegExp(
+        `^${scored.scores.meat} % steered: 3 of 4 hunks, 1 by the first prompt, 1 by review comments, 1 by hand$`,
+      ),
+    );
     assert.equal(scored.stale, false);
     assert.equal(scored.corrected, 0);
 
     // The activity lists the call as `score` and then what came of it.
-    const actions = (await call('GET', '/api/attendant')).body.actions.filter((a) => a.kind === 'score' && a.threadId === id);
-    assert.ok(actions.some((a) => a.status === 'done' && a.text === scored.scores.line), JSON.stringify(actions));
-    assert.ok(actions.some((a) => a.model === `${FAKE_PROVIDER}/${FAKE_MODEL}`), 'the call is listed with its model');
+    const actions = (await call('GET', '/api/attendant')).body.actions.filter(
+      (a) => a.kind === 'score' && a.threadId === id,
+    );
+    assert.ok(
+      actions.some((a) => a.status === 'done' && a.text === scored.scores.line),
+      JSON.stringify(actions),
+    );
+    assert.ok(
+      actions.some((a) => a.model === `${FAKE_PROVIDER}/${FAKE_MODEL}`),
+      'the call is listed with its model',
+    );
   });
 
   it('the badge’s tooltip has the sentence as its second line, and its menu shows it with “Score this thread again”', async () => {
@@ -296,9 +369,17 @@ describe('a finished thread: two prompts, a review comment and a hand edit', () 
     await meter.waitFor();
     assert.equal((await app.page.getByTestId('score-meat').innerText()).trim(), `${scored.scores.meat} % steered`);
     assert.equal((await app.page.getByTestId('score-vibe').innerText()).trim(), `${scored.scores.vibe} % vibe`);
-    assert.match(await app.page.getByTestId('score-line').innerText(), /3 of 4 hunks, 1 by the first prompt, 1 by review comments, 1 by hand/);
+    assert.match(
+      await app.page.getByTestId('score-line').innerText(),
+      /3 of 4 hunks, 1 by the first prompt, 1 by review comments, 1 by hand/,
+    );
 
-    const expected = { 'alpha.md': 'corrected', 'beta.md': 'specified', 'gamma.md': 'manual', 'index.md': 'autonomous' };
+    const expected = {
+      'alpha.md': 'corrected',
+      'beta.md': 'specified',
+      'gamma.md': 'manual',
+      'index.md': 'autonomous',
+    };
     for (const [file, label] of Object.entries(expected)) {
       await openFile(file);
       const mark = app.page.getByTestId('hunk-label').first();
@@ -317,7 +398,10 @@ describe('the person relabels a hunk', () => {
     await openFile('index.md');
     await app.page.getByTestId('hunk-label').first().waitFor();
     await app.page.getByTestId('hunk-relabel').first().selectOption('specified');
-    await eventually(async () => (await app.page.getByTestId('hunk-label').first().innerText()).trim() === 'specified', 'the relabelled hunk');
+    await eventually(
+      async () => (await app.page.getByTestId('hunk-label').first().innerText()).trim() === 'specified',
+      'the relabelled hunk',
+    );
     const after = (await scoreOf()).body;
     assert.ok(after.scores.meat > before.scores.meat, `${before.scores.meat} -> ${after.scores.meat}`);
     assert.equal(after.scores.steered, 4);
@@ -325,7 +409,10 @@ describe('the person relabels a hunk', () => {
     const index = after.hunks.find((h) => h.file === 'notes/index.md');
     assert.deepEqual([index.label, index.was, index.by], ['specified', 'autonomous', 'person']);
     assert.equal(await app.page.getByTestId('hunk-label').first().getAttribute('data-by'), 'person');
-    await eventually(async () => (await app.page.getByTestId('score-meat').innerText()).trim() === `${after.scores.meat} % steered`, 'the meter');
+    await eventually(
+      async () => (await app.page.getByTestId('score-meat').innerText()).trim() === `${after.scores.meat} % steered`,
+      'the meter',
+    );
     assert.match(await app.page.getByTestId('score-corrected').innerText(), /1 label corrected by you/);
 
     // The model is not asked for that: relabelling is arithmetic.
@@ -335,12 +422,25 @@ describe('the person relabels a hunk', () => {
     const menu = await openMenu();
     await menu.getByRole('menuitem', { name: 'Score this thread again' }).click();
     await eventually(async () => scorePrompts().length === 2, 'the second attribution', 60_000);
-    assert.match(lastScorePrompt(), /## The person corrected earlier labels of this thread[\s\S]*- notes\/index\.md @@[^\n]*the model said autonomous, the person says specified/);
-    await eventually(async () => (await app.page.getByTestId('toast').count().catch(() => 0)) >= 0, 'the toast settles');
-    const again = (await eventually(async () => {
-      const got = await scoreOf();
-      return got.status === 200 && got.body.at > after.at ? got.body : undefined;
-    }, 'the new score')).body ?? (await scoreOf()).body;
+    assert.match(
+      lastScorePrompt(),
+      /## The person corrected earlier labels of this thread[\s\S]*- notes\/index\.md @@[^\n]*the model said autonomous, the person says specified/,
+    );
+    await eventually(
+      async () =>
+        (await app.page
+          .getByTestId('toast')
+          .count()
+          .catch(() => 0)) >= 0,
+      'the toast settles',
+    );
+    const again =
+      (
+        await eventually(async () => {
+          const got = await scoreOf();
+          return got.status === 200 && got.body.at > after.at ? got.body : undefined;
+        }, 'the new score')
+      ).body ?? (await scoreOf()).body;
     const kept = again.hunks.find((h) => h.file === 'notes/index.md');
     assert.deepEqual([kept.label, kept.by], ['specified', 'person']);
     assert.equal(again.scores.steered, 4);
@@ -368,7 +468,10 @@ describe('with the attendant off', () => {
     await box().press('Enter');
     const approval = app.page.locator('.pk-approval', { hasText: 'Score this thread?' });
     await approval.waitFor();
-    assert.match(await approval.innerText(), /This sends the thread’s transcript[\s\S]*learn-fake\/canned[\s\S]*The attendant is off/);
+    assert.match(
+      await approval.innerText(),
+      /This sends the thread’s transcript[\s\S]*learn-fake\/canned[\s\S]*The attendant is off/,
+    );
     assert.equal(scorePrompts().length, asked, 'nothing was sent before the answer');
     await approval.getByRole('button', { name: 'Allow' }).click();
     await eventually(async () => scorePrompts().length === asked + 1, 'the attribution after the agreement', 60_000);
@@ -402,12 +505,20 @@ describe('Settings › Projects', () => {
     const projectRow = dialog.getByTestId(`score-${NAME}`);
     await projectRow.waitFor();
     assert.match(await projectRow.innerText(), /1 scored/);
-    const bins = await projectRow.getByTestId('score-bin').evaluateAll((els) => els.map((el) => Number(el.getAttribute('data-count'))));
+    const bins = await projectRow
+      .getByTestId('score-bin')
+      .evaluateAll((els) => els.map((el) => Number(el.getAttribute('data-count'))));
     assert.equal(bins.length, 10);
-    assert.equal(bins.reduce((a, b) => a + b, 0), 1);
+    assert.equal(
+      bins.reduce((a, b) => a + b, 0),
+      1,
+    );
     const meat = (await scoreOf()).body.scores.meat;
     assert.equal(bins[Math.min(9, Math.floor(meat / 10))], 1);
-    assert.match(await projectRow.getByTestId('score-mean').innerText(), new RegExp(`On average ${meat} % steered over 1 scored thread`));
+    assert.match(
+      await projectRow.getByTestId('score-mean').innerText(),
+      new RegExp(`On average ${meat} % steered over 1 scored thread`),
+    );
     await app.page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'detached' });
   });
@@ -421,7 +532,10 @@ describe('pi remove leaves no trace in the UI', () => {
     assert.doesNotMatch(pi('list').stdout, /meat-proxy/);
 
     await eventually(async () => (await scoreOf()).status === 404, 'the score route to answer 404', 30_000);
-    await eventually(async () => !(await rowOf(TITLE).getByTestId('outcome-badge').getAttribute('title'))?.includes('\n'), 'the badge to lose its second line');
+    await eventually(
+      async () => !(await rowOf(TITLE).getByTestId('outcome-badge').getAttribute('title'))?.includes('\n'),
+      'the badge to lose its second line',
+    );
     const menu = await openMenu();
     const items = await menu.getByRole('menuitem').allInnerTexts();
     assert.equal(items[0], 'Show the outcome');
@@ -443,6 +557,9 @@ describe('pi remove leaves no trace in the UI', () => {
     const installed = pi('install', folder);
     assert.equal(installed.status, 0, installed.stderr + installed.stdout);
     await eventually(async () => (await scoreOf()).status === 200, 'the score to come back', 30_000);
-    await eventually(async () => (await rowOf(TITLE).getByTestId('outcome-badge').getAttribute('title'))?.includes('\n'), 'the badge’s second line to come back');
+    await eventually(
+      async () => (await rowOf(TITLE).getByTestId('outcome-badge').getAttribute('title'))?.includes('\n'),
+      'the badge’s second line to come back',
+    );
   });
 });

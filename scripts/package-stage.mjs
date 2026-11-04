@@ -33,12 +33,17 @@ const { values } = parseArgs({
     'natives-cache': { type: 'string' },
   },
 });
-const triples = values.target?.length ? values.target : [tripleOf(values.platform ?? process.platform, values.arch ?? process.arch)];
-for (const triple of triples) if (!TRIPLES[triple]) throw new Error(`Unknown target ${triple}. Known: ${Object.keys(TRIPLES).join(', ')}`);
+const triples = values.target?.length
+  ? values.target
+  : [tripleOf(values.platform ?? process.platform, values.arch ?? process.arch)];
+for (const triple of triples)
+  if (!TRIPLES[triple]) throw new Error(`Unknown target ${triple}. Known: ${Object.keys(TRIPLES).join(', ')}`);
 const dist = join(root, 'dist');
 const stage = join(dist, 'package');
 const stageRoot = join(dist, 'stage');
-const nativesCache = resolve(values['natives-cache'] ?? process.env.PI_KIT_NATIVES_CACHE ?? join(dist, 'natives-cache'));
+const nativesCache = resolve(
+  values['natives-cache'] ?? process.env.PI_KIT_NATIVES_CACHE ?? join(dist, 'natives-cache'),
+);
 const rootModules = join(root, 'node_modules');
 const require = createRequire(import.meta.url);
 
@@ -50,7 +55,16 @@ const seconds = (since) => `${((Date.now() - since) / 1000).toFixed(1)} s`;
 
 if (!values['skip-build']) {
   const started = Date.now();
-  run(process.execPath, [join(rootModules, 'nx', 'dist', 'bin', 'nx.js'), 'run-many', '-t', 'build', '-p', 'renderer,backend,desktop,secret-cli', '--configuration=production', '--skip-nx-cache']);
+  run(process.execPath, [
+    join(rootModules, 'nx', 'dist', 'bin', 'nx.js'),
+    'run-many',
+    '-t',
+    'build',
+    '-p',
+    'renderer,backend,desktop,secret-cli',
+    '--configuration=production',
+    '--skip-nx-cache',
+  ]);
   console.log(`built renderer, backend, desktop and secret-cli in ${seconds(started)}`);
 }
 if (values['build-only']) process.exit(0);
@@ -60,7 +74,8 @@ rmSync(stage, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
 const rootPackage = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 mkdirSync(join(stage, 'desktop'));
-for (const file of ['main.cjs', 'preload.cjs', 'screenshot-encoder-preload.cjs', 'splash.html', 'icon.png']) cpSync(join(dist, 'apps/desktop', file), join(stage, 'desktop', file));
+for (const file of ['main.cjs', 'preload.cjs', 'screenshot-encoder-preload.cjs', 'splash.html', 'icon.png'])
+  cpSync(join(dist, 'apps/desktop', file), join(stage, 'desktop', file));
 cpSync(join(dist, 'apps/renderer/browser'), join(stage, 'renderer/browser'), { recursive: true });
 writeFileSync(
   join(stage, 'package.json'),
@@ -100,14 +115,18 @@ const external = main.imports.filter((entry) => entry.external && !isBuiltin(ent
 const isPackage = (specifier, name) => specifier === name || specifier.startsWith(`${name}/`);
 const required = external.filter((specifier) => !runtime.optionalImports.some((name) => isPackage(specifier, name)));
 for (const specifier of required) {
-  if (![...runtime.nativePackages, ...runtime.optionalNativePackages].some((name) => isPackage(specifier, name))) throw new Error(`Unexpected runtime import ${specifier}: bundle its JavaScript or explicitly document why it must stay external.`);
+  if (![...runtime.nativePackages, ...runtime.optionalNativePackages].some((name) => isPackage(specifier, name)))
+    throw new Error(
+      `Unexpected runtime import ${specifier}: bundle its JavaScript or explicitly document why it must stay external.`,
+    );
 }
 // Core JavaScript comes from Nx/esbuild outputs. The self-contained keychain-store
 // vendor loader is provisioned with its native prebuild; no JavaScript dependency closure is copied.
 cpSync(join(dist, 'apps/backend-runtime/assets'), join(backendOut, 'assets'), { recursive: true });
 cpSync(join(dist, 'apps/backend-runtime-natives/node_modules'), join(backendOut, 'node_modules'), { recursive: true });
 for (const name of runtime.nativePackages) {
-  if (!existsSync(join(backendOut, 'node_modules', name, 'package.json'))) throw new Error(`Missing built native loader ${name}; run backend-runtime:build.`);
+  if (!existsSync(join(backendOut, 'node_modules', name, 'package.json')))
+    throw new Error(`Missing built native loader ${name}; run backend-runtime:build.`);
 }
 
 // `pi-kit-secret`: the CLI bundle sits next to the backend, where the launcher the backend writes looks for it. It loads @napi-rs/keyring from the backend's node_modules.
@@ -127,8 +146,12 @@ for (const triple of triples) {
   const rows = await provisionNatives({ modulesOut: join(backend, 'node_modules'), triple, cacheDir: nativesCache });
   verifyStaged({ backend, triple, electron });
   writeFileSync(join(targetRoot, 'natives.json'), JSON.stringify(rows, null, 2));
-  console.log(`staged ${triple}: backend ${mb(dirSize(backend))} (node_modules ${mb(dirSize(join(backend, 'node_modules')))}) in ${seconds(started)}`);
+  console.log(
+    `staged ${triple}: backend ${mb(dirSize(backend))} (node_modules ${mb(dirSize(join(backend, 'node_modules')))}) in ${seconds(started)}`,
+  );
   for (const row of rows) console.log(`  ${row.module.padEnd(32)} ${row.file}\n    <- ${row.source}`);
 }
 rmSync(baseRoot, { recursive: true, force: true });
-console.log(`\nshell ${mb(dirSize(join(stage, 'desktop')) + dirSize(join(stage, 'renderer')))} in ${relative(root, stage)}; backends in ${relative(root, stageRoot)}/<triple>/backend`);
+console.log(
+  `\nshell ${mb(dirSize(join(stage, 'desktop')) + dirSize(join(stage, 'renderer')))} in ${relative(root, stage)}; backends in ${relative(root, stageRoot)}/<triple>/backend`,
+);

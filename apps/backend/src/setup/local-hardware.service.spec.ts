@@ -6,7 +6,9 @@ import { LocalHardwareService, localExecutable } from './local-hardware.service'
 
 vi.mock('./detect', () => ({ probeLocalServers: async () => [], defaultProbes: () => [] }));
 const scratch: string[] = [];
-afterEach(() => { for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 
 describe('local model hardware discovery', () => {
   it('finds actual GGUF files in the chosen directory, rejects unrelated/projector/split files, and revalidates a selected file', async () => {
@@ -20,7 +22,10 @@ describe('local model hardware discovery', () => {
     writeFileSync(join(models, 'part-00001-of-00002.gguf'), 'GGUFsplit part');
     symlinkSync(dir, join(models, 'directory-cycle'));
     symlinkSync(join(models, 'language.gguf'), join(models, 'alias.gguf'));
-    const service = new LocalHardwareService({ dataDir: dir, localRuntime: { modelDirectories: [models], probeMs: 100 } });
+    const service = new LocalHardwareService({
+      dataDir: dir,
+      localRuntime: { modelDirectories: [models], probeMs: 100 },
+    });
     const facts = await service.detect();
     expect(facts.models.map((model) => model.file)).toEqual(['language.gguf']);
     expect(facts.ramBytes).toBeGreaterThan(0);
@@ -37,6 +42,7 @@ describe('local model hardware discovery', () => {
     mkdirSync(join(dir, 'pk-local-directory-fixture'));
     writeFileSync(join(dir, 'pk-local-file-fixture'), 'not executable', { mode: 0o600 });
     expect(await localExecutable('pk-local-directory-fixture', { PATH: dir })).toBeUndefined();
-    if (process.platform !== 'win32') expect(await localExecutable('pk-local-file-fixture', { PATH: dir })).toBeUndefined();
+    if (process.platform !== 'win32')
+      expect(await localExecutable('pk-local-file-fixture', { PATH: dir })).toBeUndefined();
   });
 });

@@ -17,21 +17,31 @@ let log;
 let app;
 
 before(async () => {
-  model = await startFakeModel({ answer: (body) => ({
-    reasoning: 'Multiply the two numbers, then check the result.',
-    reasoningMs: 1100,
-    text: userTextOf(body).includes('17') ? '17 times 23 is 391.' : '12 times 12 is 144.',
-  }) });
-  world = createWorld({ setup: ({ agent }) => {
-    const file = join(agent, 'models.json');
-    const models = JSON.parse(readFileSync(file, 'utf8'));
-    models.providers['llama-swap'].baseUrl = model.url;
-    writeFileSync(file, JSON.stringify(models));
-  } });
+  model = await startFakeModel({
+    answer: (body) => ({
+      reasoning: 'Multiply the two numbers, then check the result.',
+      reasoningMs: 1100,
+      text: userTextOf(body).includes('17') ? '17 times 23 is 391.' : '12 times 12 is 144.',
+    }),
+  });
+  world = createWorld({
+    setup: ({ agent }) => {
+      const file = join(agent, 'models.json');
+      const models = JSON.parse(readFileSync(file, 'utf8'));
+      models.providers['llama-swap'].baseUrl = model.url;
+      writeFileSync(file, JSON.stringify(models));
+    },
+  });
   log = openSync(join(world.base, 'thinking-backend.log'), 'w');
   backend = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: root,
-    env: { ...process.env, ...world.env, NODE_ENV: 'development', PI_KIT_PORT: new URL(API).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...world.env,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(API).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: ['ignore', log, log],
     detached: true,
   });
@@ -45,7 +55,11 @@ before(async () => {
 after(async () => {
   await app?.close();
   if (backend) {
-    try { process.kill(-backend.pid, 'SIGTERM'); } catch { /* Already stopped. */ }
+    try {
+      process.kill(-backend.pid, 'SIGTERM');
+    } catch {
+      /* Already stopped. */
+    }
   }
   if (log !== undefined) closeSync(log);
   await model?.stop();
@@ -60,9 +74,17 @@ describe('transcript de-clutter', () => {
     await page.getByRole('button', { name: 'Model', exact: true }).click();
     await page.getByRole('option', { name: THINKING_MODEL.id }).click();
     await page.getByRole('button', { name: 'Model', exact: true }).filter({ hasText: THINKING_MODEL.id }).waitFor();
-    await page.locator('pk-composer-well').getByRole('button', { name: /^Thinking effort:/ }).click();
+    await page
+      .locator('pk-composer-well')
+      .getByRole('button', { name: /^Thinking effort:/ })
+      .click();
     const slider = page.getByRole('slider', { name: 'Thinking effort', exact: true });
-    const saved = page.waitForResponse(response => response.request().method() === 'PATCH' && new URL(response.url()).pathname.endsWith('/model') && response.request().postDataJSON()?.thinkingLevel === 'low');
+    const saved = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PATCH' &&
+        new URL(response.url()).pathname.endsWith('/model') &&
+        response.request().postDataJSON()?.thinkingLevel === 'low',
+    );
     await slider.press('Home');
     await slider.press('ArrowRight');
     await slider.press('ArrowRight');
@@ -78,8 +100,10 @@ describe('transcript de-clutter', () => {
     assert.equal(await captions.count(), 2);
     await page.mouse.move(5, 5);
     await page.waitForTimeout(250);
-    for (const opacity of await captions.evaluateAll((els) => els.map((el) => getComputedStyle(el).opacity))) assert.equal(opacity, '0');
-    const think = async () => (await page.locator('pk-think summary').allInnerTexts()).map((text) => text.replace(/\s+/g, ' ').trim());
+    for (const opacity of await captions.evaluateAll((els) => els.map((el) => getComputedStyle(el).opacity)))
+      assert.equal(opacity, '0');
+    const think = async () =>
+      (await page.locator('pk-think summary').allInnerTexts()).map((text) => text.replace(/\s+/g, ' ').trim());
     assert.equal((await think()).length, 2);
     for (const row of await think()) assert.match(row, /^Thought for \d+s$/);
     await page.reload();

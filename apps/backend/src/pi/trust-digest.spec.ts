@@ -64,32 +64,43 @@ describe('trustDigest', () => {
     expect(await trust.folderTrusted(worktree)).toBe(false);
   });
 
-  it.each(['extension inventory', 'directory inventory', 'large file', 'hidden dependency'])('does not inherit trust after an edit beyond the old %s cutoff', async (scenario) => {
-    const main = project('main');
-    const worktree = project('worktree');
-    let changed = '';
-    for (const root of [main, worktree]) {
-      const extensions = join(root, '.pi', 'extensions');
-      if (scenario === 'extension inventory') {
-        for (let i = 0; i < 13; i++) writeFileSync(join(extensions, `extra${String(i).padStart(2, '0')}.ts`), 'original');
-        changed = '.pi/extensions/extra12.ts';
-      } else {
-        mkdirSync(join(extensions, 'tools'));
-        if (scenario === 'directory inventory') {
-          for (let i = 0; i < 401; i++) writeFileSync(join(extensions, 'tools', `${String(i).padStart(3, '0')}.ts`), 'original');
-          changed = '.pi/extensions/tools/400.ts';
+  it.each(['extension inventory', 'directory inventory', 'large file', 'hidden dependency'])(
+    'does not inherit trust after an edit beyond the old %s cutoff',
+    async (scenario) => {
+      const main = project('main');
+      const worktree = project('worktree');
+      let changed = '';
+      for (const root of [main, worktree]) {
+        const extensions = join(root, '.pi', 'extensions');
+        if (scenario === 'extension inventory') {
+          for (let i = 0; i < 13; i++)
+            writeFileSync(join(extensions, `extra${String(i).padStart(2, '0')}.ts`), 'original');
+          changed = '.pi/extensions/extra12.ts';
         } else {
-          changed = `.pi/extensions/tools/${scenario === 'large file' ? 'large.ts' : '.config'}`;
-          writeFileSync(join(root, changed), scenario === 'large file' ? Buffer.alloc(2 * 1024 * 1024 + 1, 'a') : 'original');
+          mkdirSync(join(extensions, 'tools'));
+          if (scenario === 'directory inventory') {
+            for (let i = 0; i < 401; i++)
+              writeFileSync(join(extensions, 'tools', `${String(i).padStart(3, '0')}.ts`), 'original');
+            changed = '.pi/extensions/tools/400.ts';
+          } else {
+            changed = `.pi/extensions/tools/${scenario === 'large file' ? 'large.ts' : '.config'}`;
+            writeFileSync(
+              join(root, changed),
+              scenario === 'large file' ? Buffer.alloc(2 * 1024 * 1024 + 1, 'a') : 'original',
+            );
+          }
         }
       }
-    }
-    const trust = await trustOf(main, worktree);
-    expect(await trust.folderTrusted(worktree)).toBe(true);
-    // The same size as before: only the bytes tell.
-    writeFileSync(join(worktree, changed), scenario === 'large file' ? Buffer.alloc(2 * 1024 * 1024 + 1, 'b') : 'modified');
-    expect(await trust.folderTrusted(worktree)).toBe(false);
-  });
+      const trust = await trustOf(main, worktree);
+      expect(await trust.folderTrusted(worktree)).toBe(true);
+      // The same size as before: only the bytes tell.
+      writeFileSync(
+        join(worktree, changed),
+        scenario === 'large file' ? Buffer.alloc(2 * 1024 * 1024 + 1, 'b') : 'modified',
+      );
+      expect(await trust.folderTrusted(worktree)).toBe(false);
+    },
+  );
 
   it('is stable for a folder without resources', async () => {
     const plain = join(base, 'plain');

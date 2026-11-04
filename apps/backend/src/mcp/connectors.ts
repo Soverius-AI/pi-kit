@@ -1,4 +1,10 @@
-import { type ConnectRequest, type Connector, type ConnectorExposure, type CustomConnector, connectorUrl } from '@pi-kit/protocol';
+import {
+  type ConnectRequest,
+  type Connector,
+  type ConnectorExposure,
+  type CustomConnector,
+  connectorUrl,
+} from '@pi-kit/protocol';
 
 /**
  * The `mcp.json` entry of a connector, as pure functions so the unit tests cover every sign-in mode: pi's own format (docs/mcp.md), nothing of pi-kit's in it.
@@ -21,11 +27,16 @@ export interface EntryOptions {
   url?: string;
 }
 
-const withExposure = (exposure: ConnectorExposure): Record<string, unknown> => (exposure === 'codemode' ? {} : { exposure });
+const withExposure = (exposure: ConnectorExposure): Record<string, unknown> =>
+  exposure === 'codemode' ? {} : { exposure };
 
 export function buildConnectorEntry(connector: Connector, options: EntryOptions): Record<string, unknown> {
   const { auth } = connector;
-  const entry: Record<string, unknown> = { url: options.url ?? connectorUrl(connector, options.variant), description: connector.summary, ...withExposure(options.exposure) };
+  const entry: Record<string, unknown> = {
+    url: options.url ?? connectorUrl(connector, options.variant),
+    description: connector.summary,
+    ...withExposure(options.exposure),
+  };
   switch (auth.type) {
     case 'oauth':
       if (auth.clientName) entry['oauth'] = { clientName: auth.clientName };
@@ -35,7 +46,11 @@ export function buildConnectorEntry(connector: Connector, options: EntryOptions)
       break;
     case 'oauth-client':
       if (!options.clientId) throw new Error(`${connector.name} needs the client id of your ${connector.name} app.`);
-      entry['oauth'] = { clientId: options.clientId, callbackPort: auth.callbackPort, ...(options.clientSecretCommand ? { clientSecret: options.clientSecretCommand } : {}) };
+      entry['oauth'] = {
+        clientId: options.clientId,
+        callbackPort: auth.callbackPort,
+        ...(options.clientSecretCommand ? { clientSecret: options.clientSecretCommand } : {}),
+      };
       break;
     case 'bearer':
       if (!options.authorization) throw new Error(`${connector.name} needs a token.`);
@@ -45,10 +60,25 @@ export function buildConnectorEntry(connector: Connector, options: EntryOptions)
   return entry;
 }
 
-export function buildCustomEntry(custom: CustomConnector, exposure: ConnectorExposure, authorization?: string): Record<string, unknown> {
+export function buildCustomEntry(
+  custom: CustomConnector,
+  exposure: ConnectorExposure,
+  authorization?: string,
+): Record<string, unknown> {
   const description = custom.description ? { description: custom.description } : {};
-  if (custom.url) return { url: custom.url, ...description, ...withExposure(exposure), ...(authorization ? { headers: { Authorization: authorization } } : {}) };
-  return { command: custom.command, ...(custom.args?.length ? { args: custom.args } : {}), ...description, ...withExposure(exposure) };
+  if (custom.url)
+    return {
+      url: custom.url,
+      ...description,
+      ...withExposure(exposure),
+      ...(authorization ? { headers: { Authorization: authorization } } : {}),
+    };
+  return {
+    command: custom.command,
+    ...(custom.args?.length ? { args: custom.args } : {}),
+    ...description,
+    ...withExposure(exposure),
+  };
 }
 
 /** What the connection will do before the person clicks: which sign-in it needs, for the confirmation text. */
@@ -66,13 +96,19 @@ export function endpointOverrides(env: NodeJS.ProcessEnv = process.env): Record<
   try {
     const parsed: unknown = JSON.parse(env['PI_KIT_CONNECTOR_URLS']);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return Object.fromEntries(Object.entries(parsed).filter((pair): pair is [string, string] => typeof pair[1] === 'string'));
+    return Object.fromEntries(
+      Object.entries(parsed).filter((pair): pair is [string, string] => typeof pair[1] === 'string'),
+    );
   } catch {
     return {};
   }
 }
 
 /** The URL an entry is written with: an override for this id (and variant), else the catalog's. */
-export function endpointFor(connector: Connector, variant: string | undefined, overrides: Record<string, string>): string | undefined {
+export function endpointFor(
+  connector: Connector,
+  variant: string | undefined,
+  overrides: Record<string, string>,
+): string | undefined {
   return (variant ? overrides[`${connector.id}/${variant}`] : undefined) ?? overrides[connector.id];
 }

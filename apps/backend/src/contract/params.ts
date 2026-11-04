@@ -6,8 +6,13 @@ import { ApiParam } from '@nestjs/swagger';
  */
 
 /** `:id` of `threads/:id`. */
-export const ThreadIdParam = () => ApiParam({ name: 'id', description: 'The thread id (the pi session id).', schema: { type: 'string' } });
+export const ThreadIdParam = () =>
+  ApiParam({ name: 'id', description: 'The thread id (the pi session id).', schema: { type: 'string' } });
 
 /** `:id` of `workspaces/:id`. */
 export const WorkspaceIdParam = () =>
-  ApiParam({ name: 'id', description: "The project's folder, URL-encoded (a project has no other id).", schema: { type: 'string' } });
+  ApiParam({
+    name: 'id',
+    description: "The project's folder, URL-encoded (a project has no other id).",
+    schema: { type: 'string' },
+  });

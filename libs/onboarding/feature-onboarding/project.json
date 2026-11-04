@@ -4,10 +4,7 @@
   "sourceRoot": "libs/onboarding/feature-onboarding/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:onboarding",
-    "type:feature"
-  ],
+  "tags": ["scope:onboarding", "type:feature"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"

@@ -19,7 +19,8 @@ const STOP = new Set(
   ).split(' '),
 );
 
-const wordsOf = (text: string): string[] => (text.toLowerCase().match(/[a-z][a-z0-9]{3,}/g) ?? []).filter((word) => !STOP.has(word));
+const wordsOf = (text: string): string[] =>
+  (text.toLowerCase().match(/[a-z][a-z0-9]{3,}/g) ?? []).filter((word) => !STOP.has(word));
 
 /** The distinct key words of a prompt (at least four letters, no stop words), in order of first use, at most 12. */
 export const keyTerms = (text: string): string[] => [...new Set(wordsOf(text))].slice(0, 12);
@@ -50,8 +51,10 @@ export interface DraftFacts {
 export type DraftVerdict = { worth: true } | { worth: false; reason: string };
 
 export function worthADraft(facts: DraftFacts): DraftVerdict {
-  if (facts.toolCalls < MIN_TOOL_CALLS) return { worth: false, reason: `Only ${facts.toolCalls} tool calls (a draft needs ${MIN_TOOL_CALLS}).` };
-  if (facts.changedLines < MIN_CHANGED_LINES) return { worth: false, reason: `Only ${facts.changedLines} changed lines (a draft needs ${MIN_CHANGED_LINES}).` };
+  if (facts.toolCalls < MIN_TOOL_CALLS)
+    return { worth: false, reason: `Only ${facts.toolCalls} tool calls (a draft needs ${MIN_TOOL_CALLS}).` };
+  if (facts.changedLines < MIN_CHANGED_LINES)
+    return { worth: false, reason: `Only ${facts.changedLines} changed lines (a draft needs ${MIN_CHANGED_LINES}).` };
   const covered = matchingSkill(facts.firstPrompt, facts.skills);
   if (covered) return { worth: false, reason: `The skill ${covered.name} already covers this.` };
   return { worth: true };

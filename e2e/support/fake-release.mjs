@@ -14,15 +14,22 @@ export function addFakeRelease(agentDir, version, { current = true } = {}) {
   const release = join(install, 'releases', version);
   const modules = join(release, 'node_modules');
   mkdirSync(join(modules, SCOPE), { recursive: true });
-  writeFileSync(join(install, 'managed-install.json'), `${JSON.stringify({ kind: 'pi-managed-install', schemaVersion: 1, layout: 'releases-v1' })}\n`);
-  writeFileSync(join(release, 'package.json'), JSON.stringify({ name: '@earendil-works/pi-coding-agent-install', version, private: true }));
+  writeFileSync(
+    join(install, 'managed-install.json'),
+    `${JSON.stringify({ kind: 'pi-managed-install', schemaVersion: 1, layout: 'releases-v1' })}\n`,
+  );
+  writeFileSync(
+    join(release, 'package.json'),
+    JSON.stringify({ name: '@earendil-works/pi-coding-agent-install', version, private: true }),
+  );
   const source = join(root, 'node_modules');
   for (const name of readdirSync(source)) {
     if (name === SCOPE || name === '.bin' || name.startsWith('.')) continue;
     if (!existsSync(join(modules, name))) symlinkSync(join(source, name), join(modules, name));
   }
   for (const name of readdirSync(join(source, SCOPE))) {
-    if (name !== PI && !existsSync(join(modules, SCOPE, name))) symlinkSync(join(source, SCOPE, name), join(modules, SCOPE, name));
+    if (name !== PI && !existsSync(join(modules, SCOPE, name)))
+      symlinkSync(join(source, SCOPE, name), join(modules, SCOPE, name));
   }
   const copy = join(modules, SCOPE, PI);
   rmSync(copy, { recursive: true, force: true });

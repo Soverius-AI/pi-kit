@@ -30,7 +30,9 @@ const readBody = (req) =>
 
 /** A stdio MCP server as a function from a JSON-RPC message to its answer. */
 function bridge() {
-  const child = spawn('node', [join(root, 'examples', 'mcp-app-server', 'server.mjs')], { stdio: ['pipe', 'pipe', 'ignore'] });
+  const child = spawn('node', [join(root, 'examples', 'mcp-app-server', 'server.mjs')], {
+    stdio: ['pipe', 'pipe', 'ignore'],
+  });
   const waiting = new Map();
   createInterface({ input: child.stdout }).on('line', (line) => {
     try {
@@ -88,7 +90,13 @@ export async function startMockOAuthMcp({ port = 0, expiresIn = 3600 } = {}) {
     const refresh = `rt-${randomBytes(8).toString('hex')}`;
     state.access.set(access, { clientId, expires: Date.now() + state.expiresIn * 1000 });
     state.refresh.set(refresh, { clientId });
-    return { access_token: access, token_type: 'Bearer', expires_in: state.expiresIn, refresh_token: refresh, scope: 'read write' };
+    return {
+      access_token: access,
+      token_type: 'Bearer',
+      expires_in: state.expiresIn,
+      refresh_token: refresh,
+      scope: 'read write',
+    };
   };
 
   const authorized = (req) => {
@@ -104,9 +112,17 @@ export async function startMockOAuthMcp({ port = 0, expiresIn = 3600 } = {}) {
     try {
       if (path.startsWith('/.well-known/oauth-protected-resource')) {
         const resource = `${base}${path.slice('/.well-known/oauth-protected-resource'.length) || '/mcp'}`;
-        return json(res, 200, { resource, authorization_servers: [base], bearer_methods_supported: ['header'], resource_name: 'Mock issues' });
+        return json(res, 200, {
+          resource,
+          authorization_servers: [base],
+          bearer_methods_supported: ['header'],
+          resource_name: 'Mock issues',
+        });
       }
-      if (path.startsWith('/.well-known/oauth-authorization-server') || path.startsWith('/.well-known/openid-configuration')) {
+      if (
+        path.startsWith('/.well-known/oauth-authorization-server') ||
+        path.startsWith('/.well-known/openid-configuration')
+      ) {
         return json(res, 200, {
           issuer: base,
           authorization_endpoint: `${base}/authorize`,
@@ -122,7 +138,12 @@ export async function startMockOAuthMcp({ port = 0, expiresIn = 3600 } = {}) {
       }
       if (path === '/register' && req.method === 'POST') {
         const body = JSON.parse((await readBody(req)) || '{}');
-        const client = { client_id: `client-${randomBytes(6).toString('hex')}`, client_id_issued_at: Math.floor(Date.now() / 1000), ...body, token_endpoint_auth_method: 'none' };
+        const client = {
+          client_id: `client-${randomBytes(6).toString('hex')}`,
+          client_id_issued_at: Math.floor(Date.now() / 1000),
+          ...body,
+          token_endpoint_auth_method: 'none',
+        };
         state.clients.set(client.client_id, client);
         state.registrations.push({ client_name: body.client_name, redirect_uris: body.redirect_uris });
         return json(res, 201, client);
@@ -131,7 +152,8 @@ export async function startMockOAuthMcp({ port = 0, expiresIn = 3600 } = {}) {
         const query = Object.fromEntries(url.searchParams);
         state.authorizations.push(query);
         const client = state.clients.get(query.client_id);
-        if (!client || !(client.redirect_uris ?? []).includes(query.redirect_uri)) return json(res, 400, { error: 'invalid_request', error_description: 'unknown client or redirect_uri' });
+        if (!client || !(client.redirect_uris ?? []).includes(query.redirect_uri))
+          return json(res, 400, { error: 'invalid_request', error_description: 'unknown client or redirect_uri' });
         if (state.mode === 'hold') return; // the browser tab that never comes back
         const target = new URL(query.redirect_uri);
         target.searchParams.set('state', query.state ?? '');
@@ -141,7 +163,11 @@ export async function startMockOAuthMcp({ port = 0, expiresIn = 3600 } = {}) {
           target.searchParams.set('error_description', 'The user denied the request');
         } else {
           const code = `code-${randomBytes(8).toString('hex')}`;
-          state.codes.set(code, { clientId: query.client_id, challenge: query.code_challenge, redirect: query.redirect_uri });
+          state.codes.set(code, {
+            clientId: query.client_id,
+            challenge: query.code_challenge,
+            redirect: query.redirect_uri,
+          });
           target.searchParams.set('code', code);
         }
         res.writeHead(302, { Location: target.href });
@@ -155,7 +181,11 @@ export async function startMockOAuthMcp({ port = 0, expiresIn = 3600 } = {}) {
           state.codes.delete(form.get('code') ?? '');
           const verifier = form.get('code_verifier') ?? '';
           const challenge = createHash('sha256').update(verifier).digest('base64url');
-          if (!entry || entry.challenge !== challenge || entry.clientId !== form.get('client_id')) return json(res, 400, { error: 'invalid_grant', error_description: 'the code or its verifier did not match' });
+          if (!entry || entry.challenge !== challenge || entry.clientId !== form.get('client_id'))
+            return json(res, 400, {
+              error: 'invalid_grant',
+              error_description: 'the code or its verifier did not match',
+            });
           return json(res, 200, issue(entry.clientId));
         }
         if (form.get('grant_type') === 'refresh_token') {
@@ -171,7 +201,16 @@ export async function startMockOAuthMcp({ port = 0, expiresIn = 3600 } = {}) {
         const ok = isBearer ? req.headers.authorization === `Bearer ${BEARER_TOKEN}` : authorized(req);
         if (!ok) {
           state.mcpCalls.push({ path, status: 401 });
-          return json(res, 401, { error: 'unauthorized' }, isBearer ? { 'WWW-Authenticate': 'Bearer' } : { 'WWW-Authenticate': `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource${path}"` });
+          return json(
+            res,
+            401,
+            { error: 'unauthorized' },
+            isBearer
+              ? { 'WWW-Authenticate': 'Bearer' }
+              : {
+                  'WWW-Authenticate': `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource${path}"`,
+                },
+          );
         }
         if (req.method === 'DELETE') {
           res.writeHead(200);

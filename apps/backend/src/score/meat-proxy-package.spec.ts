@@ -11,8 +11,23 @@ import { MEAT_PROXY_PACKAGE, MeatProxyPackage } from './meat-proxy-package';
 vi.mock('../pi/load-pi', () => ({ loadPi: () => import('@earendil-works/pi-coding-agent') }));
 
 const ROOT = resolve(__dirname, '..', '..', '..', '..', 'packages');
-const FILES = ['package.json', 'extensions/meat-proxy.ts', 'lib/hunks.mjs', 'lib/ledger.mjs', 'lib/score.mjs', 'lib/attribution.mjs', 'lib/pipeline.mjs', 'prompts/attribute.md'];
-const LEARN_FILES = ['package.json', 'extensions/learn.ts', 'lib/analysis.mjs', 'prompts/analyze.md', 'templates/SKILL.md'];
+const FILES = [
+  'package.json',
+  'extensions/meat-proxy.ts',
+  'lib/hunks.mjs',
+  'lib/ledger.mjs',
+  'lib/score.mjs',
+  'lib/attribution.mjs',
+  'lib/pipeline.mjs',
+  'prompts/attribute.md',
+];
+const LEARN_FILES = [
+  'package.json',
+  'extensions/learn.ts',
+  'lib/analysis.mjs',
+  'prompts/analyze.md',
+  'templates/SKILL.md',
+];
 
 let base: string;
 let agent: string;
@@ -21,7 +36,13 @@ let learnDir: string;
 let db: DatabaseService;
 let meta: MetaRepository;
 let pkg: MeatProxyPackage;
-const keys = ['PI_CODING_AGENT_DIR', 'PI_KIT_MEAT_PROXY_PACKAGE_DIR', 'PI_KIT_MEAT_PROXY_PACKAGE', 'PI_KIT_LEARN_PACKAGE_DIR', 'PI_KIT_LEARN_PACKAGE'] as const;
+const keys = [
+  'PI_CODING_AGENT_DIR',
+  'PI_KIT_MEAT_PROXY_PACKAGE_DIR',
+  'PI_KIT_MEAT_PROXY_PACKAGE',
+  'PI_KIT_LEARN_PACKAGE_DIR',
+  'PI_KIT_LEARN_PACKAGE',
+] as const;
 const previous = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
 
 /** A copy of a package as the app ships it (no specs, no fixtures), where `dir` says. */
@@ -31,7 +52,8 @@ function ship(from: string, files: string[], dir: string): void {
     cpSync(join(ROOT, from, file), join(dir, file));
   }
 }
-const settings = (): { packages?: unknown[] } => (existsSync(join(agent, 'settings.json')) ? JSON.parse(readFileSync(join(agent, 'settings.json'), 'utf8')) : {});
+const settings = (): { packages?: unknown[] } =>
+  existsSync(join(agent, 'settings.json')) ? JSON.parse(readFileSync(join(agent, 'settings.json'), 'utf8')) : {};
 /** pi writes a package folder relative to its agent folder when it can; the entries as absolute paths. */
 const folders = (): string[] => (settings().packages ?? []).map((p) => resolve(agent, String(p)));
 
@@ -121,11 +143,38 @@ describe('the meat-proxy package ships with the app and is installed into pi onc
     await pkg.ensureInstalled();
     const scoring = await pkg.scoring();
     const labels = [
-      { id: 'a@1:1', file: 'a', header: '@@', label: 'specified' as const, input: 'first-prompt' as const, trace: '', lines: 3, by: 'model' as const },
-      { id: 'b@1:1', file: 'b', header: '@@', label: 'autonomous' as const, input: 'none' as const, trace: '', lines: 1, by: 'model' as const },
+      {
+        id: 'a@1:1',
+        file: 'a',
+        header: '@@',
+        label: 'specified' as const,
+        input: 'first-prompt' as const,
+        trace: '',
+        lines: 3,
+        by: 'model' as const,
+      },
+      {
+        id: 'b@1:1',
+        file: 'b',
+        header: '@@',
+        label: 'autonomous' as const,
+        input: 'none' as const,
+        trace: '',
+        lines: 1,
+        by: 'model' as const,
+      },
     ];
-    expect(scoring?.computeScores(labels)).toMatchObject({ meat: 75, vibe: 25, line: '75 % steered: 1 of 2 hunks, 1 by the first prompt' });
-    expect(scoring?.effectiveLabels({ labels, corrections: { 'b@1:1': { label: 'manual', was: 'autonomous', file: 'b', header: '@@', at: 1 } } })[1]).toMatchObject({ label: 'manual', by: 'person' });
+    expect(scoring?.computeScores(labels)).toMatchObject({
+      meat: 75,
+      vibe: 25,
+      line: '75 % steered: 1 of 2 hunks, 1 by the first prompt',
+    });
+    expect(
+      scoring?.effectiveLabels({
+        labels,
+        corrections: { 'b@1:1': { label: 'manual', was: 'autonomous', file: 'b', header: '@@', at: 1 } },
+      })[1],
+    ).toMatchObject({ label: 'manual', by: 'person' });
     expect(typeof scoring?.scoreThread).toBe('function');
   });
 });

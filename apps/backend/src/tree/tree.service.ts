@@ -47,12 +47,19 @@ export class TreeService {
     const source = await this.threads.treeSource(id);
     const entry = source.entries.find((e) => e.id === entryId);
     if (!entry) throw new NotFoundException(`Entry ${entryId} not found.`);
-    const message = entry.type === 'message' ? (entry['message'] as { role?: string; content?: string | { type: string; text?: string }[] }) : undefined;
+    const message =
+      entry.type === 'message'
+        ? (entry['message'] as { role?: string; content?: string | { type: string; text?: string }[] })
+        : undefined;
     const text = message?.role === 'user' ? userMessageText(message.content) : '';
     return { id: entry.id, role: message?.role ?? entry.type, text, parentId: entry.parentId ?? null };
   }
 
-  async navigate(id: string, targetId: string, options: { summarize?: boolean; instructions?: string } = {}): Promise<NavigateResult> {
+  async navigate(
+    id: string,
+    targetId: string,
+    options: { summarize?: boolean; instructions?: string } = {},
+  ): Promise<NavigateResult> {
     await this.threads.openSession(id);
     this.requireIdle(id, 'move along the tree');
     try {

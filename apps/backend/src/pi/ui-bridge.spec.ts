@@ -108,7 +108,9 @@ describe('UiBridge', () => {
 
   it('builds the context object pi gets, with the TUI-only methods as no-ops', async () => {
     const ui = new UiBridge();
-    const context = ui.context({ theme: { fg: 't' } }) as Record<string, (...a: unknown[]) => unknown> & { theme: unknown };
+    const context = ui.context({ theme: { fg: 't' } }) as Record<string, (...a: unknown[]) => unknown> & {
+      theme: unknown;
+    };
     expect(context['getEditorText']()).toBe('');
     expect(context['getAllThemes']()).toEqual([]);
     await expect(context['custom']()).resolves.toBeUndefined();
@@ -121,7 +123,12 @@ const fruitFactory: AutocompleteProviderFactory = (current) => ({
   async getSuggestions(lines, line, col, options) {
     const match = /^\/pk-fruit (\S*)$/.exec((lines[line] ?? '').slice(0, col));
     if (!match) return current.getSuggestions(lines, line, col, options);
-    return { prefix: match[1], items: ['apple', 'banana'].filter((f) => f.startsWith(match[1])).map((f) => ({ value: f, label: f, description: 'fruit' })) };
+    return {
+      prefix: match[1],
+      items: ['apple', 'banana']
+        .filter((f) => f.startsWith(match[1]))
+        .map((f) => ({ value: f, label: f, description: 'fruit' })),
+    };
   },
 });
 const colorFactory: AutocompleteProviderFactory = (current) => ({
@@ -136,7 +143,9 @@ const colorFactory: AutocompleteProviderFactory = (current) => ({
 describe('UiBridge autocomplete providers', () => {
   it('is what the context hands to addAutocompleteProvider, and stacks the factories in order', async () => {
     const ui = new UiBridge();
-    const context = ui.context({ theme: {} }) as { addAutocompleteProvider: (factory: AutocompleteProviderFactory) => void };
+    const context = ui.context({ theme: {} }) as {
+      addAutocompleteProvider: (factory: AutocompleteProviderFactory) => void;
+    };
     context.addAutocompleteProvider(fruitFactory);
     context.addAutocompleteProvider(colorFactory);
     expect(ui.autocompleteProviders).toBe(2);
@@ -189,7 +198,15 @@ describe('UiBridge composer registrations', () => {
     const ui = new UiBridge();
     const events: PiUiEvent[] = [];
     ui.onUi((e) => events.push(e));
-    for (const bad of [undefined, null, 'x', {}, { op: 'action', id: 'a' }, { op: 'action', id: 'a', label: 'x', icon: 'far too long', text: 't' }, { op: 'nope', id: 'a' }]) {
+    for (const bad of [
+      undefined,
+      null,
+      'x',
+      {},
+      { op: 'action', id: 'a' },
+      { op: 'action', id: 'a', label: 'x', icon: 'far too long', text: 't' },
+      { op: 'nope', id: 'a' },
+    ]) {
       expect(ui.registerComposer(bad)).toBe(false);
     }
     expect(events).toEqual([]);
@@ -242,4 +259,3 @@ describe('UiBridge composer registrations', () => {
     expect(ui.composerRegistrations()).toEqual([]);
   });
 });
-

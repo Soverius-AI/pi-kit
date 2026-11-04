@@ -4,19 +4,14 @@
   "sourceRoot": "libs/shared/i18n/src",
   "prefix": "lib",
   "projectType": "library",
-  "tags": [
-    "scope:shared",
-    "type:util"
-  ],
+  "tags": ["scope:shared", "type:util"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"
     },
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",
-      "outputs": [
-        "{workspaceRoot}/dist/{projectRoot}"
-      ],
+      "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
       "defaultConfiguration": "production",
       "options": {
         "project": "libs/shared/i18n/ng-package.json",
@@ -36,9 +31,7 @@
         "tsConfig": "libs/shared/i18n/tsconfig.spec.json",
         "buildTarget": "renderer:build:development",
         "runner": "vitest",
-        "include": [
-          "libs/shared/i18n/src/**/*.spec.ts"
-        ]
+        "include": ["libs/shared/i18n/src/**/*.spec.ts"]
       }
     }
   }

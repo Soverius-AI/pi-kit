@@ -31,21 +31,32 @@ export class UpdateController {
   constructor(private readonly updates: UpdateService) {}
 
   @Get('status')
-  @ApiOperation({ summary: 'Get the update status', description: 'Returns one row per target (pi, its packages, the model catalogs, the app) with what is installed and what is newer, and the running job if there is one.' })
+  @ApiOperation({
+    summary: 'Get the update status',
+    description:
+      'Returns one row per target (pi, its packages, the model catalogs, the app) with what is installed and what is newer, and the running job if there is one.',
+  })
   @Responds(UpdateStatusSchema)
   status(): UpdateStatus {
     return this.updates.status();
   }
 
   @Post('check')
-  @ApiOperation({ summary: 'Check for updates', description: 'Looks again for newer releases, ignoring the cache, and answers with the status.' })
+  @ApiOperation({
+    summary: 'Check for updates',
+    description: 'Looks again for newer releases, ignoring the cache, and answers with the status.',
+  })
   @Responds(UpdateStatusSchema, { status: 201 })
   check(): Promise<UpdateStatus> {
     return this.updates.check(true);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Start an update', description: 'Starts the one background job that updates the given targets, and answers with the status. Progress is streamed from `update/events`.' })
+  @ApiOperation({
+    summary: 'Start an update',
+    description:
+      'Starts the one background job that updates the given targets, and answers with the status. Progress is streamed from `update/events`.',
+  })
   @Responds(UpdateStatusSchema, { status: 201 })
   @Fails({ 409: 'An update is already running.' })
   start(@Body({ schema: UpdateRequestSchema }) body: z.infer<typeof UpdateRequestSchema>): UpdateStatus {
@@ -53,7 +64,10 @@ export class UpdateController {
   }
 
   @Post('cancel')
-  @ApiOperation({ summary: 'Cancel the update', description: 'Stops the running update job, and answers with the status.' })
+  @ApiOperation({
+    summary: 'Cancel the update',
+    description: 'Stops the running update job, and answers with the status.',
+  })
   @Responds(UpdateStatusSchema, { status: 201 })
   cancel(): UpdateStatus {
     return this.updates.cancel();
@@ -61,7 +75,11 @@ export class UpdateController {
 
   /** "Restart to use …": the backend ends itself and the watchdog starts it again (Settings and the toast call this after an update). */
   @Post('restart')
-  @ApiOperation({ summary: 'Restart the backend', description: 'Ends the backend, and the watchdog starts it again with the newer pi. Settings and the toast call this after an update.' })
+  @ApiOperation({
+    summary: 'Restart the backend',
+    description:
+      'Ends the backend, and the watchdog starts it again with the newer pi. Settings and the toast call this after an update.',
+  })
   @Responds(RestartingSchema, { status: 201 })
   @Fails({ 409: 'Nothing restarts the backend here: restart it yourself.' })
   restart(): Restarting {
@@ -71,7 +89,11 @@ export class UpdateController {
 
   /** pi-kit's own update, downloaded earlier: Electron main installs it and relaunches. */
   @Post('install-app')
-  @ApiOperation({ summary: 'Install the app update', description: "Installs the update of pi-kit itself that was downloaded earlier: the desktop app quits, installs it and relaunches." })
+  @ApiOperation({
+    summary: 'Install the app update',
+    description:
+      'Installs the update of pi-kit itself that was downloaded earlier: the desktop app quits, installs it and relaunches.',
+  })
   @Responds(InstallingSchema, { status: 201 })
   @Fails({ 409: 'No update of the app has been downloaded.' })
   async installApp(): Promise<Installing> {
@@ -80,7 +102,11 @@ export class UpdateController {
   }
 
   @Post('install-command')
-  @ApiOperation({ summary: 'Put the managed pi on PATH', description: 'Installs a `pi` launcher on PATH that runs the managed install, so the terminal and the app run the same pi, and answers with the status.' })
+  @ApiOperation({
+    summary: 'Put the managed pi on PATH',
+    description:
+      'Installs a `pi` launcher on PATH that runs the managed install, so the terminal and the app run the same pi, and answers with the status.',
+  })
   @Responds(UpdateStatusSchema, { status: 201 })
   @Fails({ 409: 'There is no managed pi install yet: update pi first.' })
   installCommand(): UpdateStatus {
@@ -88,7 +114,10 @@ export class UpdateController {
   }
 
   @Get('releases')
-  @ApiOperation({ summary: 'List managed releases', description: 'Lists the managed pi releases "Use previous release" offers, and the one that is pinned.' })
+  @ApiOperation({
+    summary: 'List managed releases',
+    description: 'Lists the managed pi releases "Use previous release" offers, and the one that is pinned.',
+  })
   @Responds(ReleasesSchema)
   releases(): Releases {
     return this.updates.releases();
@@ -96,7 +125,11 @@ export class UpdateController {
 
   /** "Use previous release": `{ release: "1.3.0" | "bundled" | null }`; takes effect at the next start. */
   @Post('pin')
-  @ApiOperation({ summary: 'Pin a pi release', description: 'Pins pi to a managed release, or to `bundled`, or with `null` follows the newest again. It takes effect at the next start. Answers with the status.' })
+  @ApiOperation({
+    summary: 'Pin a pi release',
+    description:
+      'Pins pi to a managed release, or to `bundled`, or with `null` follows the newest again. It takes effect at the next start. Answers with the status.',
+  })
   @Responds(UpdateStatusSchema, { status: 201 })
   @Fails({ 409: 'That release is not one of the managed releases, or there is no managed install.' })
   pin(@Body({ schema: PinReleaseSchema }) body: z.infer<typeof PinReleaseSchema>): UpdateStatus {
@@ -104,7 +137,11 @@ export class UpdateController {
   }
 
   @Post('auto-download')
-  @ApiOperation({ summary: 'Download app updates automatically', description: 'Turns the automatic download of pi-kit updates on or off; a downloaded update installs on the next quit. Answers with the status.' })
+  @ApiOperation({
+    summary: 'Download app updates automatically',
+    description:
+      'Turns the automatic download of pi-kit updates on or off; a downloaded update installs on the next quit. Answers with the status.',
+  })
   @Responds(UpdateStatusSchema, { status: 201 })
   autoDownload(@Body({ schema: AutoDownloadSchema }) body: z.infer<typeof AutoDownloadSchema>): UpdateStatus {
     return this.updates.setAutoDownload(body.enabled);
@@ -113,11 +150,14 @@ export class UpdateController {
   @Get('events')
   @ApiOperation({
     summary: 'Stream update progress',
-    description: 'Keeps the connection open and sends newline-delimited JSON: a `status` snapshot first and whenever it changes, and the output lines of the running job as `line`. A blank line every 20 seconds keeps the connection alive.',
+    description:
+      'Keeps the connection open and sends newline-delimited JSON: a `status` snapshot first and whenever it changes, and the output lines of the running job as `line`. A blank line every 20 seconds keeps the connection alive.',
   })
   @Streams(UpdateEventSchema, 'The stream stays open until the client closes it.')
   events(@Res() res: Response): void {
-    res.status(200).set({ 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    res
+      .status(200)
+      .set({ 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     res.flushHeaders();
     const send = (event: UpdateEvent): void => void res.write(`${JSON.stringify(event)}\n`);
     send({ type: 'status', status: this.updates.status() });

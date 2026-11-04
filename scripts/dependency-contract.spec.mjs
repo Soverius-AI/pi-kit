@@ -11,7 +11,16 @@ const require = createRequire(import.meta.url);
 test('the SDKs resolve the same Zod 4 package as the application', () => {
   const root = require.resolve('zod');
   assert.equal(z.core.version.major, 4);
-  for (const name of ['@copilotkit/angular', '@copilotkit/core', '@copilotkit/runtime', '@a2ui/web_core/v0_9', '@ag-ui/client', '@ag-ui/core', '@ag-ui/proto', 'zod-to-json-schema']) {
+  for (const name of [
+    '@copilotkit/angular',
+    '@copilotkit/core',
+    '@copilotkit/runtime',
+    '@a2ui/web_core/v0_9',
+    '@ag-ui/client',
+    '@ag-ui/core',
+    '@ag-ui/proto',
+    'zod-to-json-schema',
+  ]) {
     assert.equal(createRequire(require.resolve(name)).resolve('zod'), root, `${name} must share the application's Zod`);
   }
 });
@@ -28,7 +37,9 @@ test('A2UI function arguments use Zod 4 record semantics', () => {
 });
 
 test('A2UI recognizes data bindings and nested properties in Zod 4 schemas', () => {
-  const behavior = scrapeSchemaBehavior(z.object({ rows: DynamicValueSchema.optional(), labels: z.array(z.object({ text: DynamicValueSchema })) }));
+  const behavior = scrapeSchemaBehavior(
+    z.object({ rows: DynamicValueSchema.optional(), labels: z.array(z.object({ text: DynamicValueSchema })) }),
+  );
   assert.equal(behavior.shape.rows.type, 'DYNAMIC');
   assert.equal(behavior.shape.labels.type, 'ARRAY');
   assert.equal(behavior.shape.labels.element.shape.text.type, 'DYNAMIC');

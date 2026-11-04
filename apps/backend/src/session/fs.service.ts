@@ -24,7 +24,9 @@ export class FsService {
         writeFileSync(absolute, '', { flag: 'wx' });
       }
     } catch (error) {
-      throw new ConflictException(`${rel} could not be created: ${error instanceof Error ? error.message : String(error)}`);
+      throw new ConflictException(
+        `${rel} could not be created: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     this.files.refresh(cwd);
     return { path: rel };
@@ -39,7 +41,9 @@ export class FsService {
       mkdirSync(dirname(targetAbsolute), { recursive: true });
       renameSync(sourceAbsolute, targetAbsolute);
     } catch (error) {
-      throw new ConflictException(`${source} could not be renamed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new ConflictException(
+        `${source} could not be renamed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     this.files.refresh(cwd);
     return { path: target };

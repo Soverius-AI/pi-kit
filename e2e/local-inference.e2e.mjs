@@ -28,13 +28,18 @@ it('executes an offered tool, records actual model usage and preserves the sessi
   const { page, h } = app;
   await h.newThread();
   thread = (await api('/api/threads')).toSorted((a, b) => b.updatedAt - a.updatedAt)[0];
-  await h.prompt('Use the write tool to create llm-contract.txt in the current working directory, containing exactly contract-ok followed by a newline. Then reply with a short confirmation.');
+  await h.prompt(
+    'Use the write tool to create llm-contract.txt in the current working directory, containing exactly contract-ok followed by a newline. Then reply with a short confirmation.',
+  );
   assert.equal(readFileSync(file(), 'utf8').trim(), 'contract-ok');
   const stats = await api(`/api/threads/${thread.id}/stats`);
   assert.equal(stats.model?.id, MODEL.id);
   assert.ok(stats.toolCalls > 0 && stats.toolResults > 0, 'the tool call ran through Pi');
   assert.ok(stats.tokens.total > 0, 'provider usage is recorded');
-  assert.ok((await proseTexts(page)).some((text) => text.trim()), 'an assistant response is rendered');
+  assert.ok(
+    (await proseTexts(page)).some((text) => text.trim()),
+    'an assistant response is rendered',
+  );
   await page.reload();
   await page.getByLabel('Message to pi').waitFor();
   await page.locator('pk-transcript pk-prose').first().waitFor();
@@ -47,7 +52,9 @@ it('executes an offered tool, records actual model usage and preserves the sessi
 it('edits queued input during an actual response, stops it and can start another turn afterward', async () => {
   const { page, h } = app;
   const previous = (await proseTexts(page)).at(-1) ?? '';
-  await h.startPrompt('Count from 1 to 10000, writing each integer on its own line. Keep going until you reach 10000. Do not use any tools.');
+  await h.startPrompt(
+    'Count from 1 to 10000, writing each integer on its own line. Keep going until you reach 10000. Do not use any tools.',
+  );
   await page.waitForFunction((old) => {
     const text = [...document.querySelectorAll('pk-transcript pk-prose')].at(-1)?.textContent ?? '';
     return text.trim() && text !== old;

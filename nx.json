@@ -1,10 +1,7 @@
 {
   "$schema": "./node_modules/nx/schemas/nx-schema.json",
   "namedInputs": {
-    "default": [
-      "{projectRoot}/**/*",
-      "sharedGlobals"
-    ],
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
     "production": [
       "default",
       "!{projectRoot}/**/*.spec.ts",
@@ -15,10 +12,7 @@
       "!{projectRoot}/.eslintrc.json",
       "!{projectRoot}/eslint.config.mjs"
     ],
-    "sharedGlobals": [
-      "{workspaceRoot}/pnpm-workspace.yaml",
-      "{workspaceRoot}/patches/**/*"
-    ]
+    "sharedGlobals": ["{workspaceRoot}/pnpm-workspace.yaml", "{workspaceRoot}/patches/**/*"]
   },
   "analytics": false,
   "targetDefaults": {
@@ -33,13 +27,8 @@
     },
     "@angular/build:application": {
       "cache": true,
-      "dependsOn": [
-        "^build"
-      ],
-      "inputs": [
-        "production",
-        "^production"
-      ]
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"]
     },
     "@nx/eslint:lint": {
       "cache": true,
@@ -55,33 +44,19 @@
     },
     "@nx/js:tsc": {
       "cache": true,
-      "dependsOn": [
-        "^build"
-      ],
-      "inputs": [
-        "production",
-        "^production"
-      ]
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"]
     },
     "@nx/angular:ng-packagr-lite": {
       "cache": true,
-      "dependsOn": [
-        "^build"
-      ],
-      "inputs": [
-        "production",
-        "^production"
-      ]
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"]
     },
     "@angular/build:unit-test": {
       "options": {
         "providersFile": "libs/shared/i18n/src/test-providers.ts"
       },
-      "inputs": [
-        "default",
-        "^production",
-        "{workspaceRoot}/libs/shared/i18n/src/**/*"
-      ]
+      "inputs": ["default", "^production", "{workspaceRoot}/libs/shared/i18n/src/**/*"]
     }
   },
   "generators": {

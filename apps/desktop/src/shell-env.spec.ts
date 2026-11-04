@@ -21,7 +21,11 @@ describe.skipIf(process.platform === 'win32')('login shell PATH', () => {
   it('expands PATH in a real shell and excludes profile output without changing tool precedence or spaces', () => {
     // Run the probe passed after -ilc, surrounded by output a profile can print.
     const path = '/home/user/Node Tools/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin';
-    writeFileSync(shell, `#!/bin/sh\nprintf "profile banner\\n"\nexport PATH='${path}'\n/bin/sh -c "$2"\nprintf "\\nprofile done\\n"\n`, { mode: 0o755 });
+    writeFileSync(
+      shell,
+      `#!/bin/sh\nprintf "profile banner\\n"\nexport PATH='${path}'\n/bin/sh -c "$2"\nprintf "\\nprofile done\\n"\n`,
+      { mode: 0o755 },
+    );
     vi.stubEnv('PATH', '/usr/bin:/bin');
     const actual = loginShellPath();
     expect(actual?.split(delimiter).slice(0, path.split(delimiter).length)).toEqual(path.split(delimiter));

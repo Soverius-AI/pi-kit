@@ -33,7 +33,12 @@ export function ago(at: number, now: number): string {
   return minutes < 60 ? `${minutes} min ago` : `${Math.round(minutes / 60)} h ago`;
 }
 
-const STATE_WORD: Record<OtherAgent['state'], string> = { running: 'running', idle: 'idle', waiting: 'waiting for input', terminal: 'pi in a terminal' };
+const STATE_WORD: Record<OtherAgent['state'], string> = {
+  running: 'running',
+  idle: 'idle',
+  waiting: 'waiting for input',
+  terminal: 'pi in a terminal',
+};
 
 /**
  * The text of the system-prompt section "Other agents in this workspace": for every other agent its title, state, where it works (this folder, or its
@@ -47,8 +52,14 @@ export function buildSection(agents: readonly OtherAgent[], now: number): string
     'Working in this repository right now (information from pi-kit, not a lock):',
   ];
   for (const agent of agents) {
-    const where = agent.relation === 'same-folder' ? 'this same folder' : `its own worktree${agent.branch ? ` (branch ${agent.branch})` : ''}`;
-    const head = agent.state === 'terminal' ? `- ${agent.title} (${STATE_WORD.terminal}, ${where}${agent.lastActiveAt ? `, last active ${ago(agent.lastActiveAt, now)}` : ''})` : `- "${agent.title}" (${STATE_WORD[agent.state]}, ${where})`;
+    const where =
+      agent.relation === 'same-folder'
+        ? 'this same folder'
+        : `its own worktree${agent.branch ? ` (branch ${agent.branch})` : ''}`;
+    const head =
+      agent.state === 'terminal'
+        ? `- ${agent.title} (${STATE_WORD.terminal}, ${where}${agent.lastActiveAt ? `, last active ${ago(agent.lastActiveAt, now)}` : ''})`
+        : `- "${agent.title}" (${STATE_WORD[agent.state]}, ${where})`;
     if (agent.state === 'terminal') {
       lines.push(`${head}: no file details.`);
     } else if (agent.files.length === 0) {
@@ -84,7 +95,11 @@ export interface Notice {
  * threads that changed the same file are named in one line, and the same change is never announced twice. A file this thread read again after the change
  * needs no notice (its `touched` time is newer).
  */
-export function computeNotices(input: { touched: ReadonlyMap<string, number>; leases: readonly OtherLease[]; told: ReadonlyMap<string, number> }): Notice[] {
+export function computeNotices(input: {
+  touched: ReadonlyMap<string, number>;
+  leases: readonly OtherLease[];
+  told: ReadonlyMap<string, number>;
+}): Notice[] {
   const byPath = new Map<string, OtherLease[]>();
   for (const lease of input.leases) {
     const mine = input.touched.get(lease.path);
@@ -96,7 +111,12 @@ export function computeNotices(input: { touched: ReadonlyMap<string, number>; le
       const titles = [...new Set(leases.map((l) => l.title))];
       const names = titles.map((t) => `*${t}*`);
       const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
-      return { path, titles, at: Math.max(...leases.map((l) => l.at)), text: `${who} changed \`${path}\` since you last read it.` };
+      return {
+        path,
+        titles,
+        at: Math.max(...leases.map((l) => l.at)),
+        text: `${who} changed \`${path}\` since you last read it.`,
+      };
     })
     .sort((a, b) => a.at - b.at || a.path.localeCompare(b.path));
 }

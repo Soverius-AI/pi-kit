@@ -6,18 +6,31 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export function prepareFilesDemo(project) {
-  const git = (...args) => spawnSync('git', ['-c', 'user.name=e2e', '-c', 'user.email=e2e@example.com', ...args], { cwd: project, stdio: 'ignore' });
+  const git = (...args) =>
+    spawnSync('git', ['-c', 'user.name=e2e', '-c', 'user.email=e2e@example.com', ...args], {
+      cwd: project,
+      stdio: 'ignore',
+    });
   // a committed file that is renamed below
-  writeFileSync(join(project, 'src', 'legacy.ts'), 'export const legacy = "the same long enough content to count as a rename";\nexport const second = 2;\nexport const third = 3;\n');
+  writeFileSync(
+    join(project, 'src', 'legacy.ts'),
+    'export const legacy = "the same long enough content to count as a rename";\nexport const second = 2;\nexport const third = 3;\n',
+  );
   git('add', '-A');
   git('commit', '-q', '-m', 'legacy');
-  writeFileSync(join(project, 'src', 'greet.ts'), `${readFileSync(join(project, 'src', 'greet.ts'), 'utf8')}// edited by hand\n`); // M
+  writeFileSync(
+    join(project, 'src', 'greet.ts'),
+    `${readFileSync(join(project, 'src', 'greet.ts'), 'utf8')}// edited by hand\n`,
+  ); // M
   rmSync(join(project, 'README.md')); // D
   writeFileSync(join(project, 'src', 'added.ts'), 'export const added = true;\n');
   git('add', 'src/added.ts'); // A
   writeFileSync(join(project, 'notes.md'), '# notes\n'); // U
   git('mv', 'src/legacy.ts', 'src/modern.ts'); // R
-  writeFileSync(join(project, 'src', 'math.ts'), `${readFileSync(join(project, 'src', 'math.ts'), 'utf8')}\nexport function mul(a: number, b: number): number {\n  return a * b;\n}\n`); // pi's edit
+  writeFileSync(
+    join(project, 'src', 'math.ts'),
+    `${readFileSync(join(project, 'src', 'math.ts'), 'utf8')}\nexport function mul(a: number, b: number): number {\n  return a * b;\n}\n`,
+  ); // pi's edit
   writeFileSync(join(project, '.gitignore'), 'node_modules\ndist\n.env\n');
   git('commit', '-q', '-m', 'ignore dist', '--', '.gitignore');
   mkdirSync(join(project, 'dist'), { recursive: true });

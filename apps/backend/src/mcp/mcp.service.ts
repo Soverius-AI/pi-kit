@@ -10,7 +10,13 @@ import {
 } from '@pi-kit/protocol';
 import { PiSessionService } from '../pi/pi-session.service';
 import { ThreadsService } from '../threads/threads.service';
-import { type McpConfigEntry, projectMcpConfigPath, readMcpConfig, setMcpServerEnabled, userMcpConfigPath } from './mcp-config';
+import {
+  type McpConfigEntry,
+  projectMcpConfigPath,
+  readMcpConfig,
+  setMcpServerEnabled,
+  userMcpConfigPath,
+} from './mcp-config';
 import { type McpStatusReport, parseMcpStatus } from './mcp-status';
 
 /** How long the panel waits for pi's report before it shows the servers that are still connecting as such. */
@@ -73,7 +79,10 @@ export class McpService {
       const path = setMcpServerEnabled(entry, enabled);
       // pi reads `mcp.json` when a session starts; its own manager applies the change live, but only in the TUI.
       await this.sessions.reload(threadId);
-      return { message: `${enabled ? 'Enabled' : 'Disabled'} ${name} in ${path}.`, overview: await this.overview(threadId) };
+      return {
+        message: `${enabled ? 'Enabled' : 'Disabled'} ${name} in ${path}.`,
+        overview: await this.overview(threadId),
+      };
     } catch (error) {
       throw new ConflictException(error instanceof Error ? error.message : String(error));
     }
@@ -150,7 +159,13 @@ export class McpService {
   /** What the card shows of a sign-in: the page it waits for, or why it ended. Forgotten once the server is connected. */
   signInOf(threadId: string, name: string): McpSignIn | undefined {
     const state = this.signIns.get(signInKey(threadId, name));
-    return state ? { phase: state.phase, ...(state.url ? { url: state.url } : {}), ...(state.message ? { message: state.message } : {}) } : undefined;
+    return state
+      ? {
+          phase: state.phase,
+          ...(state.url ? { url: state.url } : {}),
+          ...(state.message ? { message: state.message } : {}),
+        }
+      : undefined;
   }
 
   forgetSignIn(threadId: string, name: string): void {
@@ -180,7 +195,8 @@ export class McpService {
    * server, and the two notifications/pings the host forwards. The result is what goes into `RUN_FINISHED.result`.
    */
   async relay(threadId: string, request: ProxiedMcpRequest, signal?: AbortSignal): Promise<unknown> {
-    if (!(PROXIED_MCP_METHODS as readonly string[]).includes(request.method)) throw new Error(`MCP method not allowed for UI proxy: ${request.method}`);
+    if (!(PROXIED_MCP_METHODS as readonly string[]).includes(request.method))
+      throw new Error(`MCP method not allowed for UI proxy: ${request.method}`);
     if (request.method === 'ping') return {};
     if (!this.sessions.has(threadId)) await this.threads.openSession(threadId);
     const server = serverOf(request);
@@ -189,15 +205,25 @@ export class McpService {
       case 'resources/read': {
         const uri = String(params['uri'] ?? '');
         // An app loads its own user interface; other resources are the model's to read.
-        if (!uri.startsWith('ui://')) throw new Error(`Only ui:// resources can be loaded for an MCP App, not "${uri}".`);
+        if (!uri.startsWith('ui://'))
+          throw new Error(`Only ui:// resources can be loaded for an MCP App, not "${uri}".`);
         return this.sessions.readMcpResource(threadId, server, uri, signal);
       }
       case 'tools/call': {
         const tool = String(params['name'] ?? '');
         if (!tool) throw new Error('tools/call needs a tool name.');
-        if (!this.sessions.mcpAppMayCall(threadId, server, tool)) throw new Error(`The tool "${tool}" is not callable from an app (its _meta.ui.visibility leaves the app out).`);
+        if (!this.sessions.mcpAppMayCall(threadId, server, tool))
+          throw new Error(
+            `The tool "${tool}" is not callable from an app (its _meta.ui.visibility leaves the app out).`,
+          );
         const args = params['arguments'];
-        return this.sessions.callMcpTool(threadId, server, tool, args && typeof args === 'object' && !Array.isArray(args) ? (args as Record<string, unknown>) : {}, signal);
+        return this.sessions.callMcpTool(
+          threadId,
+          server,
+          tool,
+          args && typeof args === 'object' && !Array.isArray(args) ? (args as Record<string, unknown>) : {},
+          signal,
+        );
       }
       default:
         // `notifications/message`: the app's log line. pi has nowhere to put it; accepting it keeps the app happy.
@@ -219,7 +245,12 @@ export class McpService {
     }
   }
 
-  private compose(config: ReturnType<typeof readMcpConfig>, report: McpStatusReport | undefined, projectTrusted: boolean, threadId?: string): McpOverview {
+  private compose(
+    config: ReturnType<typeof readMcpConfig>,
+    report: McpStatusReport | undefined,
+    projectTrusted: boolean,
+    threadId?: string,
+  ): McpOverview {
     const live = report !== undefined;
     const servers: McpServer[] = config.servers.map((entry) => {
       const status = report?.servers.get(entry.name);
@@ -260,9 +291,16 @@ export class McpService {
   private async entry(threadId: string, name: string): Promise<McpConfigEntry> {
     const agentDir = await this.sessions.agentDir();
     await this.threads.openSession(threadId);
-    const config = readMcpConfig({ agentDir, cwd: this.threads.cwdOf(threadId), projectTrusted: this.sessions.isProjectTrusted(threadId) });
+    const config = readMcpConfig({
+      agentDir,
+      cwd: this.threads.cwdOf(threadId),
+      projectTrusted: this.sessions.isProjectTrusted(threadId),
+    });
     const entry = config.servers.find((e) => e.name === name);
-    if (!entry) throw new NotFoundException(`No MCP server "${name}" is configured (servers an extension registered can only be changed from the extension).`);
+    if (!entry)
+      throw new NotFoundException(
+        `No MCP server "${name}" is configured (servers an extension registered can only be changed from the extension).`,
+      );
     return entry;
   }
 
@@ -271,7 +309,11 @@ export class McpService {
   }
 }
 
-function toServer(entry: McpConfigEntry, status: { state: McpState; tools?: number; error?: string; exposure: string } | undefined, live: boolean): McpServer {
+function toServer(
+  entry: McpConfigEntry,
+  status: { state: McpState; tools?: number; error?: string; exposure: string } | undefined,
+  live: boolean,
+): McpServer {
   const state: McpState = !entry.enabled ? 'disabled' : (status?.state ?? (live ? 'connecting' : 'unknown'));
   return {
     name: entry.name,
@@ -296,7 +338,8 @@ function lastMessage(result: { messages: { text: string }[]; failure?: string })
 
 /** The pi server a proxied request names: `serverId` is pi's server name; the hash is `pi-mcp:<name>`. */
 function serverOf(request: ProxiedMcpRequest): string {
-  const name = request.serverId ?? (request.serverHash.startsWith('pi-mcp:') ? request.serverHash.slice('pi-mcp:'.length) : '');
+  const name =
+    request.serverId ?? (request.serverHash.startsWith('pi-mcp:') ? request.serverHash.slice('pi-mcp:'.length) : '');
   if (!name) throw new BadRequestException(`Unknown MCP server: ${request.serverHash}`);
   return name;
 }
@@ -315,7 +358,10 @@ const signInKey = (threadId: string, name: string): string => `${threadId}\0${na
  * "Sign-in cancelled." is the person giving up, any other error is pi's reason (the authorization server refused, the page was denied, the code did not match), and a command
  * that ended without saying either (the session reloaded under it) is a sign-in that did not happen.
  */
-export function signInOutcome(messages: readonly { text: string; level: string }[], failure?: string): 'done' | { phase: 'failed' | 'cancelled'; message?: string } {
+export function signInOutcome(
+  messages: readonly { text: string; level: string }[],
+  failure?: string,
+): 'done' | { phase: 'failed' | 'cancelled'; message?: string } {
   const last = messages.at(-1);
   if (failure) return { phase: 'failed', message: failure };
   if (!last) return { phase: 'cancelled' };

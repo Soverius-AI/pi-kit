@@ -98,7 +98,10 @@ export interface Health {
 /** One authenticated health request; `undefined` when the backend does not answer. */
 export async function pingHealth(endpoint: BackendEndpoint, timeoutMs = 4000): Promise<Health | undefined> {
   try {
-    const res = await fetch(`${endpoint.url}/api/health`, { headers: { Authorization: `Bearer ${endpoint.token}` }, signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetch(`${endpoint.url}/api/health`, {
+      headers: { Authorization: `Bearer ${endpoint.token}` },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
     return res.ok ? ((await res.json()) as Health) : undefined;
   } catch {
     return undefined;
@@ -123,7 +126,10 @@ export async function waitForHealth(backend: RunningBackend, timeoutMs = Infinit
 }
 
 /** Adapts a spawned backend to the watchdog: launch resolves when healthy, and a failed start leaves no process behind. */
-export async function launchForWatchdog(spawnIt: () => RunningBackend, healthTimeoutMs = Infinity): Promise<BackendHandle & { running: RunningBackend; health: Health }> {
+export async function launchForWatchdog(
+  spawnIt: () => RunningBackend,
+  healthTimeoutMs = Infinity,
+): Promise<BackendHandle & { running: RunningBackend; health: Health }> {
   const running = spawnIt();
   try {
     const health = await waitForHealth(running, healthTimeoutMs);

@@ -17,7 +17,15 @@ export type SpeechLanguage = z.infer<typeof SpeechLanguageSchema>;
 export const TranscribeLanguageSchema = z.union([z.literal('auto'), SpeechLanguageSchema]);
 export type TranscribeLanguage = z.infer<typeof TranscribeLanguageSchema>;
 
-export const SPEECH_LANGUAGE_NAMES: Record<SpeechLanguage, string> = { en: 'English', de: 'German', fr: 'French', es: 'Spanish', it: 'Italian', nl: 'Dutch', pl: 'Polish' };
+export const SPEECH_LANGUAGE_NAMES: Record<SpeechLanguage, string> = {
+  en: 'English',
+  de: 'German',
+  fr: 'French',
+  es: 'Spanish',
+  it: 'Italian',
+  nl: 'Dutch',
+  pl: 'Polish',
+};
 
 /** Which engine runs the model: the needle WASM build in a worker thread, the Python `needle` package, or the test engine. */
 export const TRANSCRIBE_ENGINES = ['wasm', 'python', 'fake', 'none'] as const;
@@ -42,47 +50,58 @@ export const TranscribeModelSchema = z.object({
 });
 export type TranscribeModel = z.infer<typeof TranscribeModelSchema>;
 
-export const TranscribeStatusSchema = z.object({
-  engine: TranscribeEngineSchema,
-  /** A sentence for Settings: what runs the model, or why nothing does. */
-  note: z.string(),
-  model: TranscribeModelSchema,
-  /** `wav` is always on; `ffmpeg` decodes other formats (WebM/Opus, Ogg, MP4) when the program is installed. */
-  decoders: z.object({ ffmpeg: z.boolean() }),
-  /** The Python `needle` package was found (the fallback engine); null while nobody had to look. */
-  python: z.object({ available: z.boolean().nullable() }),
-  languages: z.array(SpeechLanguageSchema),
-  /** Whether a model is loaded in memory right now (the first request loads it). */
-  loaded: z.boolean(),
-}).meta({ id: 'TranscribeStatus' });
+export const TranscribeStatusSchema = z
+  .object({
+    engine: TranscribeEngineSchema,
+    /** A sentence for Settings: what runs the model, or why nothing does. */
+    note: z.string(),
+    model: TranscribeModelSchema,
+    /** `wav` is always on; `ffmpeg` decodes other formats (WebM/Opus, Ogg, MP4) when the program is installed. */
+    decoders: z.object({ ffmpeg: z.boolean() }),
+    /** The Python `needle` package was found (the fallback engine); null while nobody had to look. */
+    python: z.object({ available: z.boolean().nullable() }),
+    languages: z.array(SpeechLanguageSchema),
+    /** Whether a model is loaded in memory right now (the first request loads it). */
+    loaded: z.boolean(),
+  })
+  .meta({ id: 'TranscribeStatus' });
 export type TranscribeStatus = z.infer<typeof TranscribeStatusSchema>;
 
 export const DownloadModelSchema = z.object({ accept: z.literal(true) }).meta({ id: 'DownloadModel' });
 
-export const TranscribeWordSchema = z.object({ word: z.string(), start: z.number(), end: z.number(), probability: z.number() });
+export const TranscribeWordSchema = z.object({
+  word: z.string(),
+  start: z.number(),
+  end: z.number(),
+  probability: z.number(),
+});
 export type TranscribeWord = z.infer<typeof TranscribeWordSchema>;
 
-export const TranscribeResultSchema = z.object({
-  text: z.string(),
-  /** The detected (or forced) language; empty for silence. */
-  language: z.union([z.literal(''), SpeechLanguageSchema]),
-  /** Length of the audio. */
-  durationMs: z.number(),
-  /** How long the backend took, from the request to the text. */
-  tookMs: z.number(),
-  words: z.array(TranscribeWordSchema).optional(),
-}).meta({ id: 'TranscribeResult' });
+export const TranscribeResultSchema = z
+  .object({
+    text: z.string(),
+    /** The detected (or forced) language; empty for silence. */
+    language: z.union([z.literal(''), SpeechLanguageSchema]),
+    /** Length of the audio. */
+    durationMs: z.number(),
+    /** How long the backend took, from the request to the text. */
+    tookMs: z.number(),
+    words: z.array(TranscribeWordSchema).optional(),
+  })
+  .meta({ id: 'TranscribeResult' });
 export type TranscribeResult = z.infer<typeof TranscribeResultSchema>;
 
 /**
  * One server-sent event of a streaming transcription. `partial` carries the newly committed words (`text`, append it with a space) and the
  * unconfirmed tail (`pending`, replace the last one); `done` the whole result; `error` why it stopped.
  */
-export const TranscribeStreamEventSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('partial'), text: z.string(), pending: z.string(), receivedSeconds: z.number() }),
-  z.object({ type: z.literal('done'), result: TranscribeResultSchema }),
-  z.object({ type: z.literal('error'), message: z.string() }),
-]).meta({ id: 'TranscribeStreamEvent' });
+export const TranscribeStreamEventSchema = z
+  .discriminatedUnion('type', [
+    z.object({ type: z.literal('partial'), text: z.string(), pending: z.string(), receivedSeconds: z.number() }),
+    z.object({ type: z.literal('done'), result: TranscribeResultSchema }),
+    z.object({ type: z.literal('error'), message: z.string() }),
+  ])
+  .meta({ id: 'TranscribeStreamEvent' });
 export type TranscribeStreamEvent = z.infer<typeof TranscribeStreamEventSchema>;
 
 /** The largest recording the backend accepts (a WAV of about half an hour at 16 kHz). */

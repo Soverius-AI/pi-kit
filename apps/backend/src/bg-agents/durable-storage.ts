@@ -1,9 +1,25 @@
 import { randomUUID } from 'node:crypto';
-import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import type { SqliteDatabase, SqliteExecutor, SqliteValue } from '@earendil-works/pi-durable/storage/sqlite';
 import Database from 'better-sqlite3-multiple-ciphers';
-import { assertNoPendingDatabaseTransition, encryptDatabaseFile, isPlainDatabase, useKey, type EncryptResult } from '../db/encryption';
+import {
+  assertNoPendingDatabaseTransition,
+  encryptDatabaseFile,
+  isPlainDatabase,
+  useKey,
+  type EncryptResult,
+} from '../db/encryption';
 
 /** The durable store of the background agents and the owner's note next to it, both in `PI_KIT_DATA_DIR`. */
 export const STORE_FILE = 'bg-agents.sqlite';
@@ -23,7 +39,9 @@ export function openDurableStore(path: string, key?: string): SqliteDatabase {
     const plain = isPlainDatabase(path);
     if (plain && key) transition = encryptDatabaseFile(path, key);
     else if (!plain && !key) {
-      throw new Error('The original key is required to open the encrypted background agents store. Original data was retained.');
+      throw new Error(
+        'The original key is required to open the encrypted background agents store. Original data was retained.',
+      );
     }
   }
   let opening: Database.Database | undefined;
@@ -33,7 +51,8 @@ export function openDurableStore(path: string, key?: string): SqliteDatabase {
     chmodSync(path, 0o600); // WAL/SHM inherit the private database mode.
     if (key) useKey(connection, key);
     connection.prepare('SELECT count(*) FROM sqlite_master').get();
-    if (connection.pragma('journal_mode = WAL', { simple: true }) !== 'wal') throw new Error('WAL journaling is unavailable for the agents store.');
+    if (connection.pragma('journal_mode = WAL', { simple: true }) !== 'wal')
+      throw new Error('WAL journaling is unavailable for the agents store.');
     connection.pragma('synchronous = NORMAL');
   } catch (error) {
     opening?.close();
@@ -41,7 +60,9 @@ export function openDurableStore(path: string, key?: string): SqliteDatabase {
     throw error;
   }
   // Only discard after the replacement has opened and its runtime pragmas succeeded.
-  try { transition?.discardOriginal(); } catch (error) {
+  try {
+    transition?.discardOriginal();
+  } catch (error) {
     opening.close();
     throw error; // Keep any recovery original; never hide cleanup failure.
   }
@@ -60,15 +81,20 @@ export function openDurableStore(path: string, key?: string): SqliteDatabase {
     return {
       exec: (sql) => run(() => void connection.exec(sql)),
       run: (sql, ...params: SqliteValue[]) => run(() => void connection.prepare(sql).run(...params)),
-      get: <T extends object>(sql: string, ...params: SqliteValue[]) => run(() => connection.prepare(sql).get(...params) as T | undefined),
-      all: <T extends object>(sql: string, ...params: SqliteValue[]) => run(() => connection.prepare(sql).all(...params) as T[]),
+      get: <T extends object>(sql: string, ...params: SqliteValue[]) =>
+        run(() => connection.prepare(sql).get(...params) as T | undefined),
+      all: <T extends object>(sql: string, ...params: SqliteValue[]) =>
+        run(() => connection.prepare(sql).all(...params) as T[]),
     };
   };
   const direct = executor(() => true);
   const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
     if (closing) return Promise.reject(new Error('The agents store is closing.'));
     const result = tail.then(operation);
-    tail = result.then(() => undefined, () => undefined);
+    tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
     return result;
   };
   return {
@@ -90,7 +116,9 @@ export function openDurableStore(path: string, key?: string): SqliteDatabase {
           try {
             connection.exec('ROLLBACK');
           } catch (rollback) {
-            throw new AggregateError([error, rollback], 'The transaction failed and could not be rolled back.', { cause: rollback });
+            throw new AggregateError([error, rollback], 'The transaction failed and could not be rolled back.', {
+              cause: rollback,
+            });
           }
           throw error;
         }
@@ -157,10 +185,19 @@ export function takeOwnerLock(dir: string): OwnerLock {
       const seedPath = `${mutex}.${randomUUID()}`;
       try {
         const seed = new Database(seedPath, { timeout: 0 });
-        try { seed.pragma('user_version = 1'); } finally { seed.close(); }
-        try { linkSync(seedPath, mutex); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error; }
-      } finally { rmSync(seedPath, { force: true }); }
+        try {
+          seed.pragma('user_version = 1');
+        } finally {
+          seed.close();
+        }
+        try {
+          linkSync(seedPath, mutex);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+        }
+      } finally {
+        rmSync(seedPath, { force: true });
+      }
     }
     connection = new Database(mutex, { timeout: 0 });
     // A reserved writer lock excludes other owners while allowing their schema reads. Keep this transaction open until release.
@@ -168,17 +205,25 @@ export function takeOwnerLock(dir: string): OwnerLock {
     const counter = new Database(join(dir, OWNER_FILE), { timeout: 0 });
     try {
       // Only the mutex holder opens the counter, so its committed epoch cannot contend with another contender's schema reads.
-      epoch = counter.transaction(() => {
-        counter.exec('CREATE TABLE IF NOT EXISTS owner (id INTEGER PRIMARY KEY CHECK (id = 1), epoch INTEGER NOT NULL)');
-        const previous = counter.prepare('SELECT epoch FROM owner WHERE id = 1').get() as { epoch: number } | undefined;
-        const next = (previous?.epoch ?? 0) + 1;
-        counter.prepare('INSERT OR REPLACE INTO owner (id, epoch) VALUES (1, ?)').run(next);
-        return next;
-      }).immediate();
-    } finally { counter.close(); }
+      epoch = counter
+        .transaction(() => {
+          counter.exec(
+            'CREATE TABLE IF NOT EXISTS owner (id INTEGER PRIMARY KEY CHECK (id = 1), epoch INTEGER NOT NULL)',
+          );
+          const previous = counter.prepare('SELECT epoch FROM owner WHERE id = 1').get() as
+            { epoch: number } | undefined;
+          const next = (previous?.epoch ?? 0) + 1;
+          counter.prepare('INSERT OR REPLACE INTO owner (id, epoch) VALUES (1, ?)').run(next);
+          return next;
+        })
+        .immediate();
+    } finally {
+      counter.close();
+    }
   } catch (error) {
     connection?.close();
-    if (['SQLITE_BUSY', 'SQLITE_LOCKED'].includes((error as { code?: string }).code ?? '')) throw new StoreOwnedError(notedPid(note));
+    if (['SQLITE_BUSY', 'SQLITE_LOCKED'].includes((error as { code?: string }).code ?? ''))
+      throw new StoreOwnedError(notedPid(note));
     throw error;
   }
   // Diagnostics are best effort: their failure must not undo a valid SQLite acquisition.
@@ -188,7 +233,11 @@ export function takeOwnerLock(dir: string): OwnerLock {
     writeFileSync(staging, JSON.stringify(record));
     renameSync(staging, note);
   } catch {
-    try { rmSync(staging, { force: true }); } catch { /* An unavailable diagnostic path has no ownership authority. */ }
+    try {
+      rmSync(staging, { force: true });
+    } catch {
+      /* An unavailable diagnostic path has no ownership authority. */
+    }
   }
   let released = false;
   return {
@@ -198,8 +247,9 @@ export function takeOwnerLock(dir: string): OwnerLock {
       released = true;
       try {
         rmSync(note, { force: true }); // ours: a note is only ever written behind the lock this handle still holds
-      } catch { /* A diagnostic failure must not prevent release. */ }
-      finally {
+      } catch {
+        /* A diagnostic failure must not prevent release. */
+      } finally {
         connection.close();
       }
     },

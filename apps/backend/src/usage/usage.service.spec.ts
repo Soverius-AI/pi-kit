@@ -13,33 +13,55 @@ function setup(options: { type?: 'oauth' | 'api_key'; fail?: boolean } = {}) {
     credential: 'oauth',
     fetch: (token) => {
       asked.push(token);
-      if (options.fail) return Promise.reject(Object.assign(new Error(`connect refused for ${token}`), { name: 'FetchError' }));
+      if (options.fail)
+        return Promise.reject(Object.assign(new Error(`connect refused for ${token}`), { name: 'FetchError' }));
       return Promise.resolve({ windows: [{ name: '5 h', used: 38 }] });
     },
   };
-  const service = new UsageService({ usageCredential: () => Promise.resolve({ type: options.type ?? 'oauth', token: SECRET }) }, { now: () => clock, adapters: [adapter] });
+  const service = new UsageService(
+    { usageCredential: () => Promise.resolve({ type: options.type ?? 'oauth', token: SECRET }) },
+    { now: () => clock, adapters: [adapter] },
+  );
   return { service, asked, advance: (ms: number) => (clock += ms) };
 }
 
 afterEach(() => vi.restoreAllMocks());
 
 describe('UsageService', () => {
-  it.each(['oauth', 'api_key'] as const)('reads Radius billing with a %s credential using the registered adapter', async (type) => {
-    const fetcher = vi.fn<Fetcher>()
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, organization: { id: 'org' } }) })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, currency: 'USD', balance: { available: 12.34 } }) });
-    const service = new UsageService({ usageCredential: async () => ({ type, token: SECRET }) }, { fetcher });
-    expect(await service.usage('radius')).toEqual({ windows: [], credit: '$12.34' });
-    expect(fetcher).toHaveBeenCalledTimes(2);
-  });
+  it.each(['oauth', 'api_key'] as const)(
+    'reads Radius billing with a %s credential using the registered adapter',
+    async (type) => {
+      const fetcher = vi
+        .fn<Fetcher>()
+        .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ ok: true, organization: { id: 'org' } }) })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({ ok: true, currency: 'USD', balance: { available: 12.34 } }),
+        });
+      const service = new UsageService({ usageCredential: async () => ({ type, token: SECRET }) }, { fetcher });
+      expect(await service.usage('radius')).toEqual({ windows: [], credit: '$12.34' });
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it('bypasses a fresh cache on refresh and makes concurrent cached readers wait for the new balance', async () => {
     let complete!: (value: { windows: []; credit: string }) => void;
-    const fetch = vi.fn().mockResolvedValueOnce({ windows: [], credit: '$10.00' })
-      .mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
-    const service = new UsageService({ usageCredential: async () => ({ type: 'oauth', token: SECRET }) }, {
-      adapters: [{ providers: ['radius'], credential: 'either', fetch }],
-    });
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce({ windows: [], credit: '$10.00' })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            complete = resolve;
+          }),
+      );
+    const service = new UsageService(
+      { usageCredential: async () => ({ type: 'oauth', token: SECRET }) },
+      {
+        adapters: [{ providers: ['radius'], credential: 'either', fetch }],
+      },
+    );
     await service.usage('radius');
     const refreshed = service.usage('radius', true);
     const concurrent = service.usage('radius');
@@ -92,7 +114,6 @@ describe('UsageService', () => {
   });
 });
 
-
 it.each(['openai', 'openai-codex'])('never sends a Platform API key to %s subscription usage', async (provider) => {
   const fetcher = vi.fn<Fetcher>();
   const credentials = { usageCredential: async () => ({ type: 'api_key' as const, token: SECRET }) };
@@ -103,7 +124,11 @@ it.each(['openai', 'openai-codex'])('never sends a Platform API key to %s subscr
 
 it.each(['openai', 'openai-codex'])('registers %s OAuth usage with the shared cache and timeout', async (provider) => {
   const token = `test.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'example' } })).toString('base64url')}.signature`;
-  const fetcher = vi.fn<Fetcher>().mockResolvedValue({ ok: true, status: 200, json: async () => ({ rate_limit: { primary_window: { used_percent: 25, limit_window_seconds: 18000 } } }) });
+  const fetcher = vi.fn<Fetcher>().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ rate_limit: { primary_window: { used_percent: 25, limit_window_seconds: 18000 } } }),
+  });
   const service = new UsageService({ usageCredential: async () => ({ type: 'oauth', token }) }, { fetcher });
   expect(await service.usage(provider)).toEqual({ windows: [{ name: '5 h', used: 25 }] });
   await service.usage(provider);
@@ -119,7 +144,14 @@ it('hides malformed JSON and network/abort failures from ChatGPT usage without l
   for (const name of ['SyntaxError', 'AbortError', 'TypeError']) {
     const fetcher = vi.fn<Fetcher>();
     const error = Object.assign(new Error(token), { name });
-    if (name === 'SyntaxError') fetcher.mockResolvedValue({ ok: true, status: 200, json: async () => { throw error; } });
+    if (name === 'SyntaxError')
+      fetcher.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => {
+          throw error;
+        },
+      });
     else fetcher.mockRejectedValue(error);
     const service = new UsageService({ usageCredential: async () => ({ type: 'oauth', token }) }, { fetcher });
     expect(await service.usage('openai')).toBeNull();

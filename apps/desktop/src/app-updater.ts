@@ -40,8 +40,12 @@ function unavailableFeed(error: unknown): string | undefined {
   if (failure?.code === 'ENOENT' && /(?:^|[/\\])app-update\.yml$/.test(failure.path ?? '')) {
     return 'App updates are unavailable in this build: no update feed is configured.';
   }
-  if (failure?.statusCode === 404 || failure?.code === 'ERR_UPDATER_NO_PUBLISHED_VERSIONS' || failure?.code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' ||
-    (failure?.code === 'ERR_UPDATER_LATEST_VERSION_NOT_FOUND' && /\b404\b/.test(failure.message ?? ''))) {
+  if (
+    failure?.statusCode === 404 ||
+    failure?.code === 'ERR_UPDATER_NO_PUBLISHED_VERSIONS' ||
+    failure?.code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' ||
+    (failure?.code === 'ERR_UPDATER_LATEST_VERSION_NOT_FOUND' && /\b404\b/.test(failure.message ?? ''))
+  ) {
     return 'App updates are unavailable: no accessible release feed was found. The GitHub repository must expose a published release with update files for this platform.';
   }
   return undefined;
@@ -70,21 +74,33 @@ export class AppUpdater {
       emit({ kind: 'available', version: info.version });
     });
     autoUpdater.on('update-not-available', () => emit({ kind: 'none' }));
-    autoUpdater.on('download-progress', (progress) => emit({ kind: 'progress', percent: Math.round(progress.percent), bytesPerSecond: Math.round(progress.bytesPerSecond) }));
+    autoUpdater.on('download-progress', (progress) =>
+      emit({
+        kind: 'progress',
+        percent: Math.round(progress.percent),
+        bytesPerSecond: Math.round(progress.bytesPerSecond),
+      }),
+    );
     autoUpdater.on('update-downloaded', (info) => {
       this.downloaded = true;
       this.latest = info.version;
       emit({ kind: 'downloaded', version: info.version });
     });
-    autoUpdater.on('error', (error) => emit({ kind: 'error', message: unavailableFeed(error) ?? error?.message ?? String(error) }));
+    autoUpdater.on('error', (error) =>
+      emit({ kind: 'error', message: unavailableFeed(error) ?? error?.message ?? String(error) }),
+    );
   }
 
   async run(action: AppUpdateAction): Promise<AppUpdateResult> {
     if (!app.isPackaged) return { unavailable: 'Updates apply to the installed app, not to a development build.' };
     // electron-updater would install the NSIS build next to it instead of replacing the portable .exe.
-    if (process.env['PORTABLE_EXECUTABLE_FILE']) return { unavailable: 'The portable build does not update itself: download the new one from the GitHub releases page.' };
+    if (process.env['PORTABLE_EXECUTABLE_FILE'])
+      return {
+        unavailable: 'The portable build does not update itself: download the new one from the GitHub releases page.',
+      };
     // On Linux only a running AppImage can replace itself; any other copy's check resolves null, which would read as "up to date".
-    if (!autoUpdater.isUpdaterActive()) return { unavailable: 'Only the AppImage updates itself: download the new one from the GitHub releases page.' };
+    if (!autoUpdater.isUpdaterActive())
+      return { unavailable: 'Only the AppImage updates itself: download the new one from the GitHub releases page.' };
     switch (action) {
       case 'check': {
         let result;
@@ -98,7 +114,11 @@ export class AppUpdater {
         const info = result?.updateInfo;
         const newer = !!info && !!result?.isUpdateAvailable;
         if (newer) this.latest = info.version;
-        return { available: newer, ...(newer ? { version: info.version, notes: releaseNotes(info) } : {}), downloaded: this.downloaded };
+        return {
+          available: newer,
+          ...(newer ? { version: info.version, notes: releaseNotes(info) } : {}),
+          downloaded: this.downloaded,
+        };
       }
       case 'download': {
         if (!this.downloaded) await autoUpdater.downloadUpdate();

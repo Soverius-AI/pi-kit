@@ -32,10 +32,18 @@ function connect() {
 describe('McpTap', () => {
   it('announces the MCP Apps extension in initialize and leaves other requests alone', async () => {
     const { inner, wrapped } = connect();
-    await wrapped.send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: 'x', capabilities: { roots: {} }, clientInfo: { name: 'pi' } } });
+    await wrapped.send({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: 'x', capabilities: { roots: {} }, clientInfo: { name: 'pi' } },
+    });
     await wrapped.send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
     expect(inner.sent[0]).toMatchObject({
-      params: { protocolVersion: 'x', capabilities: { roots: {}, extensions: { [MCP_UI_EXTENSION]: { mimeTypes: [MCP_APP_MIME_TYPE] } } } },
+      params: {
+        protocolVersion: 'x',
+        capabilities: { roots: {}, extensions: { [MCP_UI_EXTENSION]: { mimeTypes: [MCP_APP_MIME_TYPE] } } },
+      },
     });
     expect(inner.sent[1]).toEqual({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
   });
@@ -111,8 +119,17 @@ describe('McpTap', () => {
   it('learns from the initialize result whether a server has resources and whether pi will list its tools at all', async () => {
     const { tap, inner, wrapped } = connect();
     const initialize = async (transport: FakeTransport, through: FakeTransport, id: number, capabilities: Msg) => {
-      await through.send({ jsonrpc: '2.0', id, method: 'initialize', params: { protocolVersion: 'x', capabilities: {}, clientInfo: { name: 'pi' } } });
-      transport.receive({ jsonrpc: '2.0', id, result: { protocolVersion: 'x', capabilities, serverInfo: { name: 's', version: '1' } } });
+      await through.send({
+        jsonrpc: '2.0',
+        id,
+        method: 'initialize',
+        params: { protocolVersion: 'x', capabilities: {}, clientInfo: { name: 'pi' } },
+      });
+      transport.receive({
+        jsonrpc: '2.0',
+        id,
+        result: { protocolVersion: 'x', capabilities, serverInfo: { name: 's', version: '1' } },
+      });
     };
     // Unknown until pi initialized the connection.
     expect(tap.hasResources('issues')).toBeUndefined();
@@ -153,22 +170,41 @@ describe('McpTap', () => {
         ],
       },
     });
-    expect(tap.toolList('issues')).toEqual([{ name: 'create_issue', description: 'Creates an issue.' }, { name: 'open_form', description: 'Open the form', app: 'ui://issues/form' }, { name: 'bare' }]);
+    expect(tap.toolList('issues')).toEqual([
+      { name: 'create_issue', description: 'Creates an issue.' },
+      { name: 'open_form', description: 'Open the form', app: 'ui://issues/form' },
+      { name: 'bare' },
+    ]);
     expect(tap.toolList('other')).toEqual([]);
   });
 
   it('keeps the _meta of a resource that was read', async () => {
     const { tap, inner, wrapped } = connect();
     await wrapped.send({ jsonrpc: '2.0', id: 3, method: 'resources/read', params: { uri: 'ui://issues/form' } });
-    inner.receive({ jsonrpc: '2.0', id: 3, result: { contents: [{ uri: 'ui://issues/form', text: '<p/>', _meta: { ui: { csp: { resourceDomains: ['https://cdn.example'] } } } }] } });
-    expect(tap.resourceMeta('issues', 'ui://issues/form')).toEqual({ ui: { csp: { resourceDomains: ['https://cdn.example'] } } });
+    inner.receive({
+      jsonrpc: '2.0',
+      id: 3,
+      result: {
+        contents: [
+          {
+            uri: 'ui://issues/form',
+            text: '<p/>',
+            _meta: { ui: { csp: { resourceDomains: ['https://cdn.example'] } } },
+          },
+        ],
+      },
+    });
+    expect(tap.resourceMeta('issues', 'ui://issues/form')).toEqual({
+      ui: { csp: { resourceDomains: ['https://cdn.example'] } },
+    });
     tap.forget('issues');
     expect(tap.resourceMeta('issues', 'ui://issues/form')).toBeUndefined();
   });
 
   it('keeps the metadata of every outstanding resource request beyond the former 256-request cutoff', async () => {
     const { tap, inner, wrapped } = connect();
-    for (let id = 0; id <= 256; id++) await wrapped.send({ jsonrpc: '2.0', id, method: 'resources/read', params: { uri: `ui://issues/${id}` } });
+    for (let id = 0; id <= 256; id++)
+      await wrapped.send({ jsonrpc: '2.0', id, method: 'resources/read', params: { uri: `ui://issues/${id}` } });
     const meta = { ui: { csp: { resourceDomains: ['https://cdn.example'] } } };
     inner.receive({ jsonrpc: '2.0', id: 0, result: { contents: [{ uri: 'ui://issues/0', _meta: meta }] } });
     expect(tap.resourceMeta('issues', 'ui://issues/0')).toEqual(meta);
@@ -179,7 +215,11 @@ describe('McpTap', () => {
     await wrapped.send({ jsonrpc: '2.0', id: 7, method: 'resources/read', params: { uri: 'ui://issues/finished' } });
     if (end === 'error') inner.receive({ jsonrpc: '2.0', id: 7, error: { code: -32603, message: 'Read failed' } });
     else await wrapped.send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 7 } });
-    inner.receive({ jsonrpc: '2.0', id: 7, result: { contents: [{ uri: 'ui://issues/finished', _meta: { ui: { csp: {} } } }] } });
+    inner.receive({
+      jsonrpc: '2.0',
+      id: 7,
+      result: { contents: [{ uri: 'ui://issues/finished', _meta: { ui: { csp: {} } } }] },
+    });
     expect(tap.resourceMeta('issues', 'ui://issues/finished')).toBeUndefined();
   });
 
@@ -192,7 +232,11 @@ describe('McpTap', () => {
     const { tap, inner, received } = connect();
     inner.receive({ jsonrpc: '2.0', id: 99, error: { code: -1, message: 'no' } });
     inner.receive({ jsonrpc: '2.0', method: 'notifications/tools/list_changed' });
-    inner.receive({ jsonrpc: '2.0', id: 5, result: { tools: [{ name: 'x', _meta: { ui: { resourceUri: 'ui://x' } } }] } });
+    inner.receive({
+      jsonrpc: '2.0',
+      id: 5,
+      result: { tools: [{ name: 'x', _meta: { ui: { resourceUri: 'ui://x' } } }] },
+    });
     expect(received).toHaveLength(3);
     expect(tap.uiTools('issues')).toEqual([]);
   });

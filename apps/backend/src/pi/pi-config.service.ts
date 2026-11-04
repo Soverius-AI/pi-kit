@@ -77,10 +77,18 @@ export class LoginRun {
       notify: (event) => {
         switch (event.type) {
           case 'info':
-            this.push({ type: 'info', message: event.message, ...(event.links ? { links: event.links.map((l) => ({ ...l })) } : {}) });
+            this.push({
+              type: 'info',
+              message: event.message,
+              ...(event.links ? { links: event.links.map((l) => ({ ...l })) } : {}),
+            });
             break;
           case 'auth_url':
-            this.push({ type: 'auth_url', url: event.url, ...(event.instructions ? { instructions: event.instructions } : {}) });
+            this.push({
+              type: 'auth_url',
+              url: event.url,
+              ...(event.instructions ? { instructions: event.instructions } : {}),
+            });
             break;
           case 'device_code':
             this.push({ type: 'device_code', userCode: event.userCode, verificationUri: event.verificationUri });
@@ -194,7 +202,8 @@ export class PiConfigService {
       manager.setCompactionEnabled(patch.autoCompaction);
       this.sessions.setAutoCompaction(patch.autoCompaction);
     }
-    if (patch.enabledModels !== undefined) manager.setEnabledModels(patch.enabledModels && patch.enabledModels.length > 0 ? patch.enabledModels : undefined);
+    if (patch.enabledModels !== undefined)
+      manager.setEnabledModels(patch.enabledModels && patch.enabledModels.length > 0 ? patch.enabledModels : undefined);
     if (patch.defaultProjectTrust) manager.setDefaultProjectTrust(patch.defaultProjectTrust);
     if (patch.retryEnabled !== undefined) manager.setRetryEnabled(patch.retryEnabled);
     if (patch.steeringMode) manager.setSteeringMode(patch.steeringMode);
@@ -215,40 +224,62 @@ export class PiConfigService {
   // ---- sign-in
 
   /** Starts a sign-in; the client follows it through `run.events` and answers prompts with `answer()`. */
-  async startLogin(provider: string, type: 'api_key' | 'oauth', onSignedIn?: () => void, withRuntime?: ModelRuntime): Promise<LoginRun> {
+  async startLogin(
+    provider: string,
+    type: 'api_key' | 'oauth',
+    onSignedIn?: () => void,
+    withRuntime?: ModelRuntime,
+  ): Promise<LoginRun> {
     const pi = await loadPi();
     // `withRuntime` is for tests: a runtime that has a provider registered whose sign-in talks to a mock server.
     const runtime = withRuntime ?? (await pi.ModelRuntime.create());
     const known = runtime.getProvider(provider);
     if (!known) throw new Error(`Unknown provider "${provider}".`);
     const method = type === 'oauth' ? known.auth.oauth : known.auth.apiKey;
-    if (!method || !('login' in method) || !method.login) throw new Error(`${known.name} does not offer ${type === 'oauth' ? 'OAuth' : 'API key'} sign-in.`);
+    if (!method || !('login' in method) || !method.login)
+      throw new Error(`${known.name} does not offer ${type === 'oauth' ? 'OAuth' : 'API key'} sign-in.`);
 
     const run = new LoginRun(provider, type);
     if (type === 'api_key' && this.secrets) {
       const secrets = this.secrets;
       run.secretFilter = async (value) => {
         const kept = await secrets.keep(provider, value.trim());
-        if (kept.storage === 'auth.json') run.push({ type: 'info', message: `Protected credential storage is disabled or unavailable, so pi keeps the key in auth.json (readable by you only), as a plain-text key.` });
+        if (kept.storage === 'auth.json')
+          run.push({
+            type: 'info',
+            message: `Protected credential storage is disabled or unavailable, so pi keeps the key in auth.json (readable by you only), as a plain-text key.`,
+          });
         return kept.value;
       };
     }
     this.logins.set(run.id, run);
     runtime
-      .login(provider, type, run.interaction(), { getDeviceId: () => pi.SettingsManager.create(homedir(), pi.getAgentDir(), { projectTrusted: false }).getOrCreateDeviceId() })
+      .login(provider, type, run.interaction(), {
+        getDeviceId: () =>
+          pi.SettingsManager.create(homedir(), pi.getAgentDir(), { projectTrusted: false }).getOrCreateDeviceId(),
+      })
       .then(
         () => {
           this.logger.log(`Signed in to ${provider} (${type})`);
           try {
             onSignedIn?.();
           } catch (error) {
-            this.logger.warn(`Could not record when ${provider} was signed in: ${error instanceof Error ? error.message : String(error)}`);
+            this.logger.warn(
+              `Could not record when ${provider} was signed in: ${error instanceof Error ? error.message : String(error)}`,
+            );
           }
           run.push({ type: 'done' });
         },
         (error: unknown) => {
           // The message comes from pi or the provider; it never contains what the user typed.
-          run.push({ type: 'error', message: run.abort.signal.aborted ? 'Sign-in cancelled.' : error instanceof Error ? error.message : String(error) });
+          run.push({
+            type: 'error',
+            message: run.abort.signal.aborted
+              ? 'Sign-in cancelled.'
+              : error instanceof Error
+                ? error.message
+                : String(error),
+          });
         },
       )
       .finally(() => {
@@ -269,7 +300,10 @@ export class PiConfigService {
     let kept: boolean;
     try {
       const credential = pi.readStoredCredential(provider, join(pi.getAgentDir(), 'auth.json'));
-      kept = credential?.type === 'api_key' && typeof credential.key === 'string' && keyStorageOf(credential.key) === 'keychain';
+      kept =
+        credential?.type === 'api_key' &&
+        typeof credential.key === 'string' &&
+        keyStorageOf(credential.key) === 'keychain';
     } catch {
       kept = false;
     }
@@ -353,7 +387,12 @@ export class PiConfigService {
    * What may be shown about a stored credential: its type, where it lives and, for a literal API key, its last four
    * characters. Resolve no credential commands or Keychain entries just to render Settings.
    */
-  private credentialSummary(pi: Pi, provider: string, type: 'api_key' | 'oauth', authPath: string): NonNullable<ProviderInfo['credential']> {
+  private credentialSummary(
+    pi: Pi,
+    provider: string,
+    type: 'api_key' | 'oauth',
+    authPath: string,
+  ): NonNullable<ProviderInfo['credential']> {
     if (type === 'oauth') return { type, store: 'auth.json' };
     let key: string | undefined;
     try {
@@ -376,8 +415,10 @@ export class PiConfigService {
    */
   async moveKeys(): Promise<MoveKeysResult> {
     const secrets = this.secrets;
-    if (!secrets?.store.available()) throw new Error('There is no credential store on this machine to move the keys into.');
-    if (!secrets.credentialsEnabled()) throw new Error('Credential-store storage is disabled. Enable it before moving keys.');
+    if (!secrets?.store.available())
+      throw new Error('There is no credential store on this machine to move the keys into.');
+    if (!secrets.credentialsEnabled())
+      throw new Error('Credential-store storage is disabled. Enable it before moving keys.');
     const pi = await loadPi();
     const runtime = await pi.ModelRuntime.create();
     const authPath = join(pi.getAgentDir(), 'auth.json');
@@ -412,7 +453,9 @@ export class PiConfigService {
         result.failed.push({ provider, reason: error instanceof Error ? error.message : String(error) });
       }
     }
-    this.logger.log(`Moved ${result.moved.length} key(s) into the credential store${result.failed.length > 0 ? `, ${result.failed.length} left in auth.json` : ''}`);
+    this.logger.log(
+      `Moved ${result.moved.length} key(s) into the credential store${result.failed.length > 0 ? `, ${result.failed.length} left in auth.json` : ''}`,
+    );
     return result;
   }
 
@@ -436,20 +479,37 @@ export class PiConfigService {
     const models = (await runtime.getAvailable()).filter((m) => m.provider === provider);
     const sample = models.slice(0, 3).map((m) => m.id);
     const base = { models: models.length, sample };
-    if (process.env['PI_OFFLINE']) return { status: 'unchecked', message: 'PI_OFFLINE is set, so no request was made.', ...base };
-    const cheapest = [...models].filter((m) => m.api !== 'pi-virtual').sort((a, b) => (a.cost?.input ?? 0) + (a.cost?.output ?? 0) - ((b.cost?.input ?? 0) + (b.cost?.output ?? 0)))[0];
-    if (!cheapest) return { status: 'unchecked', message: 'The provider lists no model to ask, so the key could not be tried.', ...base };
+    if (process.env['PI_OFFLINE'])
+      return { status: 'unchecked', message: 'PI_OFFLINE is set, so no request was made.', ...base };
+    const cheapest = [...models]
+      .filter((m) => m.api !== 'pi-virtual')
+      .sort((a, b) => (a.cost?.input ?? 0) + (a.cost?.output ?? 0) - ((b.cost?.input ?? 0) + (b.cost?.output ?? 0)))[0];
+    if (!cheapest)
+      return {
+        status: 'unchecked',
+        message: 'The provider lists no model to ask, so the key could not be tried.',
+        ...base,
+      };
     const failed = await this.askOnce(runtime, cheapest, 10_000);
-    if (!failed) return { status: 'ok', message: `One request to ${cheapest.provider}/${cheapest.id} succeeded.`, ...base };
+    if (!failed)
+      return { status: 'ok', message: `One request to ${cheapest.provider}/${cheapest.id} succeeded.`, ...base };
     return /\b(401|403)\b|unauthori[sz]ed|invalid.*(api.?key|credential)|forbidden/i.test(failed)
       ? { status: 'rejected', message: `${cheapest.provider} refused the key: ${failed.slice(0, 200)}`, ...base }
       : { status: 'unchecked', message: `The key could not be tried: ${failed.slice(0, 200)}`, ...base };
   }
 
   /** One request for one token; the provider's or the network's error text, or undefined when it worked. */
-  private async askOnce(runtime: ModelRuntime, model: Parameters<ModelRuntime['complete']>[0], timeoutMs: number): Promise<string | undefined> {
+  private async askOnce(
+    runtime: ModelRuntime,
+    model: Parameters<ModelRuntime['complete']>[0],
+    timeoutMs: number,
+  ): Promise<string | undefined> {
     try {
-      const reply = await runtime.complete(model, { messages: [{ role: 'user', content: 'Reply with the single word ok.', timestamp: Date.now() }] }, { maxTokens: 8, signal: AbortSignal.timeout(timeoutMs) } as never);
+      const reply = await runtime.complete(
+        model,
+        { messages: [{ role: 'user', content: 'Reply with the single word ok.', timestamp: Date.now() }] },
+        { maxTokens: 8, signal: AbortSignal.timeout(timeoutMs) } as never,
+      );
       return reply.stopReason === 'error' ? (reply.errorMessage ?? 'The provider returned an error.') : undefined;
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
@@ -465,7 +525,12 @@ export class PiConfigService {
     return [...counts.entries()]
       .map(([id, models]) => {
         const status = runtime.getProviderAuthStatus(id);
-        return { id, name: runtime.getProvider(id)?.name ?? id, models, ...(status.configured && status.source ? { source: status.source } : {}) };
+        return {
+          id,
+          name: runtime.getProvider(id)?.name ?? id,
+          models,
+          ...(status.configured && status.source ? { source: status.source } : {}),
+        };
       })
       .sort((a, b) => b.models - a.models || a.name.localeCompare(b.name));
   }
@@ -492,7 +557,9 @@ export class PiConfigService {
     const model = runtime.getModel(provider, modelId);
     if (!model) return { ok: false, model: label, message: `pi does not know the model ${label}.`, ms: elapsed() };
     const failed = await this.askOnce(runtime, model, 30_000);
-    return failed ? { ok: false, model: label, message: plainError(failed), ms: elapsed() } : { ok: true, model: label, message: `${label} answered.`, ms: elapsed() };
+    return failed
+      ? { ok: false, model: label, message: plainError(failed), ms: elapsed() }
+      : { ok: true, model: label, message: `${label} answered.`, ms: elapsed() };
   }
 
   /** The absolute path of a session file the user typed (`~/` allowed); it must exist. */

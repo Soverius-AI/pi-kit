@@ -2,10 +2,30 @@ import { Logger } from '@nestjs/common';
 import { copyJson } from '@earendil-works/chord';
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
 import type { ConversationId, Harness as DurableHarness } from '@earendil-works/pi-durable';
-import { type AgentAnswer, type AgentQuestion, type AgentQuestionDialog, parseAgentQuestionId, type PiDialogAnswer } from '@pi-kit/protocol';
+import {
+  type AgentAnswer,
+  type AgentQuestion,
+  type AgentQuestionDialog,
+  parseAgentQuestionId,
+  type PiDialogAnswer,
+} from '@pi-kit/protocol';
 import { QuestionsDoc } from './agent-extension';
 import type { BgAgentsRepository } from './bg-agents.repository';
-import { type AnsweredBy, answerText, forwarded, hostQuestion, isOpen, lastAnswer, openQuestion, type QuestionRecord, refusal, routed, settled, toDialog, toQuestion } from './questions';
+import {
+  type AnsweredBy,
+  answerText,
+  forwarded,
+  hostQuestion,
+  isOpen,
+  lastAnswer,
+  openQuestion,
+  type QuestionRecord,
+  refusal,
+  routed,
+  settled,
+  toDialog,
+  toQuestion,
+} from './questions';
 import { ANSWER_MESSAGE, QUESTION_MESSAGE, type ThreadHost } from './thread-host';
 
 const ctx = BACKGROUND_CONTEXT;
@@ -44,8 +64,14 @@ export class AgentQuestions {
     if (!row || !q || !isOpen(q)) return;
     if (q.state === 'pending') {
       // Routed first: the answer can arrive while the message is still being delivered, and a retry must not deliver twice.
-      await this.changeQuestion(id, q.id, (current) => current && !isOpen(current) ? current : routed(current ?? q));
-      if (q.kind === 'main') await this.threads.deliver(row.threadId, { customType: QUESTION_MESSAGE, display: true, details: { agentId: id, name: row.name, ref: questionId, questionId }, content: `Question from agent "${row.name}" (agent ${id}, question ${questionId}): ${q.text}${q.choices ? ` Choices: ${q.choices.join(' | ')}.` : ''} Answer with agent_reply, or agent_forward if the user must decide.` });
+      await this.changeQuestion(id, q.id, (current) => (current && !isOpen(current) ? current : routed(current ?? q)));
+      if (q.kind === 'main')
+        await this.threads.deliver(row.threadId, {
+          customType: QUESTION_MESSAGE,
+          display: true,
+          details: { agentId: id, name: row.name, ref: questionId, questionId },
+          content: `Question from agent "${row.name}" (agent ${id}, question ${questionId}): ${q.text}${q.choices ? ` Choices: ${q.choices.join(' | ')}.` : ''} Answer with agent_reply, or agent_forward if the user must decide.`,
+        });
     }
     this.changed(id);
   }
@@ -65,7 +91,12 @@ export class AgentQuestions {
   async answerInterrupt(interruptId: string, answer: PiDialogAnswer | 'cancelled'): Promise<boolean> {
     const parsed = parseAgentQuestionId(interruptId);
     if (!parsed) return false;
-    await this.answer(parsed.agentId, parsed.questionId, answer === 'cancelled' ? 'cancelled' : 'user', answer === 'cancelled' ? null : answerText(answer));
+    await this.answer(
+      parsed.agentId,
+      parsed.questionId,
+      answer === 'cancelled' ? 'cancelled' : 'user',
+      answer === 'cancelled' ? null : answerText(answer),
+    );
     return true;
   }
 
@@ -81,8 +112,20 @@ export class AgentQuestions {
     });
     this.changed(id);
     if (by === 'user' || by === 'cancelled') {
-      const content = by === 'user' ? `The user answered agent "${row.name}"'s question "${done.text}": ${text}` : `The user dismissed agent "${row.name}"'s question "${done.text}" without an answer.`;
-      await this.threads.deliver(row.threadId, { customType: ANSWER_MESSAGE, content, display: true, details: { agentId: id, name: row.name, ref: `${questionId}/answer`, questionId } }).catch((error: unknown) => this.logger.debug(`No receipt for ${id}: ${error instanceof Error ? error.message : String(error)}`));
+      const content =
+        by === 'user'
+          ? `The user answered agent "${row.name}"'s question "${done.text}": ${text}`
+          : `The user dismissed agent "${row.name}"'s question "${done.text}" without an answer.`;
+      await this.threads
+        .deliver(row.threadId, {
+          customType: ANSWER_MESSAGE,
+          content,
+          display: true,
+          details: { agentId: id, name: row.name, ref: `${questionId}/answer`, questionId },
+        })
+        .catch((error: unknown) =>
+          this.logger.debug(`No receipt for ${id}: ${error instanceof Error ? error.message : String(error)}`),
+        );
     }
   }
 
@@ -90,10 +133,21 @@ export class AgentQuestions {
    * A question the host asks on the agent's behalf (a blocked action): the record is written once by its
    * id (a rerun after a restart finds it), and the caller waits on the document until the user answers; dismissed or stopped is null.
    */
-  async askUser(id: string, questionId: string, origin: 'block', text: string, choices: string[], signal: AbortSignal | undefined): Promise<string | null> {
+  async askUser(
+    id: string,
+    questionId: string,
+    origin: 'block',
+    text: string,
+    choices: string[],
+    signal: AbortSignal | undefined,
+  ): Promise<string | null> {
     const existing = (await this.questionsOf(id))[questionId];
     if (!existing) {
-      await this.changeQuestion(id, questionId, (current) => current ?? hostQuestion(questionId, origin, text, choices, Date.now()));
+      await this.changeQuestion(
+        id,
+        questionId,
+        (current) => current ?? hostQuestion(questionId, origin, text, choices, Date.now()),
+      );
       this.changed(id);
     }
     const done = await this.settledQuestion(id, questionId, signal);
@@ -101,19 +155,27 @@ export class AgentQuestions {
   }
 
   /** The record once it settled, watched on the document so it is seen from any process. */
-  private async settledQuestion(id: string, questionId: string, signal: AbortSignal | undefined): Promise<QuestionRecord | undefined> {
+  private async settledQuestion(
+    id: string,
+    questionId: string,
+    signal: AbortSignal | undefined,
+  ): Promise<QuestionRecord | undefined> {
     const current = this.cache.get(id)?.[questionId];
     if (current && !isOpen(current)) return current;
     const watch = await this.harness().watchDoc(QuestionsDoc, conversationId(id), ctx);
     if (!watch) return undefined;
-    const settledOf = (state: { questions: Record<string, QuestionRecord> } | null | undefined): QuestionRecord | undefined => {
+    const settledOf = (
+      state: { questions: Record<string, QuestionRecord> } | null | undefined,
+    ): QuestionRecord | undefined => {
       const q = state?.questions[questionId];
       return q && !isOpen(q) ? q : undefined;
     };
     const done = await new Promise<QuestionRecord | undefined>((resolve) => {
       watch.start(async (value) => void (settledOf(value) && resolve(settledOf(value))));
       signal?.addEventListener('abort', () => resolve(undefined), { once: true });
-      void this.harness().snapshot(QuestionsDoc, conversationId(id), ctx).then((state) => void (settledOf(state) && resolve(settledOf(state))));
+      void this.harness()
+        .snapshot(QuestionsDoc, conversationId(id), ctx)
+        .then((state) => void (settledOf(state) && resolve(settledOf(state))));
     });
     await watch.stop();
     return done;
@@ -139,7 +201,11 @@ export class AgentQuestions {
   }
 
   /** Validate and apply each transition against the durable record in the same transaction. */
-  private async changeQuestion(id: string, questionId: string, update: (current: QuestionRecord | undefined) => QuestionRecord): Promise<QuestionRecord> {
+  private async changeQuestion(
+    id: string,
+    questionId: string,
+    update: (current: QuestionRecord | undefined) => QuestionRecord,
+  ): Promise<QuestionRecord> {
     const written = await this.harness().commit(async (tx) => {
       const doc = await tx.doc(QuestionsDoc, conversationId(id));
       // Transaction draft handles expire at commit, including arrays retained by a shallow object spread.

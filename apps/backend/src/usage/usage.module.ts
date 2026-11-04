@@ -8,6 +8,12 @@ import { UsageService } from './usage.service';
 @Module({
   imports: [PiModule],
   controllers: [UsageController],
-  providers: [{ provide: UsageService, useFactory: (config: PiConfigService) => new UsageService(config), inject: [PiConfigService] }],
+  providers: [
+    {
+      provide: UsageService,
+      useFactory: (config: PiConfigService) => new UsageService(config),
+      inject: [PiConfigService],
+    },
+  ],
 })
 export class UsageModule {}

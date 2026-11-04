@@ -25,14 +25,29 @@ const context = {
 // Nx so its normal transitive dependency ordering and cache still apply to the backend's watch build.
 if (role === 'backend') {
   const projects = context.projectsConfigurations.projects;
-  const dependencies = [...new Set(projectGraph.dependencies.backend.map(({ target }) => target))]
-    .filter((name) => projects[name]?.targets?.build);
+  const dependencies = [...new Set(projectGraph.dependencies.backend.map(({ target }) => target))].filter(
+    (name) => projects[name]?.targets?.build,
+  );
   if (dependencies.length) {
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.resolve('nx/bin/nx.js')), 'run-many', '-t', 'build', '--projects', dependencies.join(',')], { stdio: 'inherit' });
+    const child = spawn(
+      process.execPath,
+      [
+        fileURLToPath(import.meta.resolve('nx/bin/nx.js')),
+        'run-many',
+        '-t',
+        'build',
+        '--projects',
+        dependencies.join(','),
+      ],
+      { stdio: 'inherit' },
+    );
     const stop = () => child.kill('SIGTERM');
     process.once('exit', stop);
     for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => process.exit(0));
-    const code = await new Promise((resolve, reject) => { child.once('error', reject); child.once('exit', resolve); });
+    const code = await new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('exit', resolve);
+    });
     process.off('exit', stop);
     if (code !== 0) process.exit(code ?? 1);
   }
@@ -41,14 +56,19 @@ const results = await nx.runExecutor(
   role === 'renderer'
     ? { project: 'renderer', target: 'serve', configuration: 'development' }
     : { project: 'backend', target: 'build', configuration: 'development' },
-  role === 'renderer' ? { port: Number(process.env.PI_KIT_DEV_RENDERER_PORT ?? 0), host: 'localhost' } : { watch: true },
+  role === 'renderer'
+    ? { port: Number(process.env.PI_KIT_DEV_RENDERER_PORT ?? 0), host: 'localhost' }
+    : { watch: true },
   context,
 );
 let announced = false;
 for await (const result of results) {
   if (announced || !result.success || (role === 'renderer' && !result.baseUrl)) continue;
   announced = true;
-  process.send?.({ type: `${role}-ready`, ...(role === 'renderer' ? { url: new URL(result.baseUrl).origin } : {}) }, () => undefined);
+  process.send?.(
+    { type: `${role}-ready`, ...(role === 'renderer' ? { url: new URL(result.baseUrl).origin } : {}) },
+    () => undefined,
+  );
 }
 // A dev server should keep watching; an ended executor must also stop the other development processes.
 process.exit(1);

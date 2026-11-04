@@ -53,7 +53,7 @@ export function a2uiOperationsOf(result: { details?: unknown; text?: string }): 
   const fromDetails = operationsOf(result.details);
   if (fromDetails) return fromDetails;
   const text = result.text?.trim();
-  if (!text || !text.startsWith('{') && !text.startsWith('"')) return undefined;
+  if (!text || (!text.startsWith('{') && !text.startsWith('"'))) return undefined;
   try {
     const parsed: unknown = JSON.parse(text);
     return operationsOf(typeof parsed === 'string' ? JSON.parse(parsed) : parsed);
@@ -63,7 +63,8 @@ export function a2uiOperationsOf(result: { details?: unknown; text?: string }): 
 }
 
 /** The text of a tool result as the A2UI middleware needs it: JSON with the operations, whatever the source. */
-export const a2uiResultText = (operations: A2uiOperation[]): string => JSON.stringify({ [A2UI_OPERATIONS_KEY]: operations });
+export const a2uiResultText = (operations: A2uiOperation[]): string =>
+  JSON.stringify({ [A2UI_OPERATIONS_KEY]: operations });
 
 /** A tool result as an MCP App sees it (`ui/notifications/tool-result`): an MCP `CallToolResult` without `_meta`. */
 export const McpAppResultSchema = z
@@ -116,7 +117,8 @@ export function proxiedMcpRequestOf(forwardedProps: unknown): ProxiedMcpRequest 
 }
 
 /** True if the run input carries a proxied request, well-formed or not (it must never reach pi as a prompt). */
-export const isProxiedMcpRun = (forwardedProps: unknown): boolean => isRecord(forwardedProps) && PROXIED_MCP_REQUEST_KEY in forwardedProps;
+export const isProxiedMcpRun = (forwardedProps: unknown): boolean =>
+  isRecord(forwardedProps) && PROXIED_MCP_REQUEST_KEY in forwardedProps;
 
 /**
  * `_meta.ui.resourceUri` of an MCP tool definition (MCP Apps, SEP-1865), or the flat key an earlier draft of the

@@ -1,5 +1,13 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import type { AgentQuestionDialog, BgAgent, SkillDraft, ThreadScoreBadge, ThreadState, ThreadSuggestion, ThreadsEvent } from '@pi-kit/protocol';
+import type {
+  AgentQuestionDialog,
+  BgAgent,
+  SkillDraft,
+  ThreadScoreBadge,
+  ThreadState,
+  ThreadSuggestion,
+  ThreadsEvent,
+} from '@pi-kit/protocol';
 import { AttendantRepository } from '../db/attendant.repository';
 import { EventLogRepository, type RunRow } from '../db/event-log.repository';
 import { type OutcomeRow, OutcomesRepository } from '../db/outcomes.repository';
@@ -96,7 +104,13 @@ export class ThreadStatusService implements OnModuleInit {
   }
 
   lookups(): StateLookups {
-    return { lastRuns: this.events.lastRunByThread(), summaries: this.attendant.summaries(), suggestions: this.attendant.allOpenSuggestions(), outcomes: this.outcomes.all(), drafts: this.drafts.all() };
+    return {
+      lastRuns: this.events.lastRunByThread(),
+      summaries: this.attendant.summaries(),
+      suggestions: this.attendant.allOpenSuggestions(),
+      outcomes: this.outcomes.all(),
+      drafts: this.drafts.all(),
+    };
   }
 
   /** Every thread's state, and what a stream that just connected starts with. It also seeds the "last pushed" memory. */
@@ -163,7 +177,9 @@ export class ThreadStatusService implements OnModuleInit {
       if (!row || !this.sessions.has(threadId)) return;
       this.threads.setContext(threadId, this.sessions.contextShare(threadId), sessionMtime(row.sessionPath));
     } catch (error) {
-      this.logger.debug(`Could not measure the context of ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.debug(
+        `Could not measure the context of ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

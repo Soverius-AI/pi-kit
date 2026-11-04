@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { branchName, DEFAULT_WORKTREE_ROOT, localBaseName, normalizePrefix, repoSlug, worktreeNames, resolveBase, resolveRoot, slugify, threadSlug, uniqueSlug, worktreePath } from './worktree-paths';
+import {
+  branchName,
+  DEFAULT_WORKTREE_ROOT,
+  localBaseName,
+  normalizePrefix,
+  repoSlug,
+  worktreeNames,
+  resolveBase,
+  resolveRoot,
+  slugify,
+  threadSlug,
+  uniqueSlug,
+  worktreePath,
+} from './worktree-paths';
 
 describe('slugify', () => {
   it('lowers case, folds accents and turns every other run into one dash', () => {
@@ -74,7 +87,12 @@ describe('the naming of a new worktree', () => {
   });
 
   it('names a branch from the first message, then the title, then the thread id', () => {
-    const named = worktreeNames({ name: 'Fix the cramped row!', title: 'Ignored', threadId: 'abcdef0123', prefix: 'pi-kit/' });
+    const named = worktreeNames({
+      name: 'Fix the cramped row!',
+      title: 'Ignored',
+      threadId: 'abcdef0123',
+      prefix: 'pi-kit/',
+    });
     expect(named.slug).toBe('fix-the-cramped-row');
     expect(named.branch(named.slug)).toBe('pi-kit/fix-the-cramped-row');
     expect(named.branch('fix-the-cramped-row-2')).toBe('pi-kit/fix-the-cramped-row-2');

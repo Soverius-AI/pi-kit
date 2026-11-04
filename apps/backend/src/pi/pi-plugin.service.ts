@@ -11,7 +11,12 @@ export interface PluginReplyShape {
  * Answers one request of an extension. `signal` is the life of the request: it aborts when the session is stopped (`cancel`) or unbound (closed, or bound again), so what
  * the host started for the request (a model call) ends with it. A host that takes three parameters is one that has nothing to abort.
  */
-export type PluginHost = (threadId: string, channel: string, payload: unknown, signal?: AbortSignal) => Promise<PluginReplyShape | undefined>;
+export type PluginHost = (
+  threadId: string,
+  channel: string,
+  payload: unknown,
+  signal?: AbortSignal,
+) => Promise<PluginReplyShape | undefined>;
 
 /** The channel on which pi-kit says, synchronously inside the request's `emit`, that a host will answer the request (doc/docs/plugins.md). */
 const acceptedChannel = (channel: string): string => `${channel}:accepted`;
@@ -46,7 +51,9 @@ export class PiPluginService implements OnModuleDestroy {
   private readonly hosts = new Map<string, PluginHost>();
   private readonly bindings = new Map<string, Binding>();
 
-  setDefault(host: PluginHost | undefined): void { this.fallback = host; }
+  setDefault(host: PluginHost | undefined): void {
+    this.fallback = host;
+  }
 
   register(channels: readonly string[], host: PluginHost): () => void {
     for (const channel of channels) this.hosts.set(channel, host);
@@ -108,7 +115,7 @@ export class PiPluginService implements OnModuleDestroy {
       if (binding.pending.delete(request)) binding.bus.emit(replyChannel(channel), reply);
     };
     void Promise.resolve()
-      .then(() => binding.pending.has(request) ? host(threadId, channel, payload, signal) : undefined)
+      .then(() => (binding.pending.has(request) ? host(threadId, channel, payload, signal) : undefined))
       .then((reply) => {
         if (reply) answer(reply);
         else answer({ requestId, ok: false, code: 'invalid', error: 'pi-kit has no handler for this request.' });

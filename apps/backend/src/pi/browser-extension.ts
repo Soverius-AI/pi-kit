@@ -1,4 +1,6 @@
-import type { ExtensionAPI, ExtensionFactory, ToolDefinition } from '@earendil-works/pi-coding-agent' with { 'resolution-mode': 'import' };
+import type { ExtensionAPI, ExtensionFactory, ToolDefinition } from '@earendil-works/pi-coding-agent' with {
+  'resolution-mode': 'import',
+};
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { BrowserActionSchema, type BrowserAction, type BrowserResult } from '@pi-kit/protocol';
@@ -10,7 +12,10 @@ export const BROWSER_SKILL_KEY = 'skills:user:builtin:pi-kit-browser';
 
 /** The same shipped asset is discovered by the agent loader and Settings inventory. */
 export function browserSkillPath(): string {
-  const paths = [join(__dirname, 'assets', 'skills', 'pi-browser', 'SKILL.md'), join(__dirname, '..', 'assets', 'skills', 'pi-browser', 'SKILL.md')];
+  const paths = [
+    join(__dirname, 'assets', 'skills', 'pi-browser', 'SKILL.md'),
+    join(__dirname, '..', 'assets', 'skills', 'pi-browser', 'SKILL.md'),
+  ];
   const path = paths.find((path) => existsSync(path));
   if (!path) throw new Error('The bundled pi-browser skill is missing from this installation.');
   return path;
@@ -28,15 +33,21 @@ export interface BrowserHook {
 }
 
 /** Both the actual tool and its prompt knowledge are attached to every desktop session, including resumed chats. */
-export function createBrowserExtension(options: { threadId: string; host: () => BrowserHook | undefined }): ExtensionFactory {
+export function createBrowserExtension(options: {
+  threadId: string;
+  host: () => BrowserHook | undefined;
+}): ExtensionFactory {
   return (api: ExtensionAPI) => {
     if (!options.host()?.available) return;
     api.registerTool({
       name: BROWSER_TOOL,
       label: 'Browser',
-      description: 'Navigate and inspect the browser artifact shared with the user in this chat. Supports localhost web projects, accessibility snapshots with element references, clicks, text input, keys, scrolling, page JavaScript, screenshots and console messages.',
+      description:
+        'Navigate and inspect the browser artifact shared with the user in this chat. Supports localhost web projects, accessibility snapshots with element references, clicks, text input, keys, scrolling, page JavaScript, screenshots and console messages.',
       promptSnippet: 'Use the browser artifact to inspect and test web projects with the user.',
-      promptGuidelines: ['For web UI work, navigate the running project in pi_browser and verify its rendered behavior with snapshots and screenshots.'],
+      promptGuidelines: [
+        'For web UI work, navigate the running project in pi_browser and verify its rendered behavior with snapshots and screenshots.',
+      ],
       // The same JSON Schema drives the generated REST API. pi accepts TypeBox-compatible JSON Schema at this boundary.
       parameters: z.toJSONSchema(BrowserActionSchema, { target: 'draft-7' }) as unknown as ToolDefinition['parameters'],
       executionMode: 'sequential',
@@ -47,14 +58,17 @@ export function createBrowserExtension(options: { threadId: string; host: () => 
         return {
           content: [
             { type: 'text', text: JSON.stringify({ state: result.state, text: result.text, logs: result.logs }) },
-            ...(result.screenshot ? [{ type: 'image' as const, data: result.screenshot.data, mimeType: result.screenshot.mimeType }] : []),
+            ...(result.screenshot
+              ? [{ type: 'image' as const, data: result.screenshot.data, mimeType: result.screenshot.mimeType }]
+              : []),
           ],
           details: { state: result.state },
         };
       },
     });
     api.on('before_agent_start', (event) => {
-      if (options.host()?.available && api.getActiveTools().includes(BROWSER_TOOL)) event.systemPromptOptions.sections[BROWSER_SECTION] = BROWSER_GUIDANCE;
+      if (options.host()?.available && api.getActiveTools().includes(BROWSER_TOOL))
+        event.systemPromptOptions.sections[BROWSER_SECTION] = BROWSER_GUIDANCE;
       else delete event.systemPromptOptions.sections[BROWSER_SECTION];
     });
   };

@@ -25,7 +25,10 @@ before(async () => {
   registerFakeModel(env.agentDir, fake.url);
   const path = join(env.agentDir, 'settings.json');
   settingsBefore = readFileSync(path, 'utf8');
-  writeFileSync(path, JSON.stringify({ ...JSON.parse(settingsBefore), defaultProvider: FAKE_PROVIDER, defaultModel: FAKE_MODEL }));
+  writeFileSync(
+    path,
+    JSON.stringify({ ...JSON.parse(settingsBefore), defaultProvider: FAKE_PROVIDER, defaultModel: FAKE_MODEL }),
+  );
   stopBackend = await ensureBackend();
   app = await openApp();
 });
@@ -47,7 +50,8 @@ const send = async (page, text) => {
 };
 // The thread's transcript: the first one, since an open agent transcript in the panel draws the same component.
 const transcript = (page) => page.locator('pk-transcript').first();
-const idle = (page) => page.locator('pk-composer-toolbar').getByRole('button', { name: 'Stop' }).waitFor({ state: 'detached' });
+const idle = (page) =>
+  page.locator('pk-composer-toolbar').getByRole('button', { name: 'Stop' }).waitFor({ state: 'detached' });
 const newestThread = async () => (await api('/api/threads')).toSorted((a, b) => b.updatedAt - a.updatedAt)[0];
 /** Tool answers live inside the transcript's independently collapsible work rows. */
 async function visibleAnswer(transcript, text) {
@@ -71,20 +75,26 @@ async function visibleNote(transcript, text) {
 async function noteNames(transcripts) {
   const names = [];
   for (const transcript of await transcripts.all()) {
-    names.push(...await transcript.evaluate(async (element) => {
-      const scroller = element.closest('[cdkscrollable]');
-      const found = new Map();
-      const painted = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-      scroller.scrollTop = 0;
-      for (;;) {
-        await painted();
-        for (const note of element.querySelectorAll('[data-testid="agent-note"]')) found.set(note.querySelector('.body').textContent, note.querySelector('summary .lbl').textContent.trim());
-        const before = scroller.scrollTop;
-        scroller.scrollTop += scroller.clientHeight / 2;
-        if (scroller.scrollTop === before) break;
-      }
-      return [...found.values()];
-    }));
+    names.push(
+      ...(await transcript.evaluate(async (element) => {
+        const scroller = element.closest('[cdkscrollable]');
+        const found = new Map();
+        const painted = () =>
+          new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+          );
+        scroller.scrollTop = 0;
+        for (;;) {
+          await painted();
+          for (const note of element.querySelectorAll('[data-testid="agent-note"]'))
+            found.set(note.querySelector('.body').textContent, note.querySelector('summary .lbl').textContent.trim());
+          const before = scroller.scrollTop;
+          scroller.scrollTop += scroller.clientHeight / 2;
+          if (scroller.scrollTop === before) break;
+        }
+        return [...found.values()];
+      })),
+    );
   }
   return names.sort();
 }
@@ -97,7 +107,10 @@ async function storedRuns(threadId) {
     body: JSON.stringify({ threadId, runId: '', state: {}, messages: [], tools: [], context: [], forwardedProps: {} }),
   });
   assert.ok(res.ok, `connect answered ${res.status}`);
-  const events = (await res.text()).split('\n').filter((line) => line.startsWith('data:')).map((line) => JSON.parse(line.slice(5)));
+  const events = (await res.text())
+    .split('\n')
+    .filter((line) => line.startsWith('data:'))
+    .map((line) => JSON.parse(line.slice(5)));
   return { events, runs: events.filter((event) => event.type === 'RUN_STARTED').map((event) => event.runId) };
 }
 
@@ -107,7 +120,9 @@ describe('UC-0: an extension-started turn in an idle open thread shows live', ()
     await h.newThread();
     const thread = await newestThread();
     // The command answers at once; the turn starts once the thread is idle. A reload would wipe the marker.
-    await page.evaluate(() => { window.__pkNoReload = true; });
+    await page.evaluate(() => {
+      window.__pkNoReload = true;
+    });
     await send(page, '/pk-turn message Hello from the extension');
     await transcript(page).getByText(TURN_REPLIES.message, { exact: true }).waitFor();
     await transcript(page).getByText('Hello from the extension', { exact: true }).waitFor();
@@ -116,9 +131,16 @@ describe('UC-0: an extension-started turn in an idle open thread shows live', ()
     await transcript(page).getByText(TURN_REPLIES.user, { exact: true }).waitFor();
     await transcript(page).getByText('Hello as a user message', { exact: true }).waitFor();
     await idle(page);
-    assert.equal(await page.evaluate(() => window.__pkNoReload), true, 'the turns appeared in the open transcript, not after a reload');
+    assert.equal(
+      await page.evaluate(() => window.__pkNoReload),
+      true,
+      'the turns appeared in the open transcript, not after a reload',
+    );
     const texts = await transcript(page).innerText();
-    assert.ok(texts.indexOf('Hello from the extension') < texts.indexOf(TURN_REPLIES.message), 'the placed message comes before its answer');
+    assert.ok(
+      texts.indexOf('Hello from the extension') < texts.indexOf(TURN_REPLIES.message),
+      'the placed message comes before its answer',
+    );
     assert.ok(texts.indexOf(TURN_REPLIES.message) < texts.indexOf('Hello as a user message'), 'the turns are in order');
     assert.ok(texts.indexOf('Hello as a user message') < texts.indexOf(TURN_REPLIES.user));
 
@@ -126,14 +148,21 @@ describe('UC-0: an extension-started turn in an idle open thread shows live', ()
     const { events, runs } = await storedRuns(thread.id);
     assert.deepEqual(runs.filter((id) => id.startsWith('turn-')).length, 2, `runs: ${runs.join(', ')}`);
     assert.equal(events.filter((event) => event.type === 'RUN_ERROR').length, 0);
-    const state = (await api(`/api/threads/${thread.id}`)).state ?? (await api('/api/threads')).find((t) => t.id === thread.id)?.state;
+    const state =
+      (await api(`/api/threads/${thread.id}`)).state ??
+      (await api('/api/threads')).find((t) => t.id === thread.id)?.state;
     if (state) assert.equal(state.activity, 'idle');
 
     // The same after a reload.
     await page.reload();
     await transcript(page).getByText(TURN_REPLIES.user, { exact: true }).waitFor();
     const replayed = await transcript(page).innerText();
-    for (const text of ['Hello from the extension', TURN_REPLIES.message, 'Hello as a user message', TURN_REPLIES.user]) {
+    for (const text of [
+      'Hello from the extension',
+      TURN_REPLIES.message,
+      'Hello as a user message',
+      TURN_REPLIES.user,
+    ]) {
       assert.ok(replayed.includes(text), `after a reload the transcript still shows "${text}"`);
     }
     assert.ok(replayed.indexOf('Hello from the extension') < replayed.indexOf(TURN_REPLIES.message));
@@ -148,7 +177,11 @@ describe('the reference use case "Add `mul` and get it release-ready"', () => {
     await h.newThread();
     const thread = await newestThread();
     // Background agents are on by default; set explicitly here so a scratch profile behaves the same whatever its database says.
-    await api('/api/workspaces', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cwd: env.project, agents: true }) });
+    await api('/api/workspaces', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cwd: env.project, agents: true }),
+    });
     await send(page, 'Add mul to src/math.ts and, in the background, have the tests written and the code reviewed.');
     // UC-1: the spawn cards, named after the agents, under the tool calls.
     const cards = page.locator('[data-testid="agent-spawn-card"]');
@@ -165,17 +198,30 @@ describe('the reference use case "Add `mul` and get it release-ready"', () => {
     await transcript(page).getByText('Started tester and reviewer.', { exact: true }).waitFor();
     await idle(page);
     const agents = await api(`/api/threads/${thread.id}/agents`);
-    assert.deepEqual(agents.map((a) => [a.name, a.status, a.permission]), [['tester', 'active', 'edit'], ['reviewer', 'active', 'read-only']]);
+    assert.deepEqual(
+      agents.map((a) => [a.name, a.status, a.permission]),
+      [
+        ['tester', 'active', 'edit'],
+        ['reviewer', 'active', 'read-only'],
+      ],
+    );
     const { events, runs } = await storedRuns(thread.id);
     const stream = events.slice(events.findIndex((event) => event.type === 'RUN_STARTED'));
     const started = stream.filter((event) => event.type === 'SUBAGENT_STARTED');
-    assert.deepEqual(started.map((event) => event.name), ['tester', 'reviewer'], `envelopes in runs ${runs.join(', ')}`);
+    assert.deepEqual(
+      started.map((event) => event.name),
+      ['tester', 'reviewer'],
+      `envelopes in runs ${runs.join(', ')}`,
+    );
     assert.ok(started.every((event) => event.parentToolCallId));
     await firstValueFrom(from(stream).pipe(verifyEvents(false), toArray()));
     // UC-2: the main agent's own work is done and the thread is idle while the agents still work.
     assert.match(readFileSync(join(env.project, 'src', 'math.ts'), 'utf8'), /export function mul/);
     assert.notEqual((await api('/api/threads')).find((t) => t.id === thread.id)?.state?.activity, 'running');
-    assert.deepEqual((await api(`/api/threads/${thread.id}/agents`)).map((a) => a.status), ['active', 'active']);
+    assert.deepEqual(
+      (await api(`/api/threads/${thread.id}/agents`)).map((a) => a.status),
+      ['active', 'active'],
+    );
     const activeRows = page.locator('[data-testid="agents-active"] li');
     // UC-3: the Agents panel lists both agents at work; tester's transcript shows its tool calls as they stream.
     await page.getByRole('button', { name: /^Agents/ }).click();
@@ -212,7 +258,10 @@ describe('the reference use case "Add `mul` and get it release-ready"', () => {
     await page.getByRole('button', { name: /Back to the agents/ }).click();
     const testerRow = activeRows.first();
     await testerRow.locator('[data-testid="agent-answered"]').waitFor();
-    assert.match(await testerRow.locator('[data-testid="agent-answered"]').innerText(), /answered by main agent: No, numbers only\./);
+    assert.match(
+      await testerRow.locator('[data-testid="agent-answered"]').innerText(),
+      /answered by main agent: No, numbers only\./,
+    );
     await testerRow.locator('[data-testid="agent-override"]').waitFor();
     assert.equal((await testerRow.locator('[data-testid="agent-state"]').innerText()).trim(), 'waiting for you');
     await testerRow.locator('[data-testid="agent-question"] input').fill('Yes');
@@ -226,7 +275,13 @@ describe('the reference use case "Add `mul` and get it release-ready"', () => {
     assert.match(await reviewerCard.innerText(), /Question from agent reviewer/);
     const reviewerRow = activeRows.nth(1);
     await reviewerRow.locator('[data-testid="agent-question"]').waitFor();
-    assert.deepEqual(await reviewerRow.locator('[data-testid="agent-question"] button').allInnerTexts().then((t) => t.map((x) => x.trim())), ['Keep as is', 'Change it', 'Dismiss']);
+    assert.deepEqual(
+      await reviewerRow
+        .locator('[data-testid="agent-question"] button')
+        .allInnerTexts()
+        .then((t) => t.map((x) => x.trim())),
+      ['Keep as is', 'Change it', 'Dismiss'],
+    );
     assert.match(await needsYou.innerText(), /greet has no punctuation/);
     assert.equal(await composer.isEditable(), true);
     // UC-8 (without the restart): the user's answer reaches reviewer verbatim, and its report arrives live as reviewer's message.
@@ -248,35 +303,61 @@ describe('the reference use case "Add `mul` and get it release-ready"', () => {
     script.release('tester:bash');
     script.release('reviewer:report');
     await visibleNote(transcript(page), 'Report from agent "tester": Tests for add, sub, mul and greet pass.');
-    await visibleNote(transcript(page), 'Report from agent "reviewer": Reviewed src/. greet has no punctuation; otherwise fine.');
+    await visibleNote(
+      transcript(page),
+      'Report from agent "reviewer": Reviewed src/. greet has no punctuation; otherwise fine.',
+    );
     const mainNotes = await noteNames(transcript(page));
     const agentNotes = await noteNames(agentTranscript.locator('pk-transcript'));
     const notes = [...mainNotes, ...agentNotes].sort();
     // Two reports, two questions and two receipts, each attributed to its agent.
     // In the thread: tester's two questions and two receipts, reviewer's two receipts (its answer, the denied write) and report;
     // and in tester's open transcript, reviewer's message (UC-6).
-    assert.deepEqual(notes.map((note) => note.trim()).sort(), ['From agent reviewer', 'From agent reviewer', 'From agent reviewer', 'From agent reviewer', 'From agent tester', 'From agent tester', 'From agent tester', 'From agent tester']);
+    assert.deepEqual(notes.map((note) => note.trim()).sort(), [
+      'From agent reviewer',
+      'From agent reviewer',
+      'From agent reviewer',
+      'From agent reviewer',
+      'From agent tester',
+      'From agent tester',
+      'From agent tester',
+      'From agent tester',
+    ]);
     await transcript(page).getByText('Both agents are done.', { exact: true }).waitFor();
     await idle(page);
     assert.equal(existsSync(join(env.project, 'test', 'math.test.ts')), true);
     const finished = await api(`/api/threads/${thread.id}/agents`);
-    assert.deepEqual(finished.map((a) => [a.name, a.status]), [['tester', 'done'], ['reviewer', 'done']]);
+    assert.deepEqual(
+      finished.map((a) => [a.name, a.status]),
+      [
+        ['tester', 'done'],
+        ['reviewer', 'done'],
+      ],
+    );
     assert.match(finished[0].report, /pass/);
     // UC-9: the tests pass in the project, and the Changes view lists tester's test file with a baseline.
-    await new Promise((resolve, reject) => { const child = spawn('node', ['--test', 'test/*.test.ts'], { cwd: env.project, stdio: 'ignore' }); child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`node --test exited ${code}`)))); });
+    await new Promise((resolve, reject) => {
+      const child = spawn('node', ['--test', 'test/*.test.ts'], { cwd: env.project, stdio: 'ignore' });
+      child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`node --test exited ${code}`))));
+    });
     const changes = await api(`/api/threads/${thread.id}/changes`);
     const testFile = (changes.files ?? changes).find((f) => f.path === 'test/math.test.ts');
     assert.ok(testFile, `changes: ${JSON.stringify(changes).slice(0, 300)}`);
     assert.equal(testFile.baseline ?? testFile.status, testFile.baseline ?? 'A');
     // The opened transcript streamed the bash run and the report call as they happened.
-    for (const group of await agentTranscript.locator('[data-testid="work-head"][aria-expanded="false"]').all()) await group.click();
+    for (const group of await agentTranscript.locator('[data-testid="work-head"][aria-expanded="false"]').all())
+      await group.click();
     const bashRow = agentTranscript.getByTestId('work-row').filter({ hasText: 'node --test test/*.test.ts' });
     await bashRow.locator('summary').click();
     await agentTranscript.getByRole('button', { name: /bash node --test test\/\*\.test\.ts/ }).waitFor();
     // UC-6: reviewer told tester to cover greet too (a steer, delivered with tester's next request): tester's transcript shows it as a
     // message from reviewer, not as the user's.
     await visibleNote(agentTranscript, /Message from agent "reviewer"/);
-    assert.ok((await agentTranscript.locator('[data-testid="agent-note"] summary .lbl').allInnerTexts()).map((t) => t.trim()).includes('From agent reviewer'));
+    assert.ok(
+      (await agentTranscript.locator('[data-testid="agent-note"] summary .lbl').allInnerTexts())
+        .map((t) => t.trim())
+        .includes('From agent reviewer'),
+    );
     // UC-10: History lists both with outcome done, a duration and a cost above zero; the transcripts open after a reload.
     await page.getByRole('button', { name: /Back to the agents/ }).click();
     const historyRows = page.locator('[data-testid="agents-history"] li');
@@ -284,15 +365,20 @@ describe('the reference use case "Add `mul` and get it release-ready"', () => {
     assert.deepEqual(await historyRows.getByRole('img', { name: 'done', exact: true }).count(), 2);
     for (const row of await historyRows.all()) {
       const fold = row.locator('button.fold');
-      if (await fold.getAttribute('aria-expanded') === 'false') await fold.click();
+      if ((await fold.getAttribute('aria-expanded')) === 'false') await fold.click();
       await row.getByTestId('agent-cost').waitFor();
     }
     assert.equal(await historyRows.getByTestId('agent-cost').count(), 2);
     assert.equal(await historyRows.getByTestId('agent-took').count(), 2);
-    for (const cost of await historyRows.locator('[data-testid="agent-cost"]').allInnerTexts()) assert.match(cost, /[1-9]/, `a cost above zero: ${cost}`);
-    for (const took of await historyRows.locator('[data-testid="agent-took"]').allInnerTexts()) assert.match(took, /\d/, `a duration: ${took}`);
+    for (const cost of await historyRows.locator('[data-testid="agent-cost"]').allInnerTexts())
+      assert.match(cost, /[1-9]/, `a cost above zero: ${cost}`);
+    for (const took of await historyRows.locator('[data-testid="agent-took"]').allInnerTexts())
+      assert.match(took, /\d/, `a duration: ${took}`);
     assert.equal(await historyRows.locator('[data-testid="agent-report"]').count(), 2);
-    assert.ok(finished.every((a) => a.cost > 0 && a.finishedAt > a.createdAt), JSON.stringify(finished.map((a) => [a.name, a.cost, a.finishedAt - a.createdAt])));
+    assert.ok(
+      finished.every((a) => a.cost > 0 && a.finishedAt > a.createdAt),
+      JSON.stringify(finished.map((a) => [a.name, a.cost, a.finishedAt - a.createdAt])),
+    );
     await h.openPanel('Changes');
     await page.locator('pk-changes-panel').getByText('math.test.ts', { exact: false }).first().waitFor();
     await h.openPanel('Agents');
@@ -306,8 +392,12 @@ describe('the reference use case "Add `mul` and get it release-ready"', () => {
     await agentTranscript.waitFor();
     await agentTranscript.getByText(/Write test\/math\.test\.ts/).waitFor();
     assert.deepEqual(await noteNames(agentTranscript.locator('pk-transcript')), agentNotes);
-    for (const group of await agentTranscript.locator('[data-testid="work-head"][aria-expanded="false"]').all()) await group.click();
-    await agentTranscript.getByText(/node --test test\/\*\.test\.ts|Review src\//).first().waitFor();
+    for (const group of await agentTranscript.locator('[data-testid="work-head"][aria-expanded="false"]').all())
+      await group.click();
+    await agentTranscript
+      .getByText(/node --test test\/\*\.test\.ts|Review src\//)
+      .first()
+      .waitFor();
     assert.deepEqual(app.errors, []);
   });
 });
@@ -315,7 +405,11 @@ describe('the reference use case "Add `mul` and get it release-ready"', () => {
 describe('UC-13: one owner of the agents store', () => {
   it('a second backend on the same data folder starts, reports background agents disabled, and the store is unchanged', async () => {
     const first = await api('/api/health');
-    assert.deepEqual(first.backgroundAgents, { enabled: true }, `the dev backend owns the store: ${JSON.stringify(first.backgroundAgents)}`);
+    assert.deepEqual(
+      first.backgroundAgents,
+      { enabled: true },
+      `the dev backend owns the store: ${JSON.stringify(first.backgroundAgents)}`,
+    );
     const store = join(env.dataDir, 'bg-agents.sqlite');
     const lock = JSON.parse(readFileSync(join(env.dataDir, 'bg-agents.lock'), 'utf8'));
     assert.equal(lock.pid, first.pid, 'the lock names the running backend');
@@ -327,11 +421,20 @@ describe('UC-13: one owner of the agents store', () => {
     await new Promise((resolve) => reservation.close(resolve));
     const second = spawn('node', ['dist/apps/backend/main.js'], {
       cwd: new URL('..', import.meta.url).pathname,
-      env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: String(port), PI_KIT_ORIGIN: env.base },
+      env: {
+        ...process.env,
+        ...env.server,
+        NODE_ENV: 'development',
+        PI_KIT_PORT: String(port),
+        PI_KIT_ORIGIN: env.base,
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     let log = '';
-    for (const stream of [second.stdout, second.stderr]) stream.on('data', (data) => { log = (log + data).slice(-12_000); });
+    for (const stream of [second.stdout, second.stderr])
+      stream.on('data', (data) => {
+        log = (log + data).slice(-12_000);
+      });
     const exited = new Promise((resolve) => second.once('exit', resolve));
     try {
       const headers = { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` };
@@ -340,20 +443,36 @@ describe('UC-13: one owner of the agents store', () => {
       for (;;) {
         if (second.exitCode !== null) throw new Error(`The second backend exited before it answered.\n${log}`);
         try {
-          const res = await fetch(`http://127.0.0.1:${port}/api/health`, { headers, signal: AbortSignal.timeout(1000) });
-          if (res.ok) { health = await res.json(); break; }
-        } catch { /* starting */ }
+          const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+            headers,
+            signal: AbortSignal.timeout(1000),
+          });
+          if (res.ok) {
+            health = await res.json();
+            break;
+          }
+        } catch {
+          /* starting */
+        }
         if (Date.now() > deadline) throw new Error(`The second backend did not start.\n${log}`);
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
       assert.equal(health.backgroundAgents.enabled, false);
       assert.match(health.backgroundAgents.reason, new RegExp(`Another backend \\(pid ${first.pid}\\) owns`));
       assert.match(log, /Background agents are off: Another backend/);
-      assert.deepEqual((await api('/api/health')).backgroundAgents, { enabled: true }, 'the first backend still owns the store');
+      assert.deepEqual(
+        (await api('/api/health')).backgroundAgents,
+        { enabled: true },
+        'the first backend still owns the store',
+      );
       const after = statSync(store);
       assert.equal(after.size, before.size);
       assert.equal(after.mtimeMs, before.mtimeMs);
-      assert.equal(JSON.parse(readFileSync(join(env.dataDir, 'bg-agents.lock'), 'utf8')).pid, first.pid, 'the lock still names the first backend');
+      assert.equal(
+        JSON.parse(readFileSync(join(env.dataDir, 'bg-agents.lock'), 'utf8')).pid,
+        first.pid,
+        'the lock still names the first backend',
+      );
     } finally {
       second.kill('SIGTERM');
       const timer = setTimeout(() => second.kill('SIGKILL'), 5000);

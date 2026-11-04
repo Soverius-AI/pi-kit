@@ -27,7 +27,14 @@ export class PiUpdateService {
     const resolution = piResolution();
     return {
       app: { name: 'pi-kit', version: appVersion(), desktop: process.env['PI_KIT_DESKTOP'] === '1' },
-      pi: { version: pi.VERSION, packageName: PI_PACKAGE, packageDir: pi.getPackageDir(), source: resolution.source, range: resolution.range, notes: resolution.notes },
+      pi: {
+        version: pi.VERSION,
+        packageName: PI_PACKAGE,
+        packageDir: pi.getPackageDir(),
+        source: resolution.source,
+        range: resolution.range,
+        notes: resolution.notes,
+      },
       node: process.versions.node,
     };
   }
@@ -38,7 +45,8 @@ export class PiUpdateService {
     const base = { current, updateAvailable: false, checkedAt: Date.now(), command: 'pi update' };
     if (process.env['PI_OFFLINE']) return { ...base, skipped: 'offline' };
     if (process.env['PI_SKIP_VERSION_CHECK']) return { ...base, skipped: 'disabled' };
-    if (!force && this.cached && Date.now() - this.cached.at < CACHE_MS && this.cached.result.current === current) return this.cached.result;
+    if (!force && this.cached && Date.now() - this.cached.at < CACHE_MS && this.cached.result.current === current)
+      return this.cached.result;
     let result: PiUpdateCheck;
     try {
       const res = await fetch(LATEST_VERSION_URL, {
@@ -66,7 +74,10 @@ export function appVersion(): string {
   if (fromEnv) return fromEnv;
   for (let dir = process.cwd(), i = 0; i < 6; i++, dir = dirname(dir)) {
     try {
-      const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as { name?: string; version?: string };
+      const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+        name?: string;
+        version?: string;
+      };
       if (manifest.name === 'pi-kit' && manifest.version) return manifest.version;
     } catch {
       // keep looking upwards

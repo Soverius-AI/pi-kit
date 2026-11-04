@@ -8,7 +8,16 @@
 // that folder, needs trust) -> a custom server and its reachability check -> The files group -> tooltips -> the sidebar count and `/connect` open the MCP servers section.
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { env, openApp } from './support/app.mjs';
@@ -30,7 +39,14 @@ let other;
 
 async function call(path, init = {}) {
   const { token } = await (await fetch(`${API}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${API}${path}`, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}) } });
+  const res = await fetch(`${API}${path}`, {
+    ...init,
+    headers: {
+      ...init.headers,
+      Authorization: `Bearer ${token}`,
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+  });
   const text = await res.text();
   return { status: res.status, body: text ? JSON.parse(text) : undefined };
 }
@@ -38,7 +54,13 @@ const post = (path, body) => call(path, { method: 'POST', body: JSON.stringify(b
 
 const run = (command, args, options = {}) =>
   new Promise((resolve) => {
-    const child = execFile(command, args, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, ...options }, (error, stdout, stderr) => resolve({ status: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr }));
+    const child = execFile(
+      command,
+      args,
+      { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, ...options },
+      (error, stdout, stderr) =>
+        resolve({ status: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr }),
+    );
     child.stdin.end();
   });
 
@@ -67,7 +89,14 @@ function filesContaining(dir, needle, skip = []) {
 /** `pi mcp list --json` the way a terminal runs it: pi's own CLI against the scratch agent folder, with `pi-kit-secret` on PATH for the credential command. */
 async function piMcpList() {
   const piCli = join(root, 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'bundle', 'cli.js');
-  const terminal = { ...process.env, PI_CODING_AGENT_DIR: world.agent, PI_KIT_SECRET_STORE: `file:${secretsFile}`, PATH: `${launcherDir}:${process.env.PATH}`, PI_OFFLINE: '1', NO_COLOR: '1' };
+  const terminal = {
+    ...process.env,
+    PI_CODING_AGENT_DIR: world.agent,
+    PI_KIT_SECRET_STORE: `file:${secretsFile}`,
+    PATH: `${launcherDir}:${process.env.PATH}`,
+    PI_OFFLINE: '1',
+    NO_COLOR: '1',
+  };
   const listed = await run('node', [piCli, 'mcp', 'list', '--json'], { env: terminal, cwd: world.base });
   let json;
   try {
@@ -83,7 +112,13 @@ before(async () => {
   world = createWorld({
     extraEnv: () => ({
       PI_KIT_NO_BROWSER: '1',
-      PI_KIT_CONNECTOR_URLS: JSON.stringify({ linear: `${mock.url}/mcp`, 'linear/readonly': `${mock.url}/readonly/mcp`, notion: `${mock.url}/mcp`, sentry: `${mock.url}/mcp`, github: `${mock.url}/bearer/mcp` }),
+      PI_KIT_CONNECTOR_URLS: JSON.stringify({
+        linear: `${mock.url}/mcp`,
+        'linear/readonly': `${mock.url}/readonly/mcp`,
+        notion: `${mock.url}/mcp`,
+        sentry: `${mock.url}/mcp`,
+        github: `${mock.url}/bearer/mcp`,
+      }),
     }),
   });
   secretsFile = join(world.base, 'secrets.json');
@@ -91,7 +126,14 @@ before(async () => {
   logFd = openSync(join(world.base, 'connectors-backend.log'), 'w');
   backend = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: root,
-    env: { ...process.env, ...world.env, NODE_ENV: 'development', PI_KIT_PORT: String(PORT), PI_KIT_ORIGIN: env.base, PI_KIT_VERSION: '0.0.0-e2e' },
+    env: {
+      ...process.env,
+      ...world.env,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: String(PORT),
+      PI_KIT_ORIGIN: env.base,
+      PI_KIT_VERSION: '0.0.0-e2e',
+    },
     stdio: ['ignore', logFd, logFd],
     detached: true,
   });
@@ -118,17 +160,22 @@ after(async () => {
 
 const settings = () => app.page.getByRole('dialog', { name: 'Settings' });
 const row = (name) => settings().getByTestId(`mcp-row-${name}`);
-const inState = (name, state, timeout = 60_000) => settings().locator(`[data-testid="mcp-row-${name}"][data-state="${state}"]`).waitFor({ timeout });
-const gone = (name, timeout = 60_000) => settings().getByTestId(`mcp-row-${name}`).waitFor({ state: 'detached', timeout });
+const inState = (name, state, timeout = 60_000) =>
+  settings().locator(`[data-testid="mcp-row-${name}"][data-state="${state}"]`).waitFor({ timeout });
+const gone = (name, timeout = 60_000) =>
+  settings().getByTestId(`mcp-row-${name}`).waitFor({ state: 'detached', timeout });
 const wizard = () => app.page.getByTestId('add-server-wizard');
 async function list() {
   if ((await settings().count()) === 0) await app.h.openSettings();
-  await settings().getByRole('tab', { name: /MCP servers/ }).click();
+  await settings()
+    .getByRole('tab', { name: /MCP servers/ })
+    .click();
   await settings().getByTestId('section-mcp').waitFor();
   await settings().getByTestId('section-mcp').getByRole('tab', { name: 'Servers', exact: true }).click();
 }
 const threadId = async () => (await call('/api/threads')).body[0].id;
-const mcpServer = async (name) => (await call(`/api/mcp?thread=${await threadId()}`)).body.servers.find((s) => s.name === name);
+const mcpServer = async (name) =>
+  (await call(`/api/mcp?thread=${await threadId()}`)).body.servers.find((s) => s.name === name);
 /** The "+" and the gallery: a catalog tile, then "Add and sign in / connect" on its details. `scope` is the gallery's select; `fill` types into the details first. */
 async function add(id, { scope, fill } = {}) {
   await list();
@@ -158,11 +205,23 @@ describe('a clean user config', () => {
     await settings().getByTestId('mcp-empty').waitFor();
     assert.match(await settings().getByTestId('mcp-empty').innerText(), /No MCP servers yet/);
     // the Connectors section is gone from the nav, its count and its catalog moved into this one
-    assert.equal(await settings().getByRole('tab', { name: /^Connectors/ }).count(), 0);
+    assert.equal(
+      await settings()
+        .getByRole('tab', { name: /^Connectors/ })
+        .count(),
+      0,
+    );
     await settings().getByTestId('add-server').click();
     await wizard().getByTestId('tile-linear').waitFor();
-    const tiles = await wizard().locator('.pk-gallery button').evaluateAll((buttons) => buttons.map((b) => b.getAttribute('data-testid')));
-    assert.deepEqual(tiles, ['linear', 'github', 'slack', 'notion', 'sentry', 'atlassian', 'figma'].map((id) => `tile-${id}`).concat('tile-custom'));
+    const tiles = await wizard()
+      .locator('.pk-gallery button')
+      .evaluateAll((buttons) => buttons.map((b) => b.getAttribute('data-testid')));
+    assert.deepEqual(
+      tiles,
+      ['linear', 'github', 'slack', 'notion', 'sentry', 'atlassian', 'figma']
+        .map((id) => `tile-${id}`)
+        .concat('tile-custom'),
+    );
     assert.match(await wizard().innerText(), /unverified|Your own server/);
     assert.equal(existsSync(userFile()), false, 'looking at the gallery wrote nothing');
     await app.page.keyboard.press('Escape');
@@ -188,7 +247,11 @@ describe('Linear: OAuth through the browser', () => {
     assert.equal(mock.registrations.length, 1);
     assert.equal(mock.registrations[0].client_name, 'pi');
     // the entry is pi's own format, in the user file: the URL, nothing secret
-    assert.deepEqual(servers(userFile()).linear, { url: `${mock.url}/mcp`, description: 'Find, create and update issues, projects and comments in Linear.', exposure: 'direct' });
+    assert.deepEqual(servers(userFile()).linear, {
+      url: `${mock.url}/mcp`,
+      description: 'Find, create and update issues, projects and comments in Linear.',
+      exposure: 'direct',
+    });
     assert.equal(existsSync(projectFile()), false);
   });
 
@@ -212,8 +275,16 @@ describe('Linear: OAuth through the browser', () => {
     assert.match(tools, /create_issue/);
     assert.match(await row('linear').innerText(), /1 app/, 'a tool that opens an MCP App is counted');
     // the sign-in left a token pi keeps, and the nav says one server is on
-    assert.ok(Object.keys(stored()).some((key) => key.includes('linear')), 'pi stored the token in mcp-auth.json');
-    assert.match(await settings().getByRole('tab', { name: /MCP servers/ }).innerText(), /1 on/);
+    assert.ok(
+      Object.keys(stored()).some((key) => key.includes('linear')),
+      'pi stored the token in mcp-auth.json',
+    );
+    assert.match(
+      await settings()
+        .getByRole('tab', { name: /MCP servers/ })
+        .innerText(),
+      /1 on/,
+    );
     // the / menu: a group of its own, named like the issue says
     await app.page.keyboard.press('Escape');
     await settings().waitFor({ state: 'detached' });
@@ -236,7 +307,8 @@ describe('Linear: OAuth through the browser', () => {
     await list();
     await row('linear').getByTestId('exposure-linear').selectOption('deferred');
     // The row shows no spinner before the save starts as well as after it ends: wait for the file itself.
-    for (let i = 0; i < 100 && servers(userFile()).linear.exposure !== 'deferred'; i++) await new Promise((resolve) => setTimeout(resolve, 100));
+    for (let i = 0; i < 100 && servers(userFile()).linear.exposure !== 'deferred'; i++)
+      await new Promise((resolve) => setTimeout(resolve, 100));
     assert.equal(servers(userFile()).linear.exposure, 'deferred');
     await inState('linear', 'connected');
     await row('linear').getByTestId('exposure-linear').selectOption('direct');
@@ -249,7 +321,11 @@ describe('Linear: OAuth through the browser', () => {
     await remove('linear');
     await gone('linear');
     assert.equal(servers(userFile()).linear, undefined, 'the entry is gone');
-    assert.deepEqual(Object.keys(stored()).filter((key) => key.includes('linear')), [], 'pi signed out: the token is gone');
+    assert.deepEqual(
+      Object.keys(stored()).filter((key) => key.includes('linear')),
+      [],
+      'pi signed out: the token is gone',
+    );
     const listed = await piMcpList();
     assert.doesNotMatch(JSON.stringify(listed.json ?? listed.stdout), /linear/);
   });
@@ -263,7 +339,12 @@ describe('the sign-in state machine, against the mock authorization server', () 
     assert.equal(answered.redirected, true);
     await inState('notion', 'error');
     assert.match(await row('notion').getByTestId('error-notion').innerText(), /The user denied the request/);
-    assert.equal(await row('notion').getByRole('link', { name: /documentation/ }).getAttribute('href'), 'https://developers.notion.com/guides/mcp/get-started-with-mcp');
+    assert.equal(
+      await row('notion')
+        .getByRole('link', { name: /documentation/ })
+        .getAttribute('href'),
+      'https://developers.notion.com/guides/mcp/get-started-with-mcp',
+    );
     mock.mode = 'approve';
     await row('notion').getByTestId('signin-notion').click();
     await browse('notion');
@@ -357,10 +438,21 @@ describe('a token connector (the example server behind a bearer token)', () => {
     assert.match(await row('github').getByTestId('tools-count-github').innerText(), /2 tools/);
     assert.equal(secrets()['connector-github'], BEARER_TOKEN);
     assert.equal(servers(userFile()).github.headers.Authorization, '!pi-kit-secret get connector-github --bearer');
-    assert.deepEqual(filesContaining(world.base, BEARER_TOKEN, [secretsFile]), [], 'the token is in the credential store only');
+    assert.deepEqual(
+      filesContaining(world.base, BEARER_TOKEN, [secretsFile]),
+      [],
+      'the token is in the credential store only',
+    );
     assert.equal((await app.page.content()).includes(BEARER_TOKEN), false);
-    assert.equal(JSON.stringify((await call(`/api/mcp?thread=${await threadId()}`)).body).includes(BEARER_TOKEN), false);
-    assert.deepEqual(mock.mcpCalls.filter((c) => c.path === '/bearer/mcp' && c.status === 200).length > 0, true, 'the server saw authorized calls');
+    assert.equal(
+      JSON.stringify((await call(`/api/mcp?thread=${await threadId()}`)).body).includes(BEARER_TOKEN),
+      false,
+    );
+    assert.deepEqual(
+      mock.mcpCalls.filter((c) => c.path === '/bearer/mcp' && c.status === 200).length > 0,
+      true,
+      'the server saw authorized calls',
+    );
   });
 
   it('pi mcp list in a terminal resolves the command and connects with the token', async () => {
@@ -384,7 +476,11 @@ describe('project only', () => {
     await wizard().waitFor({ state: 'detached' });
     await browse('sentry');
     await inState('sentry', 'connected');
-    assert.equal(await row('sentry').locator('.chip.off').filter({ hasText: 'project' }).count(), 1, 'the scope chip says project');
+    assert.equal(
+      await row('sentry').locator('.chip.off').filter({ hasText: 'project' }).count(),
+      1,
+      'the scope chip says project',
+    );
     assert.deepEqual(Object.keys(servers(projectFile())), ['sentry']);
     assert.equal(servers(userFile()).sentry, undefined, 'the user file does not have it');
     // another folder: a thread there does not see it
@@ -436,7 +532,11 @@ describe('a server of your own', () => {
     await wizard().waitFor({ state: 'detached' });
     await row('issues').waitFor();
     await inState('issues', 'connected');
-    assert.deepEqual(servers(userFile()).issues, { command: 'node', args: [join(root, 'examples', 'mcp-app-server', 'server.mjs')], description: 'A toy issue tracker' });
+    assert.deepEqual(servers(userFile()).issues, {
+      command: 'node',
+      args: [join(root, 'examples', 'mcp-app-server', 'server.mjs')],
+      description: 'A toy issue tracker',
+    });
     assert.match(await row('issues').innerText(), /A toy issue tracker/);
     await remove('issues');
     await gone('issues');
@@ -464,8 +564,16 @@ describe('a server of your own', () => {
     await inState('mock-docs', 'connected');
     assert.equal(servers(userFile())['mock-docs'].url, `${mock.url}/bearer/mcp`);
     assert.equal(secrets()['mcp-mock-docs-header-Authorization'], `Bearer ${BEARER_TOKEN}`);
-    assert.match(servers(userFile())['mock-docs'].headers.Authorization, /^!pi-kit-secret get mcp-mock-docs-header-Authorization$/, 'the file has the command that prints it');
-    assert.deepEqual(filesContaining(world.base, BEARER_TOKEN, [secretsFile]), [], 'the token is in the credential store only');
+    assert.match(
+      servers(userFile())['mock-docs'].headers.Authorization,
+      /^!pi-kit-secret get mcp-mock-docs-header-Authorization$/,
+      'the file has the command that prints it',
+    );
+    assert.deepEqual(
+      filesContaining(world.base, BEARER_TOKEN, [secretsFile]),
+      [],
+      'the token is in the credential store only',
+    );
     await remove('mock-docs');
     await gone('mock-docs');
   });
@@ -538,13 +646,26 @@ describe('The files, tooltips and the way in', () => {
     await settings().getByTestId('section-mcp').getByRole('tab', { name: 'Configuration', exact: true }).click();
     const files = settings().getByTestId('mcp-files');
     await files.waitFor();
-    assert.match(await files.getByTestId('file-user').innerText(), new RegExp(userFile().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(
+      await files.getByTestId('file-user').innerText(),
+      new RegExp(userFile().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    );
     assert.match(await files.getByTestId('file-project').innerText(), /\.pi\/mcp\.json/);
-    assert.equal(await files.getByRole('button', { name: 'Edit here' }).first().isDisabled(), false, 'the editor is mcp-edit.e2e.mjs');
+    assert.equal(
+      await files.getByRole('button', { name: 'Edit here' }).first().isDisabled(),
+      false,
+      'the editor is mcp-edit.e2e.mjs',
+    );
     await files.getByTestId('open-user').click();
-    await app.page.getByText(/needs the desktop app/).first().waitFor();
+    await app.page
+      .getByText(/needs the desktop app/)
+      .first()
+      .waitFor();
     await files.getByTestId('reveal-project').click();
-    await app.page.getByText(/file manager needs the desktop app/).first().waitFor();
+    await app.page
+      .getByText(/file manager needs the desktop app/)
+      .first()
+      .waitFor();
   });
 
   it('a tooltip shows after its delay, on hover and on keyboard focus, and Escape hides it without closing Settings', async () => {
@@ -576,14 +697,14 @@ describe('getting to the MCP servers', () => {
     await settings().waitFor({ state: 'detached' });
     await app.page.getByTestId('mcp-count').click();
     await settings().getByTestId('section-mcp').waitFor();
-  await settings().getByTestId('section-mcp').getByRole('tab', { name: 'Servers', exact: true }).click();
+    await settings().getByTestId('section-mcp').getByRole('tab', { name: 'Servers', exact: true }).click();
     await app.page.keyboard.press('Escape');
     await settings().waitFor({ state: 'detached' });
     const box = app.page.getByLabel('Message to pi');
     await box.fill('/connect');
     await box.press('Enter');
     await settings().getByTestId('section-mcp').waitFor();
-  await settings().getByTestId('section-mcp').getByRole('tab', { name: 'Servers', exact: true }).click();
+    await settings().getByTestId('section-mcp').getByRole('tab', { name: 'Servers', exact: true }).click();
     assert.match(await app.page.getByRole('tab', { name: /^MCP servers/ }).getAttribute('aria-selected'), /true/);
   });
 });

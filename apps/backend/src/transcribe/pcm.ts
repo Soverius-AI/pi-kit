@@ -28,7 +28,8 @@ export type AudioFormat = 'wav' | 'webm' | 'ogg' | 'mp4' | 'mp3' | 'flac' | 'unk
 export function sniffAudioFormat(bytes: Uint8Array): AudioFormat {
   const ascii = (from: number, to: number): string => String.fromCharCode(...bytes.subarray(from, to));
   if (bytes.length >= 12 && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WAVE') return 'wav';
-  if (bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) return 'webm';
+  if (bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3)
+    return 'webm';
   if (bytes.length >= 4 && ascii(0, 4) === 'OggS') return 'ogg';
   if (bytes.length >= 12 && ascii(4, 8) === 'ftyp') return 'mp4';
   if (bytes.length >= 4 && ascii(0, 4) === 'fLaC') return 'flac';
@@ -51,7 +52,12 @@ export function parseWav(bytes: Uint8Array): MonoAudio {
       let tag = view.getUint16(body, true);
       // WAVE_FORMAT_EXTENSIBLE: the real format is the first two bytes of the sub-format GUID.
       if (tag === 0xfffe && size >= 26) tag = view.getUint16(body + 24, true);
-      format = { tag, channels: view.getUint16(body + 2, true), rate: view.getUint32(body + 4, true), bits: view.getUint16(body + 14, true) };
+      format = {
+        tag,
+        channels: view.getUint16(body + 2, true),
+        rate: view.getUint32(body + 4, true),
+        bits: view.getUint16(body + 14, true),
+      };
     } else if (id === 'data') {
       if (!format) throw new AudioError('The WAV file has data before its format.');
       if (size === 0 || size === 0xffffffff || body + size > bytes.length) size = bytes.length - body;
@@ -62,7 +68,12 @@ export function parseWav(bytes: Uint8Array): MonoAudio {
   throw new AudioError('The WAV file has no audio data.');
 }
 
-function decodeFrames(view: DataView, start: number, size: number, f: { tag: number; channels: number; rate: number; bits: number }): MonoAudio {
+function decodeFrames(
+  view: DataView,
+  start: number,
+  size: number,
+  f: { tag: number; channels: number; rate: number; bits: number },
+): MonoAudio {
   const { tag, channels, rate, bits } = f;
   if (channels < 1 || channels > 8) throw new AudioError(`A WAV file with ${channels} channels is not supported.`, 415);
   if (rate < 1000 || rate > 384_000) throw new AudioError(`A sample rate of ${rate} Hz is not supported.`, 415);

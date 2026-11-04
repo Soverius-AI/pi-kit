@@ -8,9 +8,30 @@ import { FilesService } from './files.service';
 describe('CommandsService.merge', () => {
   const service = new CommandsService(undefined as never, undefined as never);
   const commands = service.merge([
-    { name: 'skill:pdf-tools', description: 'PDFs', source: 'skill', scope: 'user', origin: 'user', path: '/x/SKILL.md' },
-    { name: 'fix-tests', description: 'Fix them', source: 'prompt', scope: 'project', origin: 'project', path: '/x/fix-tests.md' },
-    { name: 'review', description: 'Review the diff', source: 'extension', scope: undefined, origin: 'project', path: '/p/.pi/extensions/git-guard/index.ts' },
+    {
+      name: 'skill:pdf-tools',
+      description: 'PDFs',
+      source: 'skill',
+      scope: 'user',
+      origin: 'user',
+      path: '/x/SKILL.md',
+    },
+    {
+      name: 'fix-tests',
+      description: 'Fix them',
+      source: 'prompt',
+      scope: 'project',
+      origin: 'project',
+      path: '/x/fix-tests.md',
+    },
+    {
+      name: 'review',
+      description: 'Review the diff',
+      source: 'extension',
+      scope: undefined,
+      origin: 'project',
+      path: '/p/.pi/extensions/git-guard/index.ts',
+    },
   ]);
 
   it('lists discovered commands as prompt commands, with a badge-ready origin', () => {
@@ -21,8 +42,17 @@ describe('CommandsService.merge', () => {
     ]);
   });
 
-  it('turns the /mcp command of pi\'s MCP extension into an action that opens the panel', () => {
-    const merged = service.merge([{ name: 'mcp', description: 'Manage MCP servers: sign in, reconnect, enable or disable, and change exposure', source: 'extension', scope: undefined, origin: 'user', path: 'builtin:mcp' }]);
+  it("turns the /mcp command of pi's MCP extension into an action that opens the panel", () => {
+    const merged = service.merge([
+      {
+        name: 'mcp',
+        description: 'Manage MCP servers: sign in, reconnect, enable or disable, and change exposure',
+        source: 'extension',
+        scope: undefined,
+        origin: 'user',
+        path: 'builtin:mcp',
+      },
+    ]);
     expect(merged[0]).toMatchObject({ name: 'mcp', source: 'extension', kind: 'action', origin: 'pi' });
   });
 
@@ -30,11 +60,42 @@ describe('CommandsService.merge', () => {
     const builtins = commands.filter((c) => c.source === 'builtin');
     expect(builtins.every((c) => c.kind === 'action')).toBe(true);
     const names = builtins.map((c) => c.name);
-    for (const name of ['model', 'thinking', 'scoped-models', 'tree', 'fork', 'clone', 'new', 'resume', 'compact', 'name', 'session', 'cost', 'reload', 'export', 'copy', 'settings', 'login', 'logout', 'trust', 'hotkeys', 'changelog', 'quit', 'share', 'bug', 'llama']) {
+    for (const name of [
+      'model',
+      'thinking',
+      'scoped-models',
+      'tree',
+      'fork',
+      'clone',
+      'new',
+      'resume',
+      'compact',
+      'name',
+      'session',
+      'cost',
+      'reload',
+      'export',
+      'copy',
+      'settings',
+      'login',
+      'logout',
+      'trust',
+      'hotkeys',
+      'changelog',
+      'quit',
+      'share',
+      'bug',
+      'llama',
+    ]) {
       expect(names).toContain(name);
     }
-    for (const name of ['share', 'bug']) expect(builtins.find((c) => c.name === name)).toMatchObject({ disabled: true, disabledReason: expect.any(String) });
-    for (const name of ['settings', 'login', 'logout', 'trust', 'scoped-models', 'import', 'llama']) expect(builtins.find((c) => c.name === name)?.disabled).toBeUndefined();
+    for (const name of ['share', 'bug'])
+      expect(builtins.find((c) => c.name === name)).toMatchObject({
+        disabled: true,
+        disabledReason: expect.any(String),
+      });
+    for (const name of ['settings', 'login', 'logout', 'trust', 'scoped-models', 'import', 'llama'])
+      expect(builtins.find((c) => c.name === name)?.disabled).toBeUndefined();
     expect(builtins.find((c) => c.name === 'compact')?.disabled).toBeUndefined();
     expect(builtins.find((c) => c.name === 'compact')?.argumentHint).toBe('[instructions]');
   });
@@ -64,7 +125,8 @@ describe('FilesService', () => {
   });
 
   it('lists the entries of one folder for the Files panel: folders first, nothing ignored', async () => {
-    const bare = (nodes: Awaited<ReturnType<typeof files.children>>) => nodes.map(({ name, path, dir }) => ({ name, path, dir }));
+    const bare = (nodes: Awaited<ReturnType<typeof files.children>>) =>
+      nodes.map(({ name, path, dir }) => ({ name, path, dir }));
     expect(bare(await files.children(cwd))).toEqual([
       { name: 'src', path: 'src', dir: true },
       { name: '.gitignore', path: '.gitignore', dir: false },
@@ -74,7 +136,9 @@ describe('FilesService', () => {
       { name: 'lib', path: 'src/lib', dir: true },
       { name: 'beta.ts', path: 'src/beta.ts', dir: false },
     ]);
-    expect(bare(await files.children(cwd, 'src/lib/'))).toEqual([{ name: 'alpha.ts', path: 'src/lib/alpha.ts', dir: false }]);
+    expect(bare(await files.children(cwd, 'src/lib/'))).toEqual([
+      { name: 'alpha.ts', path: 'src/lib/alpha.ts', dir: false },
+    ]);
     expect(await files.children(cwd, 'nope')).toEqual([]);
   });
 
@@ -87,7 +151,12 @@ describe('FilesService', () => {
 
   it('lists what is ignored, greyed, only when asked: the walk skips, "show ignored" reads the disk (and all of an ignored folder)', async () => {
     const top = await files.children(cwd, '', { showIgnored: true });
-    expect(top.filter((n) => n.ignored).map((n) => n.name).sort()).toEqual(['node_modules', 'secret.log']);
+    expect(
+      top
+        .filter((n) => n.ignored)
+        .map((n) => n.name)
+        .sort(),
+    ).toEqual(['node_modules', 'secret.log']);
     expect(top.find((n) => n.name === 'src')?.ignored).toBeUndefined();
     const inside = await files.children(cwd, 'node_modules', { showIgnored: true });
     expect(inside).toMatchObject([{ name: 'x', path: 'node_modules/x', dir: true, ignored: true }]);

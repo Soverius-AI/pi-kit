@@ -1,7 +1,15 @@
 import { createHash } from 'node:crypto';
 import { parsePatch } from 'diff';
 import type { PiSessionEntry } from '@pi-kit/pi-adapter';
-import { FAIL_SCORE, PASS_SCORE, REPRODUCED_THRESHOLD, type TranscriptCheck, type VerificationResult, type VerifiedFile, parseSkillText } from '@pi-kit/protocol';
+import {
+  FAIL_SCORE,
+  PASS_SCORE,
+  REPRODUCED_THRESHOLD,
+  type TranscriptCheck,
+  type VerificationResult,
+  type VerifiedFile,
+  parseSkillText,
+} from '@pi-kit/protocol';
 import { branchOf } from '../attendant/attendant-text';
 
 /**
@@ -32,31 +40,42 @@ const trimEnd = (line: string): string => line.replace(/[ \t\r]+$/, '');
 
 /** Reads Git's unified diff, including C-quoted paths. Unreadable nonempty output cannot become a passing empty outcome. */
 export function parseDiff(text: string): FileDiff[] {
-  return text.split(/(?=^diff --git )/m).filter((section) => section.trim()).map((section) => {
-    const parsed = parsePatch(section);
-    const patch = parsed[0];
-    const path = patch?.newFileName === '/dev/null' ? patch.oldFileName : patch?.newFileName;
-    if (parsed.length !== 1 || !patch.isGit || !path) throw new Error('The verification diff could not be read completely.');
-    // jsdiff owns filenames and hunks. Git's final blob identity and executable-mode change remain comparison facts.
-    const binary = /^Binary files .* differ$|^GIT binary patch$/m.test(section);
-    const blob = /^index [0-9a-f]+\.\.([0-9a-f]+)/m.exec(section)?.[1];
-    return {
-      path: path.replace(/^[ab]\//, ''),
-      binary: binary ? blob ?? 'binary' : null,
-      mode: /^new mode (\d+)/m.exec(section)?.[1] ?? null,
-      hunks: patch.hunks.map((hunk) => ({
-        removed: hunk.lines.filter((line) => line.startsWith('-')).map((line) => trimEnd(line.slice(1))),
-        added: hunk.lines.filter((line) => line.startsWith('+')).map((line) => trimEnd(line.slice(1))),
-      })),
-    };
-  });
+  return text
+    .split(/(?=^diff --git )/m)
+    .filter((section) => section.trim())
+    .map((section) => {
+      const parsed = parsePatch(section);
+      const patch = parsed[0];
+      const path = patch?.newFileName === '/dev/null' ? patch.oldFileName : patch?.newFileName;
+      if (parsed.length !== 1 || !patch.isGit || !path)
+        throw new Error('The verification diff could not be read completely.');
+      // jsdiff owns filenames and hunks. Git's final blob identity and executable-mode change remain comparison facts.
+      const binary = /^Binary files .* differ$|^GIT binary patch$/m.test(section);
+      const blob = /^index [0-9a-f]+\.\.([0-9a-f]+)/m.exec(section)?.[1];
+      return {
+        path: path.replace(/^[ab]\//, ''),
+        binary: binary ? (blob ?? 'binary') : null,
+        mode: /^new mode (\d+)/m.exec(section)?.[1] ?? null,
+        hunks: patch.hunks.map((hunk) => ({
+          removed: hunk.lines.filter((line) => line.startsWith('-')).map((line) => trimEnd(line.slice(1))),
+          added: hunk.lines.filter((line) => line.startsWith('+')).map((line) => trimEnd(line.slice(1))),
+        })),
+      };
+    });
 }
 
-const hunkLines = (hunk: DiffHunk): string[] => [...hunk.removed.map((l) => `-${l}`), ...hunk.added.map((l) => `+${l}`)];
+const hunkLines = (hunk: DiffHunk): string[] => [
+  ...hunk.removed.map((l) => `-${l}`),
+  ...hunk.added.map((l) => `+${l}`),
+];
 
 /** The changed lines of a file as a bag; a binary file is one line (its blob), a mode change one more. */
 export function fileLines(file: FileDiff): string[] {
-  return [...(file.binary ? [`binary:${file.binary}`] : []), ...(file.mode ? [`mode:${file.mode}`] : []), ...file.hunks.flatMap(hunkLines)];
+  return [
+    ...(file.binary ? [`binary:${file.binary}`] : []),
+    ...(file.mode ? [`mode:${file.mode}`] : []),
+    ...file.hunks.flatMap(hunkLines),
+  ];
 }
 
 /** Dice coefficient of two bags of lines; 1 when both are empty. */
@@ -90,7 +109,9 @@ export interface Comparison {
 /** Matches the hunks of two versions of a file one to one, best match first, and counts those that are at least `REPRODUCED_THRESHOLD` alike. */
 function matchHunks(expected: readonly DiffHunk[], actual: readonly DiffHunk[]): number {
   const pairs: { e: number; a: number; sim: number }[] = [];
-  expected.forEach((e, ei) => actual.forEach((a, ai) => pairs.push({ e: ei, a: ai, sim: dice(hunkLines(e), hunkLines(a)) })));
+  expected.forEach((e, ei) =>
+    actual.forEach((a, ai) => pairs.push({ e: ei, a: ai, sim: dice(hunkLines(e), hunkLines(a)) })),
+  );
   pairs.sort((x, y) => y.sim - x.sim || x.e - y.e || x.a - y.a);
   const usedExpected = new Set<number>();
   const usedActual = new Set<number>();
@@ -115,7 +136,11 @@ export function compareDiffs(expected: readonly FileDiff[], actual: readonly Fil
   const expectedBag: string[] = [];
   const actualBag: string[] = [];
   const unitCount = (f: FileDiff): number => (f.binary || f.mode ? 1 : 0) + f.hunks.length;
-  const units = (f: FileDiff): DiffHunk[] => [...(f.binary ? [{ removed: [], added: [`binary:${f.binary}`] }] : []), ...(f.mode ? [{ removed: [], added: [`mode:${f.mode}`] }] : []), ...f.hunks];
+  const units = (f: FileDiff): DiffHunk[] => [
+    ...(f.binary ? [{ removed: [], added: [`binary:${f.binary}`] }] : []),
+    ...(f.mode ? [{ removed: [], added: [`mode:${f.mode}`] }] : []),
+    ...f.hunks,
+  ];
   for (const e of expected) {
     const a = byPath.get(e.path);
     byPath.delete(e.path);
@@ -123,7 +148,12 @@ export function compareDiffs(expected: readonly FileDiff[], actual: readonly Fil
     expectedHunks += eUnits.length;
     expectedBag.push(...fileLines(e).map((l) => `${e.path}\0${l}`));
     if (!a) {
-      files.push({ path: e.path, status: 'missing', similarity: 0, hunks: { matched: 0, expected: unitCount(e), actual: 0 } });
+      files.push({
+        path: e.path,
+        status: 'missing',
+        similarity: 0,
+        hunks: { matched: 0, expected: unitCount(e), actual: 0 },
+      });
       continue;
     }
     actualBag.push(...fileLines(a).map((l) => `${a.path}\0${l}`));
@@ -133,7 +163,12 @@ export function compareDiffs(expected: readonly FileDiff[], actual: readonly Fil
     matchedHunks += matched;
     const isReproduced = similarity >= REPRODUCED_THRESHOLD;
     if (isReproduced) reproduced += 1;
-    files.push({ path: e.path, status: isReproduced ? (similarity === 1 ? 'same' : 'similar') : 'different', similarity, hunks: { matched, expected: eUnits.length, actual: aUnits.length } });
+    files.push({
+      path: e.path,
+      status: isReproduced ? (similarity === 1 ? 'same' : 'similar') : 'different',
+      similarity,
+      hunks: { matched, expected: eUnits.length, actual: aUnits.length },
+    });
   }
   let actualHunks = files.reduce((n, f) => n + f.hunks.actual, 0);
   let extra = 0;
@@ -141,9 +176,21 @@ export function compareDiffs(expected: readonly FileDiff[], actual: readonly Fil
     extra += 1;
     actualHunks += unitCount(a);
     actualBag.push(...fileLines(a).map((l) => `${a.path}\0${l}`));
-    files.push({ path: a.path, status: 'extra', similarity: 0, hunks: { matched: 0, expected: 0, actual: unitCount(a) } });
+    files.push({
+      path: a.path,
+      status: 'extra',
+      similarity: 0,
+      hunks: { matched: 0, expected: 0, actual: unitCount(a) },
+    });
   }
-  return { files, reproduced, expected: expected.length, extra, hunks: { matched: matchedHunks, expected: expectedHunks, actual: actualHunks }, score: dice(expectedBag, actualBag) };
+  return {
+    files,
+    reproduced,
+    expected: expected.length,
+    extra,
+    hunks: { matched: matchedHunks, expected: expectedHunks, actual: actualHunks },
+    score: dice(expectedBag, actualBag),
+  };
 }
 
 export interface CheckResultFacts {
@@ -155,7 +202,10 @@ export interface CheckResultFacts {
  * The verdict. `failed`: nothing of the outcome was reproduced, or the whole diff is below `FAIL_SCORE` alike. `pass`: every file reproduced, the whole diff at least `PASS_SCORE` alike, and no
  * check that passed in the original thread fails now (a check that failed then and fails again, or was skipped, does not count against the skill). Anything between is `partial`.
  */
-export function verdict(comparison: Pick<Comparison, 'reproduced' | 'expected' | 'score'>, checks: readonly CheckResultFacts[]): VerificationResult {
+export function verdict(
+  comparison: Pick<Comparison, 'reproduced' | 'expected' | 'score'>,
+  checks: readonly CheckResultFacts[],
+): VerificationResult {
   if (comparison.expected > 0 && (comparison.reproduced === 0 || comparison.score < FAIL_SCORE)) return 'failed';
   const regressed = checks.some((c) => c.originalPassed && c.state === 'failed');
   if (comparison.reproduced === comparison.expected && comparison.score >= PASS_SCORE && !regressed) return 'pass';
@@ -181,13 +231,14 @@ export function planChecks(checks: readonly TranscriptCheck[], originalFolders: 
     latest.set(check.command, check);
   }
   const folders = originalFolders.filter((f) => f.length > 1).map((f) => f.replace(/\/+$/, ''));
-  return [...latest.values()]
-    .map((check) => {
-      const planned: PlannedCheck = { command: check.command, originalPassed: check.passed };
-      if (/\[redacted/i.test(check.command)) planned.skip = 'It held a secret that was masked, so it cannot be run as it was.';
-      else if (folders.some((folder) => check.command.includes(folder))) planned.skip = 'It names the original folder by its absolute path, so it would run there.';
-      return planned;
-    });
+  return [...latest.values()].map((check) => {
+    const planned: PlannedCheck = { command: check.command, originalPassed: check.passed };
+    if (/\[redacted/i.test(check.command))
+      planned.skip = 'It held a secret that was masked, so it cannot be run as it was.';
+    else if (folders.some((folder) => check.command.includes(folder)))
+      planned.skip = 'It names the original folder by its absolute path, so it would run there.';
+    return planned;
+  });
 }
 
 // ---- what the replay is given
@@ -230,12 +281,16 @@ export function firstPromptOf(entries: readonly PiSessionEntry[], leafId: string
 }
 
 /** The model the thread last answered with (`provider/id`), if its session says. */
-export function modelOfSession(entries: readonly PiSessionEntry[], leafId: string | null): { provider: string; modelId: string } | undefined {
+export function modelOfSession(
+  entries: readonly PiSessionEntry[],
+  leafId: string | null,
+): { provider: string; modelId: string } | undefined {
   let found: { provider: string; modelId: string } | undefined;
   for (const entry of branchOf(entries, leafId)) {
     if (entry.type !== 'message') continue;
     const message = entry['message'] as Message | undefined;
-    if (message?.role === 'assistant' && message.provider && message.model) found = { provider: message.provider, modelId: message.model };
+    if (message?.role === 'assistant' && message.provider && message.model)
+      found = { provider: message.provider, modelId: message.model };
   }
   return found;
 }
@@ -255,7 +310,10 @@ export function skillHash(text: string): string {
     inBlock = false;
     kept.push(line.trimEnd());
   }
-  return createHash('sha256').update(`${kept.join('\n')}\n---\n${body.trim()}`).digest('hex').slice(0, 16);
+  return createHash('sha256')
+    .update(`${kept.join('\n')}\n---\n${body.trim()}`)
+    .digest('hex')
+    .slice(0, 16);
 }
 
 /** The last `max` characters of a command's output, cut at a line. */

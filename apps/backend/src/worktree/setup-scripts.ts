@@ -18,13 +18,17 @@ export function detectSetupScript(has: (file: string) => boolean): SetupScript |
 }
 
 /** `detectSetupScript` for a folder on disk. */
-export const detectSetupScriptIn = (folder: string): SetupScript | undefined => detectSetupScript((file) => existsSync(join(folder, file)));
+export const detectSetupScriptIn = (folder: string): SetupScript | undefined =>
+  detectSetupScript((file) => existsSync(join(folder, file)));
 
 /**
  * The scripts a project has: the ones saved; else the one its lockfile suggests. `saved` is `null` when nothing was ever configured and `[]` when the
  * person chose none. The detected script is not saved until the person saves the list.
  */
-export function effectiveScripts(options: { saved: SetupScript[] | null; detect: () => SetupScript | undefined }): SetupScript[] {
+export function effectiveScripts(options: {
+  saved: SetupScript[] | null;
+  detect: () => SetupScript | undefined;
+}): SetupScript[] {
   if (options.saved !== null) return options.saved;
   const detected = options.detect();
   return detected ? [detected] : [];
@@ -34,7 +38,10 @@ export function effectiveScripts(options: { saved: SetupScript[] | null; detect:
  * The script a new worktree runs: `requested` `undefined` is the first one (the default), `null` none, a string the script with that id (or name). An id that is not
  * there is a 400, so a script deleted since the page opened is told rather than silently skipped.
  */
-export function pickScript(scripts: readonly SetupScript[], requested: string | null | undefined): SetupScript | undefined {
+export function pickScript(
+  scripts: readonly SetupScript[],
+  requested: string | null | undefined,
+): SetupScript | undefined {
   if (requested === null) return undefined;
   if (requested === undefined) return scripts[0];
   const found = scripts.find((s) => s.id === requested) ?? scripts.find((s) => s.name === requested);

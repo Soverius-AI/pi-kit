@@ -97,7 +97,9 @@ await record('queue', cwd, async (s, events) => {
     sessionManager: SessionManager.create(cwd, sessionDir),
   });
   try {
-    await session.prompt("Use the bash tool to run 'cat note.txt' and then tell me in one short sentence what it contains.");
+    await session.prompt(
+      "Use the bash tool to run 'cat note.txt' and then tell me in one short sentence what it contains.",
+    );
     await session.waitForIdle();
     session.sessionManager.appendSessionInfo('Read the note');
     await session.prompt('Now say the word two.');

@@ -25,7 +25,8 @@ const spawned = [];
 async function ensureBackend() {
   const up = async () => {
     try {
-      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })).ok;
+      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } }))
+        .ok;
     } catch {
       return false;
     }
@@ -33,7 +34,13 @@ async function ensureBackend() {
   if (await up()) return;
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: 'ignore',
     detached: true,
   });
@@ -44,13 +51,21 @@ async function ensureBackend() {
 
 async function post(path, body) {
   const { token } = await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${env.api}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body ?? {}) });
+  const res = await fetch(`${env.api}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body ?? {}),
+  });
   return res.status === 204 ? undefined : res.json();
 }
 
 async function patch(path, body) {
   const { token } = await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${env.api}${path}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+  const res = await fetch(`${env.api}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
   return res.status === 204 ? undefined : res.json();
 }
 
@@ -98,24 +113,39 @@ async function newThreadIn(title) {
   await app.page.getByRole('button', { name: `New thread in ${NAME}` }).click();
   await app.page.getByLabel('Message to pi').waitFor();
   await app.h.settle(500);
-  const created = (await threads()).filter((t) => !t.title && t.messageCount === 0).sort((a, b) => b.createdAt - a.createdAt)[0];
+  const created = (await threads())
+    .filter((t) => !t.title && t.messageCount === 0)
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
   assert.ok(created, 'the new thread is listed');
   await patch(`/api/threads/${created.id}`, { title });
-  await eventually(async () => (await group().locator('.pk-thread', { hasText: title }).count()) > 0, `the row of ${title}`);
+  await eventually(
+    async () => (await group().locator('.pk-thread', { hasText: title }).count()) > 0,
+    `the row of ${title}`,
+  );
   return created.id;
 }
 
 const sessionEntries = async (id) => {
   const { sessionPath } = await api(`/api/threads/${id}`);
-  return readFileSync(sessionPath, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  return readFileSync(sessionPath, 'utf8')
+    .trim()
+    .split('\n')
+    .map((l) => JSON.parse(l));
 };
 
 /** The system messages of a session that carry the "other agents" section, and the notices put in front of the model. */
 const coordination = async (id) => {
   const entries = await sessionEntries(id);
   return {
-    sections: entries.filter((e) => e.type === 'message' && e.message?.role === 'system' && typeof e.message?.sections?.other_agents === 'string').map((e) => e.message.sections.other_agents),
-    notices: entries.filter((e) => e.type === 'custom_message' && e.customType === 'pi-kit:coordination').map((e) => String(e.content)),
+    sections: entries
+      .filter(
+        (e) =>
+          e.type === 'message' && e.message?.role === 'system' && typeof e.message?.sections?.other_agents === 'string',
+      )
+      .map((e) => e.message.sections.other_agents),
+    notices: entries
+      .filter((e) => e.type === 'custom_message' && e.customType === 'pi-kit:coordination')
+      .map((e) => String(e.content)),
   };
 };
 
@@ -141,7 +171,12 @@ async function selectThread(title) {
 const gitHere = (...args) => gitIn(project, ...args).trim();
 
 /** The environment of the pi command line in these tests: the scratch agent folder and nothing of pi-kit's, never the user's own. */
-const cliEnv = () => ({ ...process.env, PI_CODING_AGENT_DIR: env.agentDir, PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1' });
+const cliEnv = () => ({
+  ...process.env,
+  PI_CODING_AGENT_DIR: env.agentDir,
+  PI_OFFLINE: '1',
+  PI_SKIP_VERSION_CHECK: '1',
+});
 
 describe('two threads in one folder', () => {
   let fixId;
@@ -158,15 +193,23 @@ describe('two threads in one folder', () => {
   it('gives pi PI_KIT=1 and its thread id in the shell of the bash tool', async () => {
     await prompt('Use the bash tool to run exactly: echo "id=$PI_KIT_THREAD_ID kit=$PI_KIT" and tell me the output.');
     // Check what bash actually returned: the model can mistype a UUID when restating the output in prose.
-    const result = (await sessionEntries(adapterId)).map((entry) => entry.message).findLast((message) => message?.role === 'toolResult' && message.toolName === 'bash');
+    const result = (await sessionEntries(adapterId))
+      .map((entry) => entry.message)
+      .findLast((message) => message?.role === 'toolResult' && message.toolName === 'bash');
     assert.ok(result, 'pi executed the bash tool');
-    const output = result.content.filter((part) => part.type === 'text').map((part) => part.text).join('\n').trim();
+    const output = result.content
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text)
+      .join('\n')
+      .trim();
     assert.equal(output, `id=${adapterId} kit=1`);
   });
 
   it('adds the section and the notice to the next prompt of a thread whose file another thread wrote', async () => {
     fixId = await newThreadIn('Fix e2e');
-    await prompt('Use the write tool to overwrite src/map.ts with exactly this one line: export const mapped = true;\nThen say done in one short sentence.');
+    await prompt(
+      'Use the write tool to overwrite src/map.ts with exactly this one line: export const mapped = true;\nThen say done in one short sentence.',
+    );
     assert.match(readFileSync(join(project, 'src', 'map.ts'), 'utf8'), /mapped = true/);
     // Fix e2e had a thread next to it (Reporting adapter, active a moment ago): its own prompt carries the section.
     const fix = await coordination(fixId);
@@ -182,7 +225,11 @@ describe('two threads in one folder', () => {
     const section = sections[0];
     assert.match(section, /Other agents in this workspace/);
     assert.match(section, /"Fix e2e" \((running|idle), this same folder\): edited src\/map\.ts/);
-    for (const rule of ['Do not edit a file another agent is editing without saying so first.', 'Prefer small, self-contained changes.', 'If a conflict is likely, say so in the answer instead of guessing.']) {
+    for (const rule of [
+      'Do not edit a file another agent is editing without saying so first.',
+      'Prefer small, self-contained changes.',
+      'If a conflict is likely, say so in the answer instead of guessing.',
+    ]) {
       assert.ok(section.includes(rule), rule);
     }
     assert.deepEqual(notices, ['*Fix e2e* changed `src/map.ts` since you last read it.']);
@@ -217,23 +264,33 @@ describe('two threads in one folder', () => {
     assert.match(await app.page.getByTestId('others').innerText(), /Fix e2e/);
     // The leases are the backend's: the same thing over the API.
     const state = await api(`/api/threads/${adapterId}/coordination`);
-    assert.deepEqual(state.leases.map((l) => [l.path, l.title]), [['src/map.ts', 'Fix e2e']]);
+    assert.deepEqual(
+      state.leases.map((l) => [l.path, l.title]),
+      [['src/map.ts', 'Fix e2e']],
+    );
     await app.h.closePanel();
   });
 
   it('lists a pi started in a terminal in the same folder, without details', async () => {
     // What the pi command line writes: a session file in the project folder, changed just now.
-    const out = spawnSync('node', [PI_CLI, '--no-extensions', '--no-skills', '--no-prompt-templates', '-p', 'Reply with the single word hi.'], {
-      cwd: project,
-      env: cliEnv(),
-      encoding: 'utf8',
-      
-    });
+    const out = spawnSync(
+      'node',
+      [PI_CLI, '--no-extensions', '--no-skills', '--no-prompt-templates', '-p', 'Reply with the single word hi.'],
+      {
+        cwd: project,
+        env: cliEnv(),
+        encoding: 'utf8',
+      },
+    );
     assert.equal(out.status, 0, out.stderr);
-    const terminal = await eventually(async () => {
-      const state = await api(`/api/threads/${adapterId}/coordination`);
-      return state.others.find((o) => o.state === 'terminal');
-    }, 'the terminal session among the other agents', 30_000);
+    const terminal = await eventually(
+      async () => {
+        const state = await api(`/api/threads/${adapterId}/coordination`);
+        return state.others.find((o) => o.state === 'terminal');
+      },
+      'the terminal session among the other agents',
+      30_000,
+    );
     assert.equal(terminal.relation, 'same-folder');
     // And in the prompt: a line without file details.
     await prompt('Say hello a third time in one short sentence.');
@@ -271,11 +328,18 @@ describe('a thread in a worktree', () => {
     await app.page.getByTestId('new-thread-menu').click();
     await app.page.getByTestId('new-in-worktree').click();
     await app.page.getByTestId('where-row').waitFor();
-    assert.equal(await app.page.getByTestId('where-worktree').getAttribute('aria-checked'), 'true', 'the row shows Worktree');
+    assert.equal(
+      await app.page.getByTestId('where-worktree').getAttribute('aria-checked'),
+      'true',
+      'the row shows Worktree',
+    );
     const draft = (await threads()).find((t) => !before.has(t.id));
     assert.ok(draft && !draft.worktree, 'the empty thread has no worktree before the first message');
     await prompt(message);
-    return eventually(async () => (await threads()).find((t) => t.id === draft.id && t.worktree?.exists), 'the thread in its worktree');
+    return eventually(
+      async () => (await threads()).find((t) => t.id === draft.id && t.worktree?.exists),
+      'the thread in its worktree',
+    );
   }
 
   it('is made from the + menu: its own branch and folder under the worktree root, named from the first message, in the sidebar and in the crumbs', async () => {
@@ -299,7 +363,9 @@ describe('a thread in a worktree', () => {
   });
 
   it('runs pi in the worktree and binds the Files and Changes panels to it', async () => {
-    await prompt('Use the write tool to create docs/wt.md containing exactly: # From the worktree\nThen say done in one short sentence.');
+    await prompt(
+      'Use the write tool to create docs/wt.md containing exactly: # From the worktree\nThen say done in one short sentence.',
+    );
     assert.ok(existsSync(join(path, 'docs', 'wt.md')), 'the file is in the worktree');
     assert.ok(!existsSync(join(project, 'docs', 'wt.md')), 'and not in the main checkout');
     const stats = await api(`/api/threads/${id}/stats`);
@@ -314,23 +380,47 @@ describe('a thread in a worktree', () => {
 
   it('is found again by `pi -c` in the worktree folder: the same session, continued', async () => {
     const before = await api(`/api/threads/${id}`);
-    const out = spawnSync('node', [PI_CLI, '-c', '--no-extensions', '--no-skills', '--no-prompt-templates', '-p', 'Reply with the single word pong.'], {
-      cwd: path,
-      env: cliEnv(),
-      encoding: 'utf8',
-      
-    });
+    const out = spawnSync(
+      'node',
+      [
+        PI_CLI,
+        '-c',
+        '--no-extensions',
+        '--no-skills',
+        '--no-prompt-templates',
+        '-p',
+        'Reply with the single word pong.',
+      ],
+      {
+        cwd: path,
+        env: cliEnv(),
+        encoding: 'utf8',
+      },
+    );
     assert.equal(out.status, 0, out.stderr);
     // The CLI appended to the thread's own session file, so the app's thread has the new messages and no second thread appeared.
     const entries = await sessionEntries(id);
-    const users = entries.filter((e) => e.type === 'message' && e.message.role === 'user').map((e) => JSON.stringify(e.message.content));
-    assert.ok(users.some((u) => u.includes('single word pong')), 'the CLI prompt is in the thread session');
-    const after = await eventually(async () => {
-      const t = await api(`/api/threads/${id}`);
-      return t.messageCount > before.messageCount ? t : undefined;
-    }, 'the app to see the CLI messages', 30_000);
+    const users = entries
+      .filter((e) => e.type === 'message' && e.message.role === 'user')
+      .map((e) => JSON.stringify(e.message.content));
+    assert.ok(
+      users.some((u) => u.includes('single word pong')),
+      'the CLI prompt is in the thread session',
+    );
+    const after = await eventually(
+      async () => {
+        const t = await api(`/api/threads/${id}`);
+        return t.messageCount > before.messageCount ? t : undefined;
+      },
+      'the app to see the CLI messages',
+      30_000,
+    );
     assert.equal(after.sessionPath, before.sessionPath);
-    assert.equal((await threads()).filter((t) => t.worktree?.path === path).length, 1, 'no second thread for the same worktree');
+    assert.equal(
+      (await threads()).filter((t) => t.worktree?.path === path).length,
+      1,
+      'no second thread for the same worktree',
+    );
   });
 
   it('syncs with the base: behind by one commit, then brought in with a merge', async () => {
@@ -343,7 +433,7 @@ describe('a thread in a worktree', () => {
     assert.match(await app.page.getByTestId('worktree-branch').innerText(), /pi-kit\/say-ok-in-one-short-sentence/);
     await app.page.getByTestId('do-sync').click();
     await app.page.getByTestId('sync-result').waitFor();
-    assert.ok(existsSync(join(path, 'src', 'other.ts')), 'main\'s commit is in the worktree');
+    assert.ok(existsSync(join(path, 'src', 'other.ts')), "main's commit is in the worktree");
     assert.match(await app.page.getByTestId('sync-result').innerText(), /main is in/);
     await app.page.getByRole('button', { name: 'Done', exact: true }).click();
   });
@@ -354,7 +444,12 @@ describe('a thread in a worktree', () => {
     const message = app.page.getByTestId('commit-message');
     await message.waitFor();
     // The proposal is fetched after the dialog opens; under load it lands a moment after the field does.
-    await app.page.waitForFunction(() => (document.querySelector('[data-testid="commit-message"]')?.value ?? '').includes('wt.md'), undefined).catch(() => undefined);
+    await app.page
+      .waitForFunction(
+        () => (document.querySelector('[data-testid="commit-message"]')?.value ?? '').includes('wt.md'),
+        undefined,
+      )
+      .catch(() => undefined);
     assert.ok((await message.inputValue()).includes('wt.md'), 'the proposed message names the changed file');
     await message.fill('Document the worktree\n\nWritten by pi in its own worktree.');
     assert.ok(await app.page.getByTestId('remove-after').isChecked(), 'removing the worktree is offered, on');
@@ -362,15 +457,25 @@ describe('a thread in a worktree', () => {
     await app.page.getByTestId('merge-result').waitFor();
     // A merge commit on main: two parents, the thread's commit among its ancestors, the file in the tree.
     assert.equal(gitHere('rev-parse', '--abbrev-ref', 'HEAD'), 'main');
-    assert.equal(gitHere('rev-list', '--parents', '-n', '1', 'HEAD').split(' ').length, 3, 'a merge commit has two parents');
+    assert.equal(
+      gitHere('rev-list', '--parents', '-n', '1', 'HEAD').split(' ').length,
+      3,
+      'a merge commit has two parents',
+    );
     assert.equal(gitHere('log', '-1', '--format=%s'), `Merge ${branch} into main`);
-    assert.ok(gitHere('log', '--format=%s', 'main').split('\n').includes('Document the worktree'), 'the edited commit message is on main');
+    assert.ok(
+      gitHere('log', '--format=%s', 'main').split('\n').includes('Document the worktree'),
+      'the edited commit message is on main',
+    );
     assert.equal(gitHere('show', 'main:docs/wt.md'), '# From the worktree');
     // The worktree folder and its branch are gone; the thread carries on in the project, without a badge.
     assert.ok(!existsSync(path), 'the worktree folder is removed');
     assert.equal(gitHere('branch', '--list', branch), '');
     await app.page.getByRole('button', { name: 'Done', exact: true }).click();
-    await eventually(async () => (await rowOf(WT_TITLE).getByTestId('worktree-badge').count()) === 0, 'the badge to go');
+    await eventually(
+      async () => (await rowOf(WT_TITLE).getByTestId('worktree-badge').count()) === 0,
+      'the badge to go',
+    );
     const thread = await byTitle(WT_TITLE);
     assert.equal(thread.worktree.exists, false);
     assert.equal(thread.cwd, project);
@@ -424,7 +529,13 @@ describe('a thread in a worktree', () => {
     await menuOf(title).locator('summary').click();
     await menuOf(title).getByRole('button', { name: 'Archive' }).first().click();
     await app.page.getByTestId('archive-dialog').waitFor();
-    assert.ok(await app.page.getByTestId('keep-worktree').getAttribute('aria-pressed').then((v) => v === 'true'), 'keep is the default');
+    assert.ok(
+      await app.page
+        .getByTestId('keep-worktree')
+        .getAttribute('aria-pressed')
+        .then((v) => v === 'true'),
+      'keep is the default',
+    );
     await app.page.getByTestId('remove-worktree').click();
     await app.page.getByTestId('confirm-archive').click();
     await eventually(async () => !existsSync(thread.worktree.path), 'the worktree folder to be removed');
@@ -438,10 +549,21 @@ describe('a thread in a worktree', () => {
     // The shared scratch project is trusted by path (PI_KIT_TRUSTED_CWDS) and has the test extension in `.pi/extensions`; its worktree is a folder elsewhere with the same resources.
     const made = await post('/api/threads', { cwd: env.project, worktree: {} });
     assert.ok(made.worktree?.exists, JSON.stringify(made));
-    assert.ok(existsSync(join(made.worktree.path, '.pi', 'extensions', 'pk-hitl.ts')), 'the worktree has the project extension');
+    assert.ok(
+      existsSync(join(made.worktree.path, '.pi', 'extensions', 'pk-hitl.ts')),
+      'the worktree has the project extension',
+    );
     const commands = await api(`/api/threads/${made.id}/commands`);
-    assert.ok(commands.some((c) => c.name === 'hitl-confirm'), 'the project extension loaded in the worktree, so its trust was inherited');
-    const res = await fetch(`${env.api}/api/threads/${made.id}?worktree=force`, { method: 'DELETE', headers: { Authorization: `Bearer ${(await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json()).token}` } });
+    assert.ok(
+      commands.some((c) => c.name === 'hitl-confirm'),
+      'the project extension loaded in the worktree, so its trust was inherited',
+    );
+    const res = await fetch(`${env.api}/api/threads/${made.id}?worktree=force`, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${(await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json()).token}`,
+      },
+    });
     assert.equal(res.status, 204);
     assert.ok(!existsSync(made.worktree.path), 'deleting with the worktree removed its folder');
   });
@@ -451,7 +573,11 @@ describe('a thread in a worktree', () => {
     const box = app.page.getByLabel('Message to pi');
     await box.fill('/worktree new');
     await box.press('Enter');
-    const made = await eventually(async () => (await threads()).find((t) => t.worktree?.exists && !t.title), 'the thread from /worktree new', 60_000);
+    const made = await eventually(
+      async () => (await threads()).find((t) => t.worktree?.exists && !t.title),
+      'the thread from /worktree new',
+      60_000,
+    );
     assert.ok(made.worktree.path.startsWith(env.server.PI_KIT_WORKTREE_ROOT));
     const dialog = await app.h.openSettings('Projects');
     // The project's own page holds them: the folder, and the setup scripts, of which the first is the command typed into a new worktree's terminal.
@@ -462,7 +588,10 @@ describe('a thread in a worktree', () => {
     await dialog.getByTestId('script-name').fill('Printf');
     await dialog.getByTestId('script-command').fill(SETUP);
     await dialog.getByTestId('script-save').click();
-    await eventually(async () => (await api('/api/workspaces')).find((w) => w.name === NAME)?.worktree?.setup === SETUP, 'the setup command to be saved');
+    await eventually(
+      async () => (await api('/api/workspaces')).find((w) => w.name === NAME)?.worktree?.setup === SETUP,
+      'the setup command to be saved',
+    );
     const settings = (await api('/api/workspaces')).find((w) => w.name === NAME).worktree;
     assert.equal(settings.git, true);
     assert.equal(settings.defaultRoot, env.server.PI_KIT_WORKTREE_ROOT);
@@ -475,7 +604,10 @@ describe('a thread in a worktree', () => {
     setTimeout(() => abort.abort(), 8000);
     let seen = '';
     try {
-      const res = await fetch(`${env.api}/api/workspaces/${encodeURIComponent(withSetup.worktree.path)}/terminal/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
+      const res = await fetch(
+        `${env.api}/api/workspaces/${encodeURIComponent(withSetup.worktree.path)}/terminal/stream`,
+        { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal },
+      );
       for await (const chunk of res.body) {
         seen += Buffer.from(chunk).toString('utf8');
         if (seen.includes('setup:ok')) break;

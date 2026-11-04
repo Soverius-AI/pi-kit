@@ -11,7 +11,11 @@ import { floatToPcm16 } from './pcm';
 import { wavFile } from './wav.testing';
 import { TranscribeService } from './transcribe.service';
 
-const tone = (seconds: number, rate = 16000, amplitude = 0.4): Float32Array => Float32Array.from({ length: Math.round(rate * seconds) }, (_, i) => amplitude * Math.sin((2 * Math.PI * 300 * i) / rate));
+const tone = (seconds: number, rate = 16000, amplitude = 0.4): Float32Array =>
+  Float32Array.from(
+    { length: Math.round(rate * seconds) },
+    (_, i) => amplitude * Math.sin((2 * Math.PI * 300 * i) / rate),
+  );
 const wavOf = (samples: Float32Array, rate = 16000): Uint8Array => wavFile(floatToPcm16(samples), { rate });
 
 describe('TranscribeService with the test engine', () => {
@@ -38,7 +42,8 @@ describe('TranscribeService with the test engine', () => {
 
   const download = async () => {
     service.startDownload();
-    for (let i = 0; i < 100 && service.status().model.state !== 'ready'; i++) await new Promise((r) => setTimeout(r, 10));
+    for (let i = 0; i < 100 && service.status().model.state !== 'ready'; i++)
+      await new Promise((r) => setTimeout(r, 10));
     expect(service.status().model.state).toBe('ready');
   };
 
@@ -62,7 +67,11 @@ describe('TranscribeService with the test engine', () => {
 
   it('answers silence and clicks with no text, without asking the engine', async () => {
     await download();
-    expect(await service.transcribe(wavOf(new Float32Array(32000)), undefined)).toMatchObject({ text: '', language: '', durationMs: 2000 });
+    expect(await service.transcribe(wavOf(new Float32Array(32000)), undefined)).toMatchObject({
+      text: '',
+      language: '',
+      durationMs: 2000,
+    });
     expect((await service.transcribe(wavOf(tone(0.05)), undefined)).text).toBe('');
     expect(service.status().loaded).toBe(false);
   });
@@ -89,7 +98,8 @@ describe('TranscribeService with the test engine', () => {
   it('reports a bad recording as an error event, not a thrown exception', async () => {
     await download();
     const events: TranscribeStreamEvent[] = [];
-    for await (const event of service.streamRecording(new TextEncoder().encode('definitely not audio'), undefined)) events.push(event);
+    for await (const event of service.streamRecording(new TextEncoder().encode('definitely not audio'), undefined))
+      events.push(event);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'error' });
   });
@@ -156,17 +166,20 @@ describe('TranscribeService with the test engine', () => {
 });
 
 // The real model, when a copy is at hand: PI_KIT_WHISTLE_MODEL=/path/to/whistle.cact PI_KIT_WHISTLE_WAV=/path/to/speech.wav
-describe.skipIf(!process.env['PI_KIT_WHISTLE_MODEL'] || !process.env['PI_KIT_WHISTLE_WAV'])('Whistle itself (needs the model file and a recording)', () => {
-  it('transcribes a recording through the needle WASM engine', async () => {
-    const { NeedleEngine } = await import('./needle-engine');
-    const { decodeAudio } = await import('./audio-decode');
-    const engine = await NeedleEngine.create(process.env['PI_KIT_WHISTLE_MODEL'] as string);
-    try {
-      const pcm = await decodeAudio(new Uint8Array(readFileSync(process.env['PI_KIT_WHISTLE_WAV'] as string)));
-      const result = await engine.transcribe(pcm, { language: 'en' });
-      expect(result.text.length).toBeGreaterThan(5);
-    } finally {
-      await engine.close();
-    }
-  });
-});
+describe.skipIf(!process.env['PI_KIT_WHISTLE_MODEL'] || !process.env['PI_KIT_WHISTLE_WAV'])(
+  'Whistle itself (needs the model file and a recording)',
+  () => {
+    it('transcribes a recording through the needle WASM engine', async () => {
+      const { NeedleEngine } = await import('./needle-engine');
+      const { decodeAudio } = await import('./audio-decode');
+      const engine = await NeedleEngine.create(process.env['PI_KIT_WHISTLE_MODEL'] as string);
+      try {
+        const pcm = await decodeAudio(new Uint8Array(readFileSync(process.env['PI_KIT_WHISTLE_WAV'] as string)));
+        const result = await engine.transcribe(pcm, { language: 'en' });
+        expect(result.text.length).toBeGreaterThan(5);
+      } finally {
+        await engine.close();
+      }
+    });
+  },
+);

@@ -1,5 +1,15 @@
 import type { PiSessionEntry } from '@pi-kit/pi-adapter';
-import { REVIEW_ENTRY_TYPE, ReviewBatchSchema, SKILLS_ENTRY_TYPE, SkillsEntrySchema, type RedactionPattern, type ThreadTranscript, type TranscriptAnswer, type TranscriptTurn, redactText } from '@pi-kit/protocol';
+import {
+  REVIEW_ENTRY_TYPE,
+  ReviewBatchSchema,
+  SKILLS_ENTRY_TYPE,
+  SkillsEntrySchema,
+  type RedactionPattern,
+  type ThreadTranscript,
+  type TranscriptAnswer,
+  type TranscriptTurn,
+  redactText,
+} from '@pi-kit/protocol';
 import { branchOf } from '../attendant/attendant-text';
 import { normalizeToolPath } from '../changes/touched';
 
@@ -136,7 +146,8 @@ const timeOf = (entry: PiSessionEntry): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
-const tail = (text: string, max: number): string => (text.length > max ? `…${text.slice(text.length - max + 1)}` : text);
+const tail = (text: string, max: number): string =>
+  text.length > max ? `…${text.slice(text.length - max + 1)}` : text;
 
 export function reduceTranscript(input: ReduceInput): ThreadTranscript {
   const prompts: string[] = [];
@@ -154,12 +165,21 @@ export function reduceTranscript(input: ReduceInput): ThreadTranscript {
   for (const entry of branchOf(input.entries, input.leafId)) {
     if (entry.type === 'custom' && entry['customType'] === REVIEW_ENTRY_TYPE) {
       const batch = ReviewBatchSchema.safeParse(entry['data']);
-      if (batch.success) pendingReview = batch.data.comments.slice(0, TURN_COMMENTS).map((c) => ({ file: c.file, side: c.side, line: c.line, ...(c.endLine !== undefined ? { endLine: c.endLine } : {}), text: squeeze(c.text, COMMENT_CHARS), snippet: squeeze(c.snippet, COMMENT_CHARS) }));
+      if (batch.success)
+        pendingReview = batch.data.comments.slice(0, TURN_COMMENTS).map((c) => ({
+          file: c.file,
+          side: c.side,
+          line: c.line,
+          ...(c.endLine !== undefined ? { endLine: c.endLine } : {}),
+          text: squeeze(c.text, COMMENT_CHARS),
+          snippet: squeeze(c.snippet, COMMENT_CHARS),
+        }));
       continue;
     }
     if (entry.type === 'custom' && entry['customType'] === SKILLS_ENTRY_TYPE) {
       const chips = SkillsEntrySchema.safeParse(entry['data']);
-      if (chips.success) pendingChips = { chips: chips.data.chips.map((c) => ({ kind: c.kind, name: c.name })), text: chips.data.text };
+      if (chips.success)
+        pendingChips = { chips: chips.data.chips.map((c) => ({ kind: c.kind, name: c.name })), text: chips.data.text };
       continue;
     }
     if (entry.type !== 'message') continue;
@@ -195,7 +215,12 @@ export function reduceTranscript(input: ReduceInput): ThreadTranscript {
       if (said) lastAssistant = squeeze(said, 2000);
       for (const block of message.content as Block[]) {
         if (block.type !== 'toolCall' || !block.name) continue;
-        const step: Step = { n: steps.length + 1, tool: block.name, target: targetOf(block.arguments), outcome: 'unknown' };
+        const step: Step = {
+          n: steps.length + 1,
+          tool: block.name,
+          target: targetOf(block.arguments),
+          outcome: 'unknown',
+        };
         steps.push(step);
         toolCalls += 1;
         if (current) {
@@ -215,7 +240,13 @@ export function reduceTranscript(input: ReduceInput): ThreadTranscript {
       }
     } else if (message.role === 'bashExecution' && typeof message.command === 'string') {
       // A `!command` the person ran themselves: it is a step like any other, and a check when it is one.
-      steps.push({ n: steps.length + 1, tool: 'bash', target: squeeze(message.command, TARGET_CHARS), outcome: message.cancelled ? 'unknown' : message.exitCode === 0 ? 'ok' : 'error', ...(message.exitCode ? { message: `exit code ${message.exitCode}` } : {}) });
+      steps.push({
+        n: steps.length + 1,
+        tool: 'bash',
+        target: squeeze(message.command, TARGET_CHARS),
+        outcome: message.cancelled ? 'unknown' : message.exitCode === 0 ? 'ok' : 'error',
+        ...(message.exitCode ? { message: `exit code ${message.exitCode}` } : {}),
+      });
     }
     if (at !== null) lastAt = at;
   }
@@ -246,15 +277,29 @@ export function reduceTranscript(input: ReduceInput): ThreadTranscript {
     .filter((s) => s.outcome === 'error')
     .map((s) => {
       const later = steps.find((l) => l.n > s.n && l.outcome === 'ok' && l.tool === s.tool && l.target === s.target);
-      return { step: s.n, tool: s.tool, target: s.target, message: s.message ?? 'The tool failed.', recovered: later !== undefined, recoveredBy: later?.n ?? null };
+      return {
+        step: s.n,
+        tool: s.tool,
+        target: s.target,
+        message: s.message ?? 'The tool failed.',
+        recovered: later !== undefined,
+        recoveredBy: later?.n ?? null,
+      };
     });
-  const checks = steps.filter((s) => s.tool === 'bash' && s.target !== null && s.outcome !== 'unknown' && isCheckCommand(s.target)).map((s) => ({ step: s.n, command: s.target as string, passed: s.outcome === 'ok' }));
+  const checks = steps
+    .filter((s) => s.tool === 'bash' && s.target !== null && s.outcome !== 'unknown' && isCheckCommand(s.target))
+    .map((s) => ({ step: s.n, command: s.target as string, passed: s.outcome === 'ok' }));
 
   let truncated = false;
   let listed: Step[] = steps;
   if (steps.length > MAX_STEPS) {
     truncated = true;
-    const keep = new Set<number>([...steps.slice(0, HEAD_STEPS).map((s) => s.n), ...steps.slice(-(MAX_STEPS - HEAD_STEPS)).map((s) => s.n), ...errors.map((e) => e.step), ...checks.map((c) => c.step)]);
+    const keep = new Set<number>([
+      ...steps.slice(0, HEAD_STEPS).map((s) => s.n),
+      ...steps.slice(-(MAX_STEPS - HEAD_STEPS)).map((s) => s.n),
+      ...errors.map((e) => e.step),
+      ...checks.map((c) => c.step),
+    ]);
     listed = steps.filter((s) => keep.has(s.n));
   }
 
@@ -287,7 +332,10 @@ export function reduceTranscript(input: ReduceInput): ThreadTranscript {
 }
 
 /** Every string of the transcript through the redaction pass; the count of masked places is recorded in the result. */
-export function redactTranscript(transcript: ThreadTranscript, patterns: readonly RedactionPattern[] = []): ThreadTranscript {
+export function redactTranscript(
+  transcript: ThreadTranscript,
+  patterns: readonly RedactionPattern[] = [],
+): ThreadTranscript {
   let count = 0;
   const pass = (text: string): string => {
     const result = redactText(text, patterns);
@@ -306,8 +354,14 @@ export function redactTranscript(transcript: ThreadTranscript, patterns: readonl
       text: quiet(t.text),
       files: t.files.map(pass),
       previous: maybe(t.previous),
-      review: t.review ? t.review.map((c) => ({ ...c, file: pass(c.file), text: pass(c.text), snippet: pass(c.snippet) })) : null,
-      answers: t.answers.map((a) => ({ ...a, title: pass(a.title), ...(a.value !== undefined ? { value: pass(a.value) } : {}) })),
+      review: t.review
+        ? t.review.map((c) => ({ ...c, file: pass(c.file), text: pass(c.text), snippet: pass(c.snippet) }))
+        : null,
+      answers: t.answers.map((a) => ({
+        ...a,
+        title: pass(a.title),
+        ...(a.value !== undefined ? { value: pass(a.value) } : {}),
+      })),
     })),
     steps: transcript.steps.map((s) => ({ ...s, target: maybe(s.target) })),
     errors: transcript.errors.map((e) => ({ ...e, target: maybe(e.target), message: pass(e.message) })),

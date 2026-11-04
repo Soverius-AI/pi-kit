@@ -6,7 +6,16 @@ import { dirname, join } from 'node:path';
  * a provider with a base URL, the API pi speaks to it, a dummy key (the servers ignore it, pi needs one to count the provider as usable) and the model ids.
  * Everything else in the file stays as it is. The file is replaced atomically and keeps its mode (new files are 0600: `models.json` may hold keys).
  */
-export function saveLocalProvider(agentDir: string, input: { provider: string; baseUrl: string; models: readonly string[]; modelDetails?: Record<string, Record<string, unknown>>; providerDetails?: Record<string, unknown> }): { path: string; models: number } {
+export function saveLocalProvider(
+  agentDir: string,
+  input: {
+    provider: string;
+    baseUrl: string;
+    models: readonly string[];
+    modelDetails?: Record<string, Record<string, unknown>>;
+    providerDetails?: Record<string, unknown>;
+  },
+): { path: string; models: number } {
   const path = join(agentDir, 'models.json');
   let file: { providers?: Record<string, Record<string, unknown>>; [key: string]: unknown } = {};
   if (existsSync(path)) {
@@ -16,7 +25,10 @@ export function saveLocalProvider(agentDir: string, input: { provider: string; b
       file = parsed as typeof file;
     } catch (error) {
       // Never overwrite a file we cannot read: it is the user's.
-      throw new Error(`${path} is not valid JSON (${error instanceof Error ? error.message : String(error)}). Fix or remove it, then try again.`, { cause: error });
+      throw new Error(
+        `${path} is not valid JSON (${error instanceof Error ? error.message : String(error)}). Fix or remove it, then try again.`,
+        { cause: error },
+      );
     }
   }
   const providers = { ...(file.providers ?? {}) };
@@ -25,12 +37,26 @@ export function saveLocalProvider(agentDir: string, input: { provider: string; b
   const ids = [...new Set(input.models)];
   // A model the file already describes keeps its description; new ids are added as bare entries.
   const models = ids.map((id) => ({ ...(known.find((m) => m?.id === id) ?? {}), ...input.modelDetails?.[id], id }));
-  providers[input.provider] = { ...previous, baseUrl: input.baseUrl, api: previous['api'] ?? 'openai-completions', apiKey: previous['apiKey'] ?? 'local', ...input.providerDetails, models };
-  const next = { ...(file['$schema'] === undefined && !existsSync(path) ? { $schema: 'https://pi.dev/schemas/models.schema.json' } : {}), ...file, providers };
+  providers[input.provider] = {
+    ...previous,
+    baseUrl: input.baseUrl,
+    api: previous['api'] ?? 'openai-completions',
+    apiKey: previous['apiKey'] ?? 'local',
+    ...input.providerDetails,
+    models,
+  };
+  const next = {
+    ...(file['$schema'] === undefined && !existsSync(path)
+      ? { $schema: 'https://pi.dev/schemas/models.schema.json' }
+      : {}),
+    ...file,
+    providers,
+  };
 
   mkdirSync(dirname(path), { recursive: true });
   // Explicit credentials make this a private file even if an older models.json was world-readable.
-  const mode = input.providerDetails?.['apiKey'] !== undefined ? 0o600 : existsSync(path) ? statSync(path).mode & 0o777 : 0o600;
+  const mode =
+    input.providerDetails?.['apiKey'] !== undefined ? 0o600 : existsSync(path) ? statSync(path).mode & 0o777 : 0o600;
   const temp = `${path}.${process.pid}.tmp`;
   writeFileSync(temp, `${JSON.stringify(next, null, 2)}\n`, { mode });
   chmodSync(temp, mode);
@@ -43,8 +69,13 @@ export function removeConfiguredProvider(agentDir: string, provider: string): un
   const path = join(agentDir, 'models.json');
   if (!existsSync(path)) return undefined;
   const file = JSON.parse(readFileSync(path, 'utf8')) as { providers?: Record<string, Record<string, unknown>> };
-  if (!file || typeof file !== 'object' || Array.isArray(file) ||
-      (file.providers !== undefined && (!file.providers || typeof file.providers !== 'object' || Array.isArray(file.providers)))) {
+  if (
+    !file ||
+    typeof file !== 'object' ||
+    Array.isArray(file) ||
+    (file.providers !== undefined &&
+      (!file.providers || typeof file.providers !== 'object' || Array.isArray(file.providers)))
+  ) {
     throw new Error('models.json is not a valid configuration. Fix it before removing a provider.');
   }
   if (!file.providers || !Object.hasOwn(file.providers, provider)) return undefined;
@@ -69,24 +100,38 @@ export function localProviderEndpoint(baseUrl: string): string {
     const url = new URL(baseUrl);
     if (url.hostname === 'localhost') url.hostname = '127.0.0.1';
     return url.toString().replace(/\/+$/, '');
-  } catch { return baseUrl.replace(/\/+$/, ''); }
+  } catch {
+    return baseUrl.replace(/\/+$/, '');
+  }
 }
 
 /** Add newly discovered IDs once per server, preserving each connection's curated model list. */
-export function refreshExistingLocalProviders(agentDir: string, servers: readonly { baseUrl: string; models: readonly string[] }[]): void {
+export function refreshExistingLocalProviders(
+  agentDir: string,
+  servers: readonly { baseUrl: string; models: readonly string[] }[],
+): void {
   const path = join(agentDir, 'models.json');
   if (!existsSync(path)) return;
-  const file = JSON.parse(readFileSync(path, 'utf8')) as { providers?: Record<string, { baseUrl?: unknown; models?: { id?: unknown }[] }> };
+  const file = JSON.parse(readFileSync(path, 'utf8')) as {
+    providers?: Record<string, { baseUrl?: unknown; models?: { id?: unknown }[] }>;
+  };
   for (const server of servers) {
-    const connections = Object.entries(file.providers ?? {}).filter(([provider, entry]) =>
-      provider !== 'litellm' && typeof entry.baseUrl === 'string' && localProviderEndpoint(entry.baseUrl) === localProviderEndpoint(server.baseUrl));
+    const connections = Object.entries(file.providers ?? {}).filter(
+      ([provider, entry]) =>
+        provider !== 'litellm' &&
+        typeof entry.baseUrl === 'string' &&
+        localProviderEndpoint(entry.baseUrl) === localProviderEndpoint(server.baseUrl),
+    );
     if (!connections.length) continue;
-    const ids = (entry: { models?: { id?: unknown }[] }): string[] => Array.isArray(entry.models)
-      ? entry.models.flatMap((model) => typeof model.id === 'string' ? [model.id] : []) : [];
+    const ids = (entry: { models?: { id?: unknown }[] }): string[] =>
+      Array.isArray(entry.models)
+        ? entry.models.flatMap((model) => (typeof model.id === 'string' ? [model.id] : []))
+        : [];
     const known = new Set(connections.flatMap(([, entry]) => ids(entry)));
     const added = [...new Set(server.models)].filter((id) => !known.has(id));
     if (!added.length) continue;
-    const [provider, entry] = connections.find(([id]) => id === 'llama-swap' || id === 'ollama' || id === 'local') ?? connections[0];
+    const [provider, entry] =
+      connections.find(([id]) => id === 'llama-swap' || id === 'ollama' || id === 'local') ?? connections[0];
     saveLocalProvider(agentDir, { provider, baseUrl: entry.baseUrl as string, models: [...ids(entry), ...added] });
     entry.models = [...(Array.isArray(entry.models) ? entry.models : []), ...added.map((id) => ({ id }))];
   }
@@ -101,7 +146,8 @@ export function removeLegacyLocalProvider(agentDir: string, owner: unknown): voi
   if (!existsSync(path)) return;
   const file = JSON.parse(readFileSync(path, 'utf8')) as { providers?: Record<string, Record<string, unknown>> };
   const entry = file.providers?.[provider];
-  if (!entry || entry['baseUrl'] !== baseUrl || entry['api'] !== 'openai-completions' || entry['apiKey'] !== 'local') return;
+  if (!entry || entry['baseUrl'] !== baseUrl || entry['api'] !== 'openai-completions' || entry['apiKey'] !== 'local')
+    return;
   delete file.providers?.[provider];
   const mode = statSync(path).mode & 0o777;
   const temp = `${path}.${process.pid}.tmp`;

@@ -1,4 +1,15 @@
-import { defineDoc, defineExtension, defineTool, type Extension, GenerationTask, hook, type JsonObject, section, type ToolHookCall, ToolTask } from '@earendil-works/pi-durable';
+import {
+  defineDoc,
+  defineExtension,
+  defineTool,
+  type Extension,
+  GenerationTask,
+  hook,
+  type JsonObject,
+  section,
+  type ToolHookCall,
+  ToolTask,
+} from '@earendil-works/pi-durable';
 import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@earendil-works/pi-durable/tools';
 import { Type } from '@earendil-works/pi-ai';
 import type { AgentPermission } from './bg-agents.repository';
@@ -60,7 +71,14 @@ export interface AgentHost {
   /** A question was committed (or found again after a restart): route it. Idempotent. */
   asked(agentId: string, questionId: string): Promise<void>;
   /** A question of the host's on the agent's behalf (a blocked action), waited on until the user answers; null when dismissed. */
-  askUser(agentId: string, id: string, origin: 'block', text: string, choices: string[], signal: AbortSignal | undefined): Promise<string | null>;
+  askUser(
+    agentId: string,
+    id: string,
+    origin: 'block',
+    text: string,
+    choices: string[],
+    signal: AbortSignal | undefined,
+  ): Promise<string | null>;
   /** The user answered "Allow all": the agent is `edit` from now on, so nothing of its own folder is asked about again. */
   allowAll(agentId: string): Promise<void>;
   /** A tool call is about to run in the agent's folder: the Changes baseline and the coordination lease take it from here. */
@@ -74,7 +92,8 @@ export interface AgentHost {
 
 /** How a message from another agent is shown to the recipient: data from a named agent, never a user's instruction. */
 export const AGENT_MESSAGE = /^Message from agent "([^"]+)" \(agent (\d+)\): /;
-export const agentMessage = (from: { id: string; name: string }, text: string): string => `Message from agent "${from.name}" (agent ${from.id}): ${text}`;
+export const agentMessage = (from: { id: string; name: string }, text: string): string =>
+  `Message from agent "${from.name}" (agent ${from.id}): ${text}`;
 
 /** Commands a read-only agent may run: one program from this list (the readers, the test and lint runners), no redirection, no second command. */
 const READ_ONLY_COMMANDS =
@@ -84,12 +103,17 @@ const SHELL_OPERATORS = /[|;&>`]|\$\(/;
 export const BLOCK_CHOICES = ['Allow once', 'Allow all', 'Deny'];
 
 /** Why a call is blocked for the agent's permission mode, or undefined; the hook turns a block into a question to the user. */
-export function permissionBlock(permission: AgentPermission, call: Pick<ToolHookCall, 'name' | 'arguments'>): string | undefined {
+export function permissionBlock(
+  permission: AgentPermission,
+  call: Pick<ToolHookCall, 'name' | 'arguments'>,
+): string | undefined {
   if (permission !== 'read-only') return undefined;
-  if (call.name === 'write' || call.name === 'edit') return `This agent is read-only: ${call.name} is not allowed. Report what you would change instead.`;
+  if (call.name === 'write' || call.name === 'edit')
+    return `This agent is read-only: ${call.name} is not allowed. Report what you would change instead.`;
   if (call.name === 'bash') {
     const command = String((call.arguments as { command?: unknown } | undefined)?.command ?? '');
-    if (!READ_ONLY_COMMANDS.test(command) || SHELL_OPERATORS.test(command)) return 'This agent is read-only: only commands that read (ls, cat, grep, git status, node --test and the like) are allowed, without redirection.';
+    if (!READ_ONLY_COMMANDS.test(command) || SHELL_OPERATORS.test(command))
+      return 'This agent is read-only: only commands that read (ls, cat, grep, git status, node --test and the like) are allowed, without redirection.';
   }
   return undefined;
 }
@@ -112,7 +136,8 @@ export function createAgentExtension(host: AgentHost): Extension {
       createBashTool(),
       defineTool({
         name: 'report',
-        description: 'Report to the main agent of your thread, once, when your task is done (or cannot be done): what you did, what you found, what is left. Then stop.',
+        description:
+          'Report to the main agent of your thread, once, when your task is done (or cannot be done): what you did, what you found, what is left. Then stop.',
         parameters: Type.Object({ text: Type.String({ description: 'The report, one short paragraph.' }) }),
         replay: 'safe',
         executionMode: 'sequential',
@@ -120,16 +145,22 @@ export function createAgentExtension(host: AgentHost): Extension {
           // A rerun after a crash reuses the id it already chose, so the thread gets the report once.
           const reportId = await api.memo('reportId', `${api.taskId}`, context);
           await host.report(String(api.conversationId), reportId, args.text);
-          return { output: [{ type: 'text', text: 'Reported. You are done; do not report again.' }], control: { terminate: true } };
+          return {
+            output: [{ type: 'text', text: 'Reported. You are done; do not report again.' }],
+            control: { terminate: true },
+          };
         },
       }),
       defineTool({
         name: 'ask',
-        description: 'Ask a question and wait for the answer. kind "main": the main agent of your thread answers (facts about the task, scope, conventions). kind "user": only the user can answer (preferences, credentials, anything destructive or irreversible). Give choices when the answer is one of a few. Waiting costs nothing; ask one question at a time.',
+        description:
+          'Ask a question and wait for the answer. kind "main": the main agent of your thread answers (facts about the task, scope, conventions). kind "user": only the user can answer (preferences, credentials, anything destructive or irreversible). Give choices when the answer is one of a few. Waiting costs nothing; ask one question at a time.',
         parameters: Type.Object({
           question: Type.String({ description: 'The question, one or two sentences with what you need to decide.' }),
           kind: Type.Union([Type.Literal('main'), Type.Literal('user')]),
-          choices: Type.Optional(Type.Array(Type.String(), { description: 'The possible answers, when there are a few.' })),
+          choices: Type.Optional(
+            Type.Array(Type.String(), { description: 'The possible answers, when there are a few.' }),
+          ),
         }),
         replay: 'safe',
         executionMode: 'sequential',
@@ -138,7 +169,8 @@ export function createAgentExtension(host: AgentHost): Extension {
           const id = await api.memo('questionId', `${api.taskId}`, context);
           await api.commit(async (tx) => {
             const doc = await tx.doc(QuestionsDoc, api.conversationId);
-            if (!doc.questions[id]) doc.questions = { ...doc.questions, [id]: newQuestion(id, api.callId, args as AskInput, Date.now()) };
+            if (!doc.questions[id])
+              doc.questions = { ...doc.questions, [id]: newQuestion(id, api.callId, args as AskInput, Date.now()) };
           }, context);
           // The watch is taken before the question goes out: an answer can come back before the host returns (the main agent answers
           // within the turn the delivery starts), and a snapshot after the listener is installed closes the gap either way.
@@ -164,19 +196,36 @@ export function createAgentExtension(host: AgentHost): Extension {
       }),
       defineTool({
         name: 'agent_send',
-        description: 'Send a message to another background agent of your thread (agent_list names them): a steer (now) or a follow-up (after its current task). It is shown to them as a message from you, not as instructions from the user.',
-        parameters: Type.Object({ agent: Type.String({ description: 'The agent id from agent_list.' }), text: Type.String(), mode: Type.Optional(Type.Union([Type.Literal('steer'), Type.Literal('followUp')])) }),
+        description:
+          'Send a message to another background agent of your thread (agent_list names them): a steer (now) or a follow-up (after its current task). It is shown to them as a message from you, not as instructions from the user.',
+        parameters: Type.Object({
+          agent: Type.String({ description: 'The agent id from agent_list.' }),
+          text: Type.String(),
+          mode: Type.Optional(Type.Union([Type.Literal('steer'), Type.Literal('followUp')])),
+        }),
         executionMode: 'sequential',
         execute: async (args, api) => {
-          await host.sendFrom(String(api.conversationId), args.agent, args.text, args.mode ?? 'followUp', `send:${api.callId}`);
-          return { output: [{ type: 'text', text: `Sent to agent ${args.agent} as ${args.mode ?? 'followUp'}.` }], details: {} };
+          await host.sendFrom(
+            String(api.conversationId),
+            args.agent,
+            args.text,
+            args.mode ?? 'followUp',
+            `send:${api.callId}`,
+          );
+          return {
+            output: [{ type: 'text', text: `Sent to agent ${args.agent} as ${args.mode ?? 'followUp'}.` }],
+            details: {},
+          };
         },
       }),
       defineTool({
         name: 'agent_list',
         description: 'The other background agents of your thread, with their ids, roles and status.',
         parameters: Type.Object({}),
-        execute: async (_args, api) => ({ output: [{ type: 'text', text: JSON.stringify(host.listFor(String(api.conversationId))) }], details: {} }),
+        execute: async (_args, api) => ({
+          output: [{ type: 'text', text: JSON.stringify(host.listFor(String(api.conversationId))) }],
+          details: {},
+        }),
       }),
     ],
     sections: [
@@ -211,13 +260,25 @@ export function createAgentExtension(host: AgentHost): Extension {
           const block = permissionBlock(agent?.permission ?? 'read-only', call);
           if (block) {
             // A blocked action is the user's call: once, for this call, or for the rest of the run ("Allow all" makes the agent `edit`); the record is found again after a restart.
-            const target = String((call.arguments as { path?: unknown; command?: unknown } | undefined)?.path ?? (call.arguments as { command?: unknown } | undefined)?.command ?? '');
-            const answer = await host.askUser(id, `block:${call.id}`, 'block', `${agent?.name ?? 'The agent'} (${agent?.permission ?? 'read-only'}) wants to run ${call.name}${target ? ` on ${target}` : ''}. Allow it? "Allow all" lets it edit without asking for the rest of its run.`, BLOCK_CHOICES, context.abortSignal);
+            const target = String(
+              (call.arguments as { path?: unknown; command?: unknown } | undefined)?.path ??
+                (call.arguments as { command?: unknown } | undefined)?.command ??
+                '',
+            );
+            const answer = await host.askUser(
+              id,
+              `block:${call.id}`,
+              'block',
+              `${agent?.name ?? 'The agent'} (${agent?.permission ?? 'read-only'}) wants to run ${call.name}${target ? ` on ${target}` : ''}. Allow it? "Allow all" lets it edit without asking for the rest of its run.`,
+              BLOCK_CHOICES,
+              context.abortSignal,
+            );
             if (answer === 'Allow all') await host.allowAll(id);
             else if (answer !== 'Allow once') return { block: `${block} The user did not allow it.` };
           }
           host.toolStarting(id, call);
-          if (call.name === 'bash') host.cleanup.begin(id, cleanupIntent(call.id, call.arguments as Record<string, unknown>));
+          if (call.name === 'bash')
+            host.cleanup.begin(id, cleanupIntent(call.id, call.arguments as Record<string, unknown>));
           return undefined;
         },
         afterTool: (call, _result, api) => {

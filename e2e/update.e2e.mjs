@@ -17,7 +17,8 @@ const spawned = [];
 async function ensureBackend() {
   const up = async () => {
     try {
-      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })).ok;
+      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } }))
+        .ok;
     } catch {
       return false;
     }
@@ -30,7 +31,13 @@ async function ensureBackend() {
 function startBackend() {
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: 'ignore',
     detached: true,
   });
@@ -54,8 +61,13 @@ after(async () => {
 });
 
 // A release newer than the bundled pi (the backend uses a managed release only when it is not older): the bundled version with its patch raised.
-const BUNDLED = JSON.parse(readFileSync(join(root, 'node_modules', '@earendil-works', 'pi-coding-agent', 'package.json'), 'utf8')).version;
-const FAKE = BUNDLED.replace(/^(\d+)\.(\d+)\.(\d+).*$/, (_, major, minor, patch) => `${major}.${minor}.${Number(patch) + 5}`);
+const BUNDLED = JSON.parse(
+  readFileSync(join(root, 'node_modules', '@earendil-works', 'pi-coding-agent', 'package.json'), 'utf8'),
+).version;
+const FAKE = BUNDLED.replace(
+  /^(\d+)\.(\d+)\.(\d+).*$/,
+  (_, major, minor, patch) => `${major}.${minor}.${Number(patch) + 5}`,
+);
 
 describe('pi updates from inside the app', () => {
   it('runs one background job, streams its output to the Versions block and writes the log', async () => {
@@ -66,7 +78,11 @@ describe('pi updates from inside the app', () => {
     const versions = dialog.getByRole('region', { name: 'Versions' });
     await versions.getByTestId('row-packages').waitFor();
     // `pi update --extensions` with nothing installed is quick and needs no network: pi's own updater, run from the bundled copy (no managed install yet).
-    const started = await api('/api/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targets: ['packages'] }) });
+    const started = await api('/api/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targets: ['packages'] }),
+    });
     assert.equal(started.job.state, 'running');
     assert.deepEqual(started.job.targets, ['packages']);
     let status;
@@ -78,7 +94,10 @@ describe('pi updates from inside the app', () => {
     assert.equal(status.job.state, 'done', JSON.stringify(status.job));
     assert.equal(status.rows.find((r) => r.target === 'packages').state, 'done');
     // the output reached the open page through the event stream, and the log file has it too
-    await versions.getByTestId('update-log').getByText(/Updated packages/).waitFor();
+    await versions
+      .getByTestId('update-log')
+      .getByText(/Updated packages/)
+      .waitFor();
     assert.ok(existsSync(status.job.logPath), 'update.log exists');
     assert.match(readFileSync(status.job.logPath, 'utf8'), /\[packages\] \$ pi update --extensions \(bundled copy\)/);
     await page.keyboard.press('Escape');
@@ -116,9 +135,15 @@ describe('pi updates from inside the app', () => {
     await page.keyboard.press('Escape');
 
     // The backend ends itself; dev:web has no watchdog, so the test plays it and starts the backend again on the same port and token.
-    await page.getByText(/Backend unreachable/).first().waitFor();
+    await page
+      .getByText(/Backend unreachable/)
+      .first()
+      .waitFor();
     startBackend();
-    await page.locator('.toast', { hasText: /restarted|Reconnected/ }).first().waitFor();
+    await page
+      .locator('.toast', { hasText: /restarted|Reconnected/ })
+      .first()
+      .waitFor();
     await page.getByText('Backend connected').first().waitFor();
     await page.getByText('Say the word before.').first().waitFor();
 
@@ -130,7 +155,10 @@ describe('pi updates from inside the app', () => {
     const again = await h.openSettings('General');
     await again.getByTestId('section-general').getByRole('tab', { name: 'Versions', exact: true }).click();
     const versions = again.getByRole('region', { name: 'Versions' });
-    await versions.getByTestId('pi-source').getByText(/Managed install/).waitFor();
+    await versions
+      .getByTestId('pi-source')
+      .getByText(/Managed install/)
+      .waitFor();
     assert.match(await versions.getByTestId('row-pi').innerText(), new RegExp(`pi\\s+${FAKE.replace(/\./g, '\\.')}`));
     await page.keyboard.press('Escape');
     // and a prompt still runs on the pi that was loaded from the release folder
@@ -147,9 +175,15 @@ describe('pi updates from inside the app', () => {
     await advanced.getByText(/Pinned to the bundled copy/).waitFor();
     const status = await api('/api/update/status');
     assert.equal(status.pinned, 'bundled');
-    assert.ok(status.restart.some((r) => r.kind === 'pi'), 'a restart would change the pi that runs');
+    assert.ok(
+      status.restart.some((r) => r.kind === 'pi'),
+      'a restart would change the pi that runs',
+    );
     await advanced.getByRole('button', { name: 'Follow the newest' }).click();
-    await page.waitForFunction(() => !document.querySelector('[data-testid="advanced"]')?.textContent?.includes('Pinned to'), undefined);
+    await page.waitForFunction(
+      () => !document.querySelector('[data-testid="advanced"]')?.textContent?.includes('Pinned to'),
+      undefined,
+    );
     assert.equal((await api('/api/update/status')).pinned, undefined);
     await page.keyboard.press('Escape');
   });

@@ -39,7 +39,11 @@ describe('mapUiEvent', () => {
 
   it('maps setWidget to a pi.widget activity, and a cleared widget to an empty one', () => {
     const [shown] = mapUiEvent({ kind: 'widget', key: 'todo', lines: ['a', 'b'], placement: 'belowEditor' });
-    expect(shown).toMatchObject({ messageId: 'widget:todo', activityType: 'pi.widget', content: { key: 'todo', lines: ['a', 'b'], placement: 'belowEditor' } });
+    expect(shown).toMatchObject({
+      messageId: 'widget:todo',
+      activityType: 'pi.widget',
+      content: { key: 'todo', lines: ['a', 'b'], placement: 'belowEditor' },
+    });
     expect(mapUiEvent({ kind: 'widget', key: 'todo', lines: undefined })[0]).toMatchObject({ content: { lines: [] } });
     expect(() => EventSchemas.parse(shown)).not.toThrow();
   });
@@ -60,7 +64,16 @@ describe('interruptFinished', () => {
 
   it('ends the run with an interrupt outcome AG-UI accepts', () => {
     const event = interruptFinished('t', 'r', [
-      { id: 'i1', request: { method: 'confirm', title: 'Run git push?', message: 'origin feat/x', toolCallId: 'call1', expiresAt: 1792321200000 } },
+      {
+        id: 'i1',
+        request: {
+          method: 'confirm',
+          title: 'Run git push?',
+          message: 'origin feat/x',
+          toolCallId: 'call1',
+          expiresAt: 1792321200000,
+        },
+      },
       { id: 'i2', request: { method: 'select', title: 'Pick', options: ['a', 'b'] } },
     ]);
     expect(() => EventSchemas.parse(event)).not.toThrow();
@@ -69,7 +82,14 @@ describe('interruptFinished', () => {
       outcome: {
         type: 'interrupt',
         interrupts: [
-          { id: 'i1', reason: 'pi.ui.confirm', message: 'Run git push?', toolCallId: 'call1', responseSchema: { required: ['confirmed'] }, metadata: { method: 'confirm', message: 'origin feat/x', expiresAt: 1792321200000 } },
+          {
+            id: 'i1',
+            reason: 'pi.ui.confirm',
+            message: 'Run git push?',
+            toolCallId: 'call1',
+            responseSchema: { required: ['confirmed'] },
+            metadata: { method: 'confirm', message: 'origin feat/x', expiresAt: 1792321200000 },
+          },
           { id: 'i2', reason: 'pi.ui.select', metadata: { options: ['a', 'b'] } },
         ],
       },

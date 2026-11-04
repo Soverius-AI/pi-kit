@@ -1,6 +1,16 @@
 import type { PiSessionEntry } from '@pi-kit/pi-adapter';
 import { describe, expect, it } from 'vitest';
-import { compareDiffs, dice, firstPromptOf, modelOfSession, parseDiff, planChecks, skillHash, tailOf, verdict } from './verify-rules';
+import {
+  compareDiffs,
+  dice,
+  firstPromptOf,
+  modelOfSession,
+  parseDiff,
+  planChecks,
+  skillHash,
+  tailOf,
+  verdict,
+} from './verify-rules';
 
 /** `git diff -U0` of three notes: two new files and a changed one with two hunks. */
 const DIFF = [
@@ -53,7 +63,9 @@ describe('parseDiff', () => {
   });
 
   it('knows a binary file by the blob it ends with, and a mode change', () => {
-    const [bin, mode] = parseDiff('diff --git a/img.png b/img.png\nindex 111..abc123 100644\nBinary files a/img.png and b/img.png differ\ndiff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n');
+    const [bin, mode] = parseDiff(
+      'diff --git a/img.png b/img.png\nindex 111..abc123 100644\nBinary files a/img.png and b/img.png differ\ndiff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n',
+    );
     expect(bin).toMatchObject({ path: 'img.png', binary: 'abc123', hunks: [] });
     expect(mode).toMatchObject({ path: 'run.sh', mode: '100755', binary: null });
   });
@@ -80,14 +92,25 @@ describe('dice', () => {
   });
 });
 
-const file = (path: string, hunks: { removed?: string[]; added?: string[] }[]) => ({ path, binary: null, mode: null, hunks: hunks.map((h) => ({ removed: h.removed ?? [], added: h.added ?? [] })) });
+const file = (path: string, hunks: { removed?: string[]; added?: string[] }[]) => ({
+  path,
+  binary: null,
+  mode: null,
+  hunks: hunks.map((h) => ({ removed: h.removed ?? [], added: h.added ?? [] })),
+});
 const note = (n: number) => file(`notes/${n}.md`, [{ added: [`# Note ${n}`, 'A short note.', `Note ${n} of 6.`] }]);
 const six = [1, 2, 3, 4, 5, 6].map(note);
 
 describe('compareDiffs', () => {
   it('the same changes are the same by file and by hunk, whatever the order', () => {
     const result = compareDiffs(six, [...six].reverse());
-    expect(result).toMatchObject({ reproduced: 6, expected: 6, extra: 0, hunks: { matched: 6, expected: 6, actual: 6 }, score: 1 });
+    expect(result).toMatchObject({
+      reproduced: 6,
+      expected: 6,
+      extra: 0,
+      hunks: { matched: 6, expected: 6, actual: 6 },
+      score: 1,
+    });
     expect(result.files.every((f) => f.status === 'same' && f.similarity === 1)).toBe(true);
   });
 
@@ -95,17 +118,30 @@ describe('compareDiffs', () => {
     const result = compareDiffs(six, [...six.slice(0, 5), file('stray.txt', [{ added: ['x'] }])]);
     expect(result.reproduced).toBe(5);
     expect(result.extra).toBe(1);
-    expect(result.files.find((f) => f.path === 'notes/6.md')).toMatchObject({ status: 'missing', similarity: 0, hunks: { matched: 0, expected: 1, actual: 0 } });
-    expect(result.files.find((f) => f.path === 'stray.txt')).toMatchObject({ status: 'extra', hunks: { expected: 0, actual: 1 } });
+    expect(result.files.find((f) => f.path === 'notes/6.md')).toMatchObject({
+      status: 'missing',
+      similarity: 0,
+      hunks: { matched: 0, expected: 1, actual: 0 },
+    });
+    expect(result.files.find((f) => f.path === 'stray.txt')).toMatchObject({
+      status: 'extra',
+      hunks: { expected: 0, actual: 1 },
+    });
     // 15 of the 18 expected lines are there, plus one line that should not be: 2 * 15 / (18 + 16)
     expect(result.score).toBeCloseTo(30 / 34);
   });
 
   it('a file changed in part is reproduced when most of its lines match, and "different" when few do', () => {
-    const close = compareDiffs([file('a', [{ added: ['1', '2', '3', '4', '5'] }])], [file('a', [{ added: ['1', '2', '3', '4', 'five'] }])]);
+    const close = compareDiffs(
+      [file('a', [{ added: ['1', '2', '3', '4', '5'] }])],
+      [file('a', [{ added: ['1', '2', '3', '4', 'five'] }])],
+    );
     expect(close.files[0]).toMatchObject({ status: 'similar', hunks: { matched: 1 } });
     expect(close.files[0].similarity).toBeCloseTo(0.8);
-    const far = compareDiffs([file('a', [{ added: ['1', '2', '3', '4', '5'] }])], [file('a', [{ added: ['1', 'b', 'c', 'd', 'e'] }])]);
+    const far = compareDiffs(
+      [file('a', [{ added: ['1', '2', '3', '4', '5'] }])],
+      [file('a', [{ added: ['1', 'b', 'c', 'd', 'e'] }])],
+    );
     expect(far.files[0]).toMatchObject({ status: 'different', hunks: { matched: 0, expected: 1, actual: 1 } });
     expect(far.reproduced).toBe(0);
   });
@@ -149,7 +185,12 @@ describe('verdict', () => {
   });
 
   it('a check that failed before and fails again, or was not run, does not count against the skill', () => {
-    expect(verdict(full, [{ originalPassed: false, state: 'failed' }, { originalPassed: true, state: 'skipped' }])).toBe('pass');
+    expect(
+      verdict(full, [
+        { originalPassed: false, state: 'failed' },
+        { originalPassed: true, state: 'skipped' },
+      ]),
+    ).toBe('pass');
   });
 
   it('a check that passed before and fails now makes a pass partial', () => {
@@ -176,14 +217,23 @@ describe('planChecks: which checks run again', () => {
   const check = (step: number, command: string, passed = true) => ({ step, command, passed });
 
   it('lists each command once, with the outcome of its last run, in the order they were first run last', () => {
-    expect(planChecks([check(2, 'npm test', false), check(5, 'npx eslint .'), check(7, 'npm test', true)], [])).toEqual([
-      { command: 'npx eslint .', originalPassed: true },
-      { command: 'npm test', originalPassed: true },
-    ]);
+    expect(planChecks([check(2, 'npm test', false), check(5, 'npx eslint .'), check(7, 'npm test', true)], [])).toEqual(
+      [
+        { command: 'npx eslint .', originalPassed: true },
+        { command: 'npm test', originalPassed: true },
+      ],
+    );
   });
 
   it('does not run a command with a masked secret, or one that names the original folder by its path', () => {
-    const planned = planChecks([check(1, 'API_KEY=[redacted openai key …abcd] npm test'), check(2, 'cd /home/me/app && npm test'), check(3, 'npm test')], ['/home/me/app', '/home/me/worktrees/app/fix']);
+    const planned = planChecks(
+      [
+        check(1, 'API_KEY=[redacted openai key …abcd] npm test'),
+        check(2, 'cd /home/me/app && npm test'),
+        check(3, 'npm test'),
+      ],
+      ['/home/me/app', '/home/me/worktrees/app/fix'],
+    );
     expect(planned[0].skip).toMatch(/secret/);
     expect(planned[1].skip).toMatch(/absolute path/);
     expect(planned[2].skip).toBeUndefined();
@@ -195,29 +245,60 @@ describe('planChecks: which checks run again', () => {
 });
 
 const chain = (...messages: unknown[]): PiSessionEntry[] =>
-  messages.map((message, i) => ({ type: 'message', id: `m${i}`, parentId: i === 0 ? null : `m${i - 1}`, timestamp: '2026-10-17T10:00:00.000Z', message }));
+  messages.map((message, i) => ({
+    type: 'message',
+    id: `m${i}`,
+    parentId: i === 0 ? null : `m${i - 1}`,
+    timestamp: '2026-10-17T10:00:00.000Z',
+    message,
+  }));
 
 describe('what the replay is given', () => {
   it('the first prompt is the first user message, without the skill blocks a chip put in front of it', () => {
-    const entries = chain({ role: 'user', content: '<skill name="a" location="/x/SKILL.md">\nReferences are relative to /x.\n\nUse it.\n</skill>\n\nCreate notes/one.md.' }, { role: 'assistant', content: [{ type: 'text', text: 'ok' }] }, { role: 'user', content: 'Then notes/two.md.' });
+    const entries = chain(
+      {
+        role: 'user',
+        content:
+          '<skill name="a" location="/x/SKILL.md">\nReferences are relative to /x.\n\nUse it.\n</skill>\n\nCreate notes/one.md.',
+      },
+      { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+      { role: 'user', content: 'Then notes/two.md.' },
+    );
     expect(firstPromptOf(entries, null)).toBe('Create notes/one.md.');
   });
 
   it('reads a prompt of text blocks, follows the branch to its leaf, and is empty without a user message', () => {
-    expect(firstPromptOf(chain({ role: 'user', content: [{ type: 'text', text: 'Do it' }, { type: 'image', data: 'x' }] }), null)).toBe('Do it');
+    expect(
+      firstPromptOf(
+        chain({
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Do it' },
+            { type: 'image', data: 'x' },
+          ],
+        }),
+        null,
+      ),
+    ).toBe('Do it');
     expect(firstPromptOf(chain({ role: 'assistant', content: [] }), null)).toBe('');
     expect(firstPromptOf([], null)).toBe('');
   });
 
   it('the model is the one the thread last answered with', () => {
-    const entries = chain({ role: 'user', content: 'x' }, { role: 'assistant', provider: 'a', model: 'one', content: [] }, { role: 'user', content: 'y' }, { role: 'assistant', provider: 'b', model: 'two', content: [] });
+    const entries = chain(
+      { role: 'user', content: 'x' },
+      { role: 'assistant', provider: 'a', model: 'one', content: [] },
+      { role: 'user', content: 'y' },
+      { role: 'assistant', provider: 'b', model: 'two', content: [] },
+    );
     expect(modelOfSession(entries, null)).toEqual({ provider: 'b', modelId: 'two' });
     expect(modelOfSession(chain({ role: 'user', content: 'x' }), null)).toBeUndefined();
   });
 });
 
 describe('skillHash', () => {
-  const text = (verified: string, body = 'Steps.') => `---\nname: a-b\ndescription: Use when x\nx-pi-kit:\n  learnedFrom: t1\n  base: null\n  head: null\n${verified}\n---\n${body}\n`;
+  const text = (verified: string, body = 'Steps.') =>
+    `---\nname: a-b\ndescription: Use when x\nx-pi-kit:\n  learnedFrom: t1\n  base: null\n  head: null\n${verified}\n---\n${body}\n`;
 
   it('does not change with the provenance block, which verification itself rewrites', () => {
     expect(skillHash(text('  verified: null'))).toBe(skillHash(text('  verified:\n    result: pass\n    files: 6/6')));

@@ -4,10 +4,7 @@
   "sourceRoot": "libs/files/util/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:files",
-    "type:util"
-  ],
+  "tags": ["scope:files", "type:util"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"
@@ -15,10 +12,7 @@
     "test": {
       "executor": "nx:run-commands",
       "cache": true,
-      "inputs": [
-        "default",
-        "^production"
-      ],
+      "inputs": ["default", "^production"],
       "options": {
         "command": "vitest run",
         "cwd": "libs/files/util"

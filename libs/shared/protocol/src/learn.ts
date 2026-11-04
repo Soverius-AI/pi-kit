@@ -9,7 +9,8 @@ import { z } from 'zod';
 /** pi's rule for a skill name: lowercase letters, digits and single hyphens, at most 64 characters. */
 export const SKILL_NAME_MAX = 64;
 const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-export const isSkillName = (name: string): boolean => name.length > 0 && name.length <= SKILL_NAME_MAX && SKILL_NAME.test(name);
+export const isSkillName = (name: string): boolean =>
+  name.length > 0 && name.length <= SKILL_NAME_MAX && SKILL_NAME.test(name);
 
 /** A name made from free text (a title the model gave): lowercase, hyphens, 64 characters; `undefined` when nothing is left. */
 export function slugSkillName(text: string): string | undefined {
@@ -58,7 +59,11 @@ export const VerifiedFileSchema = z.object({
   status: z.enum(['same', 'similar', 'different', 'missing', 'extra']),
   /** 0 to 1. */
   similarity: z.number(),
-  hunks: z.object({ matched: z.number().int().nonnegative(), expected: z.number().int().nonnegative(), actual: z.number().int().nonnegative() }),
+  hunks: z.object({
+    matched: z.number().int().nonnegative(),
+    expected: z.number().int().nonnegative(),
+    actual: z.number().int().nonnegative(),
+  }),
 });
 export type VerifiedFile = z.infer<typeof VerifiedFileSchema>;
 
@@ -81,65 +86,84 @@ export type VerifiedCheck = z.infer<typeof VerifiedCheckSchema>;
  * of the approve dialog. While `state` is `running`, `phase` says where; `done` carries the result and the numbers; `stopped` is a run the person stopped; `error` is a verification that could not be
  * carried out (no scratch worktree, a project that is not trusted, a model that failed), which says nothing about the skill.
  */
-export const SkillVerificationSchema = z.object({
-  requested: z.boolean().optional(),
-  state: VerificationStateSchema,
-  phase: VerificationPhaseSchema.optional(),
-  startedAt: z.number().optional(),
-  finishedAt: z.number().optional(),
-  /** The verification thread (archived afterwards; its scratch worktree is removed). */
-  threadId: z.string().optional(),
-  /** The first prompt the replay was given. */
-  prompt: z.string().optional(),
-  /** The model the replay ran with, `provider/id`. */
-  model: z.string().optional(),
-  /** The commit the replay started from, and the head of the outcome it is compared with. */
-  base: z.string().optional(),
-  head: z.string().optional(),
-  /** A hash of the skill text that was verified (without the provenance block): an edit afterwards makes the report stale. */
-  skillHash: z.string().optional(),
-  result: VerificationResultSchema.optional(),
-  /** Similarity of the whole diff, 0 to 1. */
-  score: z.number().optional(),
-  files: z.object({ reproduced: z.number().int().nonnegative(), expected: z.number().int().nonnegative(), extra: z.number().int().nonnegative() }).optional(),
-  hunks: z.object({ matched: z.number().int().nonnegative(), expected: z.number().int().nonnegative(), actual: z.number().int().nonnegative() }).optional(),
-  fileList: z.array(VerifiedFileSchema).optional(),
-  checks: z.array(VerifiedCheckSchema).optional(),
-  /** One sentence: "Reproduced 5 of 6 files and 14 of 18 hunks; 1 of 1 checks pass again." */
-  summary: z.string().optional(),
-  warnings: z.array(z.string()).optional(),
-  error: z.string().optional(),
-  tokens: z.number().int().nonnegative().optional(),
-  cost: z.number().nonnegative().optional(),
-}).meta({ id: 'SkillVerification' });
+export const SkillVerificationSchema = z
+  .object({
+    requested: z.boolean().optional(),
+    state: VerificationStateSchema,
+    phase: VerificationPhaseSchema.optional(),
+    startedAt: z.number().optional(),
+    finishedAt: z.number().optional(),
+    /** The verification thread (archived afterwards; its scratch worktree is removed). */
+    threadId: z.string().optional(),
+    /** The first prompt the replay was given. */
+    prompt: z.string().optional(),
+    /** The model the replay ran with, `provider/id`. */
+    model: z.string().optional(),
+    /** The commit the replay started from, and the head of the outcome it is compared with. */
+    base: z.string().optional(),
+    head: z.string().optional(),
+    /** A hash of the skill text that was verified (without the provenance block): an edit afterwards makes the report stale. */
+    skillHash: z.string().optional(),
+    result: VerificationResultSchema.optional(),
+    /** Similarity of the whole diff, 0 to 1. */
+    score: z.number().optional(),
+    files: z
+      .object({
+        reproduced: z.number().int().nonnegative(),
+        expected: z.number().int().nonnegative(),
+        extra: z.number().int().nonnegative(),
+      })
+      .optional(),
+    hunks: z
+      .object({
+        matched: z.number().int().nonnegative(),
+        expected: z.number().int().nonnegative(),
+        actual: z.number().int().nonnegative(),
+      })
+      .optional(),
+    fileList: z.array(VerifiedFileSchema).optional(),
+    checks: z.array(VerifiedCheckSchema).optional(),
+    /** One sentence: "Reproduced 5 of 6 files and 14 of 18 hunks; 1 of 1 checks pass again." */
+    summary: z.string().optional(),
+    warnings: z.array(z.string()).optional(),
+    error: z.string().optional(),
+    tokens: z.number().int().nonnegative().optional(),
+    cost: z.number().nonnegative().optional(),
+  })
+  .meta({ id: 'SkillVerification' });
 export type SkillVerification = z.infer<typeof SkillVerificationSchema>;
 
 /** `GET /api/skill-drafts/:id/verify`: what a verification would do, for the dialog to show before it starts (the prompt is editable). */
-export const VerifyPlanSchema = z.object({
-  /** Whether a verification can start, and if not, why. */
-  canVerify: z.boolean(),
-  reason: z.string().optional(),
-  /** The thread's first prompt, as it will be sent (the person may edit it). */
-  prompt: z.string(),
-  base: z.string().nullable(),
-  head: z.string().nullable(),
-  /** The files the outcome changed. */
-  files: z.number().int().nonnegative(),
-  /** The commands the thread ran as checks, which will be run again. */
-  checks: z.array(z.object({ command: z.string(), originalPassed: z.boolean(), skip: z.string().optional() })),
-  /** The model the replay will use, `provider/id` (the one the thread ran with), or null for pi's default. */
-  model: z.string().nullable(),
-  /** A verification is running now (this draft, or another). */
-  busy: z.boolean(),
-}).meta({ id: 'VerifyPlan' });
+export const VerifyPlanSchema = z
+  .object({
+    /** Whether a verification can start, and if not, why. */
+    canVerify: z.boolean(),
+    reason: z.string().optional(),
+    /** The thread's first prompt, as it will be sent (the person may edit it). */
+    prompt: z.string(),
+    base: z.string().nullable(),
+    head: z.string().nullable(),
+    /** The files the outcome changed. */
+    files: z.number().int().nonnegative(),
+    /** The commands the thread ran as checks, which will be run again. */
+    checks: z.array(z.object({ command: z.string(), originalPassed: z.boolean(), skip: z.string().optional() })),
+    /** The model the replay will use, `provider/id` (the one the thread ran with), or null for pi's default. */
+    model: z.string().nullable(),
+    /** A verification is running now (this draft, or another). */
+    busy: z.boolean(),
+  })
+  .meta({ id: 'VerifyPlan' });
 export type VerifyPlan = z.infer<typeof VerifyPlanSchema>;
 
 /** `POST /api/skill-drafts/:id/verify`: the text the person has in the editor (it becomes the draft's text, and is what is replayed) and the prompt, both optional. */
-export const StartVerifySchema = z.object({
-  name: z.string().min(1).max(200).optional(),
-  text: z.string().min(1).max(200_000).optional(),
-  prompt: z.string().trim().min(1).max(20_000).optional(),
-}).strict().meta({ id: 'StartVerify' });
+export const StartVerifySchema = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    text: z.string().min(1).max(200_000).optional(),
+    prompt: z.string().trim().min(1).max(20_000).optional(),
+  })
+  .strict()
+  .meta({ id: 'StartVerify' });
 export type StartVerify = z.infer<typeof StartVerifySchema>;
 
 /** The result of a draft's verification when it ran to the end: `done` with a result. */
@@ -153,73 +177,93 @@ export function verificationSummary(v: SkillVerification): string {
   if (v.state === 'error') return v.error ?? 'Could not be verified.';
   if (v.state !== 'done' || !v.files || !v.hunks) return 'Not verified.';
   const checks = v.checks?.filter((c) => c.state !== 'skipped') ?? [];
-  const checksText = checks.length === 0 ? '' : `; ${checks.filter((c) => c.state === 'passed').length} of ${checks.length} ${checks.length === 1 ? 'check passes' : 'checks pass'} again`;
-  const extra = v.files.extra > 0 ? `, and touched ${v.files.extra} ${v.files.extra === 1 ? 'file' : 'files'} it should not have` : '';
+  const checksText =
+    checks.length === 0
+      ? ''
+      : `; ${checks.filter((c) => c.state === 'passed').length} of ${checks.length} ${checks.length === 1 ? 'check passes' : 'checks pass'} again`;
+  const extra =
+    v.files.extra > 0
+      ? `, and touched ${v.files.extra} ${v.files.extra === 1 ? 'file' : 'files'} it should not have`
+      : '';
   return `Reproduced ${v.files.reproduced} of ${v.files.expected} ${v.files.expected === 1 ? 'file' : 'files'} and ${v.hunks.matched} of ${v.hunks.expected} ${v.hunks.expected === 1 ? 'hunk' : 'hunks'}${extra}${checksText}.`;
 }
 
 /** A draft skill. `text` is the `SKILL.md` as pi will load it, frontmatter and provenance included. */
-export const SkillDraftSchema = z.object({
-  id: z.string(),
-  threadId: z.string(),
-  /** The skill's name (also the folder's name). */
-  name: z.string(),
-  text: z.string(),
-  /** Where Approve writes it unless the person chooses the other. */
-  scope: SkillScopeSchema,
-  state: SkillDraftStateSchema,
-  /** The record of "Verify"; null until a verification was asked for. */
-  verification: SkillVerificationSchema.nullable(),
-  madeBy: SkillDraftMakerSchema,
-  /** The model that wrote it, `provider/id`. */
-  model: z.string().nullable(),
-  createdAt: z.number(),
-  decidedAt: z.number().nullable(),
-  /** The `SKILL.md` Approve wrote, once approved. */
-  path: z.string().nullable(),
-}).meta({ id: 'SkillDraft' });
+export const SkillDraftSchema = z
+  .object({
+    id: z.string(),
+    threadId: z.string(),
+    /** The skill's name (also the folder's name). */
+    name: z.string(),
+    text: z.string(),
+    /** Where Approve writes it unless the person chooses the other. */
+    scope: SkillScopeSchema,
+    state: SkillDraftStateSchema,
+    /** The record of "Verify"; null until a verification was asked for. */
+    verification: SkillVerificationSchema.nullable(),
+    madeBy: SkillDraftMakerSchema,
+    /** The model that wrote it, `provider/id`. */
+    model: z.string().nullable(),
+    createdAt: z.number(),
+    decidedAt: z.number().nullable(),
+    /** The `SKILL.md` Approve wrote, once approved. */
+    path: z.string().nullable(),
+  })
+  .meta({ id: 'SkillDraft' });
 export type SkillDraft = z.infer<typeof SkillDraftSchema>;
 
 /** The part of a draft the thread state carries: enough for the card, the sidebar chip and the thread menu. */
-export const ThreadDraftBadgeSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  state: SkillDraftStateSchema,
-  madeBy: SkillDraftMakerSchema,
-  /** `running` while a verification replays the skill; else the result of the last one that ran to the end. */
-  verification: z.enum(['running', 'pass', 'partial', 'failed']).nullable().optional(),
-}).meta({ id: 'ThreadDraftBadge' });
+export const ThreadDraftBadgeSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    state: SkillDraftStateSchema,
+    madeBy: SkillDraftMakerSchema,
+    /** `running` while a verification replays the skill; else the result of the last one that ran to the end. */
+    verification: z.enum(['running', 'pass', 'partial', 'failed']).nullable().optional(),
+  })
+  .meta({ id: 'ThreadDraftBadge' });
 export type ThreadDraftBadge = z.infer<typeof ThreadDraftBadgeSchema>;
 
 /** `POST /api/threads/:id/skill-draft`: ask for a draft. `consent` answers the sentence of an earlier `consent` result (the attendant is off). */
-export const RequestSkillDraftSchema = z.object({ consent: z.boolean().optional() }).strict().meta({ id: 'RequestSkillDraft' });
+export const RequestSkillDraftSchema = z
+  .object({ consent: z.boolean().optional() })
+  .strict()
+  .meta({ id: 'RequestSkillDraft' });
 export type RequestSkillDraft = z.infer<typeof RequestSkillDraftSchema>;
 
 /**
  * The answer of `POST /api/threads/:id/skill-draft`: the draft (new, or the thread's own when it has one that is pending), or `consent` when the transcript would go to a model
  * while the attendant is off and the person has not agreed for this thread yet (the sentence to show, and the model's name).
  */
-export const SkillDraftRequestResultSchema = z.object({
-  status: z.enum(['drafted', 'consent']),
-  draft: SkillDraftSchema.optional(),
-  /** `consent`: the model the transcript would go to. */
-  model: z.string().optional(),
-  /** `consent`: the sentence the person agrees to. */
-  message: z.string().optional(),
-}).meta({ id: 'SkillDraftRequestResult' });
+export const SkillDraftRequestResultSchema = z
+  .object({
+    status: z.enum(['drafted', 'consent']),
+    draft: SkillDraftSchema.optional(),
+    /** `consent`: the model the transcript would go to. */
+    model: z.string().optional(),
+    /** `consent`: the sentence the person agrees to. */
+    message: z.string().optional(),
+  })
+  .meta({ id: 'SkillDraftRequestResult' });
 export type SkillDraftRequestResult = z.infer<typeof SkillDraftRequestResultSchema>;
 
 /** `POST /api/skill-drafts/:id/approve`: what the dialog sends back. The name, the scope and the text are the person's final ones. */
-export const ApproveSkillDraftSchema = z.object({
-  name: z.string().min(1).max(200),
-  scope: SkillScopeSchema,
-  text: z.string().min(1).max(200_000),
-  /** "Verify first": records the wish when the draft has no verification yet. The dialog replays the skill before it sends Approve; the server does not insist. */
-  verify: z.boolean().optional(),
-}).strict().meta({ id: 'ApproveSkillDraft' });
+export const ApproveSkillDraftSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    scope: SkillScopeSchema,
+    text: z.string().min(1).max(200_000),
+    /** "Verify first": records the wish when the draft has no verification yet. The dialog replays the skill before it sends Approve; the server does not insist. */
+    verify: z.boolean().optional(),
+  })
+  .strict()
+  .meta({ id: 'ApproveSkillDraft' });
 export type ApproveSkillDraft = z.infer<typeof ApproveSkillDraftSchema>;
 
-export const ApprovedSkillDraftSchema = z.object({ draft: SkillDraftSchema, path: z.string() }).meta({ id: 'ApprovedSkillDraft' });
+export const ApprovedSkillDraftSchema = z
+  .object({ draft: SkillDraftSchema, path: z.string() })
+  .meta({ id: 'ApprovedSkillDraft' });
 export type ApprovedSkillDraft = z.infer<typeof ApprovedSkillDraftSchema>;
 
 // ---- the text of a SKILL.md
@@ -267,7 +311,13 @@ export function parseSkillText(text: string): ParsedSkillText {
     const line = lines.find((l) => l.startsWith(`${key}:`));
     return line === undefined ? undefined : unquote(line.slice(key.length + 1));
   };
-  return { frontmatter: true, name: top('name'), description: top('description'), body: normalized.slice(match[0].length), lines };
+  return {
+    frontmatter: true,
+    name: top('name'),
+    description: top('description'),
+    body: normalized.slice(match[0].length),
+    lines,
+  };
 }
 
 /** What is wrong with a skill text, as sentences for the dialog; none when pi can load it as far as pi-kit can tell (pi's parser has the last word at approval). */
@@ -276,7 +326,8 @@ export function skillTextProblems(text: string): string[] {
   const problems: string[] = [];
   if (!parsed.frontmatter) return ['The text has to start with a frontmatter block (--- name, description ---).'];
   if (!parsed.name) problems.push('The frontmatter has no name.');
-  else if (!isSkillName(parsed.name)) problems.push('The name uses lowercase letters, digits and single hyphens, at most 64 characters.');
+  else if (!isSkillName(parsed.name))
+    problems.push('The name uses lowercase letters, digits and single hyphens, at most 64 characters.');
   if (!parsed.description) problems.push('The frontmatter has no description: pi does not load a skill without one.');
   else if (parsed.description.length > 1024) problems.push('The description is longer than 1024 characters.');
   if (!parsed.body.trim()) problems.push('The skill has no instructions after the frontmatter.');
@@ -389,12 +440,22 @@ export function stampProvenance(text: string, provenance: SkillProvenance): stri
   const start = own.findIndex((l) => /^\s{2}verified:/.test(l));
   const verified = start >= 0 ? own.slice(start) : ['  verified: null'];
   const sha = (value: string | null): string => (value ? value : 'null');
-  const block = ['x-pi-kit:', `  learnedFrom: ${provenance.learnedFrom}`, `  base: ${sha(provenance.base)}`, `  head: ${sha(provenance.head)}`, ...verified];
+  const block = [
+    'x-pi-kit:',
+    `  learnedFrom: ${provenance.learnedFrom}`,
+    `  base: ${sha(provenance.base)}`,
+    `  head: ${sha(provenance.head)}`,
+    ...verified,
+  ];
   return `---\n${[...kept, ...block].join('\n')}\n---\n${parsed.body}`.replace(/\n*$/, '\n');
 }
 
 /** The `learnedFrom` thread of a skill text's provenance block, if it has one. */
-export function provenanceOf(text: string): { learnedFrom: string | undefined; base: string | undefined; head: string | undefined } {
+export function provenanceOf(text: string): {
+  learnedFrom: string | undefined;
+  base: string | undefined;
+  head: string | undefined;
+} {
   const { lines } = parseSkillText(text);
   const at = lines.findIndex((l) => l.startsWith('x-pi-kit:'));
   const read = (key: string): string | undefined => {
@@ -415,59 +476,75 @@ export const UseOutcomeSchema = z.enum(['merged', 'committed', 'pr']);
 export type UseOutcome = z.infer<typeof UseOutcomeSchema>;
 
 /** The last verification of a learned skill, as the Settings row says it: from the draft's record, or from the `x-pi-kit.verified` block of the file when the draft has none. */
-export const LearnedVerificationSchema = z.object({
-  /** `done` with a result, or why there is none (`stopped`, `error`, `running`). */
-  state: z.enum(['running', 'done', 'stopped', 'error']),
-  result: VerificationResultSchema.optional(),
-  /** While `running`: where the replay is. */
-  phase: VerificationPhaseSchema.optional(),
-  /** When it finished (ms since the epoch). */
-  at: z.number().optional(),
-  summary: z.string().optional(),
-  /** The skill was edited after this report, so the report is for another text. */
-  stale: z.boolean(),
-}).meta({ id: 'LearnedVerification' });
+export const LearnedVerificationSchema = z
+  .object({
+    /** `done` with a result, or why there is none (`stopped`, `error`, `running`). */
+    state: z.enum(['running', 'done', 'stopped', 'error']),
+    result: VerificationResultSchema.optional(),
+    /** While `running`: where the replay is. */
+    phase: VerificationPhaseSchema.optional(),
+    /** When it finished (ms since the epoch). */
+    at: z.number().optional(),
+    summary: z.string().optional(),
+    /** The skill was edited after this report, so the report is for another text. */
+    stale: z.boolean(),
+  })
+  .meta({ id: 'LearnedVerification' });
 export type LearnedVerification = z.infer<typeof LearnedVerificationSchema>;
 
 /** Why a learned skill is flagged in Settings. */
-export const LearnedFlagSchema = z.object({
-  reason: z.enum(['no-outcomes', 'failed-verification']),
-  /** The sentence the row shows. */
-  text: z.string(),
-}).meta({ id: 'LearnedFlag' });
+export const LearnedFlagSchema = z
+  .object({
+    reason: z.enum(['no-outcomes', 'failed-verification']),
+    /** The sentence the row shows. */
+    text: z.string(),
+  })
+  .meta({ id: 'LearnedFlag' });
 export type LearnedFlag = z.infer<typeof LearnedFlagSchema>;
 
 /** One learned skill and its record. `id` is the draft's id: the draft is where the skill was approved, and its row keeps the retirement. */
-export const LearnedSkillSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  scope: SkillScopeSchema,
-  /** The `SKILL.md` Approve wrote (where the skill lives when it is not retired). */
-  path: z.string(),
-  /** The folder is in `.retired/`, not loaded by pi; null when the skill is live. */
-  retiredAt: z.number().nullable(),
-  /** The `SKILL.md` is not where it should be any more (moved or deleted by hand). */
-  missing: z.boolean(),
-  /** Where it was learned from. `title` is null once the thread is gone. */
-  learnedFrom: z.object({ threadId: z.string(), title: z.string().nullable(), base: z.string().nullable(), head: z.string().nullable() }),
-  verification: LearnedVerificationSchema.nullable(),
-  /** The prompts that used the skill (a chip or `/skill:name`), in any thread. */
-  uses: z.number().int(),
-  /** The uses whose thread landed a merged outcome. */
-  mergedAfterUse: z.number().int(),
-  /** The threads that used it. */
-  threads: z.number().int(),
-  lastUsedAt: z.number().nullable(),
-  flag: LearnedFlagSchema.nullable(),
-}).meta({ id: 'LearnedSkill' });
+export const LearnedSkillSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    scope: SkillScopeSchema,
+    /** The `SKILL.md` Approve wrote (where the skill lives when it is not retired). */
+    path: z.string(),
+    /** The folder is in `.retired/`, not loaded by pi; null when the skill is live. */
+    retiredAt: z.number().nullable(),
+    /** The `SKILL.md` is not where it should be any more (moved or deleted by hand). */
+    missing: z.boolean(),
+    /** Where it was learned from. `title` is null once the thread is gone. */
+    learnedFrom: z.object({
+      threadId: z.string(),
+      title: z.string().nullable(),
+      base: z.string().nullable(),
+      head: z.string().nullable(),
+    }),
+    verification: LearnedVerificationSchema.nullable(),
+    /** The prompts that used the skill (a chip or `/skill:name`), in any thread. */
+    uses: z.number().int(),
+    /** The uses whose thread landed a merged outcome. */
+    mergedAfterUse: z.number().int(),
+    /** The threads that used it. */
+    threads: z.number().int(),
+    lastUsedAt: z.number().nullable(),
+    flag: LearnedFlagSchema.nullable(),
+  })
+  .meta({ id: 'LearnedSkill' });
 export type LearnedSkill = z.infer<typeof LearnedSkillSchema>;
 
 /** One learned skill with its file as it is on disk now, and the draft it was approved from (its verification record, who made it): what the edit dialog works on. */
-export const LearnedSkillDetailSchema = LearnedSkillSchema.extend({ text: z.string(), draft: SkillDraftSchema }).meta({ id: 'LearnedSkillDetail' });
+export const LearnedSkillDetailSchema = LearnedSkillSchema.extend({ text: z.string(), draft: SkillDraftSchema }).meta({
+  id: 'LearnedSkillDetail',
+});
 export type LearnedSkillDetail = z.infer<typeof LearnedSkillDetailSchema>;
 
 /** `POST /api/skills/learned/:id/save`: the edited text of an approved skill. The name stays; the provenance is stamped again by the server. */
-export const SaveLearnedSkillSchema = z.object({ text: z.string().min(1).max(200_000) }).strict().meta({ id: 'SaveLearnedSkill' });
+export const SaveLearnedSkillSchema = z
+  .object({ text: z.string().min(1).max(200_000) })
+  .strict()
+  .meta({ id: 'SaveLearnedSkill' });
 export type SaveLearnedSkill = z.infer<typeof SaveLearnedSkillSchema>;
 
 /** A thread that used a skill, for the flag rule: when it last did, the outcome it ended with, and whether it has ended (it is not running). */
@@ -486,14 +563,22 @@ export const FLAG_THREADS = 3;
  * failed yet). Fewer than three: no flag. Flagged when all three ended **without an outcome** (nothing was merged, committed or opened as a pull request), or when the skill's last
  * verification **failed** and none of the three merged. A skill whose threads merged is never flagged by a failed replay alone.
  */
-export function learnedFlag(threads: readonly UsingThread[], verification: VerificationResult | undefined): LearnedFlag | null {
+export function learnedFlag(
+  threads: readonly UsingThread[],
+  verification: VerificationResult | undefined,
+): LearnedFlag | null {
   const last = threads
     .filter((t) => t.ended || t.outcome !== null)
     .sort((a, b) => b.lastUseAt - a.lastUseAt)
     .slice(0, FLAG_THREADS);
   if (last.length < FLAG_THREADS) return null;
-  if (last.every((t) => t.outcome === null)) return { reason: 'no-outcomes', text: 'Its last three threads ended without a commit, merge or pull request.' };
-  if (verification === 'failed' && !last.some((t) => t.outcome === 'merged')) return { reason: 'failed-verification', text: 'It did not reproduce its thread when it was last verified, and none of its last three threads merged.' };
+  if (last.every((t) => t.outcome === null))
+    return { reason: 'no-outcomes', text: 'Its last three threads ended without a commit, merge or pull request.' };
+  if (verification === 'failed' && !last.some((t) => t.outcome === 'merged'))
+    return {
+      reason: 'failed-verification',
+      text: 'It did not reproduce its thread when it was last verified, and none of its last three threads merged.',
+    };
   return null;
 }
 

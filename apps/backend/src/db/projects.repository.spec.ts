@@ -71,7 +71,17 @@ describe('projects (workspaces)', () => {
 
   it('a thread found by the pi command line after the first pass is unseen, one found during it is seen', () => {
     const threads = new ThreadsRepository(db);
-    const facts = (id: string) => ({ id, sessionPath: `/s/${id}.jsonl`, cwd: '/a', title: undefined, preview: 'p', parentSessionPath: undefined, messageCount: 1, createdAt: 1, updatedAt: 2 });
+    const facts = (id: string) => ({
+      id,
+      sessionPath: `/s/${id}.jsonl`,
+      cwd: '/a',
+      title: undefined,
+      preview: 'p',
+      parentSessionPath: undefined,
+      messageCount: 1,
+      createdAt: 1,
+      updatedAt: 2,
+    });
     threads.upsertFromSession(facts('early'), 500);
     threads.upsertFromSession(facts('late'));
     expect(threads.get('early')?.seenAt).toBe(500);

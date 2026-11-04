@@ -20,27 +20,55 @@ export const env = {
 export async function ensureBackend() {
   const up = async () => {
     try {
-      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` }, signal: AbortSignal.timeout(1000) })).ok;
-    } catch { return false; }
+      return (
+        await fetch(`${env.api}/api/health`, {
+          headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` },
+          signal: AbortSignal.timeout(1000),
+        })
+      ).ok;
+    } catch {
+      return false;
+    }
   };
   if (await up()) return async () => undefined;
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('../..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
-    stdio: ['ignore', 'ignore', 'pipe'], detached: true,
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
+    stdio: ['ignore', 'ignore', 'pipe'],
+    detached: true,
   });
   let stderr = '';
   let spawnError;
-  child.stderr.on('data', (chunk) => { stderr = (stderr + chunk).slice(-8000); });
-  child.once('error', (error) => { spawnError = error; });
+  child.stderr.on('data', (chunk) => {
+    stderr = (stderr + chunk).slice(-8000);
+  });
+  child.once('error', (error) => {
+    spawnError = error;
+  });
   const exited = new Promise((resolve) => child.once('exit', resolve));
   const stop = async () => {
     if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
-    const kill = (signal) => { try { process.kill(-child.pid, signal); } catch { /* already gone */ } };
+    const kill = (signal) => {
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        /* already gone */
+      }
+    };
     kill('SIGTERM');
     const timer = setTimeout(() => kill('SIGKILL'), 5000);
     timer.unref();
-    try { await exited; } finally { clearTimeout(timer); }
+    try {
+      await exited;
+    } finally {
+      clearTimeout(timer);
+    }
   };
   try {
     const deadline = Date.now() + 60_000;
@@ -57,11 +85,22 @@ export async function ensureBackend() {
 }
 
 /** A browser with the scene runner's harness on a page (scripts/screenshots.mjs), opened on the app. */
-export async function openApp({ viewport = VIEWPORTS.desktop, clipboard = false, microphone, backend, scrollbars = false } = {}) {
-  if (!env.project) throw new Error('Run the tests with `pnpm run e2e`: they need the scratch project and agent folder it creates.');
+export async function openApp({
+  viewport = VIEWPORTS.desktop,
+  clipboard = false,
+  microphone,
+  backend,
+  scrollbars = false,
+} = {}) {
+  if (!env.project)
+    throw new Error('Run the tests with `pnpm run e2e`: they need the scratch project and agent folder it creates.');
   const browser = await chromium.launch(scrollbars ? { ignoreDefaultArgs: ['--hide-scrollbars'] } : {});
   // `clipboard` lets the page read and write the system clipboard: the Copy buttons are checked by what they put there.
-  const context = await browser.newContext({ viewport, deviceScaleFactor: 1, ...(clipboard ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}) });
+  const context = await browser.newContext({
+    viewport,
+    deviceScaleFactor: 1,
+    ...(clipboard ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}),
+  });
   // Every wait of the page uses the suite's one limit (support/timeouts.mjs).
   context.setDefaultTimeout(WAIT_MS);
   context.setDefaultNavigationTimeout(WAIT_MS);
@@ -82,14 +121,20 @@ export const proseTexts = (page) => page.locator('pk-transcript pk-prose').allIn
 /** A request against the backend with the dev token, for assertions that look behind the UI. */
 export async function api(path, init = {}) {
   const { token } = await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${env.api}${path}`, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } });
+  const res = await fetch(`${env.api}${path}`, {
+    ...init,
+    headers: { ...init.headers, Authorization: `Bearer ${token}` },
+  });
   return res.json();
 }
 
 /** What pi's side was given by the human-in-the-loop test extension (e2e/support/pk-hitl.ts): one parsed JSON line per answered dialog, oldest first. */
 export function hitlLog() {
   try {
-    return readFileSync(env.server.PK_HITL_LOG, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line));
+    return readFileSync(env.server.PK_HITL_LOG, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
   } catch {
     return [];
   }

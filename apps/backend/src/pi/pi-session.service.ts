@@ -3,7 +3,24 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { PendingDialog, PiSessionEntry, PiUiEvent } from '@pi-kit/pi-adapter';
-import { type CompleteResponse, type ComposerRegistration, type Cycle, REVIEW_ENTRY_TYPE, type QueueSnapshot, type QueueTarget, endsWithQuestion, type ModelList, type PiDialogAnswer, type PiDialogRequest, type ReviewBatch, type SessionContext, type SessionStats, SKILLS_ENTRY_TYPE, type SkillsEntry, type ThinkingLevel } from '@pi-kit/protocol';
+import {
+  type CompleteResponse,
+  type ComposerRegistration,
+  type Cycle,
+  REVIEW_ENTRY_TYPE,
+  type QueueSnapshot,
+  type QueueTarget,
+  endsWithQuestion,
+  type ModelList,
+  type PiDialogAnswer,
+  type PiDialogRequest,
+  type ReviewBatch,
+  type SessionContext,
+  type SessionStats,
+  SKILLS_ENTRY_TYPE,
+  type SkillsEntry,
+  type ThinkingLevel,
+} from '@pi-kit/protocol';
 // Type-only imports are erased at build time; the runtime import goes through `loadPi()` below.
 // Runtime SDK access stays behind the pi/ adapter’s loadPi() entry point.
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent' with { 'resolution-mode': 'import' };
@@ -113,7 +130,11 @@ export class PiSessionService implements OnModuleDestroy {
   private readonly answeredListeners = new Set<(threadId: string, answer: DialogAnswered) => void>();
   private readonly skillUseListeners = new Set<(threadId: string, uses: SkillUse[]) => void>();
 
-  constructor(trust: TrustService, private readonly plugins: PiPluginService, liteLlm: LiteLlmService) {
+  constructor(
+    trust: TrustService,
+    private readonly plugins: PiPluginService,
+    liteLlm: LiteLlmService,
+  ) {
     this.sessionModels = new SessionModels(liteLlm);
     this.lifecycle = new SessionLifecycle(trust, plugins, {
       coordination: () => this.coordination,
@@ -148,7 +169,11 @@ export class PiSessionService implements OnModuleDestroy {
    * `display` is set and sends it to the model. While the thread streams it is queued as a steer; idle, `triggerTurn` starts a turn (which
    * the runner follows).
    */
-  async sendCustomMessage(threadId: string, message: { customType: string; content: string; display: boolean; details?: unknown }, options: { triggerTurn?: boolean; deliverAs?: 'steer' | 'followUp' } = {}): Promise<void> {
+  async sendCustomMessage(
+    threadId: string,
+    message: { customType: string; content: string; display: boolean; details?: unknown },
+    options: { triggerTurn?: boolean; deliverAs?: 'steer' | 'followUp' } = {},
+  ): Promise<void> {
     await this.lifecycle.get(threadId).session.sendCustomMessage(message, options);
   }
 
@@ -264,7 +289,11 @@ export class PiSessionService implements OnModuleDestroy {
    */
   async treeSource(threadId: string, sessionPath: string, leafHint?: string): Promise<PiTreeSource> {
     const open = this.lifecycle.threads.get(threadId);
-    if (open) return { ...(this.openTree(threadId) as { entries: PiSessionEntry[]; leafId: string | null }), path: open.session.sessionFile };
+    if (open)
+      return {
+        ...(this.openTree(threadId) as { entries: PiSessionEntry[]; leafId: string | null }),
+        path: open.session.sessionFile,
+      };
     if (!existsSync(sessionPath)) return { entries: [], leafId: null, path: undefined };
     const pi = await loadPi();
     const manager = pi.SessionManager.open(sessionPath);
@@ -287,7 +316,8 @@ export class PiSessionService implements OnModuleDestroy {
 
   /** One entry by id, from the open session. */
   entry(threadId: string, entryId: string): PiSessionEntry | undefined {
-    return this.lifecycle.get(threadId).session.sessionManager.getEntry(entryId) as unknown as PiSessionEntry | undefined;
+    return this.lifecycle.get(threadId).session.sessionManager.getEntry(entryId) as unknown as
+      PiSessionEntry | undefined;
   }
 
   /**
@@ -295,7 +325,11 @@ export class PiSessionService implements OnModuleDestroy {
    * parent and hands back its text, as pi's `/tree` does. With `summarize` the branch being left is summarised by the
    * model and the summary is written at the target. Throws while the thread runs.
    */
-  async navigate(threadId: string, targetId: string, options: { summarize?: boolean; instructions?: string } = {}): Promise<PiNavigateResult> {
+  async navigate(
+    threadId: string,
+    targetId: string,
+    options: { summarize?: boolean; instructions?: string } = {},
+  ): Promise<PiNavigateResult> {
     const { session } = this.lifecycle.get(threadId);
     const result = await session.navigateTree(targetId, {
       ...(options.summarize ? { summarize: true } : {}),
@@ -401,7 +435,11 @@ export class PiSessionService implements OnModuleDestroy {
   }
 
   /** The settings dialog's retry and queue-mode switches reach the sessions that are open (new ones read pi's settings). */
-  applySettings(change: { retryEnabled?: boolean; steeringMode?: 'all' | 'one-at-a-time'; followUpMode?: 'all' | 'one-at-a-time' }): void {
+  applySettings(change: {
+    retryEnabled?: boolean;
+    steeringMode?: 'all' | 'one-at-a-time';
+    followUpMode?: 'all' | 'one-at-a-time';
+  }): void {
     for (const { session } of this.lifecycle.threads.values()) {
       if (change.retryEnabled !== undefined) session.setAutoRetryEnabled(change.retryEnabled);
       if (change.steeringMode) session.setSteeringMode(change.steeringMode);
@@ -472,9 +510,14 @@ export class PiSessionService implements OnModuleDestroy {
     if (this.skillUseListeners.size === 0 || !text.includes('skill')) return;
     let uses: SkillUse[] = [];
     try {
-      uses = skillsUsedBy(text, (name) => thread.session.resourceLoader.getSkills().skills.find((s) => s.name === name)?.filePath);
+      uses = skillsUsedBy(
+        text,
+        (name) => thread.session.resourceLoader.getSkills().skills.find((s) => s.name === name)?.filePath,
+      );
     } catch (error) {
-      this.logger.debug(`Could not read the skills of a prompt of ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.debug(
+        `Could not read the skills of a prompt of ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     if (uses.length === 0) return;
     for (const listener of this.skillUseListeners) {
@@ -541,9 +584,20 @@ export class PiSessionService implements OnModuleDestroy {
     const last = thread.session.messages.at(-1);
     if (last?.role !== 'assistant') return undefined;
     const content = (last as { content?: unknown }).content;
-    const text = Array.isArray(content) ? content.map((part) => (part && typeof part === 'object' && (part as { type?: string }).type === 'text' ? String((part as { text?: unknown }).text ?? '') : '')).join('') : '';
+    const text = Array.isArray(content)
+      ? content
+          .map((part) =>
+            part && typeof part === 'object' && (part as { type?: string }).type === 'text'
+              ? String((part as { text?: unknown }).text ?? '')
+              : '',
+          )
+          .join('')
+      : '';
     if (!endsWithQuestion(text)) return undefined;
-    return text.trimEnd().slice(text.trimEnd().lastIndexOf('\n') + 1).trim();
+    return text
+      .trimEnd()
+      .slice(text.trimEnd().lastIndexOf('\n') + 1)
+      .trim();
   }
 
   /**
@@ -625,7 +679,8 @@ export class PiSessionService implements OnModuleDestroy {
   /** Argument completion from the extensions' autocomplete providers (`ctx.ui.addAutocompleteProvider`). */
   complete(threadId: string, text: string, cursor: number): Promise<CompleteResponse> {
     return this.lifecycle.get(threadId).ui.complete(text, cursor, {
-      onError: (error) => this.logger.debug(`Autocomplete provider failed: ${error instanceof Error ? error.message : String(error)}`),
+      onError: (error) =>
+        this.logger.debug(`Autocomplete provider failed: ${error instanceof Error ? error.message : String(error)}`),
     });
   }
 
@@ -677,12 +732,23 @@ export class PiSessionService implements OnModuleDestroy {
   }
 
   /** A user action from an MCP App, through the tool on the connection the session already holds. */
-  async callMcpTool(threadId: string, server: string, tool: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  async callMcpTool(
+    threadId: string,
+    server: string,
+    tool: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<Record<string, unknown>> {
     return this.lifecycle.get(threadId).mcp.callTool(server, tool, args, signal);
   }
 
   /** Reads an app resource and preserves the metadata observed on the session's MCP transport. */
-  async readMcpResource(threadId: string, server: string, uri: string, signal?: AbortSignal): Promise<{ contents: Record<string, unknown>[] }> {
+  async readMcpResource(
+    threadId: string,
+    server: string,
+    uri: string,
+    signal?: AbortSignal,
+  ): Promise<{ contents: Record<string, unknown>[] }> {
     return this.lifecycle.get(threadId).mcp.readResource(server, uri, signal);
   }
 
@@ -738,7 +804,9 @@ export class PiSessionService implements OnModuleDestroy {
   async exportSession(threadId: string, path?: string): Promise<{ path: string; format: 'html' | 'jsonl' }> {
     const { session, info } = this.lifecycle.get(threadId);
     // pi writes relative paths (and its default file name) into the process's folder; the thread's folder is the one that makes sense.
-    const target = path ? resolve(info.cwd, path) : join(info.cwd, `pi-session-${new Date().toISOString().replace(/[:.]/g, '-')}.html`);
+    const target = path
+      ? resolve(info.cwd, path)
+      : join(info.cwd, `pi-session-${new Date().toISOString().replace(/[:.]/g, '-')}.html`);
     if (target.toLowerCase().endsWith('.jsonl')) return { path: session.exportToJsonl(target), format: 'jsonl' };
     return { path: await session.exportToHtml(target), format: 'html' };
   }
@@ -769,14 +837,25 @@ export class PiSessionService implements OnModuleDestroy {
   context(threadId: string): SessionContext {
     const { session } = this.lifecycle.get(threadId);
     const usage = session.getContextUsage();
-    const contextWindow = usage?.contextWindow ?? (session.model ? this.contextWindowLookup(threadId)(session.model.provider, session.model.id) : undefined) ?? null;
-    const summaries = (session.sessionManager.getBranch() as { type: string; summary?: string }[]).filter((entry) => entry.type === 'compaction' && entry.summary).map((entry) => entry.summary as string);
-    const items = buildContextItems(session.agent.state.messages as unknown as ContextMessage[], session.agent.state.tools as unknown as ContextTool[], summaries);
+    const contextWindow =
+      usage?.contextWindow ??
+      (session.model ? this.contextWindowLookup(threadId)(session.model.provider, session.model.id) : undefined) ??
+      null;
+    const summaries = (session.sessionManager.getBranch() as { type: string; summary?: string }[])
+      .filter((entry) => entry.type === 'compaction' && entry.summary)
+      .map((entry) => entry.summary as string);
+    const items = buildContextItems(
+      session.agent.state.messages as unknown as ContextMessage[],
+      session.agent.state.tools as unknown as ContextTool[],
+      summaries,
+    );
     return {
       contextTokens: usage?.tokens ?? null,
       contextWindow,
       estimatedTokens: items.reduce((sum, item) => sum + item.tokens, 0),
-      model: session.model ? { provider: session.model.provider, id: session.model.id, name: session.model.name } : null,
+      model: session.model
+        ? { provider: session.model.provider, id: session.model.id, name: session.model.name }
+        : null,
       groups: groupContextItems(items),
       items,
     };
@@ -787,7 +866,10 @@ export class PiSessionService implements OnModuleDestroy {
     const { session, info, ui } = this.lifecycle.get(threadId);
     const stats = session.getSessionStats();
     const usage = session.getContextUsage();
-    const contextWindow = usage?.contextWindow ?? (session.model ? this.contextWindowLookup(threadId)(session.model.provider, session.model.id) : undefined) ?? null;
+    const contextWindow =
+      usage?.contextWindow ??
+      (session.model ? this.contextWindowLookup(threadId)(session.model.provider, session.model.id) : undefined) ??
+      null;
     const compaction = session.settingsManager.getCompactionSettings(session.model);
     return {
       sessionId: stats.sessionId,
@@ -801,10 +883,13 @@ export class PiSessionService implements OnModuleDestroy {
       cost: stats.cost,
       contextTokens: usage?.tokens ?? null,
       contextWindow,
-      model: session.model ? { provider: session.model.provider, id: session.model.id, name: session.model.name } : null,
+      model: session.model
+        ? { provider: session.model.provider, id: session.model.id, name: session.model.name }
+        : null,
       thinkingLevel: session.thinkingLevel as ThinkingLevel,
       autoCompaction: session.autoCompactionEnabled,
-      compactionThreshold: session.autoCompactionEnabled && contextWindow ? Math.max(0, contextWindow - compaction.reserveTokens) : null,
+      compactionThreshold:
+        session.autoCompactionEnabled && contextWindow ? Math.max(0, contextWindow - compaction.reserveTokens) : null,
       streaming: session.isStreaming,
       waitingForAnswer: ui.size > 0,
       cwd: info.cwd,
@@ -812,7 +897,12 @@ export class PiSessionService implements OnModuleDestroy {
   }
 
   /** `!command`: runs the shell command through pi (recorded in the session, sent to the model with the next prompt). */
-  executeBash(threadId: string, command: string, onChunk: (chunk: string) => void, excludeFromContext = false): Promise<BashRun> {
+  executeBash(
+    threadId: string,
+    command: string,
+    onChunk: (chunk: string) => void,
+    excludeFromContext = false,
+  ): Promise<BashRun> {
     return this.lifecycle.get(threadId).session.executeBash(command, onChunk, { excludeFromContext });
   }
 
@@ -847,7 +937,9 @@ export class PiSessionService implements OnModuleDestroy {
           try {
             listener(threadId, event);
           } catch (error) {
-            this.logger.warn(`Unattached UI listener failed: ${error instanceof Error ? error.message : String(error)}`);
+            this.logger.warn(
+              `Unattached UI listener failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
           }
         }
       },

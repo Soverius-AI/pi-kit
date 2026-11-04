@@ -11,5 +11,24 @@ import { TrustService } from './trust.service';
  * pi itself: its sessions, config, plugins, trust, resources and updates, and the LiteLLM catalog refresh the model
  * picker needs.
  */
-@Module({ providers: [LiteLlmService, PiPluginService, TrustService, PiSessionService, PiConfigService, PiUpdateService, ResourcesService], exports: [LiteLlmService, PiPluginService, PiSessionService, PiConfigService, TrustService, PiUpdateService, ResourcesService] })
+@Module({
+  providers: [
+    LiteLlmService,
+    PiPluginService,
+    TrustService,
+    PiSessionService,
+    PiConfigService,
+    PiUpdateService,
+    ResourcesService,
+  ],
+  exports: [
+    LiteLlmService,
+    PiPluginService,
+    PiSessionService,
+    PiConfigService,
+    TrustService,
+    PiUpdateService,
+    ResourcesService,
+  ],
+})
 export class PiModule {}

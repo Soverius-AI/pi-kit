@@ -14,13 +14,7 @@ import {
 import { normalizeA2uiOperations } from './a2ui';
 import { OPEN_GENERATIVE_UI_ACTIVITY, openGenerativeUiOf } from '@pi-kit/protocol';
 import { addedFileHunks, parseUnifiedPatch } from './diff';
-import type {
-  PiAssistantMessage,
-  PiAssistantMessageEvent,
-  PiEvent,
-  PiMessage,
-  PiToolResult,
-} from './pi-events';
+import type { PiAssistantMessage, PiAssistantMessageEvent, PiEvent, PiMessage, PiToolResult } from './pi-events';
 
 /**
  * pi session event → AG-UI events (table, CUSTOM events).
@@ -438,7 +432,9 @@ function onMessageEnd(message: PiMessage | undefined, ctx: MapContext): BaseEven
         cacheRead: usage.cacheRead,
         cacheWrite: usage.cacheWrite,
         cost: usage.cost?.total ?? 0,
-        ...(ctx.state.assistantStartedAt !== undefined ? { elapsedMs: Math.max(0, ctx.now() - ctx.state.assistantStartedAt) } : {}),
+        ...(ctx.state.assistantStartedAt !== undefined
+          ? { elapsedMs: Math.max(0, ctx.now() - ctx.state.assistantStartedAt) }
+          : {}),
         ...(assistant.provider ? { provider: assistant.provider } : {}),
         ...(assistant.model ? { model: assistant.model } : {}),
         ...(assistant.thinkingLevel ? { thinkingLevel: assistant.thinkingLevel } : {}),
@@ -464,7 +460,9 @@ function userMessage(message: PiMessage, ctx: MapContext): BaseEvent[] {
     typeof content === 'string'
       ? content
       : Array.isArray(content)
-        ? content.map((part: { type?: string; text?: string }) => (part.type === 'text' ? (part.text ?? '') : '')).join('')
+        ? content
+            .map((part: { type?: string; text?: string }) => (part.type === 'text' ? (part.text ?? '') : ''))
+            .join('')
         : '';
   if (!text.trim()) return [];
   const messageId = ctx.newId();
@@ -516,7 +514,13 @@ function onToolExecutionStart(event: PiEvent, ctx: MapContext): BaseEvent[] {
   }
   if (!ctx.state.tools.has(id)) {
     const now = ctx.now();
-    const tool: ToolState = { name: String(event['toolName']), args: toolArgs(event), startedAt: now, lastEmit: now, lastOutput: '' };
+    const tool: ToolState = {
+      name: String(event['toolName']),
+      args: toolArgs(event),
+      startedAt: now,
+      lastEmit: now,
+      lastOutput: '',
+    };
     ctx.state.tools.set(id, tool);
     out.push(toolActivity(id, tool));
     if (tool.name === 'bash') out.push(bashActivity(id, tool, {}));
@@ -550,7 +554,14 @@ function onToolExecutionEnd(event: PiEvent, ctx: MapContext): BaseEvent[] {
   const isError = event['isError'] === true;
   const durationMs = typeof event['durationMs'] === 'number' ? event['durationMs'] : ctx.now() - tool.startedAt;
 
-  out.push(toolActivity(id, tool, { status: isError ? 'error' : 'done', durationMs, progress: lastLine(text), images: toolImages(result?.content) }));
+  out.push(
+    toolActivity(id, tool, {
+      status: isError ? 'error' : 'done',
+      durationMs,
+      progress: lastLine(text),
+      images: toolImages(result?.content),
+    }),
+  );
   if (tool.name === 'bash') {
     const structured = result?.structuredContent as { exit_code?: number; truncated?: boolean } | undefined;
     const exitCode = structured?.exit_code ?? exitCodeFromText(text);
@@ -567,7 +578,9 @@ function onToolExecutionEnd(event: PiEvent, ctx: MapContext): BaseEvent[] {
     const patch = (result as { details?: { patch?: string } } | undefined)?.details?.patch;
     const hunks = typeof patch === 'string' ? parseUnifiedPatch(patch) : [];
     if (hunks.length > 0) {
-      out.push(activity(activityId.diff(id), 'pi.diff', { path: String(tool.args['path'] ?? ''), hunks, toolCallId: id }));
+      out.push(
+        activity(activityId.diff(id), 'pi.diff', { path: String(tool.args['path'] ?? ''), hunks, toolCallId: id }),
+      );
     }
   } else if (!isError && tool.name === 'write' && typeof tool.args['content'] === 'string') {
     out.push(
@@ -598,11 +611,24 @@ function onToolExecutionEnd(event: PiEvent, ctx: MapContext): BaseEvent[] {
  *   left to the runtime's A2UI middleware, which looks for exactly that in `TOOL_CALL_RESULT`.)
  * - a call to an MCP tool that links a `ui://` resource becomes an `mcp-apps` activity with the call's result and input.
  */
-function genUiActivities(id: string, tool: ToolState, result: PiToolResult | undefined, text: string, ctx: MapContext): BaseEvent[] {
+function genUiActivities(
+  id: string,
+  tool: ToolState,
+  result: PiToolResult | undefined,
+  text: string,
+  ctx: MapContext,
+): BaseEvent[] {
   const out: BaseEvent[] = [];
   const details = result?.details;
   const openUi = openGenerativeUiOf(details);
-  if (openUi) out.push({ type: EventType.ACTIVITY_SNAPSHOT, messageId: `${id}-activity`, activityType: OPEN_GENERATIVE_UI_ACTIVITY, content: openUi, replace: true } as BaseEvent);
+  if (openUi)
+    out.push({
+      type: EventType.ACTIVITY_SNAPSHOT,
+      messageId: `${id}-activity`,
+      activityType: OPEN_GENERATIVE_UI_ACTIVITY,
+      content: openUi,
+      replace: true,
+    } as BaseEvent);
   const found = a2uiOperationsOf({ details });
   const operations = found && normalizeA2uiOperations(found);
   if (operations) {
@@ -640,7 +666,12 @@ function genUiActivities(id: string, tool: ToolState, result: PiToolResult | und
 /** The result an MCP App is told about: the MCP `CallToolResult` pi kept (`structuredContent`), else the text pi gave the model. */
 export function mcpAppResult(result: PiToolResult | undefined, text: string): Record<string, unknown> {
   const structured = result?.structuredContent;
-  if (structured && typeof structured === 'object' && !Array.isArray(structured) && Array.isArray((structured as { content?: unknown }).content)) {
+  if (
+    structured &&
+    typeof structured === 'object' &&
+    !Array.isArray(structured) &&
+    Array.isArray((structured as { content?: unknown }).content)
+  ) {
     return structured as Record<string, unknown>;
   }
   return { content: text ? [{ type: 'text', text }] : [] };

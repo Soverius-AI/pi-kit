@@ -56,7 +56,10 @@ export default function (pi: any) {
   // A guard on the bash tool: the dialog opens while the tool call runs, so the block names the tool.
   pi.on('tool_call', async (event: any, ctx: any) => {
     if (event.toolName === 'bash' && /touch hitl-guarded/.test(String(event.input?.command))) {
-      const ok = await ctx.ui.confirm(`Run ${event.input.command}?`, 'The hitl guard wants a yes before it lets this through.');
+      const ok = await ctx.ui.confirm(
+        `Run ${event.input.command}?`,
+        'The hitl guard wants a yes before it lets this through.',
+      );
       record('guard', ok);
       if (!ok) return { block: true, reason: 'Denied by the user in pi-kit' };
     }

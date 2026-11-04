@@ -33,7 +33,14 @@ let launcherDir;
 
 async function call(path, init = {}) {
   const { token } = await (await fetch(`${API}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${API}${path}`, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}) } });
+  const res = await fetch(`${API}${path}`, {
+    ...init,
+    headers: {
+      ...init.headers,
+      Authorization: `Bearer ${token}`,
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+  });
   const text = await res.text();
   return { status: res.status, body: text ? JSON.parse(text) : undefined };
 }
@@ -41,7 +48,13 @@ async function call(path, init = {}) {
 /** Runs a command to its end WITHOUT blocking this process: the provider stub lives in it, and a pi that waits for the stub would wait forever behind a synchronous call. */
 const run = (command, args, options = {}) =>
   new Promise((resolve) => {
-    const child = execFile(command, args, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, ...options }, (error, stdout, stderr) => resolve({ status: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr }));
+    const child = execFile(
+      command,
+      args,
+      { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, ...options },
+      (error, stdout, stderr) =>
+        resolve({ status: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr }),
+    );
     // `pi -p` appends what is piped to it to the prompt and waits for the end of its input: a terminal's standard input is closed or a tty, ours is closed here.
     child.stdin.end();
   });
@@ -73,14 +86,47 @@ before(async () => {
   proxy = await startKeyProxy(MODEL_URL, MODEL.id);
   writeFileSync(
     join(world.agent, 'models.json'),
-    JSON.stringify({ providers: { openrouter: { baseUrl: proxy.url }, 'llama-swap': { baseUrl: MODEL_URL, api: 'openai-completions', apiKey: 'llama-swap', models: [{ id: MODEL.id, name: MODEL.id, contextWindow: 262144 }] } } }, null, 2),
+    JSON.stringify(
+      {
+        providers: {
+          openrouter: { baseUrl: proxy.url },
+          'llama-swap': {
+            baseUrl: MODEL_URL,
+            api: 'openai-completions',
+            apiKey: 'llama-swap',
+            models: [{ id: MODEL.id, name: MODEL.id, contextWindow: 262144 }],
+          },
+        },
+      },
+      null,
+      2,
+    ),
   );
-  writeFileSync(join(world.agent, 'settings.json'), JSON.stringify({ defaultProvider: 'llama-swap', defaultModel: MODEL.id, defaultThinkingLevel: 'off', lastChangelogVersion: '1.2.0' }, null, 2));
+  writeFileSync(
+    join(world.agent, 'settings.json'),
+    JSON.stringify(
+      {
+        defaultProvider: 'llama-swap',
+        defaultModel: MODEL.id,
+        defaultThinkingLevel: 'off',
+        lastChangelogVersion: '1.2.0',
+      },
+      null,
+      2,
+    ),
+  );
   world.env.PI_KIT_SECRET_STORE = `file:${secretsFile}`;
   logFd = openSync(join(world.base, 'secrets-backend.log'), 'w');
   backend = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: root,
-    env: { ...process.env, ...world.env, NODE_ENV: 'development', PI_KIT_PORT: String(PORT), PI_KIT_ORIGIN: env.base, PI_KIT_VERSION: '0.0.0-e2e' },
+    env: {
+      ...process.env,
+      ...world.env,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: String(PORT),
+      PI_KIT_ORIGIN: env.base,
+      PI_KIT_VERSION: '0.0.0-e2e',
+    },
     stdio: ['ignore', logFd, logFd],
     detached: true,
   });
@@ -128,10 +174,16 @@ describe('an API key through the workflow, with a credential store', () => {
     assert.deepEqual(auth().openrouter, { type: 'api_key', key: '!pi-kit-secret get openrouter' });
     assert.equal(secrets().openrouter, KEY);
     assert.equal(statSync(secretsFile).mode & 0o777, 0o600);
-    assert.deepEqual(filesContaining(world.base, KEY, [secretsFile]), [], 'the key is in no file but the credential store');
+    assert.deepEqual(
+      filesContaining(world.base, KEY, [secretsFile]),
+      [],
+      'the key is in no file but the credential store',
+    );
     assert.equal((await app.page.content()).includes(KEY), false);
     assert.equal(JSON.stringify((await call('/api/pi-settings')).body).includes(KEY), false);
-    const credentialLine = await settings().locator('[data-provider="openrouter"] [data-testid="credential-line"]').innerText();
+    const credentialLine = await settings()
+      .locator('[data-provider="openrouter"] [data-testid="credential-line"]')
+      .innerText();
     assert.match(credentialLine, /keychain/);
     assert.doesNotMatch(credentialLine, /key ending/);
   });
@@ -139,21 +191,52 @@ describe('an API key through the workflow, with a credential store', () => {
   it('pi in a terminal still resolves it through the command, and answers with it', async () => {
     const piCli = join(root, 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'bundle', 'cli.js');
     // The environment of a terminal: pi-kit-secret on PATH (the launcher pi-kit wrote), the same credential store, no pi-kit running anywhere in it.
-    const terminal = { ...process.env, PI_CODING_AGENT_DIR: world.agent, PI_KIT_SECRET_STORE: `file:${secretsFile}`, PATH: `${launcherDir}:${process.env.PATH}`, PI_OFFLINE: '1', NO_COLOR: '1' };
+    const terminal = {
+      ...process.env,
+      PI_CODING_AGENT_DIR: world.agent,
+      PI_KIT_SECRET_STORE: `file:${secretsFile}`,
+      PATH: `${launcherDir}:${process.env.PATH}`,
+      PI_OFFLINE: '1',
+      NO_COLOR: '1',
+    };
     assert.ok(existsSync(join(launcherDir, 'pi-kit-secret')), 'the launcher exists');
     const printed = await run('node', [piCli, 'auth', 'print-api-key', '--provider', 'openrouter'], { env: terminal });
     assert.equal(printed.status, 0, printed.stderr);
     assert.equal(printed.stdout.trim(), KEY, 'pi resolved the key through the !command');
 
     // A model that speaks the OpenAI chat API (the stub is one); OpenRouter also lists Claude and virtual models, which use other protocols.
-    const models = (await call('/api/pi-settings')).body.models.filter((m) => m.provider === 'openrouter' && !m.virtual && !/^~|anthropic|claude/.test(m.id));
+    const models = (await call('/api/pi-settings')).body.models.filter(
+      (m) => m.provider === 'openrouter' && !m.virtual && !/^~|anthropic|claude/.test(m.id),
+    );
     assert.ok(models.length > 0, 'the catalog lists OpenRouter models');
-    const answered = await run('node', [piCli, '-p', '--no-session', '--no-extensions', '--no-skills', '--no-mcp', '--model', `openrouter/${models[0].id}`, 'Reply with the single word ok.'], { env: terminal, cwd: world.project });
-    assert.equal(answered.status, 0, `pi -p exited ${answered.status}: ${answered.stderr} (the stub saw ${JSON.stringify(proxy.seen)})`);
+    const answered = await run(
+      'node',
+      [
+        piCli,
+        '-p',
+        '--no-session',
+        '--no-extensions',
+        '--no-skills',
+        '--no-mcp',
+        '--model',
+        `openrouter/${models[0].id}`,
+        'Reply with the single word ok.',
+      ],
+      { env: terminal, cwd: world.project },
+    );
+    assert.equal(
+      answered.status,
+      0,
+      `pi -p exited ${answered.status}: ${answered.stderr} (the stub saw ${JSON.stringify(proxy.seen)})`,
+    );
     assert.ok(answered.stdout.trim().length > 0, 'pi answered');
     const completions = proxy.seen.filter((s) => s.url.includes('chat/completions'));
     assert.ok(completions.length > 0, 'the request reached the provider stub');
-    assert.equal(completions.at(-1).authorization, `Bearer ${KEY}`, 'the provider was sent exactly the key that was typed');
+    assert.equal(
+      completions.at(-1).authorization,
+      `Bearer ${KEY}`,
+      'the provider was sent exactly the key that was typed',
+    );
   });
 
   it('moves a key that auth.json holds in full into the store when asked, and never by itself', async () => {
@@ -176,13 +259,19 @@ describe('an API key through the workflow, with a credential store', () => {
     assert.deepEqual(auth().openrouter, { type: 'api_key', key: '!pi-kit-secret get openrouter' });
     assert.equal(await settings().getByTestId('move-keys').count(), 0, 'nothing is left to move');
     assert.deepEqual(filesContaining(world.agent, GROQ), [], 'the plain-text key is gone from pi’s folder');
-    assert.match(await settings().locator('[data-provider="groq"] [data-testid="credential-line"]').innerText(), /key from keychain/);
+    assert.match(
+      await settings().locator('[data-provider="groq"] [data-testid="credential-line"]').innerText(),
+      /key from keychain/,
+    );
     await app.page.keyboard.press('Escape');
   });
 
   it('signing out removes the stored key as well', async () => {
     await app.h.openSettings('Providers');
-    await settings().locator('[data-provider="groq"]').getByRole('button', { name: /Remove the key for/ }).click();
+    await settings()
+      .locator('[data-provider="groq"]')
+      .getByRole('button', { name: /Remove the key for/ })
+      .click();
     // A provider that is not signed in is not a row any more.
     await settings().locator('[data-provider="groq"]').waitFor({ state: 'detached' });
     assert.equal(auth().groq, undefined);
@@ -198,7 +287,8 @@ describe('the database', () => {
     const key = secrets()['pi-kit/db'];
     assert.match(key, /^[0-9a-f]{64}$/);
     const plain = spawnSync('sqlite3', [file, 'select count(*) from sqlite_master'], { encoding: 'utf8' });
-    if (!plain.error) assert.match(plain.stderr + plain.stdout, /not a database|encrypted/i, 'plain sqlite3 cannot read it');
+    if (!plain.error)
+      assert.match(plain.stderr + plain.stdout, /not a database|encrypted/i, 'plain sqlite3 cannot read it');
     const db = new Database(file, { readonly: true });
     db.pragma("cipher='chacha20'");
     db.pragma(`key="x'${key}'"`);
@@ -233,38 +323,65 @@ describe('redaction', () => {
   it('a key pasted into a prompt shows as [redacted ...] in the transcript and is in no file of pi-kit’s; pi’s own session file keeps what pi was sent', async () => {
     await app.h.newThread();
     await app.h.prompt(`My key is ${PASTED}. Reply with the single word ok.`);
-    const user = app.page.locator('pk-transcript').getByText(/My key is/).first();
+    const user = app.page
+      .locator('pk-transcript')
+      .getByText(/My key is/)
+      .first();
     await user.waitFor();
     const text = await user.innerText();
     assert.match(text, /My key is \[redacted openai key …zz42\]/);
     assert.equal(text.includes(PASTED), false);
     assert.equal((await app.page.locator('pk-transcript').innerText()).includes(PASTED), false);
 
-    threadId = (await call('/api/threads')).body.filter((t) => t.cwd === world.project).sort((a, b) => b.updatedAt - a.updatedAt)[0].id;
+    threadId = (await call('/api/threads')).body
+      .filter((t) => t.cwd === world.project)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0].id;
     // The replay log in the encrypted database holds no plaintext: opened with the key, searched for the secret.
     const db = new Database(join(world.data, 'pi-kit.sqlite'), { readonly: true });
     db.pragma("cipher='chacha20'");
     db.pragma(`key="x'${secrets()['pi-kit/db']}'"`);
-    const events = db.prepare('select event_json from thread_events').all().map((r) => r.event_json);
+    const events = db
+      .prepare('select event_json from thread_events')
+      .all()
+      .map((r) => r.event_json);
     db.close();
-    assert.ok(events.some((e) => e.includes('[redacted openai key …zz42]')), 'the log holds the masked text');
-    assert.equal(events.some((e) => e.includes(PASTED)), false, 'the log holds no plaintext');
+    assert.ok(
+      events.some((e) => e.includes('[redacted openai key …zz42]')),
+      'the log holds the masked text',
+    );
+    assert.equal(
+      events.some((e) => e.includes(PASTED)),
+      false,
+      'the log holds no plaintext',
+    );
     assert.deepEqual(filesContaining(world.data, PASTED), [], 'no file in pi-kit’s data folder holds it');
     // pi's file is pi's: it holds what the model was sent, which is what makes the answer possible.
     assert.ok(filesContaining(join(world.agent, 'sessions'), PASTED).length > 0, 'pi’s own session file is untouched');
   });
 
   it('an export is masked, and says how many places', async () => {
-    const result = await call(`/api/threads/${threadId}/export`, { method: 'POST', body: JSON.stringify({ path: 'export.jsonl' }) });
+    const result = await call(`/api/threads/${threadId}/export`, {
+      method: 'POST',
+      body: JSON.stringify({ path: 'export.jsonl' }),
+    });
     assert.equal(result.status, 201);
     assert.equal(result.body.format, 'jsonl');
     assert.ok(result.body.redacted > 0);
     const exported = readFileSync(result.body.path, 'utf8');
     assert.equal(exported.includes(PASTED), false);
     assert.ok(exported.includes('[redacted openai key …zz42]'));
-    const html = await call(`/api/threads/${threadId}/export`, { method: 'POST', body: JSON.stringify({ path: 'export.html' }) });
+    const html = await call(`/api/threads/${threadId}/export`, {
+      method: 'POST',
+      body: JSON.stringify({ path: 'export.html' }),
+    });
     const page = readFileSync(html.body.path, 'utf8');
-    assert.equal(Buffer.from(/id="session-data" type="application\/json">([^<]+)</.exec(page)[1], 'base64').toString('utf8').includes(PASTED), false, 'the HTML export’s session data is masked');
+    assert.equal(
+      Buffer.from(/id="session-data" type="application\/json">([^<]+)</.exec(page)[1], 'base64')
+        .toString('utf8')
+        .includes(PASTED),
+      false,
+      'the HTML export’s session data is masked',
+    );
   });
 
   it('a pattern of the person’s own masks what the built-in ones do not; a folder with the pass switched off shows the text as it is', async () => {
@@ -278,18 +395,34 @@ describe('redaction', () => {
     await patterns.getByLabel('Regular expression').fill('acme_[a-z0-9]{12}');
     await patterns.getByTestId('add-pattern').click();
     await settings().getByTestId('redaction-pattern').getByText('acme token', { exact: true }).waitFor();
-    assert.deepEqual((await call('/api/redaction')).body.config.patterns, [{ name: 'acme token', regex: 'acme_[a-z0-9]{12}' }]);
+    assert.deepEqual((await call('/api/redaction')).body.config.patterns, [
+      { name: 'acme token', regex: 'acme_[a-z0-9]{12}' },
+    ]);
     await app.page.keyboard.press('Escape');
     await app.h.prompt(`The token is ${CUSTOM}. Reply with the single word ok.`);
-    assert.match(await app.page.locator('pk-transcript').getByText(/The token is/).first().innerText(), /The token is \[redacted acme token …3456\]/);
+    assert.match(
+      await app.page
+        .locator('pk-transcript')
+        .getByText(/The token is/)
+        .first()
+        .innerText(),
+      /The token is \[redacted acme token …3456\]/,
+    );
 
     await app.h.openSettings('Advanced');
     await settings().getByTestId('section-advanced').getByRole('tab', { name: 'Privacy', exact: true }).click();
-    await settings().getByTestId('redaction-settings').getByRole('switch', { name: /Mask keys in project/ }).uncheck();
+    await settings()
+      .getByTestId('redaction-settings')
+      .getByRole('switch', { name: /Mask keys in project/ })
+      .uncheck();
     await app.page.getByText('Saved').first().waitFor();
     await app.page.keyboard.press('Escape');
     await app.h.prompt(`Remember ${GITHUB}. Reply with the single word ok.`);
-    const shown = await app.page.locator('pk-transcript').getByText(/Remember/).first().innerText();
+    const shown = await app.page
+      .locator('pk-transcript')
+      .getByText(/Remember/)
+      .first()
+      .innerText();
     assert.ok(shown.includes(GITHUB), 'with the pass off for this folder the text is shown as it is');
   });
 });

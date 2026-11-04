@@ -26,13 +26,27 @@ describe('current-state hydration', () => {
 
   it('preserves generated UI, tool results, metadata and state patches across a partial live run', () => {
     const snapshot = hydrateThread([
-      event('TOOL_CALL_START', { toolCallId: 'c', parentMessageId: 'a', toolCallName: 'render_a2ui', metadata: { source: 'pi' } }),
+      event('TOOL_CALL_START', {
+        toolCallId: 'c',
+        parentMessageId: 'a',
+        toolCallName: 'render_a2ui',
+        metadata: { source: 'pi' },
+      }),
       event('TOOL_CALL_ARGS', { toolCallId: 'c', delta: '{"surfaceId":"demo"}' }),
       event('TEXT_MESSAGE_START', { messageId: 'follow', role: 'assistant' }),
       event('TEXT_MESSAGE_CONTENT', { messageId: 'follow', delta: 'Done' }),
       event('TOOL_CALL_RESULT', { toolCallId: 'c', messageId: 'result', content: 'ok' }),
-      event('ACTIVITY_SNAPSHOT', { messageId: 'ui', activityType: 'a2ui-surface', content: { rows: [1] }, subagentRunId: 'sub' }),
-      event('ACTIVITY_DELTA', { messageId: 'ui', activityType: 'a2ui-surface', patch: [{ op: 'add', path: '/rows/-', value: 2 }] }),
+      event('ACTIVITY_SNAPSHOT', {
+        messageId: 'ui',
+        activityType: 'a2ui-surface',
+        content: { rows: [1] },
+        subagentRunId: 'sub',
+      }),
+      event('ACTIVITY_DELTA', {
+        messageId: 'ui',
+        activityType: 'a2ui-surface',
+        patch: [{ op: 'add', path: '/rows/-', value: 2 }],
+      }),
       event('STATE_SNAPSHOT', { snapshot: { count: 1 } }),
       event('STATE_DELTA', { delta: [{ op: 'replace', path: '/count', value: 2 }] }),
     ]);

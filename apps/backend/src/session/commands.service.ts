@@ -15,7 +15,11 @@ const BUILTINS: readonly { name: string; description: string; argumentHint?: str
   { name: 'tree', description: 'Navigate session tree (switch branches)' },
   { name: 'thinking', description: 'Set thinking level', argumentHint: '<level>' },
   { name: 'scoped-models', description: 'Enable/disable models for Ctrl+P cycling' },
-  { name: 'export', description: 'Export session (HTML default, or specify path: .html/.jsonl)', argumentHint: '[path]' },
+  {
+    name: 'export',
+    description: 'Export session (HTML default, or specify path: .html/.jsonl)',
+    argumentHint: '[path]',
+  },
   { name: 'import', description: 'Import and resume a session from a JSONL file', argumentHint: '<path>' },
   { name: 'share', description: 'Share session as a secret GitHub gist' },
   { name: 'bug', description: 'Report a bug to the Pi developers', argumentHint: '<description>' },
@@ -38,10 +42,22 @@ const BUILTINS: readonly { name: string; description: string; argumentHint?: str
   { name: 'llama', description: 'Manage local models, Hugging Face downloads and llama-swap configuration' },
   // pi-kit's own: the sidebar's projects, the attendant and the first-run setup.
   { name: 'setup', description: 'Open the setup: sign in, add a key or a local model, pick defaults' },
-  { name: 'connect', description: 'Connect Linear, GitHub, Slack, Notion and more: remote MCP servers with a one-click sign-in' },
+  {
+    name: 'connect',
+    description: 'Connect Linear, GitHub, Slack, Notion and more: remote MCP servers with a one-click sign-in',
+  },
   { name: 'project', description: 'Open the menu of the current project: new thread, fold, hide, move' },
-  { name: 'worktree', description: 'Start a thread in its own git worktree (new), or sync it with its base branch and merge it back (sync, merge)', argumentHint: '[new|sync|merge]' },
-  { name: 'attendant', description: 'Turn the attendant on or off for this project (activity: open what it did)', argumentHint: '[on|off|activity]' },
+  {
+    name: 'worktree',
+    description:
+      'Start a thread in its own git worktree (new), or sync it with its base branch and merge it back (sync, merge)',
+    argumentHint: '[new|sync|merge]',
+  },
+  {
+    name: 'attendant',
+    description: 'Turn the attendant on or off for this project (activity: open what it did)',
+    argumentHint: '[on|off|activity]',
+  },
 ];
 
 /** Built-ins the app does not implement: they stay in the menu, visibly disabled. */
@@ -73,12 +89,21 @@ export class CommandsService {
    * Pure part of `list()`: discovered commands first, then the built-ins. `suggestion` tells whether the prompt template at a path
    * asks for a suggestion pill (`suggested: true` in its frontmatter).
    */
-  merge(discovered: ReturnType<PiSessionService['commands']>, suggestion?: (path: string) => PromptSuggestion | undefined): Command[] {
+  merge(
+    discovered: ReturnType<PiSessionService['commands']>,
+    suggestion?: (path: string) => PromptSuggestion | undefined,
+  ): Command[] {
     const commands: Command[] = discovered.map((c) =>
       // pi's MCP extension registers /mcp, which opens its TUI manager. Here it opens the MCP panel, a UI
       // action like the built-ins; the composer must not send it to pi as text.
       c.name === 'mcp' && c.source === 'extension'
-        ? { name: 'mcp', description: 'Manage MCP servers: status, sign in, reconnect, enable or disable', source: 'extension', kind: 'action', origin: 'pi' }
+        ? {
+            name: 'mcp',
+            description: 'Manage MCP servers: status, sign in, reconnect, enable or disable',
+            source: 'extension',
+            kind: 'action',
+            origin: 'pi',
+          }
         : {
             name: c.name,
             ...(c.description ? { description: c.description } : {}),
@@ -104,7 +129,12 @@ export class CommandsService {
 }
 
 /** The badge text: the skill's or template's scope, the extension's file name (without its extension). */
-function originLabel(c: { source: string; scope: string | undefined; origin: string | undefined; path: string | undefined }): string | undefined {
+function originLabel(c: {
+  source: string;
+  scope: string | undefined;
+  origin: string | undefined;
+  path: string | undefined;
+}): string | undefined {
   if (c.source === 'extension') {
     const file = c.path?.split('/').filter(Boolean);
     const name = file?.at(-1)?.replace(/\.[cm]?[jt]s$/, '');

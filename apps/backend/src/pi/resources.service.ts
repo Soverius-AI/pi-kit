@@ -19,7 +19,11 @@ const TYPES: readonly ResourceSettingsKey[] = ['extensions', 'skills', 'prompts'
 /** `~/.pi/agent` for the home folder’s sake; anything else as it is. */
 function shortPath(path: string): string {
   const home = homedir();
-  return path === home ? '~' : path.startsWith(home + '/') || path.startsWith(home + '\\') ? `~${path.slice(home.length).replace(/\\/g, '/')}` : path.replace(/\\/g, '/');
+  return path === home
+    ? '~'
+    : path.startsWith(home + '/') || path.startsWith(home + '\\')
+      ? `~${path.slice(home.length).replace(/\\/g, '/')}`
+      : path.replace(/\\/g, '/');
 }
 
 /**
@@ -32,7 +36,10 @@ function shortPath(path: string): string {
 export class ResourcesService {
   private readonly logger = new Logger(ResourcesService.name);
 
-  constructor(private readonly trust: TrustService, @Optional() private readonly desktop?: DesktopBridge) {}
+  constructor(
+    private readonly trust: TrustService,
+    @Optional() private readonly desktop?: DesktopBridge,
+  ) {}
 
   async overview(cwd: string): Promise<ResourcesOverview> {
     const { pi, manager, packages, trusted, hasProject, agentDir } = await this.context(cwd);
@@ -47,14 +54,43 @@ export class ResourcesService {
     for (const error of manager.drainErrors()) errors.push(error.error.message);
     const items: ResourceItem[] = [];
     const uiSkill = genUiSkillPath();
-    items.push({ key: GENUI_SKILL_KEY, type: 'skills', name: 'pi-ui', path: uiSkill, enabled: true, scope: 'user', origin: 'builtin', source: 'builtin', label: 'Bundled with pi-kit', ...this.describe(pi, uiSkill) });
+    items.push({
+      key: GENUI_SKILL_KEY,
+      type: 'skills',
+      name: 'pi-ui',
+      path: uiSkill,
+      enabled: true,
+      scope: 'user',
+      origin: 'builtin',
+      source: 'builtin',
+      label: 'Bundled with pi-kit',
+      ...this.describe(pi, uiSkill),
+    });
     if (this.desktop?.available) {
       const path = browserSkillPath();
-      items.push({ key: BROWSER_SKILL_KEY, type: 'skills', name: 'pi-browser', path, enabled: true, scope: 'user', origin: 'builtin', source: 'builtin', label: 'Bundled with pi-kit', ...this.describe(pi, path) });
+      items.push({
+        key: BROWSER_SKILL_KEY,
+        type: 'skills',
+        name: 'pi-browser',
+        path,
+        enabled: true,
+        scope: 'user',
+        origin: 'builtin',
+        source: 'builtin',
+        label: 'Bundled with pi-kit',
+        ...this.describe(pi, path),
+      });
     }
     for (const type of TYPES) for (const res of resolved[type]) items.push(this.item(pi, type, res, agentDir, cwd));
-    items.sort((a, b) => a.type.localeCompare(b.type) || a.label.localeCompare(b.label) || a.name.localeCompare(b.name));
-    return { items, ...(trusted && hasProject ? { projectCwd: cwd } : {}), projectSkipped: hasProject && !trusted, errors };
+    items.sort(
+      (a, b) => a.type.localeCompare(b.type) || a.label.localeCompare(b.label) || a.name.localeCompare(b.name),
+    );
+    return {
+      items,
+      ...(trusted && hasProject ? { projectCwd: cwd } : {}),
+      projectSkipped: hasProject && !trusted,
+      errors,
+    };
   }
 
   /** Turns one resource on or off in the settings file of its scope. */
@@ -71,7 +107,8 @@ export class ResourcesService {
     if (!target) throw new Error('pi no longer lists that resource. Reload the list.');
     const { type, res } = target;
     const scope = res.metadata.scope === 'project' ? 'project' : 'user';
-    if (res.metadata.source === 'builtin') throw new Error('Built-in extensions are switched in pi’s settings with -builtin:<name>.');
+    if (res.metadata.source === 'builtin')
+      throw new Error('Built-in extensions are switched in pi’s settings with -builtin:<name>.');
     const settings = scope === 'project' ? manager.getProjectSettings() : manager.getGlobalSettings();
     if (res.metadata.origin === 'package') {
       const packagesList = [...(settings.packages ?? [])];
@@ -92,7 +129,11 @@ export class ResourcesService {
       const list = this.withPattern(((settings as Record<string, unknown>)[type] ?? []) as string[], pattern, enabled);
       const setter = {
         user: { extensions: 'setExtensionPaths', skills: 'setSkillPaths', prompts: 'setPromptTemplatePaths' },
-        project: { extensions: 'setProjectExtensionPaths', skills: 'setProjectSkillPaths', prompts: 'setProjectPromptTemplatePaths' },
+        project: {
+          extensions: 'setProjectExtensionPaths',
+          skills: 'setProjectSkillPaths',
+          prompts: 'setProjectPromptTemplatePaths',
+        },
       }[scope][type] as 'setExtensionPaths';
       manager[setter](list);
     }
@@ -132,13 +173,19 @@ export class ResourcesService {
     const folder = basename(dirname(res.path));
     let name: string;
     if (type === 'skills' && file === 'SKILL.md') name = folder;
-    else if (type === 'extensions' && !['extensions', 'index.ts', 'index.js'].includes(folder) && /^index\.[tj]s$/.test(file)) name = folder;
+    else if (
+      type === 'extensions' &&
+      !['extensions', 'index.ts', 'index.js'].includes(folder) &&
+      /^index\.[tj]s$/.test(file)
+    )
+      name = folder;
     else name = file.replace(/\.(md|ts|js|mjs)$/, '');
     const origin = metadata.source === 'builtin' ? 'builtin' : metadata.origin;
     let label: string;
     if (metadata.origin === 'package') label = metadata.source;
     else if (metadata.source === 'builtin') label = 'Built-in';
-    else if (scope === 'project') label = `Project (${metadata.baseDir && metadata.baseDir !== join(cwd, pi.CONFIG_DIR_NAME) ? shortPath(metadata.baseDir) : `${pi.CONFIG_DIR_NAME}/`})`;
+    else if (scope === 'project')
+      label = `Project (${metadata.baseDir && metadata.baseDir !== join(cwd, pi.CONFIG_DIR_NAME) ? shortPath(metadata.baseDir) : `${pi.CONFIG_DIR_NAME}/`})`;
     else label = `User (${shortPath(metadata.baseDir ?? agentDir)})`;
     return {
       key: this.keyOf(type, res),
@@ -158,7 +205,9 @@ export class ResourcesService {
   private describe(pi: Pi, path: string): { description?: string } {
     try {
       const { frontmatter } = pi.parseFrontmatter<{ description?: unknown }>(readFileSync(path, 'utf8'));
-      return typeof frontmatter.description === 'string' && frontmatter.description.trim() ? { description: frontmatter.description.trim().slice(0, 240) } : {};
+      return typeof frontmatter.description === 'string' && frontmatter.description.trim()
+        ? { description: frontmatter.description.trim().slice(0, 240) }
+        : {};
     } catch {
       return {};
     }

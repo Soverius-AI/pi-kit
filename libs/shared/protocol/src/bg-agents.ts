@@ -36,12 +36,24 @@ export type AgentQuestion = z.infer<typeof AgentQuestionSchema>;
 
 /** How an agent's last question was answered: by the main agent (Override sends the user's own answer as a steer), by the user, by the default, or not at all. */
 export const AgentAnswerSchema = z
-  .object({ question: z.string(), text: z.string().nullable(), by: z.enum(['main', 'user', 'default', 'cancelled', 'expired']), answeredAt: z.number() })
+  .object({
+    question: z.string(),
+    text: z.string().nullable(),
+    by: z.enum(['main', 'user', 'default', 'cancelled', 'expired']),
+    answeredAt: z.number(),
+  })
   .meta({ id: 'AgentAnswer' });
 export type AgentAnswer = z.infer<typeof AgentAnswerSchema>;
 
 /** Tokens an agent's model requests used so far: the sum over its models, as pi-ai counts them. */
-export const AgentTokensSchema = z.object({ input: z.number().int(), output: z.number().int(), cacheRead: z.number().int(), cacheWrite: z.number().int() }).meta({ id: 'AgentTokens' });
+export const AgentTokensSchema = z
+  .object({
+    input: z.number().int(),
+    output: z.number().int(),
+    cacheRead: z.number().int(),
+    cacheWrite: z.number().int(),
+  })
+  .meta({ id: 'AgentTokens' });
 export type AgentTokens = z.infer<typeof AgentTokensSchema>;
 export const BgAgentSchema = z
   .object({
@@ -82,20 +94,29 @@ export const BgAgentSchema = z
 export type BgAgent = z.infer<typeof BgAgentSchema>;
 
 /** `POST /api/threads/:id/agents/:agent/message`: more instructions for a running agent. */
-export const AgentMessageBodySchema = z.object({ text: z.string().min(1), mode: z.enum(['steer', 'followUp']).default('followUp') }).meta({ id: 'AgentMessageBody' });
+export const AgentMessageBodySchema = z
+  .object({ text: z.string().min(1), mode: z.enum(['steer', 'followUp']).default('followUp') })
+  .meta({ id: 'AgentMessageBody' });
 export type AgentMessageBody = z.infer<typeof AgentMessageBodySchema>;
 
 /** `POST /api/threads/:id/agents/:agent/answer`: the user's answer to one of the agent's questions, or its dismissal. */
-export const AgentAnswerBodySchema = z.object({ question: z.string().min(1), text: z.string().optional(), cancelled: z.boolean().optional() }).meta({ id: 'AgentAnswerBody' });
+export const AgentAnswerBodySchema = z
+  .object({ question: z.string().min(1), text: z.string().optional(), cancelled: z.boolean().optional() })
+  .meta({ id: 'AgentAnswerBody' });
 export type AgentAnswerBody = z.infer<typeof AgentAnswerBodySchema>;
 
 /** A user question's id as the thread state and the AG-UI resume carry it: `agent-question:<agentId>:<questionId>`. */
-export const agentQuestionId = (agentId: string, questionId: string): string => `agent-question:${agentId}:${questionId}`;
+export const agentQuestionId = (agentId: string, questionId: string): string =>
+  `agent-question:${agentId}:${questionId}`;
 export function parseAgentQuestionId(id: string | undefined): { agentId: string; questionId: string } | undefined {
   const match = /^agent-question:([^:]+):(.+)$/.exec(id ?? '');
   return match ? { agentId: match[1], questionId: match[2] } : undefined;
 }
 
 /** A user question as the thread's "Needs you" strip and the question card see it: a dialog like pi's own, attributed to the agent. */
-export const AgentQuestionDialogSchema = z.object({ id: z.string(), agentId: z.string(), request: PiDialogRequestSchema });
+export const AgentQuestionDialogSchema = z.object({
+  id: z.string(),
+  agentId: z.string(),
+  request: PiDialogRequestSchema,
+});
 export type AgentQuestionDialog = z.infer<typeof AgentQuestionDialogSchema>;

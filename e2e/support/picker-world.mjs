@@ -9,7 +9,15 @@ const FAR = 4_102_444_800_000; // 2100: an OAuth token that never needs refreshi
 export const FAKE_TOKEN = 'at-picker-made-up-token';
 export const FAKE_KEY = 'sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef7e57';
 export const FAKE_RADIUS_TOKEN = 'at-radius-picker-made-up-token';
-const RADIUS_MODEL = { id: 'balanced', name: 'Balanced', reasoning: true, input: ['text'], contextWindow: 200_000, maxTokens: 8192, cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 } };
+const RADIUS_MODEL = {
+  id: 'balanced',
+  name: 'Balanced',
+  reasoning: true,
+  input: ['text'],
+  contextWindow: 200_000,
+  maxTokens: 8192,
+  cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
+};
 // Model metadata stays cloud-shaped so the picker does not mistake the fake billing gateway for a local inference server.
 const RADIUS_MODEL_BASE = 'https://radius.example/v1';
 
@@ -62,10 +70,21 @@ export function pickerWorld(urls) {
       const auth = {
         anthropic: { type: 'oauth', access: FAKE_TOKEN, refresh: 'rt-picker-made-up', expires: FAR },
         openrouter: { type: 'api_key', key: FAKE_KEY },
-        radius: { type: 'oauth', access: FAKE_RADIUS_TOKEN, refresh: 'rt-radius-made-up', expires: FAR, gatewayConfig: { baseUrl: RADIUS_MODEL_BASE, models: [RADIUS_MODEL] } },
+        radius: {
+          type: 'oauth',
+          access: FAKE_RADIUS_TOKEN,
+          refresh: 'rt-radius-made-up',
+          expires: FAR,
+          gatewayConfig: { baseUrl: RADIUS_MODEL_BASE, models: [RADIUS_MODEL] },
+        },
       };
       writeFileSync(join(agent, 'auth.json'), JSON.stringify(auth, null, 2), { mode: 0o600 });
     },
-    extraEnv: () => ({ PI_KIT_USAGE_ANTHROPIC_URL: urls.anthropic, PI_KIT_USAGE_OPENROUTER_BASE: urls.openrouter, PI_RADIUS_GATEWAY: urls.radius, GEMINI_API_KEY: 'env-demo-key-0000' }),
+    extraEnv: () => ({
+      PI_KIT_USAGE_ANTHROPIC_URL: urls.anthropic,
+      PI_KIT_USAGE_OPENROUTER_BASE: urls.openrouter,
+      PI_RADIUS_GATEWAY: urls.radius,
+      GEMINI_API_KEY: 'env-demo-key-0000',
+    }),
   };
 }

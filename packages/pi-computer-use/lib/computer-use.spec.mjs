@@ -2,7 +2,29 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { classify, decide, describeCall, driverToolName, enableWayland, explainToolError, exposureFor, host, hostApp, HYPRLAND_READ_ONLY_NOTE, HYPRLAND_TOOL_HINT, inPiKit, isEnabled, isSupported, linuxInputHelp, missingPermissions, noPermissionsNote, permissionHelp, piToolName, setEnabled, toToolResult } from './computer-use.mjs';
+import {
+  classify,
+  decide,
+  describeCall,
+  driverToolName,
+  enableWayland,
+  explainToolError,
+  exposureFor,
+  host,
+  hostApp,
+  HYPRLAND_READ_ONLY_NOTE,
+  HYPRLAND_TOOL_HINT,
+  inPiKit,
+  isEnabled,
+  isSupported,
+  linuxInputHelp,
+  missingPermissions,
+  noPermissionsNote,
+  permissionHelp,
+  piToolName,
+  setEnabled,
+  toToolResult,
+} from './computer-use.mjs';
 
 describe('the saved choice', () => {
   let dir;
@@ -76,7 +98,11 @@ describe('asking', () => {
 
 describe('results', () => {
   it('turns text and images into content blocks', () => {
-    const { content } = toToolResult('zoom', { text: 'ok', images: [{ mimeType: 'image/png', dataBase64: 'AAAA' }], isError: false });
+    const { content } = toToolResult('zoom', {
+      text: 'ok',
+      images: [{ mimeType: 'image/png', dataBase64: 'AAAA' }],
+      isError: false,
+    });
     expect(content).toEqual([
       { type: 'text', text: 'ok' },
       { type: 'image', data: 'AAAA', mimeType: 'image/png' },
@@ -84,9 +110,15 @@ describe('results', () => {
   });
 
   it('cuts a very long text, never returns nothing, and throws the driver’s message on failure', () => {
-    const { content } = toToolResult('get_accessibility_tree', { text: 'a'.repeat(70_000), images: [], isError: false });
+    const { content } = toToolResult('get_accessibility_tree', {
+      text: 'a'.repeat(70_000),
+      images: [],
+      isError: false,
+    });
     expect(content[0].text).toContain('10000 more characters cut');
-    expect(toToolResult('click', { text: '', images: [], isError: false }).content).toEqual([{ type: 'text', text: 'Done.' }]);
+    expect(toToolResult('click', { text: '', images: [], isError: false }).content).toEqual([
+      { type: 'text', text: 'Done.' },
+    ]);
     expect(() => toToolResult('click', { text: 'stale element', images: [], isError: true })).toThrow('stale element');
   });
 });
@@ -105,18 +137,34 @@ describe('macOS permissions', () => {
 
   it('names what is missing and the app to switch on', () => {
     expect(missingPermissions('darwin', { accessibility: false, screenRecording: true })).toEqual(['Accessibility']);
-    const help = permissionHelp('darwin', { accessibility: false, screenRecording: false }, { TERM_PROGRAM: 'iTerm.app' });
+    const help = permissionHelp(
+      'darwin',
+      { accessibility: false, screenRecording: false },
+      { TERM_PROGRAM: 'iTerm.app' },
+    );
     expect(help).toContain('iTerm');
     expect(help).toContain('Accessibility and Screen & System Audio Recording');
     expect(permissionHelp('darwin', { accessibility: true, screenRecording: true })).toBeUndefined();
   });
 
   it('names the app macOS lists: pi-kit, Electron in development, or the terminal', () => {
-    expect(host({ PI_KIT_DESKTOP: '1' }, '/Applications/pi-kit.app/Contents/MacOS/pi-kit')).toEqual({ name: 'pi-kit', kind: 'app', bundle: '/Applications/pi-kit.app' });
-    expect(host({ PI_KIT_DESKTOP: '1' }, '/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron')).toMatchObject({ name: 'Electron', kind: 'development' });
-    expect(host({ PI_KIT_DESKTOP: '1' }, 'C:\\Program Files\\pi-kit\\pi-kit.exe')).toEqual({ name: 'pi-kit', kind: 'app' });
+    expect(host({ PI_KIT_DESKTOP: '1' }, '/Applications/pi-kit.app/Contents/MacOS/pi-kit')).toEqual({
+      name: 'pi-kit',
+      kind: 'app',
+      bundle: '/Applications/pi-kit.app',
+    });
+    expect(
+      host({ PI_KIT_DESKTOP: '1' }, '/repo/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron'),
+    ).toMatchObject({ name: 'Electron', kind: 'development' });
+    expect(host({ PI_KIT_DESKTOP: '1' }, 'C:\\Program Files\\pi-kit\\pi-kit.exe')).toEqual({
+      name: 'pi-kit',
+      kind: 'app',
+    });
     // pi-kit's backend started from a terminal (`pnpm run dev:web`) runs on the terminal's permissions.
-    expect(host({ PI_KIT_TOKEN: 'x', TERM_PROGRAM: 'iTerm.app' }, '/usr/local/bin/node')).toEqual({ name: 'iTerm', kind: 'terminal' });
+    expect(host({ PI_KIT_TOKEN: 'x', TERM_PROGRAM: 'iTerm.app' }, '/usr/local/bin/node')).toEqual({
+      name: 'iTerm',
+      kind: 'terminal',
+    });
     expect(hostApp({ TERM_PROGRAM: 'Apple_Terminal' })).toBe('Terminal');
     expect(hostApp({})).toBe('your terminal app');
   });
@@ -124,8 +172,17 @@ describe('macOS permissions', () => {
   it('points pi-kit users at the Settings page', () => {
     expect(inPiKit({ PI_KIT_TOKEN: 'x' })).toBe(true);
     expect(inPiKit({})).toBe(false);
-    expect(permissionHelp('darwin', { accessibility: false, screenRecording: true }, { PI_KIT_DESKTOP: '1' }, '/Applications/pi-kit.app/Contents/MacOS/pi-kit')).toContain('Settings › Computer use');
-    expect(permissionHelp('darwin', { accessibility: false, screenRecording: true }, { TERM_PROGRAM: 'Apple_Terminal' })).not.toContain('Settings');
+    expect(
+      permissionHelp(
+        'darwin',
+        { accessibility: false, screenRecording: true },
+        { PI_KIT_DESKTOP: '1' },
+        '/Applications/pi-kit.app/Contents/MacOS/pi-kit',
+      ),
+    ).toContain('Settings › Computer use');
+    expect(
+      permissionHelp('darwin', { accessibility: false, screenRecording: true }, { TERM_PROGRAM: 'Apple_Terminal' }),
+    ).not.toContain('Settings');
   });
 });
 
@@ -165,9 +222,12 @@ describe('Hyprland', () => {
   it('appends the read-only hint to an input the compositor refused, and leaves other errors alone', () => {
     const refused = 'foreground_unavailable (unsupported_operation): production Hyprland input plugin is unavailable';
     expect(explainToolError(refused, hypr)).toBe(`${refused}\n\n${HYPRLAND_TOOL_HINT}`);
-    const background = 'Background delivery is not available: the requested target has no focus-free input backend; ...';
+    const background =
+      'Background delivery is not available: the requested target has no focus-free input backend; ...';
     expect(explainToolError(background, hypr)).toBe(`${background}\n\n${HYPRLAND_TOOL_HINT}`);
-    expect(explainToolError('No windows found for pid 0. Provide window_id.', hypr)).toBe('No windows found for pid 0. Provide window_id.');
+    expect(explainToolError('No windows found for pid 0. Provide window_id.', hypr)).toBe(
+      'No windows found for pid 0. Provide window_id.',
+    );
     expect(explainToolError(refused, { XDG_SESSION_TYPE: 'wayland' })).toBe(refused);
     expect(() => toToolResult('click', { text: refused, images: [], isError: true }, hypr)).toThrow(HYPRLAND_TOOL_HINT);
   });

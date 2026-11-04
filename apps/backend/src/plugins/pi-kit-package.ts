@@ -58,7 +58,11 @@ export abstract class PiKitPackage<Module> {
 
   /** The copy shipped with pi-kit: next to the backend bundle (`packages/<folder>`), or the repository's own folder when it runs from source. */
   bundledDir(): string | undefined {
-    const candidates = [process.env[`${this.spec.env}_DIR`], join(__dirname, 'packages', this.spec.folder), resolve(__dirname, '..', '..', '..', '..', 'packages', this.spec.folder)];
+    const candidates = [
+      process.env[`${this.spec.env}_DIR`],
+      join(__dirname, 'packages', this.spec.folder),
+      resolve(__dirname, '..', '..', '..', '..', 'packages', this.spec.folder),
+    ];
     return candidates.find((dir): dir is string => !!dir && nameOf(dir) === this.spec.name);
   }
 
@@ -67,7 +71,11 @@ export abstract class PiKitPackage<Module> {
     const { packages } = await this.context();
     for (const configured of packages.listConfiguredPackages()) {
       if (configured.scope !== 'user' || !configured.installedPath) continue;
-      if (nameOf(configured.installedPath) === this.spec.name && existsSync(join(configured.installedPath, this.spec.entry))) return configured.installedPath;
+      if (
+        nameOf(configured.installedPath) === this.spec.name &&
+        existsSync(join(configured.installedPath, this.spec.entry))
+      )
+        return configured.installedPath;
     }
     return undefined;
   }

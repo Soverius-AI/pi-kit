@@ -20,7 +20,14 @@ export const world = {
   setup: ({ agent }) => {
     registerFakeModel(agent, fake.url);
     const path = join(agent, 'settings.json');
-    writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, 'utf8')), defaultProvider: FAKE_PROVIDER, defaultModel: FAKE_MODEL }));
+    writeFileSync(
+      path,
+      JSON.stringify({
+        ...JSON.parse(readFileSync(path, 'utf8')),
+        defaultProvider: FAKE_PROVIDER,
+        defaultModel: FAKE_MODEL,
+      }),
+    );
   },
 };
 
@@ -44,7 +51,10 @@ async function start(h) {
   await enableAgents(h);
   await box(h).fill('Add mul to src/math.ts and, in the background, have the tests written and the code reviewed.');
   await box(h).press('Enter');
-  await h.page.locator('pk-transcript').getByText('Started tester and reviewer.', { exact: true }).waitFor({ timeout: 60_000 });
+  await h.page
+    .locator('pk-transcript')
+    .getByText('Started tester and reviewer.', { exact: true })
+    .waitFor({ timeout: 60_000 });
   await h.waitIdle();
   await agentsButton(h).click();
   await h.page.locator('[data-testid="agents-active"] li').nth(1).waitFor({ timeout: 10_000 });
@@ -57,13 +67,20 @@ export const scenes = [
   }),
   scene('agent-transcript-1440', 'desktop', 'pi-dark', '14-agent-transcript-1440.png', async (h) => {
     await h.page.locator('[data-testid="agents-active"] li').first().getByTestId('agent-open').click();
-    await h.page.locator('[data-testid="agent-transcript"]').getByText(/test\/math\.test\.ts/).first().waitFor({ timeout: 30_000 });
+    await h.page
+      .locator('[data-testid="agent-transcript"]')
+      .getByText(/test\/math\.test\.ts/)
+      .first()
+      .waitFor({ timeout: 30_000 });
     await h.settle(500);
   }),
   scene('agents-history-1440', 'desktop', 'pi-dark', '14-agents-history-1440.png', async (h) => {
     script.release('tester:bash');
     script.release('reviewer:report');
-    await h.page.locator('pk-transcript').getByText('Both agents are done.', { exact: true }).waitFor({ timeout: 90_000 });
+    await h.page
+      .locator('pk-transcript')
+      .getByText('Both agents are done.', { exact: true })
+      .waitFor({ timeout: 90_000 });
     await h.page.getByRole('button', { name: /Back to the agents/ }).click();
     await h.page.locator('[data-testid="agents-history"] li').nth(1).waitFor({ timeout: 30_000 });
     await h.settle(500);

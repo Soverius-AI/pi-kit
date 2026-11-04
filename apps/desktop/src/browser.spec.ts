@@ -2,9 +2,20 @@ import type { BrowserWindow } from 'electron';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const native = vi.hoisted(() => ({
-  windows: [] as { options: Record<string, unknown>; destroyed: boolean; destroy: ReturnType<typeof vi.fn>; contentView: { addChildView: ReturnType<typeof vi.fn>; removeChildView: ReturnType<typeof vi.fn> } }[],
+  windows: [] as {
+    options: Record<string, unknown>;
+    destroyed: boolean;
+    destroy: ReturnType<typeof vi.fn>;
+    contentView: { addChildView: ReturnType<typeof vi.fn>; removeChildView: ReturnType<typeof vi.fn> };
+  }[],
   views: [] as { setBounds: ReturnType<typeof vi.fn> }[],
-  pages: [] as { emit(name: string): boolean; close: ReturnType<typeof vi.fn>; stop: ReturnType<typeof vi.fn>; loadURL: ReturnType<typeof vi.fn>; debugger: { sendCommand: ReturnType<typeof vi.fn> } }[],
+  pages: [] as {
+    emit(name: string): boolean;
+    close: ReturnType<typeof vi.fn>;
+    stop: ReturnType<typeof vi.fn>;
+    loadURL: ReturnType<typeof vi.fn>;
+    debugger: { sendCommand: ReturnType<typeof vi.fn> };
+  }[],
   verifiers: [] as ((request: { hostname: string }, callback: (result: number) => void) => void)[],
   partitions: [] as string[],
 }));
@@ -15,23 +26,68 @@ vi.mock('electron', async () => {
       destroyed = false;
       readonly contentView = { addChildView: vi.fn(), removeChildView: vi.fn() };
       readonly webContents = { getZoomFactor: () => 1 };
-      readonly destroy = vi.fn(() => { this.destroyed = true; });
-      constructor(readonly options: Record<string, unknown> = {}) { native.windows.push(this); }
-      isDestroyed() { return this.destroyed; }
-      getContentSize() { return [1200, 900]; }
+      readonly destroy = vi.fn(() => {
+        this.destroyed = true;
+      });
+      constructor(readonly options: Record<string, unknown> = {}) {
+        native.windows.push(this);
+      }
+      isDestroyed() {
+        return this.destroyed;
+      }
+      getContentSize() {
+        return [1200, 900];
+      }
     },
     WebContentsView: class {
       private destroyed = false;
       readonly webContents = Object.assign(new EventEmitter(), {
-        session: { setCertificateVerifyProc: vi.fn((proc) => native.verifiers.push(proc)), setPermissionRequestHandler: vi.fn(), setPermissionCheckHandler: vi.fn(), on: vi.fn() },
-        setWindowOpenHandler: vi.fn(), isDestroyed: () => this.destroyed,
-        close: vi.fn(() => { this.destroyed = true; this.webContents.emit('destroyed'); }), stop: vi.fn(),
-        loadURL: vi.fn(() => new Promise(() => { /* navigation may never complete */ })),
-        getURL: () => 'http://localhost:3000/', getTitle: () => 'Project', isLoading: () => false,
+        session: {
+          setCertificateVerifyProc: vi.fn((proc) => native.verifiers.push(proc)),
+          setPermissionRequestHandler: vi.fn(),
+          setPermissionCheckHandler: vi.fn(),
+          on: vi.fn(),
+        },
+        setWindowOpenHandler: vi.fn(),
+        isDestroyed: () => this.destroyed,
+        close: vi.fn(() => {
+          this.destroyed = true;
+          this.webContents.emit('destroyed');
+        }),
+        stop: vi.fn(),
+        loadURL: vi.fn(
+          () =>
+            new Promise(() => {
+              /* navigation may never complete */
+            }),
+        ),
+        getURL: () => 'http://localhost:3000/',
+        getTitle: () => 'Project',
+        isLoading: () => false,
         navigationHistory: { canGoBack: () => false, canGoForward: () => false },
-        debugger: Object.assign(new EventEmitter(), { isAttached: () => true, attach: vi.fn(), sendCommand: vi.fn((name: string) => name === 'Runtime.evaluate' ? new Promise(() => { /* simulate a renderer which never answers */ }) : Promise.resolve(name === 'Accessibility.getFullAXTree' ? { nodes: [] } : name === 'Page.getLayoutMetrics' ? { cssLayoutViewport: { pageX: 0, pageY: 0 } } : {})) }),
+        debugger: Object.assign(new EventEmitter(), {
+          isAttached: () => true,
+          attach: vi.fn(),
+          sendCommand: vi.fn((name: string) =>
+            name === 'Runtime.evaluate'
+              ? new Promise(() => {
+                  /* simulate a renderer which never answers */
+                })
+              : Promise.resolve(
+                  name === 'Accessibility.getFullAXTree'
+                    ? { nodes: [] }
+                    : name === 'Page.getLayoutMetrics'
+                      ? { cssLayoutViewport: { pageX: 0, pageY: 0 } }
+                      : {},
+                ),
+          ),
+        }),
       });
-      constructor(options: { webPreferences: { partition: string } }) { native.views.push(this); native.pages.push(this.webContents); native.partitions.push(options.webPreferences.partition); }
+      constructor(options: { webPreferences: { partition: string } }) {
+        native.views.push(this);
+        native.pages.push(this.webContents);
+        native.partitions.push(options.webPreferences.partition);
+      }
       readonly setBounds = vi.fn();
     },
   };
@@ -39,20 +95,44 @@ vi.mock('electron', async () => {
 import { BrowserWindow as NativeWindow } from 'electron';
 import { BrowserArtifacts, browserUrl, isLoopbackHostname } from './browser';
 
-afterEach(() => { native.windows.length = 0; native.views.length = 0; native.pages.length = 0; native.verifiers.length = 0; native.partitions.length = 0; });
+afterEach(() => {
+  native.windows.length = 0;
+  native.views.length = 0;
+  native.pages.length = 0;
+  native.verifiers.length = 0;
+  native.partitions.length = 0;
+});
 
 describe('browser artifact navigation boundary', () => {
   it('accepts project servers and web pages but rejects application and privileged URLs', () => {
     expect(browserUrl('localhost:3000')).toBe('http://localhost:3000/');
     expect(browserUrl('https://example.com/demo')).toBe('https://example.com/demo');
-    for (const url of ['file:///tmp/app.html', 'file:/tmp/app.html', 'app://pi-kit/', 'javascript:alert(1)', 'data:text/html,hi', 'http://127.0.0.1:4300/api']) {
+    for (const url of [
+      'file:///tmp/app.html',
+      'file:/tmp/app.html',
+      'app://pi-kit/',
+      'javascript:alert(1)',
+      'data:text/html,hi',
+      'http://127.0.0.1:4300/api',
+    ]) {
       expect(() => browserUrl(url, ['http://127.0.0.1:4300'])).toThrow();
     }
   });
 
   it('recognizes only literal loopback certificate hosts', () => {
-    for (const host of ['localhost', 'LOCALHOST', '127.0.0.1', '127.255.255.255', '::1', '[::1]']) expect(isLoopbackHostname(host)).toBe(true);
-    for (const host of ['localhost.example.com', 'example.localhost', '127.0.0.1.example.com', '127.256.0.1', '192.168.0.1', '0.0.0.0', 'example.com', '::']) expect(isLoopbackHostname(host)).toBe(false);
+    for (const host of ['localhost', 'LOCALHOST', '127.0.0.1', '127.255.255.255', '::1', '[::1]'])
+      expect(isLoopbackHostname(host)).toBe(true);
+    for (const host of [
+      'localhost.example.com',
+      'example.localhost',
+      '127.0.0.1.example.com',
+      '127.256.0.1',
+      '192.168.0.1',
+      '0.0.0.0',
+      'example.com',
+      '::',
+    ])
+      expect(isLoopbackHostname(host)).toBe(false);
   });
 
   it('defaults to normal TLS, accepts only opted-in loopback hosts and drops sessions when the option changes', async () => {
@@ -88,37 +168,45 @@ describe('browser artifact navigation boundary', () => {
     expect(new Set(native.partitions).size).toBe(3);
   });
 
-  it.each(['abort', 'renderer crash'])('releases the per-chat queue after %s interrupts an unresponsive command', async (reason) => {
-    const browser = new BrowserArtifacts();
-    const controller = new AbortController();
-    const pending = browser.run('chat', { action: 'evaluate', code: 'new Promise(() => {})' }, controller.signal);
-    const failed = expect(pending).rejects.toThrow(reason === 'abort' ? 'cancelled' : 'page stopped');
-    await vi.waitFor(() => expect(native.pages).toHaveLength(1));
-    if (reason === 'abort') {
-      controller.abort();
-      expect(native.pages[0].stop).toHaveBeenCalled();
-      expect(native.pages[0].debugger.sendCommand).toHaveBeenCalledWith('Runtime.terminateExecution', {});
-    } else native.pages[0].emit('render-process-gone');
-    await failed;
-    // A stuck CDP response must not block all subsequent actions in this chat.
-    expect((await browser.run('chat', { action: 'close' })).state.open).toBe(false);
-  });
+  it.each(['abort', 'renderer crash'])(
+    'releases the per-chat queue after %s interrupts an unresponsive command',
+    async (reason) => {
+      const browser = new BrowserArtifacts();
+      const controller = new AbortController();
+      const pending = browser.run('chat', { action: 'evaluate', code: 'new Promise(() => {})' }, controller.signal);
+      const failed = expect(pending).rejects.toThrow(reason === 'abort' ? 'cancelled' : 'page stopped');
+      await vi.waitFor(() => expect(native.pages).toHaveLength(1));
+      if (reason === 'abort') {
+        controller.abort();
+        expect(native.pages[0].stop).toHaveBeenCalled();
+        expect(native.pages[0].debugger.sendCommand).toHaveBeenCalledWith('Runtime.terminateExecution', {});
+      } else native.pages[0].emit('render-process-gone');
+      await failed;
+      // A stuck CDP response must not block all subsequent actions in this chat.
+      expect((await browser.run('chat', { action: 'close' })).state.open).toBe(false);
+    },
+  );
 });
 
-
 describe('browser action deadlines', () => {
-  it.each(['evaluate', 'navigate'] as const)('bounds a permanently pending %s and permits a fresh action afterward', async (action) => {
-    const browser = new BrowserArtifacts(undefined, 8, 30);
-    await expect(browser.run('chat', action === 'navigate'
-      ? { action, url: 'http://localhost:3000' }
-      : { action, code: 'new Promise(() => {})' })).rejects.toMatchObject({ code: 'timeout' });
-    expect(native.pages[0].stop).toHaveBeenCalledOnce();
-    expect(native.pages[0].close).toHaveBeenCalledOnce();
-    expect(browser.state('chat').open).toBe(false);
-    await browser.run('chat', { action: 'snapshot' });
-    expect(native.pages).toHaveLength(2);
-    browser.dispose();
-  });
+  it.each(['evaluate', 'navigate'] as const)(
+    'bounds a permanently pending %s and permits a fresh action afterward',
+    async (action) => {
+      const browser = new BrowserArtifacts(undefined, 8, 30);
+      await expect(
+        browser.run(
+          'chat',
+          action === 'navigate' ? { action, url: 'http://localhost:3000' } : { action, code: 'new Promise(() => {})' },
+        ),
+      ).rejects.toMatchObject({ code: 'timeout' });
+      expect(native.pages[0].stop).toHaveBeenCalledOnce();
+      expect(native.pages[0].close).toHaveBeenCalledOnce();
+      expect(browser.state('chat').open).toBe(false);
+      await browser.run('chat', { action: 'snapshot' });
+      expect(native.pages).toHaveLength(2);
+      browser.dispose();
+    },
+  );
 });
 
 describe('browser cancellation and disposal', () => {
@@ -177,7 +265,13 @@ describe('browser native render hosts', () => {
   it('hosts unattached pages at a positive size and enables AX before snapshots', async () => {
     const browser = new BrowserArtifacts();
     await browser.run('chat', { action: 'snapshot' });
-    expect(native.windows[0].options).toMatchObject({ show: false, focusable: false, paintWhenInitiallyHidden: true, width: 1024, height: 768 });
+    expect(native.windows[0].options).toMatchObject({
+      show: false,
+      focusable: false,
+      paintWhenInitiallyHidden: true,
+      width: 1024,
+      height: 768,
+    });
     expect(native.windows[0].contentView.addChildView).toHaveBeenCalledTimes(1);
     expect(native.views[0].setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1024, height: 768 });
     const commands = native.pages[0].debugger.sendCommand.mock.calls.map(([name]) => name);
@@ -201,8 +295,11 @@ describe('browser native render hosts', () => {
   });
 
   it.each([
-    { ...rect, width: 0 }, { ...rect, height: -1 }, { ...rect, x: 2000 },
-    { ...rect, x: Number.NaN }, { ...rect, width: Number.POSITIVE_INFINITY },
+    { ...rect, width: 0 },
+    { ...rect, height: -1 },
+    { ...rect, x: 2000 },
+    { ...rect, x: Number.NaN },
+    { ...rect, width: Number.POSITIVE_INFINITY },
   ])('parks invalid or offscreen bounds without any zero native size: %j', async (bounds) => {
     const browser = new BrowserArtifacts();
     const main = window();

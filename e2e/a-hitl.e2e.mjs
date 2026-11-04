@@ -46,7 +46,11 @@ describe('extension dialogs are interactive blocks', () => {
     assert.match(shown, /Asked by an extension · pk-hitl/);
     assert.match(shown, /pi continues without an answer in \d:\d\d/, 'pi carried a timeout, the block counts it down');
     assert.match(shown, /Enter allows, Esc denies/);
-    assert.equal(await page.evaluate(() => document.activeElement?.closest('pk-approval') !== null), true, 'the block has the focus');
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.closest('pk-approval') !== null),
+      true,
+      'the block has the focus',
+    );
     await armed(page);
     await page.keyboard.press('Enter');
     assert.equal(await nextHitl('confirm', before), true);
@@ -98,7 +102,10 @@ describe('extension dialogs are interactive blocks', () => {
     assert.match(await text(q), /pi continues without an answer in 0:0\d/);
     await q.waitFor({ state: 'detached' });
     assert.equal(await nextHitl('confirm-short', before), false, 'pi got the answer its own timeout would have given');
-    await page.getByText(/timed out; pi went on without an answer/).first().waitFor();
+    await page
+      .getByText(/timed out; pi went on without an answer/)
+      .first()
+      .waitFor();
     await idle(page);
   });
 
@@ -111,8 +118,16 @@ describe('extension dialogs are interactive blocks', () => {
     const q = block(page, 'Pick a deploy target');
     await q.waitFor();
     const options = q.locator('[data-option]');
-    assert.deepEqual(await options.allInnerTexts().then((t) => t.map((s) => s.replace(/^\d\s*/, '').trim())), ['staging', 'production', 'canary']);
-    assert.match((await options.nth(0).getAttribute('class')) ?? '', /btn-warning/, 'the first option is the highlighted default');
+    assert.deepEqual(await options.allInnerTexts().then((t) => t.map((s) => s.replace(/^\d\s*/, '').trim())), [
+      'staging',
+      'production',
+      'canary',
+    ]);
+    assert.match(
+      (await options.nth(0).getAttribute('class')) ?? '',
+      /btn-warning/,
+      'the first option is the highlighted default',
+    );
     await page.keyboard.press('ArrowDown');
     await page.waitForFunction(() => document.querySelectorAll('[data-option]')[1]?.classList.contains('btn-warning'));
     assert.doesNotMatch((await options.nth(0).getAttribute('class')) ?? '', /btn-warning/, 'the highlight moved');
@@ -219,7 +234,11 @@ describe('a question in prose', () => {
     await h.prompt('Reply with exactly this sentence and nothing else: Should I use Vitest, Jest or Mocha?');
     const pills = page.getByTestId('copilot-suggestion');
     await pills.filter({ hasText: 'Jest' }).waitFor();
-    assert.deepEqual(await pills.allInnerTexts().then((t) => t.map((s) => s.trim()).slice(0, 4)), ['Reply', 'Vitest', 'Jest', 'Mocha'], 'Reply first, then a pill per listed option');
+    assert.deepEqual(
+      await pills.allInnerTexts().then((t) => t.map((s) => s.trim()).slice(0, 4)),
+      ['Reply', 'Vitest', 'Jest', 'Mocha'],
+      'Reply first, then a pill per listed option',
+    );
     assert.match((await page.getByLabel('Message to pi').getAttribute('placeholder')) ?? '', /Reply to pi/);
     const thread = await newestThread();
     assert.equal(thread.waiting, true, 'the thread list says pi is waiting for the user');
@@ -227,13 +246,20 @@ describe('a question in prose', () => {
     await page.getByTestId('waiting-badge').filter({ hasText: /Mocha/ }).first().waitFor();
     // One click answers.
     await pills.filter({ hasText: 'Jest' }).click();
-    await page.locator('pk-turn[role="user"] .pk-user', { hasText: /^Jest$/ }).first().waitFor();
+    await page
+      .locator('pk-turn[role="user"] .pk-user', { hasText: /^Jest$/ })
+      .first()
+      .waitFor();
     // The reply started a turn (what pi does with "Jest" is up to the model): end it, then the pills must be gone.
     const stop = composerStop(page);
     if (await stop.count()) await stop.click();
     await stop.waitFor({ state: 'detached' });
     await h.settle(500);
-    assert.equal(await page.getByTestId('copilot-suggestion').filter({ hasText: 'Vitest' }).count(), 0, 'the pills are gone once answered');
+    assert.equal(
+      await page.getByTestId('copilot-suggestion').filter({ hasText: 'Vitest' }).count(),
+      0,
+      'the pills are gone once answered',
+    );
   });
 });
 
@@ -243,11 +269,18 @@ describe('the toolbars on a message', () => {
   const piAssistantSource = async () => {
     const thread = await newestThread();
     const detail = await api(`/api/threads/${thread.id}`);
-    const lines = readFileSync(detail.sessionPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const lines = readFileSync(detail.sessionPath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((l) => JSON.parse(l));
     const last = lines.filter((e) => e.type === 'message' && e.message?.role === 'assistant').at(-1);
-    return last.message.content.filter((p) => p.type === 'text').map((p) => p.text).join('');
+    return last.message.content
+      .filter((p) => p.type === 'text')
+      .map((p) => p.text)
+      .join('');
   };
-  const assistantTurn = (page) => page.locator('pk-turn', { has: page.locator('copilot-chat-assistant-message') }).last();
+  const assistantTurn = (page) =>
+    page.locator('pk-turn', { has: page.locator('copilot-chat-assistant-message') }).last();
 
   it('Copy on an answer puts its markdown source in the clipboard', async () => {
     const { page, h } = app;
@@ -275,15 +308,31 @@ describe('the toolbars on a message', () => {
     // Down replaces up.
     await turn.hover();
     await turn.locator('copilot-chat-assistant-message-thumbs-down-button button').click();
-    await page.waitForFunction(() => document.querySelectorAll('.pk-rate.on').length === 1 && !document.querySelector('.pk-rate[data-rating="up"].on'));
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll('.pk-rate.on').length === 1 &&
+        !document.querySelector('.pk-rate[data-rating="up"].on'),
+    );
     const thread = await newestThread();
     // The rating is sent after the thumb changes on screen: wait for the table to say so.
-    for (let i = 0; i < 50 && (await api(`/api/threads/${thread.id}/feedback`)).map((f) => f.rating).join() !== 'down'; i++) await page.waitForTimeout(100);
-    assert.deepEqual((await api(`/api/threads/${thread.id}/feedback`)).map((f) => f.rating), ['down']);
+    for (
+      let i = 0;
+      i < 50 && (await api(`/api/threads/${thread.id}/feedback`)).map((f) => f.rating).join() !== 'down';
+      i++
+    )
+      await page.waitForTimeout(100);
+    assert.deepEqual(
+      (await api(`/api/threads/${thread.id}/feedback`)).map((f) => f.rating),
+      ['down'],
+    );
     await page.reload();
     await page.getByLabel('Message to pi').waitFor();
     await page.locator('.pk-rate.on').waitFor();
-    assert.equal(await page.locator('.pk-rate.on copilot-chat-assistant-message-thumbs-down-button').count(), 1, 'the down thumb is the one shown pressed');
+    assert.equal(
+      await page.locator('.pk-rate.on copilot-chat-assistant-message-thumbs-down-button').count(),
+      1,
+      'the down thumb is the one shown pressed',
+    );
   });
 
   it('Copy on a user message puts what was typed in the clipboard; Edit is there beside it', async () => {
@@ -317,13 +366,31 @@ describe('the queue bar', () => {
     const res = await fetch(`${env.api}/api/copilotkit/agent/pi/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ threadId: id, runId: crypto.randomUUID(), state: {}, tools: [], context: [], messages: [{ id: crypto.randomUUID(), role: 'user', content }], forwardedProps: { streamingBehavior: 'followUp' } }),
+      body: JSON.stringify({
+        threadId: id,
+        runId: crypto.randomUUID(),
+        state: {},
+        tools: [],
+        context: [],
+        messages: [{ id: crypto.randomUUID(), role: 'user', content }],
+        forwardedProps: { streamingBehavior: 'followUp' },
+      }),
     });
     assert.ok(res.ok);
     await res.text();
   };
   const rows = (page) => page.getByTestId('queue-row');
-    const waitRows = (page, expected) => page.waitForFunction((want) => JSON.stringify([...document.querySelectorAll('[data-testid=queue-row]')].map((e) => `${e.getAttribute('data-kind')}: ${e.querySelector('.txt')?.textContent?.replace(/\s+/g, ' ').trim()}`)) === JSON.stringify(want), expected);
+  const waitRows = (page, expected) =>
+    page.waitForFunction(
+      (want) =>
+        JSON.stringify(
+          [...document.querySelectorAll('[data-testid=queue-row]')].map(
+            (e) =>
+              `${e.getAttribute('data-kind')}: ${e.querySelector('.txt')?.textContent?.replace(/\s+/g, ' ').trim()}`,
+          ),
+        ) === JSON.stringify(want),
+      expected,
+    );
 
   it('lists what pi holds; Steer now, Remove, Merge, Edit and Clear all change pi’s own queue; a reload shows it again', async () => {
     const { page, h } = app;
@@ -337,7 +404,10 @@ describe('the queue bar', () => {
     await send(page, 'alpha steer');
     await send(page, 'bravo steer');
     await queueFollowUp(id, 'charlie follow-up');
-    assert.deepEqual(await piQueue(id, (q) => q.steering.length === 2 && q.followUp.length === 1), { steering: ['alpha steer', 'bravo steer'], followUp: ['charlie follow-up'] });
+    assert.deepEqual(await piQueue(id, (q) => q.steering.length === 2 && q.followUp.length === 1), {
+      steering: ['alpha steer', 'bravo steer'],
+      followUp: ['charlie follow-up'],
+    });
     await waitRows(page, ['steer: alpha steer', 'steer: bravo steer', 'followUp: charlie follow-up']);
     assert.equal(await page.getByTestId('queue-count').innerText(), '3');
     assert.match(await text(page.locator('pk-queue-bar .head')), /steer goes after this turn, follow-up after the run/);
@@ -350,29 +420,49 @@ describe('the queue bar', () => {
     // Steer now: only a follow-up has it; it becomes the last steering message.
     const charlie = rows(page).nth(2);
     await charlie.hover();
-    assert.equal(await rows(page).nth(0).getByRole('button', { name: 'Steer now' }).count(), 0, 'a steer has nothing to steer now');
+    assert.equal(
+      await rows(page).nth(0).getByRole('button', { name: 'Steer now' }).count(),
+      0,
+      'a steer has nothing to steer now',
+    );
     await charlie.getByRole('button', { name: 'Steer now' }).click();
-    assert.deepEqual(await piQueue(id, (q) => q.followUp.length === 0), { steering: ['alpha steer', 'bravo steer', 'charlie follow-up'], followUp: [] });
+    assert.deepEqual(await piQueue(id, (q) => q.followUp.length === 0), {
+      steering: ['alpha steer', 'bravo steer', 'charlie follow-up'],
+      followUp: [],
+    });
     await waitRows(page, ['steer: alpha steer', 'steer: bravo steer', 'steer: charlie follow-up']);
 
     // Remove: pi's queue loses that message and keeps the others in order.
     await rows(page).nth(1).hover();
     await rows(page).nth(1).getByRole('button', { name: 'Remove' }).click();
-    assert.deepEqual(await piQueue(id, (q) => q.steering.length === 2), { steering: ['alpha steer', 'charlie follow-up'], followUp: [] });
+    assert.deepEqual(await piQueue(id, (q) => q.steering.length === 2), {
+      steering: ['alpha steer', 'charlie follow-up'],
+      followUp: [],
+    });
     await waitRows(page, ['steer: alpha steer', 'steer: charlie follow-up']);
 
     // Merge: one steer, the texts joined by blank lines in queue order.
     await page.getByRole('button', { name: 'Merge' }).click();
-    assert.deepEqual(await piQueue(id, (q) => q.steering.length === 1), { steering: ['alpha steer\n\ncharlie follow-up'], followUp: [] });
+    assert.deepEqual(await piQueue(id, (q) => q.steering.length === 1), {
+      steering: ['alpha steer\n\ncharlie follow-up'],
+      followUp: [],
+    });
     await waitRows(page, ['steer: alpha steer charlie follow-up']);
-    assert.equal(await page.getByRole('button', { name: 'Merge' }).isDisabled(), true, 'one message has nothing to merge');
+    assert.equal(
+      await page.getByRole('button', { name: 'Merge' }).isDisabled(),
+      true,
+      'one message has nothing to merge',
+    );
 
     // Edit: out of the queue, back in the composer.
     await send(page, 'delta steer');
     await piQueue(id, (q) => q.steering.length === 2);
     await rows(page).nth(1).hover();
     await rows(page).nth(1).getByRole('button', { name: 'Edit' }).click();
-    assert.deepEqual(await piQueue(id, (q) => q.steering.length === 1), { steering: ['alpha steer\n\ncharlie follow-up'], followUp: [] });
+    assert.deepEqual(await piQueue(id, (q) => q.steering.length === 1), {
+      steering: ['alpha steer\n\ncharlie follow-up'],
+      followUp: [],
+    });
     await page.waitForFunction(() => document.querySelector('[aria-label="Message to pi"]')?.value === 'delta steer');
     await page.getByLabel('Message to pi').fill('');
 
@@ -387,9 +477,17 @@ describe('the queue bar', () => {
     await page.setViewportSize(VIEWPORTS.phone);
     await h.settle(300);
     const row = rows(page).nth(1);
-    assert.equal(await row.getByRole('button', { name: 'Steer now' }).first().isVisible(), false, 'Steer now is not on the row on a phone');
+    assert.equal(
+      await row.getByRole('button', { name: 'Steer now' }).first().isVisible(),
+      false,
+      'Steer now is not on the row on a phone',
+    );
     assert.equal(await row.getByRole('button', { name: 'Remove' }).isVisible(), true);
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, 'the bar does not overflow the phone');
+    assert.equal(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true,
+      'the bar does not overflow the phone',
+    );
     await row.locator('.txt').click();
     await row.locator('.more').getByRole('button', { name: 'Steer now' }).waitFor();
     await page.setViewportSize(VIEWPORTS.desktop);
@@ -397,7 +495,10 @@ describe('the queue bar', () => {
 
     // Clear all.
     await page.getByRole('button', { name: 'Clear all' }).click();
-    assert.deepEqual(await piQueue(id, (q) => q.steering.length === 0 && q.followUp.length === 0), { steering: [], followUp: [] });
+    assert.deepEqual(await piQueue(id, (q) => q.steering.length === 0 && q.followUp.length === 0), {
+      steering: [],
+      followUp: [],
+    });
     await rows(page).first().waitFor({ state: 'detached' });
     await composerStop(page).click();
     await idle(page);

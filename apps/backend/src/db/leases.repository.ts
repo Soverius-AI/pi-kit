@@ -23,7 +23,9 @@ export class LeasesRepository {
 
   /** The thread edited or wrote `path` (relative to `cwd`) just now. */
   take(threadId: string, cwd: string, path: string, now = Date.now()): Lease {
-    const previous = this.db.prepare('SELECT * FROM file_leases WHERE thread_id = ? AND cwd = ? AND path = ?').get(threadId, cwd, path) as RawLease | undefined;
+    const previous = this.db
+      .prepare('SELECT * FROM file_leases WHERE thread_id = ? AND cwd = ? AND path = ?')
+      .get(threadId, cwd, path) as RawLease | undefined;
     const lease = renewLease(previous && toLease(previous), { threadId, cwd, path }, now);
     this.db
       .prepare(
@@ -36,12 +38,20 @@ export class LeasesRepository {
 
   /** The leases of the folder that have not expired, newest activity first. */
   activeIn(cwd: string, now = Date.now()): Lease[] {
-    return (this.db.prepare('SELECT * FROM file_leases WHERE cwd = ? AND at > ? ORDER BY at DESC').all(cwd, now - LEASE_TTL_MS) as RawLease[]).map(toLease);
+    return (
+      this.db
+        .prepare('SELECT * FROM file_leases WHERE cwd = ? AND at > ? ORDER BY at DESC')
+        .all(cwd, now - LEASE_TTL_MS) as RawLease[]
+    ).map(toLease);
   }
 
   /** The leases one thread holds that have not expired. */
   activeOf(threadId: string, now = Date.now()): Lease[] {
-    return (this.db.prepare('SELECT * FROM file_leases WHERE thread_id = ? AND at > ? ORDER BY at DESC').all(threadId, now - LEASE_TTL_MS) as RawLease[]).map(toLease);
+    return (
+      this.db
+        .prepare('SELECT * FROM file_leases WHERE thread_id = ? AND at > ? ORDER BY at DESC')
+        .all(threadId, now - LEASE_TTL_MS) as RawLease[]
+    ).map(toLease);
   }
 
   /** A thread that was deleted holds nothing. */

@@ -4,9 +4,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type SkillVerification, stampProvenance, stampVerified } from '@pi-kit/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { isInside, restampVerified, restoreSkillFolder, retireSkillFolder, retiredFolderOf, writeScratchSkill } from './skill-files';
+import {
+  isInside,
+  restampVerified,
+  restoreSkillFolder,
+  retireSkillFolder,
+  retiredFolderOf,
+  writeScratchSkill,
+} from './skill-files';
 
-const git = (cwd: string, ...args: string[]): void => void execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd, stdio: 'ignore' });
+const git = (cwd: string, ...args: string[]): void =>
+  void execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd, stdio: 'ignore' });
 const SKILL = '---\nname: add-notes\ndescription: Use when adding notes\n---\n\n# Steps\n1. Write them\n';
 
 let base: string;
@@ -42,13 +50,16 @@ describe('writeScratchSkill: the draft goes into a scratch worktree and nowhere 
   });
 
   it('refuses a folder outside the worktree root', () => {
-    expect(() => writeScratchSkill(scratch, 'add-notes', SKILL, join(base, 'elsewhere'))).toThrow(/not inside the worktree root/);
+    expect(() => writeScratchSkill(scratch, 'add-notes', SKILL, join(base, 'elsewhere'))).toThrow(
+      /not inside the worktree root/,
+    );
     expect(() => writeScratchSkill(root, 'add-notes', SKILL, root)).toThrow(/not inside the worktree root/);
     expect(existsSync(join(scratch, '.pi'))).toBe(false);
   });
 
   it('refuses a name that is not a skill name, and one that would leave the skills folder', () => {
-    for (const name of ['../escape', 'a/b', 'Not A Name', '', '..']) expect(() => writeScratchSkill(scratch, name, SKILL, root), name).toThrow();
+    for (const name of ['../escape', 'a/b', 'Not A Name', '', '..'])
+      expect(() => writeScratchSkill(scratch, name, SKILL, root), name).toThrow();
     expect(existsSync(join(scratch, '.pi'))).toBe(false);
     expect(existsSync(join(scratch, 'escape'))).toBe(false);
   });
@@ -66,7 +77,9 @@ describe('writeScratchSkill: the draft goes into a scratch worktree and nowhere 
     mkdirSync(inside, { recursive: true });
     git(project, 'worktree', 'add', '-q', nested, '-b', 'pi-kit/nested', 'HEAD');
     expect(() => writeScratchSkill(project, 'add-notes', SKILL, inside)).toThrow(/not inside the worktree root/);
-    expect(writeScratchSkill(nested, 'add-notes', SKILL, inside)).toBe(join(nested, '.pi', 'skills', 'add-notes', 'SKILL.md'));
+    expect(writeScratchSkill(nested, 'add-notes', SKILL, inside)).toBe(
+      join(nested, '.pi', 'skills', 'add-notes', 'SKILL.md'),
+    );
     expect(existsSync(join(project, '.pi'))).toBe(false);
   });
 });
@@ -82,7 +95,13 @@ describe('isInside', () => {
 });
 
 describe('restampVerified: only the verified entry of a skill Approve wrote', () => {
-  const done: SkillVerification = { state: 'done', result: 'pass', finishedAt: Date.UTC(2026, 9, 17), files: { reproduced: 1, expected: 1, extra: 0 }, hunks: { matched: 1, expected: 1, actual: 1 } };
+  const done: SkillVerification = {
+    state: 'done',
+    result: 'pass',
+    finishedAt: Date.UTC(2026, 9, 17),
+    files: { reproduced: 1, expected: 1, extra: 0 },
+    hunks: { matched: 1, expected: 1, actual: 1 },
+  };
   const stamped = stampProvenance(SKILL, { learnedFrom: 'thread-1', base: null, head: null });
   const written = (name = 'add-notes'): string => {
     const folder = join(base, 'skills', name);
@@ -106,8 +125,16 @@ describe('restampVerified: only the verified entry of a skill Approve wrote', ()
     const file = written();
     expect(restampVerified(file, { name: 'other', threadId: 'thread-1' }, done)).toBe(false);
     expect(restampVerified(file, { name: 'add-notes', threadId: 'thread-2' }, done)).toBe(false);
-    expect(restampVerified(join(base, 'skills', 'add-notes', 'README.md'), { name: 'add-notes', threadId: 'thread-1' }, done)).toBe(false);
-    expect(restampVerified(join(base, 'gone', 'add-notes', 'SKILL.md'), { name: 'add-notes', threadId: 'thread-1' }, done)).toBe(false);
+    expect(
+      restampVerified(
+        join(base, 'skills', 'add-notes', 'README.md'),
+        { name: 'add-notes', threadId: 'thread-1' },
+        done,
+      ),
+    ).toBe(false);
+    expect(
+      restampVerified(join(base, 'gone', 'add-notes', 'SKILL.md'), { name: 'add-notes', threadId: 'thread-1' }, done),
+    ).toBe(false);
     expect(readFileSync(file, 'utf8')).toBe(stamped);
     // A skill file without pi-kit's provenance is somebody else's.
     const mine = join(base, 'skills', 'mine');
@@ -136,7 +163,9 @@ describe('retireSkillFolder and restoreSkillFolder: a learned skill moves to .re
     expect(retiredFolderOf(file, 'add-notes')).toBe(join(base, 'skills', '.retired', 'add-notes'));
     expect(existsSync(file)).toBe(false);
     expect(readFileSync(retired, 'utf8')).toBe(stamped);
-    expect(readFileSync(join(base, 'skills', '.retired', 'add-notes', 'notes.txt'), 'utf8')).toBe('a file beside the skill');
+    expect(readFileSync(join(base, 'skills', '.retired', 'add-notes', 'notes.txt'), 'utf8')).toBe(
+      'a file beside the skill',
+    );
     restoreSkillFolder(file, expectation);
     expect(readFileSync(file, 'utf8')).toBe(stamped);
     expect(existsSync(join(base, 'skills', '.retired', 'add-notes'))).toBe(false);
@@ -172,6 +201,8 @@ describe('retireSkillFolder and restoreSkillFolder: a learned skill moves to .re
     expect(() => restoreSkillFolder(file, expectation)).toThrow(/no retired copy/);
     retireSkillFolder(file, expectation);
     expect(() => restoreSkillFolder(file, { name: 'add-notes', threadId: 'thread-2' })).toThrow(/no retired copy/);
-    expect(() => restoreSkillFolder(join(base, 'skills', 'add-notes', 'README.md'), expectation)).toThrow(/not a skill file/);
+    expect(() => restoreSkillFolder(join(base, 'skills', 'add-notes', 'README.md'), expectation)).toThrow(
+      /not a skill file/,
+    );
   });
 });

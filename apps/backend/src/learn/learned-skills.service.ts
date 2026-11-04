@@ -1,6 +1,13 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import {
   type LearnedSkill,
   type LearnedSkillDetail,
@@ -67,7 +74,9 @@ export class LearnedSkillsService implements OnModuleInit, OnModuleDestroy {
       try {
         this.uses.markOutcome(threadId, kind);
       } catch (error) {
-        this.logger.warn(`Could not mark the skill uses of ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+        this.logger.warn(
+          `Could not mark the skill uses of ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     });
   }
@@ -126,7 +135,8 @@ export class LearnedSkillsService implements OnModuleInit, OnModuleDestroy {
   /** Re-verify: the approved skill, as the file is now, is replayed from its thread's base commit. The draft stays approved; the report lands in `verification` and the file. */
   async reverify(id: string): Promise<LearnedSkill> {
     const draft = this.require(id);
-    if (this.drafts.retiredAt(draft.id) !== null) throw new ConflictException('This skill is retired. Restore it first.');
+    if (this.drafts.retiredAt(draft.id) !== null)
+      throw new ConflictException('This skill is retired. Restore it first.');
     this.learn.syncApprovedText(id);
     return this.view(await this.verify.start(id, {}));
   }
@@ -135,7 +145,8 @@ export class LearnedSkillsService implements OnModuleInit, OnModuleDestroy {
 
   private require(id: string): SkillDraft & { path: string } {
     const draft = this.drafts.get(id);
-    if (!draft || draft.state !== 'approved' || !draft.path) throw new NotFoundException('There is no such learned skill.');
+    if (!draft || draft.state !== 'approved' || !draft.path)
+      throw new NotFoundException('There is no such learned skill.');
     return draft as SkillDraft & { path: string };
   }
 
@@ -170,13 +181,21 @@ export class LearnedSkillsService implements OnModuleInit, OnModuleDestroy {
       path: draft.path ?? file,
       retiredAt,
       missing: !existsSync(file),
-      learnedFrom: { threadId: draft.threadId, title: origin?.title?.trim() || null, base: provenance.base ?? outcome?.base ?? null, head: provenance.head ?? outcome?.head ?? null },
+      learnedFrom: {
+        threadId: draft.threadId,
+        title: origin?.title?.trim() || null,
+        base: provenance.base ?? outcome?.base ?? null,
+        head: provenance.head ?? outcome?.head ?? null,
+      },
       verification,
       uses: summary.uses,
       mergedAfterUse: summary.mergedAfterUse,
       threads: summary.threads.length,
       lastUsedAt: summary.lastUsedAt,
-      flag: retiredAt === null ? learnedFlag(threads, verification?.state === 'done' ? verification.result : undefined) : null,
+      flag:
+        retiredAt === null
+          ? learnedFlag(threads, verification?.state === 'done' ? verification.result : undefined)
+          : null,
     };
   }
 
@@ -194,10 +213,23 @@ export class LearnedSkillsService implements OnModuleInit, OnModuleDestroy {
     const text = fileText ?? draft.text;
     const hash = skillHash(text);
     if (v?.state === 'running') return { state: 'running', ...(v.phase ? { phase: v.phase } : {}), stale: false };
-    if (v?.state === 'done' && v.result) return { state: 'done', result: v.result, ...(v.finishedAt ? { at: v.finishedAt } : {}), summary: v.summary ?? verificationSummary(v), stale: v.skillHash !== undefined && v.skillHash !== hash };
+    if (v?.state === 'done' && v.result)
+      return {
+        state: 'done',
+        result: v.result,
+        ...(v.finishedAt ? { at: v.finishedAt } : {}),
+        summary: v.summary ?? verificationSummary(v),
+        stale: v.skillHash !== undefined && v.skillHash !== hash,
+      };
     const stated = verifiedOfText(text);
     if (stated) return { state: 'done', result: stated.result, ...(stated.at ? { at: stated.at } : {}), stale: false };
-    if (v?.state === 'stopped' || v?.state === 'error') return { state: v.state, ...(v.finishedAt ? { at: v.finishedAt } : {}), summary: verificationSummary(v), stale: false };
+    if (v?.state === 'stopped' || v?.state === 'error')
+      return {
+        state: v.state,
+        ...(v.finishedAt ? { at: v.finishedAt } : {}),
+        summary: verificationSummary(v),
+        stale: false,
+      };
     return null;
   }
 }

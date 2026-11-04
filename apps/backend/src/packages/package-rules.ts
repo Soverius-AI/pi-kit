@@ -1,6 +1,12 @@
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
-import { PACKAGE_KINDS, type PackageBrings, type PackageKind, type PackageOrigin, originOfSource } from '@pi-kit/protocol';
+import {
+  PACKAGE_KINDS,
+  type PackageBrings,
+  type PackageKind,
+  type PackageOrigin,
+  originOfSource,
+} from '@pi-kit/protocol';
 
 /** Rules of the package list that need no pi and no disk, so the unit tests pin them: what a source is, what it is called, which package a resource belongs to. */
 
@@ -55,7 +61,9 @@ export function nameOfSource(source: string): string {
 
 /** `npm`, `git` or `folder`, and `bundled` for one of the packages that ship with pi-kit. */
 export function originOf(source: string, packageName: string | undefined): PackageOrigin {
-  return packageName && (BUNDLED_PACKAGES as readonly string[]).includes(packageName) ? 'bundled' : originOfSource(source);
+  return packageName && (BUNDLED_PACKAGES as readonly string[]).includes(packageName)
+    ? 'bundled'
+    : originOfSource(source);
 }
 
 /** A resource's name as the lists show it: a skill is its folder, an extension its file (or folder for an `index`), a prompt or theme its file without the extension. */
@@ -63,14 +71,23 @@ export function resourceName(kind: PackageKind, path: string): string {
   const file = basename(path);
   const folder = basename(dirname(path));
   if (kind === 'skills') return file === 'SKILL.md' ? folder : file.replace(/\.md$/, '');
-  if (kind === 'extensions') return /^index\.[tj]s$/.test(file) && !['extensions', 'src'].includes(folder) ? folder : file.replace(/\.(ts|js|mjs|cjs)$/, '');
+  if (kind === 'extensions')
+    return /^index\.[tj]s$/.test(file) && !['extensions', 'src'].includes(folder)
+      ? folder
+      : file.replace(/\.(ts|js|mjs|cjs)$/, '');
   return file.replace(/\.(md|json)$/, '');
 }
 
 export const NAMES_SHOWN = 12;
 
 export function emptyBrings(): PackageBrings {
-  return { extensions: 0, skills: 0, prompts: 0, themes: 0, names: { extensions: [], skills: [], prompts: [], themes: [] } };
+  return {
+    extensions: 0,
+    skills: 0,
+    prompts: 0,
+    themes: 0,
+    names: { extensions: [], skills: [], prompts: [], themes: [] },
+  };
 }
 
 /** Adds one resource to a package's counts (once per path). */
@@ -81,7 +98,12 @@ export function addResource(brings: PackageBrings, kind: PackageKind, path: stri
 }
 
 /** Resources of pi's `resolve()` grouped by the package they come from (`<scope>:<source>`). */
-export function groupBrings(resolved: Record<PackageKind, readonly { path: string; metadata: { scope: string; origin: string; source: string } }[]>): Map<string, PackageBrings> {
+export function groupBrings(
+  resolved: Record<
+    PackageKind,
+    readonly { path: string; metadata: { scope: string; origin: string; source: string } }[]
+  >,
+): Map<string, PackageBrings> {
   const groups = new Map<string, PackageBrings>();
   for (const kind of PACKAGE_KINDS) {
     const seen = new Set<string>();
@@ -100,7 +122,8 @@ export function groupBrings(resolved: Record<PackageKind, readonly { path: strin
 }
 
 /** A settings entry as pi writes it: the source alone, or an object with filters for what to load. */
-export type PackageEntry = string | ({ source: string } & Partial<Record<PackageKind, string[]>> & Record<string, unknown>);
+export type PackageEntry =
+  string | ({ source: string } & Partial<Record<PackageKind, string[]>> & Record<string, unknown>);
 
 export const sourceOfEntry = (entry: PackageEntry): string => (typeof entry === 'string' ? entry : entry.source);
 
@@ -112,9 +135,11 @@ export function isEntryEnabled(entry: PackageEntry): boolean {
 
 /** The entry switched on or off: off filters every kind to nothing, on drops those four filters (the entry is the source alone again when nothing else is left). Other fields stay. */
 export function entryWithEnabled(entry: PackageEntry, enabled: boolean): PackageEntry {
-  const base: { source: string } & Record<string, unknown> = typeof entry === 'string' ? { source: entry } : { ...entry };
+  const base: { source: string } & Record<string, unknown> =
+    typeof entry === 'string' ? { source: entry } : { ...entry };
   if (enabled) {
-    for (const kind of PACKAGE_KINDS) if (Array.isArray(base[kind]) && (base[kind] as unknown[]).length === 0) delete base[kind];
+    for (const kind of PACKAGE_KINDS)
+      if (Array.isArray(base[kind]) && (base[kind] as unknown[]).length === 0) delete base[kind];
     return Object.keys(base).length === 1 ? base.source : (base as PackageEntry);
   }
   for (const kind of PACKAGE_KINDS) base[kind] = [];
@@ -122,7 +147,8 @@ export function entryWithEnabled(entry: PackageEntry, enabled: boolean): Package
 }
 
 /** The folder a "From a folder" source names: `~` expanded, relative to `base`. */
-export const folderOf = (source: string, base: string): string => (isAbsolute(expandHome(source)) ? expandHome(source) : resolve(base, expandHome(source)));
+export const folderOf = (source: string, base: string): string =>
+  isAbsolute(expandHome(source)) ? expandHome(source) : resolve(base, expandHome(source));
 
 /** A source typed in the wizard, made one `pi install` takes: a GitHub address without a scheme becomes a git source; `owner/name@1.2` is not guessed. */
 export function normalizeSource(input: string): string {

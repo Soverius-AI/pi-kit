@@ -65,7 +65,9 @@ export class MetaRepository {
   /** The projects in the order the sidebar lists them. */
   listWorkspaces(): WorkspaceRow[] {
     const rows = this.db
-      .prepare('SELECT cwd, name, last_opened_at, sort_order, collapsed, hidden, attendant_off, agents_off, worktree_root, worktree_base, wt_start, wt_allow_switch, wt_carry, wt_branch_mode, wt_branch_prefix, wt_remove, wt_scripts FROM workspaces WHERE forgotten = 0 ORDER BY sort_order ASC, last_opened_at DESC, cwd ASC')
+      .prepare(
+        'SELECT cwd, name, last_opened_at, sort_order, collapsed, hidden, attendant_off, agents_off, worktree_root, worktree_base, wt_start, wt_allow_switch, wt_carry, wt_branch_mode, wt_branch_prefix, wt_remove, wt_scripts FROM workspaces WHERE forgotten = 0 ORDER BY sort_order ASC, last_opened_at DESC, cwd ASC',
+      )
       .all() as {
       cwd: string;
       name: string;
@@ -113,7 +115,8 @@ export class MetaRepository {
   setWorktreeSettings(cwd: string, patch: WorktreeSettingsPatch): boolean {
     const sets: string[] = [];
     const args: unknown[] = [];
-    const text = (value: string | null | undefined): string | null | undefined => (value === undefined ? undefined : value === null || value.trim() === '' ? null : value.trim());
+    const text = (value: string | null | undefined): string | null | undefined =>
+      value === undefined ? undefined : value === null || value.trim() === '' ? null : value.trim();
     const put = (column: string, value: unknown): void => {
       if (value === undefined) return;
       sets.push(`${column} = ?`);
@@ -124,7 +127,10 @@ export class MetaRepository {
     put('worktree_root', text(patch.root));
     put('worktree_base', text(patch.base));
     put('wt_start', patch.start);
-    put('wt_allow_switch', patch.allowSwitch === undefined ? undefined : patch.allowSwitch === null ? null : patch.allowSwitch ? 1 : 0);
+    put(
+      'wt_allow_switch',
+      patch.allowSwitch === undefined ? undefined : patch.allowSwitch === null ? null : patch.allowSwitch ? 1 : 0,
+    );
     put('wt_carry', patch.carry);
     put('wt_branch_mode', patch.branchMode);
     put('wt_branch_prefix', patch.branchPrefix);
@@ -134,7 +140,10 @@ export class MetaRepository {
     if (scripts === undefined && setup !== undefined) {
       // The single command is the first script's. Never configured: it becomes the only script, or "none" when blank.
       const current = row.scripts ?? [];
-      scripts = setup === null ? current.slice(1) : [{ ...(current[0] ?? { id: 'setup', name: 'Setup' }), command: setup }, ...current.slice(1)];
+      scripts =
+        setup === null
+          ? current.slice(1)
+          : [{ ...(current[0] ?? { id: 'setup', name: 'Setup' }), command: setup }, ...current.slice(1)];
     }
     if (scripts !== undefined) {
       put('wt_scripts', scripts === null ? null : JSON.stringify(scripts));
@@ -144,7 +153,10 @@ export class MetaRepository {
   }
 
   /** A project's sidebar flags; false when the folder is not a known workspace. */
-  patchWorkspace(cwd: string, patch: { collapsed?: boolean; hidden?: boolean; attendantOff?: boolean; agentsOff?: boolean }): boolean {
+  patchWorkspace(
+    cwd: string,
+    patch: { collapsed?: boolean; hidden?: boolean; attendantOff?: boolean; agentsOff?: boolean },
+  ): boolean {
     const sets: string[] = [];
     const args: unknown[] = [];
     const flags: [string, boolean | undefined][] = [
@@ -176,7 +188,8 @@ export class MetaRepository {
    * only ever touch folders the app knows, never an arbitrary path a request names.
    */
   requireWorkspace(cwd: string): string {
-    if (!existsSync(cwd) || !(this.listWorkspaces().some((w) => w.cwd === cwd) || this.isWorktree(cwd))) throw new NotFoundException(`Workspace ${cwd} is not known.`);
+    if (!existsSync(cwd) || !(this.listWorkspaces().some((w) => w.cwd === cwd) || this.isWorktree(cwd)))
+      throw new NotFoundException(`Workspace ${cwd} is not known.`);
     return cwd;
   }
 
@@ -205,13 +218,16 @@ export class MetaRepository {
   }
 
   getSetting(key: string): unknown {
-    const row = this.db.prepare('SELECT value_json FROM settings WHERE key = ?').get(key) as { value_json: string } | undefined;
+    const row = this.db.prepare('SELECT value_json FROM settings WHERE key = ?').get(key) as
+      { value_json: string } | undefined;
     return row ? JSON.parse(row.value_json) : undefined;
   }
 
   setSetting(key: string, value: unknown): void {
     this.db
-      .prepare('INSERT INTO settings (key, value_json) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value_json = excluded.value_json')
+      .prepare(
+        'INSERT INTO settings (key, value_json) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value_json = excluded.value_json',
+      )
       .run(key, JSON.stringify(value));
   }
 

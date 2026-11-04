@@ -46,7 +46,11 @@ export class WorktreeController {
 
   /** Branch, base, uncommitted changes, commits ahead and behind, conflicts, and what a merge back would need. */
   @Get()
-  @ApiOperation({ summary: "Get a worktree's status", description: 'Returns the branch, the base, the uncommitted changes, the commits ahead and behind, the conflicts and what a merge back would need.' })
+  @ApiOperation({
+    summary: "Get a worktree's status",
+    description:
+      'Returns the branch, the base, the uncommitted changes, the commits ahead and behind, the conflicts and what a merge back would need.',
+  })
   @Responds(WorktreeStatusSchema)
   @Fails({ 404: NO_WORKTREE })
   state(@Param('id') id: string): Promise<WorktreeStatus> {
@@ -55,7 +59,10 @@ export class WorktreeController {
 
   /** The commit message pi-kit proposes for the uncommitted changes. */
   @Get('message')
-  @ApiOperation({ summary: 'Propose a commit message', description: 'Returns the commit message pi-kit proposes for the uncommitted changes of the worktree.' })
+  @ApiOperation({
+    summary: 'Propose a commit message',
+    description: 'Returns the commit message pi-kit proposes for the uncommitted changes of the worktree.',
+  })
   @Responds(WorktreeMessageSchema)
   @Fails({ 404: NO_WORKTREE })
   message(@Param('id') id: string): Promise<WorktreeMessage> {
@@ -65,17 +72,30 @@ export class WorktreeController {
   /** Fetches and brings the base into the branch. A conflict is left in progress in the worktree. */
   @Post('sync')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Sync with the base', description: 'Fetches the remote and brings the base branch into the worktree by merge or rebase. A conflict is left in progress in the worktree.' })
+  @ApiOperation({
+    summary: 'Sync with the base',
+    description:
+      'Fetches the remote and brings the base branch into the worktree by merge or rebase. A conflict is left in progress in the worktree.',
+  })
   @Responds(WorktreeSyncResultSchema)
-  @Fails({ 404: NO_WORKTREE, 409: 'A run holds the thread, a merge or rebase is waiting, or git could not bring the base in.' })
-  sync(@Param('id') id: string, @Body({ schema: WorktreeSyncRequestSchema }) body: z.infer<typeof WorktreeSyncRequestSchema>): Promise<WorktreeSyncResult> {
+  @Fails({
+    404: NO_WORKTREE,
+    409: 'A run holds the thread, a merge or rebase is waiting, or git could not bring the base in.',
+  })
+  sync(
+    @Param('id') id: string,
+    @Body({ schema: WorktreeSyncRequestSchema }) body: z.infer<typeof WorktreeSyncRequestSchema>,
+  ): Promise<WorktreeSyncResult> {
     return this.worktrees.sync(this.row(id), body.strategy);
   }
 
   /** Gives up the merge or rebase that waits in the worktree. */
   @Post('abort')
   @HttpCode(204)
-  @ApiOperation({ summary: 'Abort a merge or rebase', description: 'Gives up the merge or rebase that waits in the worktree.' })
+  @ApiOperation({
+    summary: 'Abort a merge or rebase',
+    description: 'Gives up the merge or rebase that waits in the worktree.',
+  })
   @ApiNoContentResponse({ description: 'The merge or rebase is aborted.' })
   @Fails({ 404: NO_WORKTREE, 409: 'A run holds the thread.' })
   async abort(@Param('id') id: string): Promise<void> {
@@ -85,20 +105,39 @@ export class WorktreeController {
   /** Commits the uncommitted changes, then merges into the base or opens a pull request; optionally removes the worktree. */
   @Post('merge')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Merge the worktree back', description: 'Commits the uncommitted changes, then merges the branch into the base or opens a pull request, and optionally removes the worktree.' })
+  @ApiOperation({
+    summary: 'Merge the worktree back',
+    description:
+      'Commits the uncommitted changes, then merges the branch into the base or opens a pull request, and optionally removes the worktree.',
+  })
   @Responds(WorktreeMergeResultSchema)
-  @Fails({ 404: NO_WORKTREE, 409: 'A run holds the thread, the main checkout is not on the base or has changes, or git could not merge or push.' })
-  merge(@Param('id') id: string, @Body({ schema: WorktreeMergeRequestSchema }) body: z.infer<typeof WorktreeMergeRequestSchema>): Promise<WorktreeMergeResult> {
+  @Fails({
+    404: NO_WORKTREE,
+    409: 'A run holds the thread, the main checkout is not on the base or has changes, or git could not merge or push.',
+  })
+  merge(
+    @Param('id') id: string,
+    @Body({ schema: WorktreeMergeRequestSchema }) body: z.infer<typeof WorktreeMergeRequestSchema>,
+  ): Promise<WorktreeMergeResult> {
     return this.worktrees.merge(this.row(id), body);
   }
 
   /** Removes the worktree folder. A worktree with uncommitted changes needs `force`. */
   @Post('remove')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Remove the worktree', description: 'Removes the worktree folder. A worktree with uncommitted changes needs `force`.' })
+  @ApiOperation({
+    summary: 'Remove the worktree',
+    description: 'Removes the worktree folder. A worktree with uncommitted changes needs `force`.',
+  })
   @Responds(WorktreeRemoveResultSchema)
-  @Fails({ 404: NO_WORKTREE, 409: 'The worktree holds uncommitted changes, another thread runs in it, or git could not remove it.' })
-  remove(@Param('id') id: string, @Body({ schema: WorktreeRemoveRequestSchema }) body: z.infer<typeof WorktreeRemoveRequestSchema>): Promise<WorktreeRemoveResult> {
+  @Fails({
+    404: NO_WORKTREE,
+    409: 'The worktree holds uncommitted changes, another thread runs in it, or git could not remove it.',
+  })
+  remove(
+    @Param('id') id: string,
+    @Body({ schema: WorktreeRemoveRequestSchema }) body: z.infer<typeof WorktreeRemoveRequestSchema>,
+  ): Promise<WorktreeRemoveResult> {
     return this.worktrees.remove(this.row(id), body);
   }
 
@@ -116,17 +155,30 @@ export class WorktreeController {
     404: 'There is no such thread.',
     409: 'A run holds the thread, the folder has uncommitted files (commit or stash them), a merge or rebase is waiting, or the thread is not where the hand off starts.',
   })
-  handoff(@Param('id') id: string, @Body({ schema: WorktreeHandoffRequestSchema }) body: z.infer<typeof WorktreeHandoffRequestSchema>): Promise<WorktreeHandoffResult> {
+  handoff(
+    @Param('id') id: string,
+    @Body({ schema: WorktreeHandoffRequestSchema }) body: z.infer<typeof WorktreeHandoffRequestSchema>,
+  ): Promise<WorktreeHandoffResult> {
     return this.worktrees.handoff(this.row(id), body);
   }
 
   /** Gives a detached worktree a branch. */
   @Post('branch')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Create a branch in a worktree', description: 'Gives a detached worktree a branch ("Create branch here").' })
+  @ApiOperation({
+    summary: 'Create a branch in a worktree',
+    description: 'Gives a detached worktree a branch ("Create branch here").',
+  })
   @Responds(WorktreeBranchResultSchema)
-  @Fails({ 400: 'The name is not a branch name.', 404: NO_WORKTREE, 409: 'A run holds the thread, the worktree has a branch already, or the name is taken.' })
-  branch(@Param('id') id: string, @Body({ schema: WorktreeBranchRequestSchema }) body: z.infer<typeof WorktreeBranchRequestSchema>): Promise<WorktreeBranchResult> {
+  @Fails({
+    400: 'The name is not a branch name.',
+    404: NO_WORKTREE,
+    409: 'A run holds the thread, the worktree has a branch already, or the name is taken.',
+  })
+  branch(
+    @Param('id') id: string,
+    @Body({ schema: WorktreeBranchRequestSchema }) body: z.infer<typeof WorktreeBranchRequestSchema>,
+  ): Promise<WorktreeBranchResult> {
     return this.worktrees.createBranch(this.row(id), body.name);
   }
 }

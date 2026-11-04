@@ -8,7 +8,29 @@
 //   approval                                    looking runs; acting asks once per session; scripts, quitting apps and downloads ask every time
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
-import { classify, configPath, decide, describeCall, driverToolName, enableWayland, exposureFor, GUIDELINE, host, inPiKit, isEnabled, isSupported, isWaylandSession, linuxInputHelp, noPermissionsNote, PERMISSIONS, permissionHelp, piToolName, setEnabled, toToolResult, unsupportedMessage } from '../lib/computer-use.mjs';
+import {
+  classify,
+  configPath,
+  decide,
+  describeCall,
+  driverToolName,
+  enableWayland,
+  exposureFor,
+  GUIDELINE,
+  host,
+  inPiKit,
+  isEnabled,
+  isSupported,
+  isWaylandSession,
+  linuxInputHelp,
+  noPermissionsNote,
+  PERMISSIONS,
+  permissionHelp,
+  piToolName,
+  setEnabled,
+  toToolResult,
+  unsupportedMessage,
+} from '../lib/computer-use.mjs';
 
 interface DriverTool {
   name: string;
@@ -19,7 +41,11 @@ interface DriverTool {
 }
 type Permissions = { accessibility: boolean; screenRecording: boolean };
 interface Driver {
-  callTool(name: string, argumentsJson: string, opts?: { signal: AbortSignal }): Promise<{ text: string; images: { mimeType: string; dataBase64: string }[]; isError: boolean }>;
+  callTool(
+    name: string,
+    argumentsJson: string,
+    opts?: { signal: AbortSignal },
+  ): Promise<{ text: string; images: { mimeType: string; dataBase64: string }[]; isError: boolean }>;
   listToolsJson(): Promise<string>;
   shutdown(): Promise<unknown>;
 }
@@ -46,7 +72,9 @@ export default function (pi: ExtensionAPI) {
   /** The SDK is loaded only once computer use is on. A build without it (pi-kit ships it for macOS, Windows and Linux; `npm install` brings it otherwise) says so instead of a resolution error. */
   const loadSdk = async () =>
     (sdk ??= (await import('@trycua/cua-driver').catch((error: unknown) => {
-      throw new Error(`Cua Driver is not installed next to this package (${error instanceof Error ? error.message : String(error)}). Reinstall the package, or pi-kit, to get it.`);
+      throw new Error(
+        `Cua Driver is not installed next to this package (${error instanceof Error ? error.message : String(error)}). Reinstall the package, or pi-kit, to get it.`,
+      );
     })) as unknown as Sdk);
   /**
    * `embedded` keeps the driver in this process instead of looking for an installed CuaDriver app. In a Linux Wayland session the driver's
@@ -58,7 +86,10 @@ export default function (pi: ExtensionAPI) {
     enableWayland();
     return (driver = loaded.CuaDriver.create({ embedded: true, claudeCodeCompatibility: false }));
   };
-  const permissions = async (): Promise<Permissions> => (process.platform === 'darwin' ? (await loadSdk()).currentMacOsPermissionStatus() : { accessibility: true, screenRecording: true });
+  const permissions = async (): Promise<Permissions> =>
+    process.platform === 'darwin'
+      ? (await loadSdk()).currentMacOsPermissionStatus()
+      : { accessibility: true, screenRecording: true };
 
   /** A tool cannot be unregistered, so "off" registers each one again as hidden. */
   async function registerTools(on: boolean) {
@@ -79,7 +110,12 @@ export default function (pi: ExtensionAPI) {
         async execute(_id, params, signal) {
           const help = permissionHelp(process.platform, await permissions());
           if (help) throw new Error(help);
-          return toToolResult(tool.name, await (await getDriver()).callTool(tool.name, JSON.stringify(params ?? {}), signal ? { signal } : undefined));
+          return toToolResult(
+            tool.name,
+            await (
+              await getDriver()
+            ).callTool(tool.name, JSON.stringify(params ?? {}), signal ? { signal } : undefined),
+          );
         },
       });
     }
@@ -88,7 +124,18 @@ export default function (pi: ExtensionAPI) {
   /** In pi-kit, a pill that opens Settings › Computer use while macOS still lacks a permission; gone once both are there. Nothing elsewhere. */
   function showSetupPill(missing: boolean) {
     if (!inPiKit() || process.platform !== 'darwin') return;
-    pi.events.emit('pi-kit:composer', missing ? { op: 'suggestion', id: SETUP_PILL, title: 'Set up computer use permissions', text: '/settings computer-use', send: true } : { op: 'remove', id: SETUP_PILL });
+    pi.events.emit(
+      'pi-kit:composer',
+      missing
+        ? {
+            op: 'suggestion',
+            id: SETUP_PILL,
+            title: 'Set up computer use permissions',
+            text: '/settings computer-use',
+            send: true,
+          }
+        : { op: 'remove', id: SETUP_PILL },
+    );
   }
 
   async function stop() {
@@ -101,17 +148,32 @@ export default function (pi: ExtensionAPI) {
   /** Linux: Hyprland is read-only; elsewhere the session type and, while the driver runs, its own check of the session. */
   async function linuxStatus(): Promise<{ lines: string[]; help?: string }> {
     const help = linuxInputHelp();
-    const lines = [help ?? (isWaylandSession() ? 'Wayland session: the driver’s native Wayland routes are on.' : 'X11 session.')];
-    if (driver) lines.push((await driver.callTool('check_permissions', '{}').catch(() => undefined))?.text?.trim() ?? '');
+    const lines = [
+      help ?? (isWaylandSession() ? 'Wayland session: the driver’s native Wayland routes are on.' : 'X11 session.'),
+    ];
+    if (driver)
+      lines.push((await driver.callTool('check_permissions', '{}').catch(() => undefined))?.text?.trim() ?? '');
     return { lines: lines.filter(Boolean), help };
   }
 
   async function status(ctx: ExtensionContext) {
-    const macHelp = SUPPORTED ? permissionHelp(process.platform, await permissions().catch(() => ({ accessibility: false, screenRecording: false }))) : undefined;
+    const macHelp = SUPPORTED
+      ? permissionHelp(
+          process.platform,
+          await permissions().catch(() => ({ accessibility: false, screenRecording: false })),
+        )
+      : undefined;
     const linux = SUPPORTED && process.platform === 'linux' ? await linuxStatus() : { lines: [] };
     const help = macHelp ?? linux.help;
-    const detail = SUPPORTED ? [macHelp ?? (process.platform === 'linux' ? undefined : 'Permissions: ready.'), ...linux.lines].filter(Boolean).join('\n') : `Not supported on ${process.platform}.`;
-    ctx.ui.notify(`Computer use is ${isEnabled() ? 'on' : 'off'} (${configPath()}).\n${detail}`, help ? 'warning' : 'info');
+    const detail = SUPPORTED
+      ? [macHelp ?? (process.platform === 'linux' ? undefined : 'Permissions: ready.'), ...linux.lines]
+          .filter(Boolean)
+          .join('\n')
+      : `Not supported on ${process.platform}.`;
+    ctx.ui.notify(
+      `Computer use is ${isEnabled() ? 'on' : 'off'} (${configPath()}).\n${detail}`,
+      help ? 'warning' : 'info',
+    );
   }
 
   /**
@@ -122,13 +184,21 @@ export default function (pi: ExtensionAPI) {
   async function setup(ctx: ExtensionContext) {
     if (process.platform !== 'darwin') {
       const help = linuxInputHelp();
-      return ctx.ui.notify(SUPPORTED ? (help ? `${noPermissionsNote()}\n\n${help}` : noPermissionsNote()) : `Not supported on ${process.platform}.`, help ? 'warning' : 'info');
+      return ctx.ui.notify(
+        SUPPORTED
+          ? help
+            ? `${noPermissionsNote()}\n\n${help}`
+            : noPermissionsNote()
+          : `Not supported on ${process.platform}.`,
+        help ? 'warning' : 'info',
+      );
     }
     const app = host();
     const before = await permissions();
     const todo = STEPS.filter((step) => !before[step.key]);
     showSetupPill(todo.length > 0);
-    if (todo.length === 0) return ctx.ui.notify(`macOS has already given ${app.name} both permissions. Nothing to do.`, 'info');
+    if (todo.length === 0)
+      return ctx.ui.notify(`macOS has already given ${app.name} both permissions. Nothing to do.`, 'info');
     if (!ctx.hasUI) return ctx.ui.notify(permissionHelp('darwin', before) ?? '', 'warning');
     (await loadSdk()).requestMacOsPermissions();
     const { execFile } = await import('node:child_process');
@@ -142,18 +212,29 @@ export default function (pi: ExtensionAPI) {
       }, POLL_MS);
       let answer: string | undefined;
       try {
-        answer = await ctx.ui.select(`Step ${index + 1} of ${todo.length}: ${step.name}. Find "${app.name}" in the list in System Settings and switch it on.`, ['Done, next', 'Stop setup'], { signal: granted.signal });
+        answer = await ctx.ui.select(
+          `Step ${index + 1} of ${todo.length}: ${step.name}. Find "${app.name}" in the list in System Settings and switch it on.`,
+          ['Done, next', 'Stop setup'],
+          { signal: granted.signal },
+        );
       } finally {
         clearInterval(poll);
       }
       if (granted.signal.aborted) ctx.ui.notify(`${step.name}: macOS has given it to ${app.name}.`, 'info');
-      else if (answer !== 'Done, next') return ctx.ui.notify('Setup stopped. Run /computer-use setup to continue.', 'info');
+      else if (answer !== 'Done, next')
+        return ctx.ui.notify('Setup stopped. Run /computer-use setup to continue.', 'info');
     }
     const after = await permissions().catch(() => before);
     showSetupPill(STEPS.some((step) => !after[step.key]));
     if (todo.some((step) => step.key === 'screenRecording')) {
-      const restart = app.kind === 'terminal' ? `Quit ${app.name} and open it again` : `Quit ${app.name} and open it again (Settings › Computer use has a Relaunch button)`;
-      ctx.ui.notify(`${restart}: macOS applies Screen Recording only to an app that starts again. Then run /computer-use status.`, 'info');
+      const restart =
+        app.kind === 'terminal'
+          ? `Quit ${app.name} and open it again`
+          : `Quit ${app.name} and open it again (Settings › Computer use has a Relaunch button)`;
+      ctx.ui.notify(
+        `${restart}: macOS applies Screen Recording only to an app that starts again. Then run /computer-use status.`,
+        'info',
+      );
     } else {
       ctx.ui.notify('Computer use has the permissions it needs.', 'info');
     }
@@ -166,7 +247,14 @@ export default function (pi: ExtensionAPI) {
       try {
         if (word === 'on') {
           if (!SUPPORTED) throw new Error(unsupportedMessage());
-          if (!isEnabled() && !(await ctx.ui.confirm('Turn on computer use?', 'pi will be able to see your screen and operate apps on this computer. It asks before it acts. What an app shows can contain instructions meant for pi.'))) return;
+          if (
+            !isEnabled() &&
+            !(await ctx.ui.confirm(
+              'Turn on computer use?',
+              'pi will be able to see your screen and operate apps on this computer. It asks before it acts. What an app shows can contain instructions meant for pi.',
+            ))
+          )
+            return;
           setEnabled(true);
           await registerTools(true);
           ctx.ui.notify('Computer use is on.', 'info');
@@ -208,13 +296,20 @@ export default function (pi: ExtensionAPI) {
     const name = driverToolName(event.toolName);
     const tool = name === undefined ? undefined : tools.get(name);
     if (!name || !tool) return undefined;
-    if (!isEnabled()) return { block: true, reason: 'Computer use is off. The person can turn it on with /computer-use on.' };
+    if (!isEnabled())
+      return { block: true, reason: 'Computer use is off. The person can turn it on with /computer-use on.' };
     const step = decide({ kind: classify(tool), hasUI: ctx.hasUI, sessionAllowed });
     if (step.action === 'allow') return undefined;
     if (step.action === 'block') return { block: true, reason: step.reason };
     const line = describeCall(name, event.input);
-    if (step.ask === 'call') return (await ctx.ui.confirm('Allow this computer action?', line)) ? undefined : { block: true, reason: `The person did not allow ${name}.` };
-    sessionAllowed = await ctx.ui.confirm('Allow pi to use this computer for this session?', `It will operate apps on your behalf, starting with: ${line}`);
+    if (step.ask === 'call')
+      return (await ctx.ui.confirm('Allow this computer action?', line))
+        ? undefined
+        : { block: true, reason: `The person did not allow ${name}.` };
+    sessionAllowed = await ctx.ui.confirm(
+      'Allow pi to use this computer for this session?',
+      `It will operate apps on your behalf, starting with: ${line}`,
+    );
     return sessionAllowed ? undefined : { block: true, reason: 'The person did not allow computer use.' };
   });
 }
