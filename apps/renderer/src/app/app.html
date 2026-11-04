@@ -3,13 +3,20 @@
 <div class="pk-shell" [attr.data-panel]="bus.panel() ? 'open' : 'closed'">
   <!-- Sidebar: the only left column (layout). Projects, their threads, the backend status. -->
   <pk-thread-sidebar (opened)="open($event, drawer)" />
+  <pk-environment-project-picker />
 
   <!-- Main -->
   <main class="pk-main" [attr.data-setup]="bus.onboarding() ? 'open' : null">
     @defer (when bus.onboarding(); prefetch on idle) {
       <pk-onboarding-strip />
     }
-    <header class="pk-header">
+    <header
+      class="pk-header"
+      role="group"
+      tabindex="0"
+      [attr.aria-label]="'shell.app.chat' | transloco"
+      data-testid="chat-header"
+    >
       <label
         for="t-threads"
         class="btn btn-ghost btn-sm btn-square pk-only-sm"
@@ -43,10 +50,9 @@
         <h1 class="font-medium truncate">{{ shell.title() }}</h1>
       }
       <div class="pk-header-actions ml-auto flex items-center gap-2">
-        @if (
-          review.mode() === 'chat' && threads.selectedId() && !threads.selected()?.learning && review.files().length
-        ) {
+        @if (changes()) {
           <pk-changes-pill
+            class="pk-hide-sm"
             [added]="review.totals().added"
             [removed]="review.totals().removed"
             [title]="('shell.app.reviewChanges' | transloco) + ': ' + review.summary()"
@@ -57,7 +63,17 @@
         <pk-panel-switcher />
       </div>
     </header>
-
+    <!-- On a phone the changes tag gets its own row: in the header it pushed the panel switcher out of reach. -->
+    @if (changes()) {
+      <div class="pk-changes-row">
+        <pk-changes-pill
+          [added]="review.totals().added"
+          [removed]="review.totals().removed"
+          [title]="('shell.app.reviewChanges' | transloco) + ': ' + review.summary()"
+          (pressed)="review.open()"
+        />
+      </div>
+    }
     @if (review.mode() === 'review' && !threads.selected()?.learning) {
       <pk-review-toolbar />
     }
@@ -72,13 +88,13 @@
         <pk-review-view /> <pk-review-tray />
       }
     } @else if (threads.selectedId()) {
-      @defer (on
-    immediate) {
+      @defer (on immediate) {
         <pk-chat />
       }
     } @else {
       <div class="row-start-3 row-span-2 grid place-items-center p-6 text-sm text-muted">
-        <p>{{ 'shell.app.noThreadIsOpenPickOneOn' | transloco }}</p>
+        <p class="pk-hide-sm">{{ 'shell.app.noThreadIsOpenPickOneOn' | transloco }}</p>
+        <p class="pk-only-sm">{{ 'shell.app.noThreadIsOpenCompact' | transloco }}</p>
       </div>
     }
   </main>
@@ -126,8 +142,7 @@
       }
     }
     @case ('agents') {
-      @defer (on
-  immediate) {
+      @defer (on immediate) {
         <pk-agents-panel />
       }
     }

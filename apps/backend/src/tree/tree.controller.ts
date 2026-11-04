@@ -16,7 +16,7 @@ import {
   TreeQuerySchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Fails, Responds, ThreadIdParam } from '../contract';
+import { Fails, Responds, ThreadIdParam, Remote } from '../contract';
 import { TreeService } from './tree.service';
 
 const NO_THREAD = 'There is no such thread.';
@@ -30,6 +30,7 @@ const NOT_IDLE = 'A run holds the thread: stop it first.';
 export class TreeController {
   constructor(private readonly tree: TreeService) {}
 
+  @Remote()
   @Get('tree')
   @ApiOperation({
     summary: 'Get the session tree',
@@ -45,6 +46,7 @@ export class TreeController {
     return flagOn(query.raw) ? this.tree.raw(id) : this.tree.tree(id);
   }
 
+  @Remote()
   @Get('entries/:entryId')
   @ApiOperation({
     summary: 'Get an entry',
@@ -58,6 +60,7 @@ export class TreeController {
   }
 
   /** Moves the leaf, resets the transcript to the branch (a snapshot in the replay log) and announces `pi.tree`. */
+  @Remote()
   @Post('navigate')
   @ApiOperation({
     summary: 'Go to an entry',
@@ -75,6 +78,7 @@ export class TreeController {
   }
 
   /** "Summarize branch": `navigate` with a model-written summary of the branch being left, attached at the target. */
+  @Remote()
   @Post('summarize-branch')
   @ApiOperation({
     summary: 'Summarize a branch',
@@ -90,6 +94,7 @@ export class TreeController {
     return this.tree.navigate(id, body.targetId, { summarize: true, instructions: body.instructions });
   }
 
+  @Remote()
   @Post('label')
   @ApiOperation({
     summary: 'Label an entry',

@@ -1,0 +1,92 @@
+{
+  "name": "onboarding-site",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "prefix": "pk",
+  "sourceRoot": "apps/onboarding-site/src",
+  "tags": ["scope:app"],
+  "targets": {
+    "build": {
+      "executor": "@angular/build:application",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "outputPath": "dist/apps/onboarding-site",
+        "browser": "apps/onboarding-site/src/main.ts",
+        "tsConfig": "apps/onboarding-site/tsconfig.app.json",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "apps/onboarding-site/public"
+          }
+        ],
+        "styles": ["apps/onboarding-site/src/styles.css"],
+        "allowedCommonJsDependencies": ["jsqr"]
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            {
+              "type": "initial",
+              "maximumWarning": "600kb",
+              "maximumError": "1mb"
+            }
+          ],
+          "outputHashing": "all",
+          "optimization": {
+            "scripts": true,
+            "styles": {
+              "minify": true,
+              "inlineCritical": false
+            },
+            "fonts": false
+          }
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true
+        }
+      },
+      "dependsOn": ["i18n"]
+    },
+    "serve": {
+      "continuous": true,
+      "executor": "@angular/build:dev-server",
+      "defaultConfiguration": "development",
+      "configurations": {
+        "production": {
+          "buildTarget": "onboarding-site:build:production"
+        },
+        "development": {
+          "buildTarget": "onboarding-site:build:development"
+        }
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "apps/onboarding-site/tsconfig.spec.json",
+        "buildTarget": "onboarding-site:build:development",
+        "runner": "vitest",
+        "include": ["apps/onboarding-site/src/**/*.spec.ts"]
+      },
+      "dependsOn": ["i18n"]
+    },
+    "i18n": {
+      "executor": "nx:run-commands",
+      "inputs": [
+        "{workspaceRoot}/libs/shared/i18n/src/lib/translations/*.json",
+        "{workspaceRoot}/scripts/onboarding-i18n.mjs"
+      ],
+      "outputs": ["{projectRoot}/public/i18n"],
+      "options": {
+        "command": "node scripts/onboarding-i18n.mjs"
+      }
+    }
+  }
+}

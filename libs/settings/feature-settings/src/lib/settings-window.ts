@@ -9,7 +9,7 @@ import {
   sectionById,
 } from '@pi-kit/ui';
 import { AttendantStore } from '@pi-kit/threads/api';
-import { UiStore } from '@pi-kit/data-access';
+import { EnvironmentsStore, UiStore } from '@pi-kit/data-access';
 import { keepFocusInside, PkIcon, type PkIconName, PkTip } from '@pi-kit/design-system';
 import { KeyWorkflow, LocalRuntimeWizard } from '@pi-kit/settings/api';
 import { AdvancedSection, ExtensionsSection } from '@pi-kit/settings/feature-advanced';
@@ -22,6 +22,9 @@ import { KeybindingsSection } from '@pi-kit/settings/feature-keybindings';
 import { ModelsSection, ProvidersSection } from '@pi-kit/settings/feature-providers';
 import { ProjectsSection } from '@pi-kit/settings/feature-projects-trust';
 import { VoiceSection } from './voice-section';
+import { RemoteAccessSection } from './remote-access-section';
+import { EnvironmentPeersSection } from './environment-peers-section';
+import { EnvironmentSection } from './environment-section';
 import { ComputerUseSection } from './computer-use-section';
 
 /**
@@ -36,6 +39,9 @@ import { ComputerUseSection } from './computer-use-section';
   imports: [
     AppearanceSection,
     ComputerUseSection,
+    RemoteAccessSection,
+    EnvironmentPeersSection,
+    EnvironmentSection,
     AdvancedSection,
     AttendantSection,
     ExtensionsSection,
@@ -165,6 +171,13 @@ import { ComputerUseSection } from './computer-use-section';
           </nav>
 
           <main id="settings-page" role="tabpanel" tabindex="-1">
+            @if (environments.hasPeers() || environments.context.remote) {
+              <p class="env-row" data-testid="settings-environment">
+                <span class="pk-env-dot" [attr.data-remote]="environments.context.remote" aria-hidden="true"></span>
+                <span>{{ 'settings.settingsWindow.environmentHint' | transloco: { name: environmentName() } }}</span>
+                <span class="kind">{{ environments.ownerKind() | transloco }}</span>
+              </p>
+            }
             @if (store.searching() && store.visibleSections().length === 0) {
               <div class="empty" role="status" data-testid="no-results">
                 {{
@@ -218,6 +231,11 @@ import { ComputerUseSection } from './computer-use-section';
                   @case ('voice') {
                     <pk-voice-section />
                   }
+                  @case ('remote-access') {
+                    <pk-environment-section />
+                    <pk-environment-peers-section />
+                    <pk-remote-access-section />
+                  }
                   @case ('computer-use') {
                     <pk-computer-use-section />
                   }
@@ -234,6 +252,10 @@ import { ComputerUseSection } from './computer-use-section';
 export class SettingsWindow {
   protected readonly i18n = inject(Language);
   protected readonly bus = inject(UiStore);
+  protected readonly environments = inject(EnvironmentsStore);
+  protected readonly environmentName = computed(
+    () => this.environments.ownerName() ?? this.i18n.t('environments.projects.unknown'),
+  );
   protected readonly store = inject(SettingsStore);
   private readonly packages = inject(PackagesStore);
   private readonly injector = inject(Injector);
@@ -272,7 +294,7 @@ export class SettingsWindow {
   }
 
   protected icon(id: SettingsSectionId): PkIconName {
-    return `settings-${id}`;
+    return id === 'remote-access' ? 'settings-mcp' : `settings-${id}`;
   }
 
   protected sectionsOf(group: string): SettingsSection[] {

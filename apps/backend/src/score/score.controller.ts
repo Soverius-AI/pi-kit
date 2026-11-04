@@ -13,7 +13,7 @@ import {
   ScoreRequestResultSchema,
 } from '@pi-kit/protocol';
 import type { Request } from 'express';
-import { Fails, Responds } from '../contract';
+import { Fails, Responds, Remote } from '../contract';
 import { ScoreService } from './score.service';
 
 const THREAD_ID = {
@@ -31,6 +31,7 @@ const THREAD_ID = {
 export class ScoreController {
   constructor(private readonly score: ScoreService) {}
 
+  @Remote()
   @Get('threads/:id/score')
   @ApiParam(THREAD_ID)
   @ApiOperation({
@@ -98,6 +99,7 @@ export class ScoreController {
     return this.score.relabel(id, body.hunk, body.label);
   }
 
+  @Remote()
   @Get('scores')
   @ApiOperation({
     summary: 'Get the score distribution of every project',

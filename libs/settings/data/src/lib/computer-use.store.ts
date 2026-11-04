@@ -1,6 +1,14 @@
 import { inject } from '@angular/core';
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
-import { ApiClient, computerUseOpen, computerUseSet, computerUseState, errorMessage, unwrap } from '@pi-kit/api';
+import {
+  ApiClient,
+  isLocalExecution,
+  computerUseOpen,
+  computerUseSet,
+  computerUseState,
+  errorMessage,
+  unwrap,
+} from '@pi-kit/api';
 import type { ComputerUsePermission, ComputerUseState } from '@pi-kit/protocol';
 
 interface ComputerUseStoreState {
@@ -46,10 +54,10 @@ export const ComputerUseStore = signalStore(
       },
       /** Whether this window can relaunch the app (the desktop app; not a browser tab). */
       canRelaunch(): boolean {
-        return typeof window !== 'undefined' && typeof window.piKit?.relaunch === 'function';
+        return isLocalExecution() && typeof window !== 'undefined' && typeof window.piKit?.relaunch === 'function';
       },
       relaunch(): Promise<void> {
-        return window.piKit?.relaunch?.() ?? Promise.resolve();
+        return isLocalExecution() ? (window.piKit?.relaunch?.() ?? Promise.resolve()) : Promise.resolve();
       },
     };
   }),

@@ -1,4 +1,7 @@
 export * from './activities';
+export * from './environments';
+export * from './peers';
+export * from './remote-api';
 export * from './commands';
 export * from './composer';
 export * from './custom-events';
@@ -41,6 +44,7 @@ export * from './score';
 export * from './packages';
 export * from './computer-use';
 export * from './browser';
+export * from './remote-access';
 export * from './local-runtime';
 export * from './replay';
 export * from './llama-swap-yaml';

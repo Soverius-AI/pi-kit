@@ -19,7 +19,7 @@ import { SettingsDialog } from '@pi-kit/settings/feature-settings';
 import { TerminalPanel } from '@pi-kit/terminal/feature-terminal';
 import { LearnStore, ThreadsStore, TrustStore, WorktreeStore } from '@pi-kit/threads/api';
 import { SkillReviewDialog } from '@pi-kit/threads/feature-learn';
-import { OutcomeMenuHost, ThreadSidebar, TrustDialog } from '@pi-kit/threads/feature-sidebar';
+import { EnvironmentProjectPicker, OutcomeMenuHost, ThreadSidebar, TrustDialog } from '@pi-kit/threads/feature-sidebar';
 import { WorktreeDialog } from '@pi-kit/threads/feature-worktree';
 import { formatCombo } from '@pi-kit/ui';
 import { ToastHost } from './core/toast-host';
@@ -38,6 +38,7 @@ import { ShellStore } from './shell.store';
     ArtifactsPanel,
     ChangesPanel,
     ChatPage,
+    EnvironmentProjectPicker,
     DialogHost,
     FilesPanel,
     OnboardingStrip,
@@ -80,6 +81,13 @@ export class App {
   protected readonly session = inject(ChatStore);
   protected readonly bus = inject(UiStore);
   protected readonly review = inject(ChangesStore);
+  protected readonly changes = computed(
+    () =>
+      this.review.mode() === 'chat' &&
+      !!this.threads.selectedId() &&
+      !this.threads.selected()?.learning &&
+      this.review.files().length > 0,
+  );
   protected readonly registry = inject(CommandRegistry);
   protected readonly worktrees = inject(WorktreeStore);
   protected readonly learn = inject(LearnStore);

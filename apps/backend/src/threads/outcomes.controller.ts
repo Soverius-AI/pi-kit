@@ -1,7 +1,7 @@
 import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { type ThreadOutcome, ThreadOutcomeSchema } from '@pi-kit/protocol';
-import { Fails, Responds, ThreadIdParam } from '../contract';
+import { Fails, Responds, ThreadIdParam, Remote } from '../contract';
 import { OutcomesService } from './outcomes.service';
 import { ThreadsService } from './threads.service';
 
@@ -15,6 +15,7 @@ export class OutcomesController {
     private readonly threads: ThreadsService,
   ) {}
 
+  @Remote()
   @Get()
   @ApiOperation({
     summary: "Get a thread's outcome",

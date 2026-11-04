@@ -2,6 +2,7 @@ import { Language } from '@pi-kit/i18n';
 import { Injectable, inject } from '@angular/core';
 import {
   ApiClient,
+  isLocalExecution,
   sessionChangelog,
   sessionCompact,
   sessionExport,
@@ -113,6 +114,7 @@ export class CommandRegistry {
           return;
         }
         case 'quit':
+          if (!isLocalExecution()) return;
           return window.piKit?.quit ? void window.piKit.quit() : window.close();
         case 'changelog': {
           const log = await unwrap(sessionChangelog({ client: this.api.client }));

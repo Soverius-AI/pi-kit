@@ -1,17 +1,24 @@
 import { inject } from '@angular/core';
 import { getState, patchState, signalStoreFeature, type, withHooks, withMethods, withProps } from '@ngrx/signals';
-import { ApiClient, appSettingsSetSetting, appSettingsSettings, unwrap } from '@pi-kit/api';
+import { ApiClient, EntryApiClient, appSettingsSetSetting, appSettingsSettings, unwrap } from '@pi-kit/api';
 
 let nativeStorage: Map<string, string> | undefined;
+let ownerScope: string | undefined;
+export type StorageScope = 'owner' | 'controller';
+function scopedKey(key: string, scope: StorageScope): string {
+  return ownerScope && scope === 'owner' ? JSON.stringify(['pi-kit.owner.v1', ownerScope, key]) : key;
+}
 
 /** Await before Angular bootstrap so its synchronous preference selectors only consult memory on desktop. */
-export async function prepareUiStorage(): Promise<void> {
+export async function prepareUiStorage(scope?: string): Promise<void> {
+  ownerScope = scope;
   const values = await window.piKit?.getUiStorage?.().catch(() => ({}));
   nativeStorage = values ? new Map(Object.entries(values)) : undefined;
 }
 
 /** `localStorage` that never throws (a private window, blocked site data): reads give `null`, writes do nothing. */
-export function readStorage(key: string): string | null {
+export function readStorage(key: string, scope: StorageScope = 'owner'): string | null {
+  key = scopedKey(key, scope);
   if (nativeStorage) return nativeStorage.get(key) ?? null;
   try {
     return localStorage.getItem(key);
@@ -20,7 +27,8 @@ export function readStorage(key: string): string | null {
   }
 }
 
-export function writeStorage(key: string, value: string): void {
+export function writeStorage(key: string, value: string, scope: StorageScope = 'owner'): void {
+  key = scopedKey(key, scope);
   if (nativeStorage) {
     nativeStorage.set(key, value);
     void window.piKit?.setUiStorage?.(key, value).catch(() => undefined);
@@ -39,7 +47,11 @@ export interface PersistenceConfig<S extends object> {
   /** Writes that copy; called after every change that goes through `persist` and after the backend's values arrive. */
   writeLocal?: (state: S) => void;
   /** The backend's SQLite (`settings` table, the source of truth): which state key is which setting, and how to read the saved object back (validating it). */
-  remote?: { keys: { [K in keyof S]?: string }; parse: (saved: Record<string, unknown>) => Partial<S> };
+  remote?: {
+    scope?: 'controller';
+    keys: { [K in keyof S]?: string };
+    parse: (saved: Record<string, unknown>) => Partial<S>;
+  };
 }
 
 /**
@@ -50,7 +62,13 @@ export interface PersistenceConfig<S extends object> {
 export function withPersistence<S extends object>(config: PersistenceConfig<S>) {
   return signalStoreFeature(
     { state: type<S>() },
-    withProps(() => ({ _uiSettings: config.remote ? inject(ApiClient) : undefined })),
+    withProps(() => ({
+      _uiSettings: config.remote
+        ? config.remote.scope === 'controller'
+          ? inject(EntryApiClient)
+          : inject(ApiClient)
+        : undefined,
+    })),
     withMethods((store) => {
       const revisions = new Map<keyof S, number>();
       const writes = new Map<keyof S, Promise<boolean>>();

@@ -22,7 +22,7 @@ import {
   WorktreeSyncResultSchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Fails, Responds } from '../contract';
+import { Fails, Responds, Remote } from '../contract';
 import { ThreadsRepository } from '../db/threads.repository';
 import { WorktreeService } from '../worktree/worktree.service';
 
@@ -45,6 +45,7 @@ export class WorktreeController {
   }
 
   /** Branch, base, uncommitted changes, commits ahead and behind, conflicts, and what a merge back would need. */
+  @Remote()
   @Get()
   @ApiOperation({
     summary: "Get a worktree's status",
@@ -58,6 +59,7 @@ export class WorktreeController {
   }
 
   /** The commit message pi-kit proposes for the uncommitted changes. */
+  @Remote()
   @Get('message')
   @ApiOperation({
     summary: 'Propose a commit message',

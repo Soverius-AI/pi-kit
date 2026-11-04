@@ -73,6 +73,40 @@ describe('viewport menu', () => {
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
   });
 
+  it('portals into the body when Safari has no Popover API, and restores the menu', () => {
+    Object.defineProperty(menu, 'showPopover', { value: undefined, configurable: true });
+    open();
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu.classList.contains('pk-viewport-menu-fallback')).toBe(true);
+    menu.dispatchEvent(new Event('pointerdown', { bubbles: true, composed: true }));
+    expect(details.open).toBe(true);
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(menu.parentElement).toBe(details);
+    expect(menu.classList.contains('pk-viewport-menu-fallback')).toBe(false);
+    expect(hide).not.toHaveBeenCalled();
+  });
+
+  it('falls back when the native popover method throws', () => {
+    show.mockImplementation(() => {
+      throw new Error('NotSupportedError');
+    });
+    open();
+    expect(menu.parentElement).toBe(document.body);
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true, composed: true }));
+    expect(details.open).toBe(false);
+    expect(menu.parentElement).toBe(details);
+  });
+
+  it('fits the visual viewport when an iPhone keyboard reduces its height', () => {
+    const viewport = Object.assign(new EventTarget(), { offsetLeft: 0, offsetTop: 50, width: 390, height: 300 });
+    vi.stubGlobal('visualViewport', viewport);
+    open();
+    expect(menu.style.maxWidth).toBe('374px');
+    expect(menu.style.maxHeight).toBe('284px');
+    expect(parseFloat(menu.style.top)).toBeGreaterThanOrEqual(58);
+    expect(parseFloat(menu.style.top) + 180).toBeLessThanOrEqual(342);
+  });
+
   it('flips above a trigger near the bottom and repositions on resize', () => {
     vi.spyOn(summary, 'getBoundingClientRect').mockReturnValue(
       new DOMRect(window.innerWidth - 30, window.innerHeight - 30, 24, 24),

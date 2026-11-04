@@ -14,6 +14,7 @@ import { DbModule } from '../db/db.module';
 import { DesktopModule } from '../desktop/desktop.module';
 import { McpModule } from '../mcp/mcp.module';
 import { PackagesModule } from '../packages/packages.module';
+import { PeersModule } from '../peers/peers.module';
 import { SkillsModule } from '../skills/skills.module';
 import { SecretsModule, SecretStoreModule } from '../secrets/secrets.module';
 import { SessionModule } from '../session/session.module';
@@ -30,6 +31,7 @@ import { loadConfig } from './config';
 import { ConfigModule } from './config.module';
 import { DevController } from './dev.controller';
 import { HealthController } from './health.controller';
+import { InstanceController } from './instance.controller';
 import { ParentProcessMonitor } from './parent-process-monitor';
 
 const config = loadConfig();
@@ -67,8 +69,9 @@ const config = loadConfig();
     SetupModule,
     UsageModule,
     BgAgentsModule,
+    PeersModule,
   ],
-  controllers: [HealthController, ...(config.dev ? [DevController] : [])],
+  controllers: [HealthController, InstanceController, ...(config.dev ? [DevController] : [])],
   providers: [ParentProcessMonitor, { provide: APP_GUARD, useClass: BearerTokenGuard }],
 })
 export class AppModule {}

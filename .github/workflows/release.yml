@@ -5,6 +5,7 @@
 #                                       (one run packs both architectures so latest.yml lists both installers; the arm64 build is a cross build)
 #   linux    ubuntu-22.04 / -arm       native x64 and arm64 AppImages, latest-linux.yml / latest-linux-arm64.yml
 #   publish  ubuntu-latest              on a `v*` tag push: automatically publish a GitHub release holding every file.
+#   deploy-onboarding ubuntu-latest     after publish on a tag push: ask Coolify to rebuild remote.pi-kit.dev from the tagged commit.
 #
 # Triggers: a `v*` tag push builds every target without smoke tests, then publishes the release. Manual runs build without publishing; smoke tests are opt-in.
 # Cut a release: set "version" in package.json, commit, `git tag v<version> && git push origin v<version>`. Preflight refuses a tag that differs from package.json before any builds start.
@@ -284,3 +285,31 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # remote.pi-kit.dev follows the tag: Coolify rebuilds the onboarding site from the tagged commit once the release is public,
+  # so its download link never points at a release that does not exist yet. Needs the three COOLIFY_* secrets (doc/docs/remote-onboarding-site.md).
+  deploy-onboarding:
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    needs: [publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      COOLIFY_URL: ${{ secrets.COOLIFY_URL }}
+      COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+      COOLIFY_ONBOARDING_UUID: ${{ secrets.COOLIFY_ONBOARDING_UUID }}
+    steps:
+      - name: Pin the Coolify application to this tag's commit and deploy it
+        shell: bash
+        run: |
+          if [ -z "$COOLIFY_URL" ] || [ -z "$COOLIFY_TOKEN" ] || [ -z "$COOLIFY_ONBOARDING_UUID" ]; then
+            echo "::notice::COOLIFY_URL, COOLIFY_TOKEN or COOLIFY_ONBOARDING_UUID is not set; remote.pi-kit.dev was not deployed"
+            exit 0
+          fi
+          api="${COOLIFY_URL%/}/api/v1"
+          auth="Authorization: Bearer $COOLIFY_TOKEN"
+          curl --fail --silent --show-error -X PATCH "$api/applications/$COOLIFY_ONBOARDING_UUID" \
+            -H "$auth" -H 'Content-Type: application/json' \
+            -d "{\"git_commit_sha\":\"$GITHUB_SHA\"}" >/dev/null
+          curl --fail --silent --show-error -X POST "$api/deploy?uuid=$COOLIFY_ONBOARDING_UUID&force=true" -H "$auth"
+          echo
+          echo "::notice::Coolify is deploying remote.pi-kit.dev from $GITHUB_REF_NAME ($GITHUB_SHA)"

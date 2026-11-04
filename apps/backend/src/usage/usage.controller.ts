@@ -2,7 +2,7 @@ import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { flagOn, type ProviderUsage, ProviderUsageQuerySchema, ProviderUsageSchema } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Responds } from '../contract';
+import { Responds, Remote } from '../contract';
 import { UsageService } from './usage.service';
 
 /** A provider's usage over REST: `GET /api/providers/:id/usage` asks `UsageService` for the subscription window or the credit left. */
@@ -10,6 +10,7 @@ import { UsageService } from './usage.service';
 export class UsageController {
   constructor(@Inject(UsageService) private readonly usage: UsageService) {}
 
+  @Remote()
   @ApiTags('pi-settings')
   @Get('providers/:id/usage')
   @ApiParam({

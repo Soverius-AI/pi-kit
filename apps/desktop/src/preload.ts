@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { RemoteAccessSetupAction } from '@pi-kit/protocol';
 
 /** The only surface the renderer gets from Electron. Keep it minimal. */
 contextBridge.exposeInMainWorld('piKit', {
@@ -14,6 +15,15 @@ contextBridge.exposeInMainWorld('piKit', {
   setBrowserLocalCertificates: (enabled: boolean): Promise<void> =>
     ipcRenderer.invoke('pi-kit:browser-local-certificates', enabled),
   setBrowserViewport: (viewport: unknown): Promise<void> => ipcRenderer.invoke('pi-kit:browser-viewport', viewport),
+  getRemoteAccessStatus: () => ipcRenderer.invoke('pi-kit:remote-access-status'),
+  openRemoteAccessSetup: (action: RemoteAccessSetupAction): Promise<void> =>
+    ipcRenderer.invoke('pi-kit:remote-access-setup', action),
+  startRemoteAccess: (port?: number) => ipcRenderer.invoke('pi-kit:remote-access-start', port),
+  stopRemoteAccess: () => ipcRenderer.invoke('pi-kit:remote-access-stop'),
+  beginRemotePairing: () => ipcRenderer.invoke('pi-kit:remote-pair-begin'),
+  approveRemotePairing: (id: string) => ipcRenderer.invoke('pi-kit:remote-pair-approve', id),
+  rejectRemotePairing: (id: string) => ipcRenderer.invoke('pi-kit:remote-pair-reject', id),
+  revokeRemoteDevice: (id: string) => ipcRenderer.invoke('pi-kit:remote-device-revoke', id),
   getBackendUrl: (): Promise<string> => ipcRenderer.invoke('pi-kit:backend-url'),
   getToken: (): Promise<string> => ipcRenderer.invoke('pi-kit:token'),
   getUiStorage: (): Promise<Record<string, string> | undefined> => ipcRenderer.invoke('pi-kit:ui-storage-get'),

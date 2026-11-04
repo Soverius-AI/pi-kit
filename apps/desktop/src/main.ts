@@ -8,6 +8,7 @@ import {
   type MenuItemConstructorOptions,
   nativeImage,
   nativeTheme,
+  safeStorage,
   shell,
   systemPreferences,
   Tray,
@@ -27,12 +28,23 @@ import { removeDatabases } from './database-reset';
 import { FileLog } from './log';
 import { configureLoopbackConnections } from './loopback-network';
 import { BrowserArtifacts } from './browser';
-import { BrowserActionSchema, BrowserOperationError, BrowserViewportSchema } from '@pi-kit/protocol';
+import {
+  BrowserActionSchema,
+  BrowserOperationError,
+  BrowserViewportSchema,
+  InstanceKeyRequestSchema,
+} from '@pi-kit/protocol';
 import { MICROPHONE_SETTINGS_URL, requestMicrophone } from './microphone';
 import { loginShellPath } from './shell-env';
 import { SMOKE, smokeDataDir, writeSmokeReport } from './smoke';
 import { BackendWatchdog, DEFAULT_WATCHDOG_OPTIONS, type WatchdogStatus } from './watchdog';
 import { UiStorage } from './ui-storage';
+import { RemoteAccess } from './remote-access';
+import { RemoteAccessIpc } from './remote-access-ipc';
+import { RemoteAccessSetup } from './remote-access-setup';
+import { RemoteAccessStores } from './remote-access-store';
+import { InstanceKeyError, InstanceKeyStore } from './instance-key';
+import { SafeStorageEncryption } from './instance-key-encryption';
 
 /** Set by `pnpm run dev` to the Angular dev server. Unset in production: the static build is served. */
 const DEV_URL = process.env['PI_KIT_DEV_URL'];
@@ -72,6 +84,23 @@ interface TrayThread {
 let trayThreads: TrayThread[] = [];
 let trayLabels: ReturnType<typeof trayLabelsInput> | undefined;
 const browserArtifacts = new BrowserArtifacts(() => [RENDERER_ORIGIN, ...(endpoint ? [endpoint.url] : [])]);
+// Store adapters are lazy; no profile or database is touched before path overrides/backend readiness.
+const remoteStores = new RemoteAccessStores(() => endpoint);
+const remoteAccess = new RemoteAccess(
+  {},
+  {
+    rendererRoot: RENDERER_ROOT,
+    backend: () => endpoint,
+    grants: remoteStores.grants,
+    preferences: remoteStores.preferences,
+    published: remoteStores.published,
+    cookieScope: remoteStores.cookieScope,
+  },
+);
+const instanceKeys = new InstanceKeyStore(
+  () => join(app.getPath('userData'), 'instance-keys', 'identity.v1.enc'),
+  new SafeStorageEncryption(safeStorage),
+);
 const browserRequests = new Map<string, AbortController>();
 const splashState = { loaded: false, shown: false };
 
@@ -356,7 +385,36 @@ function launch(path: string | undefined) {
         action?: AppUpdateAction;
         threadId?: string;
         request?: unknown;
+        keyRequest?: unknown;
       }) => {
+        if (message?.type === 'instance-key' && typeof message.id === 'string') {
+          const id = message.id;
+          const reply = (body: Record<string, unknown>): void => {
+            if (running.child.connected) running.child.send({ type: 'desktop-answer', id, ...body });
+          };
+          const parsed = InstanceKeyRequestSchema.safeParse(message.keyRequest);
+          if (backend !== running || shutdownStarted || !parsed.success) {
+            reply({ error: 'Protected instance key operation unavailable.', errorCode: 'unavailable' });
+            return;
+          }
+          const request = parsed.data;
+          const result =
+            request.action === 'info'
+              ? instanceKeys.info(request.instanceId, request.create)
+              : instanceKeys.sign(request.instanceId, request.claims);
+          void result.then(
+            (value) => reply({ result: value }),
+            (error: unknown) => {
+              mainLog?.line(`instance key unavailable (${error instanceof InstanceKeyError ? error.code : 'failed'})`);
+              reply({
+                error:
+                  error instanceof InstanceKeyError ? error.message : 'Protected instance key operation unavailable.',
+                errorCode: 'unavailable',
+              });
+            },
+          );
+          return;
+        }
         if (message?.type === 'browser-cancel' && typeof message.id === 'string') {
           browserRequests.get(message.id)?.abort();
           return;
@@ -440,6 +498,18 @@ async function firstLaunch(path: string | undefined, splash: BrowserWindow): Ret
     } catch (error) {
       // Assigned by the IPC handler, which control flow analysis cannot see.
       const failure = startupFailure as StartupFailure | undefined;
+      if (failure?.reason === 'database-version') {
+        await dialog.showMessageBox({
+          type: 'error',
+          title: 'pi-kit',
+          message: 'This profile needs a compatible pi-kit version.',
+          detail: failure.message,
+          buttons: ['Quit'],
+          defaultId: 0,
+          cancelId: 0,
+        });
+        throw new StartupCancelled();
+      }
       if (failure?.reason !== 'database-broken') throw error;
       if (!(await offerDatabaseReset(failure.message))) throw new StartupCancelled();
       const removed = removeDatabases(app.getPath('userData'));
@@ -530,6 +600,11 @@ async function boot(): Promise<void> {
     DEFAULT_WATCHDOG_OPTIONS,
   );
   watchdog.start();
+  // Never block local startup on a sleeping/offline tailnet. Only prior explicit consent is resumed.
+  if (!SMOKE)
+    void remoteAccess
+      .restore()
+      .catch(() => mainLog?.line('Remembered remote access could not be restored; local work remains available.'));
 
   createTray();
   ipcMain.handle('pi-kit:backend-url', (event) => (fromRenderer(event) ? url : Promise.reject(new Error('forbidden'))));
@@ -538,6 +613,14 @@ async function boot(): Promise<void> {
   ipcMain.handle('pi-kit:backend-status-get', (event) =>
     fromRenderer(event) ? latestStatus : Promise.reject(new Error('forbidden')),
   );
+  // Explicit opt-in; publishes no backend routes or credentials.
+  const setup = new RemoteAccessSetup(shell);
+  new RemoteAccessIpc(
+    remoteAccess,
+    fromRenderer,
+    () => shutdownStarted,
+    (action) => setup.open(action, remoteAccess.setupUrl()),
+  ).register(ipcMain);
   ipcMain.handle('pi-kit:tray-threads', (event, input: unknown, copy: unknown) => {
     if (!fromRenderer(event)) throw new Error('forbidden');
     const labels = trayLabelsInput(copy);
@@ -682,16 +765,22 @@ app
   });
 
 app.on('window-all-closed', () => app.quit());
-let flushingUiStorage = false;
+let shutdownStarted = false;
+let shutdownComplete = false;
 app.on('before-quit', (event) => {
-  browserArtifacts.dispose();
-  if (uiStorage && !flushingUiStorage) {
+  if (!shutdownComplete) {
     event.preventDefault();
-    flushingUiStorage = true;
-    void uiStorage
-      .flush()
-      .catch((error: Error) => mainLog?.line(`UI preferences could not save: ${error.message}`))
-      .finally(() => app.quit());
+    if (!shutdownStarted) {
+      shutdownStarted = true;
+      browserArtifacts.dispose();
+      void Promise.allSettled([
+        uiStorage?.flush().catch((error: Error) => mainLog?.line(`UI preferences could not save: ${error.message}`)),
+        remoteAccess.dispose().catch(() => mainLog?.line('Remote access could not shut down cleanly.')),
+      ]).finally(() => {
+        shutdownComplete = true;
+        app.quit();
+      });
+    }
     return;
   }
   tray?.destroy();

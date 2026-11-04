@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { Test } from '@nestjs/testing';
 import Database from 'better-sqlite3-multiple-ciphers';
 import { expect, it } from 'vitest';
-import { DatabaseBrokenError, DatabaseService, DB_FILE, schemaHash } from './database.service';
+import { DatabaseBrokenError, DatabaseVersionError, DatabaseService, DB_FILE, schemaHash } from './database.service';
 
 it('keeps SQLite open until asynchronous module teardown finishes', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'pk-db-lifecycle-'));
@@ -43,9 +43,9 @@ it('refuses a database made by a build from before the migrations were squashed'
     legacy.prepare('INSERT INTO schema_migrations VALUES (?, ?)').run('0022_follow_up_prompts.sql', 0);
     legacy.close();
     expect(() => new DatabaseService({ dataDir: dir })).toThrow(
-      /different pi-kit version .*0022_follow_up_prompts\.sql.*Delete it/,
+      /different pi-kit version .*0022_follow_up_prompts\.sql.*retained/,
     );
-    expect(() => new DatabaseService({ dataDir: dir })).toThrow(DatabaseBrokenError);
+    expect(() => new DatabaseService({ dataDir: dir })).toThrow(DatabaseVersionError);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -80,6 +80,28 @@ it('refuses a database made from a different text of a migration, but not for a 
     schemaHash('-- another note\nCREATE TABLE a (\n  x INTEGER\n);'),
   );
   expect(schemaHash('CREATE TABLE a (x INTEGER);')).not.toBe(schemaHash('CREATE TABLE a (x TEXT);'));
+});
+
+it('refuses a newer schema without calling it broken or deleting existing data', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pk-db-newer-'));
+  try {
+    new DatabaseService({ dataDir: dir }).onApplicationShutdown();
+    const raw = new Database(join(dir, DB_FILE));
+    raw
+      .prepare('INSERT INTO schema_migrations(name, applied_at, sha256) VALUES (?, ?, ?)')
+      .run('9999_future.sql', 1, 'future');
+    raw.prepare('INSERT INTO settings(key, value_json) VALUES (?, ?)').run('keep-me', '"history"');
+    raw.close();
+    expect(() => new DatabaseService({ dataDir: dir })).toThrow(DatabaseVersionError);
+    const verify = new Database(join(dir, DB_FILE));
+    expect(verify.prepare('SELECT value_json FROM settings WHERE key = ?').get('keep-me')).toEqual({
+      value_json: '"history"',
+    });
+    expect(verify.prepare('SELECT name FROM schema_migrations WHERE name = ?').get('9999_future.sql')).toBeDefined();
+    verify.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 it('opens a database it made before without applying anything again', () => {

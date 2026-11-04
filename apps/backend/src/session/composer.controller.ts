@@ -8,7 +8,7 @@ import {
   ComposerRegistrationSchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Fails, Responds, ThreadIdParam } from '../contract';
+import { Fails, Responds, ThreadIdParam, Remote } from '../contract';
 import { PiSessionService } from '../pi/pi-session.service';
 import { ThreadsService } from '../threads/threads.service';
 
@@ -26,6 +26,7 @@ export class ComposerController {
   ) {}
 
   /** `ctx.ui.addAutocompleteProvider`: the suggestions at the caret of a single-line text, each with the text and caret that applying it gives. */
+  @Remote()
   @Post('threads/:id/complete')
   @HttpCode(200)
   @ApiOperation({
@@ -47,6 +48,7 @@ export class ComposerController {
    * The registrations that are in force now. They also arrive as `pi.composer` custom events in the thread's replay; this is for a
    * client that is already connected when the session opens, which no replay reaches.
    */
+  @Remote()
   @Get('threads/:id/composer')
   @ApiOperation({
     summary: 'List composer registrations',

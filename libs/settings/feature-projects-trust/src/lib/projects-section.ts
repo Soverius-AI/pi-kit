@@ -1,4 +1,5 @@
 import type { Translate } from '@pi-kit/i18n';
+import { isLocalExecution } from '@pi-kit/api';
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
@@ -390,7 +391,7 @@ export class ProjectsSection {
 
   /** The desktop app's folder picker; a browser has none, so the group asks for the path (development, the end-to-end tests). */
   protected async add(): Promise<void> {
-    const picker = window.piKit?.showOpenDialog;
+    const picker = isLocalExecution() ? window.piKit?.showOpenDialog : undefined;
     if (!picker) {
       this.adding.update((open) => !open);
       return;

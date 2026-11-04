@@ -19,7 +19,7 @@ import {
   SetupInfoSchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Fails, Responds } from '../contract';
+import { Fails, Responds, Remote } from '../contract';
 import { SetupService } from './setup.service';
 
 /** The onboarding's own calls; sign-in is `POST /api/auth/login`, settings are `PATCH /api/pi-settings`, folders are `POST /api/workspaces`. */
@@ -28,6 +28,7 @@ import { SetupService } from './setup.service';
 export class SetupController {
   constructor(private readonly setup: SetupService) {}
 
+  @Remote()
   @Get()
   @ApiOperation({
     summary: 'Detect the setup',

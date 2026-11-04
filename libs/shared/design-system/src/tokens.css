@@ -163,6 +163,10 @@
   --pk-panel: 400px;
   --pk-header: 48px;
   --pk-status: 28px;
+  --pk-safe-top: env(safe-area-inset-top, 0px);
+  --pk-safe-right: env(safe-area-inset-right, 0px);
+  --pk-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --pk-safe-left: env(safe-area-inset-left, 0px);
   --pk-gutter: 24px;
   /* The control column of a settings row: labels and hints are in the left column, never inside the control. */
   --pk-ctl-w: 320px;

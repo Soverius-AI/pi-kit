@@ -80,6 +80,49 @@ describe('ModelPicker effort slider', () => {
     vi.unstubAllGlobals();
   });
 
+  it('does not summon the phone keyboard on thread restore, but honors explicit focus requests', async () => {
+    const media = vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      matches: query.includes('max-width') || query.includes('pointer'),
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => true,
+    }));
+    const version = signal(0);
+    TestBed.overrideProvider(UiStore, { useValue: { composerFocus: version } });
+    const focus = vi.spyOn(HTMLTextAreaElement.prototype, 'focus');
+    try {
+      const fixture = TestBed.createComponent(ComposerField);
+      fixture.autoDetectChanges();
+      await fixture.whenStable();
+      expect(focus).not.toHaveBeenCalled();
+      version.update((value) => value + 1);
+      await fixture.whenStable();
+      expect(focus).toHaveBeenCalledOnce();
+    } finally {
+      focus.mockRestore();
+      media.mockRestore();
+    }
+  });
+
+  it('opens the model list outside the composer and keeps inside clicks open', async () => {
+    const { fixture, root } = await draw('composer', false);
+    root.querySelector<HTMLButtonElement>('[data-testid="model-chip"]')!.click();
+    await fixture.whenStable();
+    const popup = document.querySelector<HTMLElement>('.pk-model-overlay [data-testid="model-picker"]');
+    expect(popup).not.toBeNull();
+    expect(root.contains(popup)).toBe(false);
+    popup!.click();
+    await fixture.whenStable();
+    expect(document.querySelector('[data-testid="model-picker"]')).not.toBeNull();
+    popup!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await fixture.whenStable();
+    expect(document.querySelector('[data-testid="model-picker"]')).toBeNull();
+  });
+
   async function draw(placement: 'composer' | 'header' = 'composer', opened = true) {
     const fixture = TestBed.createComponent(ModelPicker);
     fixture.componentRef.setInput('placement', placement);

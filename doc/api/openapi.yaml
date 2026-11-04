@@ -30,6 +30,257 @@ paths:
       summary: Check the backend
       tags:
         - app
+      x-remote: true
+  /api/instance:
+    get:
+      description: Stable owner identity and freely editable display name. Does not enable remote access.
+      operationId: Instance_identity
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Environment'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Read this environment
+      tags:
+        - instance
+      x-remote: true
+    patch:
+      description: Owner-only label change; identity, project paths, threads and publication are unchanged.
+      operationId: Instance_rename
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameEnvironment'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Environment'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Rename this environment
+      tags:
+        - instance
+  /api/instance/access:
+    get:
+      description: Private desktop-owner API; never proxied to a paired phone.
+      operationId: Instance_access
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceAccessPreferences'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Read remembered access consent
+      tags:
+        - instance
+    put:
+      description: Private desktop-owner API; shutdown is distinct from disabling access.
+      operationId: Instance_setAccess
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InstanceAccessPreferences'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InstanceAccessPreferences'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Remember explicit access consent
+      tags:
+        - instance
+  /api/instance/endpoint:
+    put:
+      description: Private desktop-owner callback after verifying Serve publication; never enables access itself.
+      operationId: Instance_endpoint
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                origin:
+                  type: string
+                  maxLength: 300
+              required:
+                - origin
+              additionalProperties: false
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved:
+                    type: boolean
+                    enum:
+                      - true
+                required:
+                  - saved
+                additionalProperties: false
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Remember the owned HTTPS endpoint
+      tags:
+        - instance
+  /api/instance/devices:
+    get:
+      description: Private desktop-owner persistence API. Contains credential hashes and CSRF state, never raw device cookies. Not available to phones.
+      operationId: Instance_devices
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredDeviceGrants'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Load private device grants
+      tags:
+        - instance
+    put:
+      description: Private desktop-owner API; commit precedes issuing the device cookie. Revoked identities cannot be reactivated.
+      operationId: Instance_saveDevice
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoredDeviceGrant'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved:
+                    type: boolean
+                    enum:
+                      - true
+                required:
+                  - saved
+                additionalProperties: false
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Commit private device approval
+      tags:
+        - instance
+  /api/instance/devices/{id}:
+    delete:
+      description: Private desktop-owner API; retains a revocation tombstone across restarts.
+      operationId: Instance_revokeDevice
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  revoked:
+                    type: boolean
+                    enum:
+                      - true
+                required:
+                  - revoked
+                additionalProperties: false
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Persist device revocation
+      tags:
+        - instance
   /api/openapi.json:
     get:
       description: Returns this OpenAPI document, as the backend built it at boot.
@@ -243,6 +494,7 @@ paths:
       summary: List threads
       tags:
         - threads
+      x-remote: true
     post:
       description: Starts a thread in a project folder; with `local` the folder is switched to another branch first (only with a clean tree), with `worktree` it runs in a new git worktree of the project (a base, carried changes, a branch or none, a setup script).
       operationId: Threads_create
@@ -281,6 +533,7 @@ paths:
       summary: Create a thread
       tags:
         - threads
+      x-remote: true
   /api/threads/events:
     get:
       description: "Keeps the connection open and sends newline-delimited JSON: a `snapshot` of every thread's state first, then a `state` line whenever one changes, `gone` for a deleted thread, `list` when threads or projects were added, removed, renamed or reordered, and a `ping` every 20 seconds."
@@ -305,6 +558,7 @@ paths:
       summary: Stream thread status
       tags:
         - threads
+      x-remote: true
   /api/threads/{id}/placement:
     post:
       description: 'Applies the Where row to a thread that has no message yet: switches the folder to a branch, or makes a worktree and moves the thread into it.'
@@ -356,6 +610,7 @@ paths:
       summary: Place a new thread
       tags:
         - threads
+      x-remote: true
   /api/threads/{id}:
     get:
       description: Returns one thread with the path of its session file.
@@ -389,6 +644,7 @@ paths:
       summary: Get a thread
       tags:
         - threads
+      x-remote: true
     patch:
       description: Renames, pins or archives a thread. Archiving can also remove the thread's worktree when it is clean.
       operationId: Threads_patch
@@ -439,6 +695,7 @@ paths:
       summary: Change a thread
       tags:
         - threads
+      x-remote: true
     delete:
       description: Deletes the thread. Its worktree stays unless `worktree` says `remove` (409 while it holds uncommitted changes) or `force`.
       operationId: Threads_remove
@@ -490,6 +747,7 @@ paths:
       summary: Delete a thread
       tags:
         - threads
+      x-remote: true
   /api/threads/{id}/seen:
     post:
       description: Clears the thread's unread dot and its "cli" badge.
@@ -519,6 +777,7 @@ paths:
       summary: Mark a thread as seen
       tags:
         - threads
+      x-remote: true
   /api/threads/{id}/fork:
     post:
       description: Copies the thread into a new one, or only the path from the root to `entryId`, optionally in another folder.
@@ -570,6 +829,7 @@ paths:
       summary: Fork a thread
       tags:
         - threads
+      x-remote: true
   /api/threads/{id}/clone:
     post:
       description: Copies the thread up to `entryId` (the whole thread without it) into a new thread.
@@ -621,6 +881,7 @@ paths:
       summary: Clone a thread
       tags:
         - threads
+      x-remote: true
   /api/threads/{id}/feedback:
     get:
       description: Lists the thumbs up and down given to the assistant messages of the thread.
@@ -656,6 +917,7 @@ paths:
       summary: List message ratings
       tags:
         - threads
+      x-remote: true
     put:
       description: "Sets, changes or (with `rating: null`) clears the rating of one message, and answers with the thread's ratings."
       operationId: Threads_putFeedback
@@ -702,6 +964,7 @@ paths:
       summary: Rate a message
       tags:
         - threads
+      x-remote: true
   /api/workspaces/{id}/git:
     get:
       description: 'Returns the checked-out branch, the number of changed files, the local branches with the worktree that holds each, and the remote branches. `git: false` for a folder that is not a repository.'
@@ -735,6 +998,7 @@ paths:
       summary: Get a project's branches
       tags:
         - workspaces
+      x-remote: true
   /api/workspaces/defaults:
     get:
       description: Returns where worktrees are made and where a new thread starts for every project that does not say otherwise.
@@ -756,6 +1020,7 @@ paths:
       summary: Get the defaults for every project
       tags:
         - workspaces
+      x-remote: true
     patch:
       description: Changes the worktree folder and the start mode that projects without their own setting use, and answers with the defaults.
       operationId: Workspaces_patchDefaults
@@ -811,6 +1076,7 @@ paths:
       summary: List projects
       tags:
         - workspaces
+      x-remote: true
     patch:
       description: Changes one project's sidebar flags (folded, hidden, the attendant's and the background agents' opt-outs) or its worktree settings, and answers with the projects.
       operationId: Workspaces_patchWorkspace
@@ -851,6 +1117,7 @@ paths:
       summary: Change a project
       tags:
         - workspaces
+      x-remote: true
     post:
       description: Adds a folder to the known projects.
       operationId: Workspaces_addWorkspace
@@ -879,6 +1146,7 @@ paths:
       summary: Open a project
       tags:
         - workspaces
+      x-remote: true
   /api/workspaces/order:
     put:
       description: Sets the order of the sidebar's project groups, and answers with the projects.
@@ -914,6 +1182,7 @@ paths:
       summary: Reorder projects
       tags:
         - workspaces
+      x-remote: true
   /api/workspaces/{id}:
     delete:
       description: Removes a project from the sidebar and the list of projects. Its threads, session files and folder are not touched, and its settings are kept for when the folder is opened again. Answers with the remaining projects.
@@ -955,6 +1224,7 @@ paths:
       summary: Forget a project
       tags:
         - workspaces
+      x-remote: true
   /api/settings:
     get:
       description: Returns every stored setting of the app as a JSON value per key.
@@ -976,6 +1246,7 @@ paths:
       summary: Get app settings
       tags:
         - settings
+      x-remote: true
   /api/settings/{key}:
     put:
       description: Stores a JSON value under the key; a missing `value` stores `null`.
@@ -1012,6 +1283,7 @@ paths:
       summary: Store an app setting
       tags:
         - settings
+      x-remote: true
   /api/threads/{id}/worktree:
     get:
       description: Returns the branch, the base, the uncommitted changes, the commits ahead and behind, the conflicts and what a merge back would need.
@@ -1045,6 +1317,7 @@ paths:
       summary: Get a worktree's status
       tags:
         - worktrees
+      x-remote: true
   /api/threads/{id}/worktree/message:
     get:
       description: Returns the commit message pi-kit proposes for the uncommitted changes of the worktree.
@@ -1078,6 +1351,7 @@ paths:
       summary: Propose a commit message
       tags:
         - worktrees
+      x-remote: true
   /api/threads/{id}/worktree/sync:
     post:
       description: Fetches the remote and brings the base branch into the worktree by merge or rebase. A conflict is left in progress in the worktree.
@@ -1401,6 +1675,7 @@ paths:
       summary: Get a thread's outcome
       tags:
         - threads
+      x-remote: true
   /api/workspaces/{id}/terminal:
     post:
       description: Starts the shell of the project's terminal panel at the given size, or attaches to the one already running, and answers with its details.
@@ -1446,6 +1721,7 @@ paths:
       summary: Start a terminal
       tags:
         - terminal
+      x-remote: true
     delete:
       description: Ends the shell of the project's terminal.
       operationId: Terminal_kill
@@ -1474,6 +1750,7 @@ paths:
       summary: Stop the terminal
       tags:
         - terminal
+      x-remote: true
   /api/workspaces/{id}/terminal/stream:
     get:
       description: 'Keeps the connection open and sends newline-delimited JSON: the shell output as `data` lines and `exit` when the shell ends. A blank line every 20 seconds keeps the connection alive.'
@@ -1510,6 +1787,7 @@ paths:
       summary: Stream terminal output
       tags:
         - terminal
+      x-remote: true
   /api/workspaces/{id}/terminal/input:
     post:
       description: Writes keystrokes to the project's terminal.
@@ -1551,6 +1829,7 @@ paths:
       summary: Send keystrokes
       tags:
         - terminal
+      x-remote: true
   /api/workspaces/{id}/terminal/resize:
     post:
       description: Sets the columns and rows of the project's terminal.
@@ -1592,6 +1871,7 @@ paths:
       summary: Resize the terminal
       tags:
         - terminal
+      x-remote: true
   /api/threads/{id}/commands:
     get:
       description: 'Lists the slash commands of the thread: skills, prompt templates, extension commands and the actions the app handles itself.'
@@ -1627,6 +1907,7 @@ paths:
       summary: List commands
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/stats:
     get:
       description: Returns the session's message counts, tokens, cost, context use, model and thinking level.
@@ -1660,6 +1941,7 @@ paths:
       summary: Get a thread's session stats
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/context:
     get:
       description: 'What pi keeps for the model right now: the system prompt by section, the tool definitions, the compaction summaries, the skill blocks, every message part and tool result, each with where it came from and its estimated tokens (characters over four, as pi counts). For reading why a context is full.'
@@ -1693,6 +1975,7 @@ paths:
       summary: Get a thread's context, piece by piece
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/usage:
     get:
       description: Returns tokens and cost by model and by turn, read from the session file, so turns run from the pi command line count too.
@@ -1726,6 +2009,7 @@ paths:
       summary: Get a thread's usage
       tags:
         - session
+      x-remote: true
   /api/models:
     get:
       description: Lists the models the thread's session can use, the current one, the thinking level and the cycling scope.
@@ -1765,6 +2049,7 @@ paths:
       summary: List models
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/model:
     patch:
       description: Switches the thread to another model or thinking level, or cycles to the next one, and answers with the session stats.
@@ -1810,6 +2095,7 @@ paths:
       summary: Change the model
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/compact:
     post:
       description: Summarizes the thread so far to free context, optionally with instructions for the summary.
@@ -1861,6 +2147,7 @@ paths:
       summary: Compact the context
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/reload:
     post:
       description: Reloads extensions, skills, prompt templates and settings of the thread, and answers with how many commands it has now.
@@ -1900,6 +2187,7 @@ paths:
       summary: Reload the session
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/export:
     post:
       description: Writes the thread to an HTML or JSONL file, with key-shaped text masked first, and answers with the path.
@@ -1999,6 +2287,7 @@ paths:
       summary: Run a shell command
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/abort-bash:
     post:
       description: Stops the `!command` that runs in the thread, if one does.
@@ -2022,6 +2311,7 @@ paths:
       summary: Stop a shell command
       tags:
         - session
+      x-remote: true
   /api/workspaces/{id}/files:
     get:
       description: Finds files of the project by fuzzy match on the path, for `@file` completion.
@@ -2075,6 +2365,7 @@ paths:
       summary: Find files
       tags:
         - files
+      x-remote: true
   /api/workspaces/{id}/tree:
     get:
       description: Lists the entries under `dir` (the root without it), ignore-aware and folders first. `ignored=1` lists what git ignores too.
@@ -2131,6 +2422,7 @@ paths:
       summary: List a folder
       tags:
         - files
+      x-remote: true
   /api/workspaces/{id}/watch:
     get:
       description: 'Keeps the connection open and sends newline-delimited JSON: `ready` at once, a `change` with the changed paths when a run in the folder ends or its git HEAD moves, and a `ping` every 20 seconds.'
@@ -2167,6 +2459,7 @@ paths:
       summary: Watch a folder
       tags:
         - files
+      x-remote: true
   /api/workspaces/{id}/reveal:
     post:
       description: Asks the desktop app to show a file or folder of the project in the system file manager.
@@ -2263,6 +2556,7 @@ paths:
       summary: Create a file or folder
       tags:
         - files
+      x-remote: true
   /api/workspaces/{id}/fs/rename:
     post:
       description: Moves a file or folder of the project to a new path, and answers with the new path.
@@ -2314,6 +2608,7 @@ paths:
       summary: Rename a file or folder
       tags:
         - files
+      x-remote: true
   /api/workspaces/{id}/fs/delete:
     post:
       description: 'Removes a file or folder of the project from the disk. The body must say `confirm: true`.'
@@ -2355,6 +2650,7 @@ paths:
       summary: Delete a file or folder
       tags:
         - files
+      x-remote: true
   /api/workspaces/{id}/open:
     post:
       description: Asks the desktop app to open a file of the project with the system's default application.
@@ -2421,6 +2717,7 @@ paths:
       summary: Get pi's changelog
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/complete:
     post:
       description: Asks the autocomplete providers that extensions added for the suggestions at the caret, each with the text and caret that applying it gives.
@@ -2466,6 +2763,7 @@ paths:
       summary: Complete a command argument
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/composer:
     get:
       description: Lists the toolbar actions and suggestion pills that extensions registered and that are in force now.
@@ -2501,6 +2799,7 @@ paths:
       summary: List composer registrations
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/queue:
     get:
       description: 'Returns the messages that wait for the running turn: steering messages first, then follow-ups. A thread that is not running has an empty queue.'
@@ -2528,6 +2827,7 @@ paths:
       summary: Get the message queue
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/queue/promote:
     post:
       description: Moves a follow-up to the steering queue, after the others waiting there, and answers with the queue.
@@ -2573,6 +2873,7 @@ paths:
       summary: Steer with a queued message
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/queue/remove:
     post:
       description: Removes one message from the queue, and answers with the queue.
@@ -2618,6 +2919,7 @@ paths:
       summary: Remove a queued message
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/queue/merge:
     post:
       description: Joins every queued text into one message, separated by blank lines in delivery order, and answers with the queue.
@@ -2645,6 +2947,7 @@ paths:
       summary: Merge the queued messages
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/queue/clear:
     post:
       description: Drops every queued message, and answers with the empty queue.
@@ -2672,6 +2975,7 @@ paths:
       summary: Clear the message queue
       tags:
         - session
+      x-remote: true
   /api/threads/{id}/changes:
     get:
       description: Lists the files pi changed in the thread, or with `source=worktree` the files git reports changed in its folder, or with `source=outcome` the files of the thread outcome (`git diff base..head`).
@@ -2721,6 +3025,7 @@ paths:
       summary: List changed files
       tags:
         - changes
+      x-remote: true
   /api/threads/{id}/changes/{file}:
     get:
       description: Returns the diff of one changed file as hunks with the lines numbered and paired for a split view.
@@ -2776,6 +3081,7 @@ paths:
       summary: Get the diff of a file
       tags:
         - changes
+      x-remote: true
   /api/threads/{id}/revert:
     post:
       description: 'Restores a file to how it was before pi edited it, or to git HEAD. The body must say `confirm: true`, because this overwrites the file on disk.'
@@ -2823,6 +3129,7 @@ paths:
       summary: Revert a file
       tags:
         - changes
+      x-remote: true
   /api/threads/{id}/stage:
     post:
       description: Stages changed files in git's index, or every changed file without `files` for the working tree, and answers with how many were staged.
@@ -2874,6 +3181,7 @@ paths:
       summary: Stage files
       tags:
         - changes
+      x-remote: true
   /api/threads/{id}/review-comments:
     get:
       description: Lists the pending review comments of the thread, the batch that goes with the next prompt.
@@ -2909,6 +3217,7 @@ paths:
       summary: List review comments
       tags:
         - changes
+      x-remote: true
     put:
       description: Replaces the pending review comments of the thread with the batch the client holds.
       operationId: Changes_putComments
@@ -2949,6 +3258,7 @@ paths:
       summary: Store review comments
       tags:
         - changes
+      x-remote: true
   /api/workspaces/{id}/status:
     get:
       description: Returns git's badge for each changed file of the project, and with `thread` the files pi changed in that thread.
@@ -2993,6 +3303,7 @@ paths:
       summary: Get a folder's git status
       tags:
         - files
+      x-remote: true
   /api/workspaces/{id}/git-init:
     post:
       description: Runs `git init` in the project folder if it is not in a git work tree yet. Diffs and the live refresh of the Files and Changes panels are built from git.
@@ -3059,6 +3370,7 @@ paths:
       summary: Get what runs next to a thread
       tags:
         - worktrees
+      x-remote: true
   /api/pi-settings:
     get:
       description: Returns pi's settings, the providers with the state of their credentials, the models, the keybindings and pi's version, read for `cwd` (the default folder without it).
@@ -3091,6 +3403,7 @@ paths:
       summary: Get pi's settings
       tags:
         - pi-settings
+      x-remote: true
     patch:
       description: Changes pi's default model, thinking level, compaction, trust and queue settings in its settings file, and answers with the settings.
       operationId: Settings_patch
@@ -3149,6 +3462,7 @@ paths:
       summary: Get the app and pi versions
       tags:
         - pi-settings
+      x-remote: true
   /api/about/pi-update:
     get:
       description: Asks pi's release endpoint whether a newer pi exists. `force=1` skips the ten minute cache. It never installs anything.
@@ -3433,6 +3747,7 @@ paths:
       summary: List pi's keybindings
       tags:
         - pi-settings
+      x-remote: true
     put:
       description: Saves the customised keys of pi's actions, the whole set at once. Every other key of the file is kept. Answers with the keybindings.
       operationId: Settings_saveKeybindings
@@ -3499,6 +3814,7 @@ paths:
       summary: List extensions, skills and prompts
       tags:
         - pi-settings
+      x-remote: true
   /api/resources/toggle:
     post:
       description: Enables or disables one extension, skill or prompt template in pi's settings, and answers with the list.
@@ -3579,6 +3895,7 @@ paths:
       summary: List saved trust decisions
       tags:
         - trust
+      x-remote: true
   /api/trust/revoke:
     post:
       description: Forgets one saved answer in pi's trust file. Idle sessions of that folder close, so they reopen under the new state; running ones are left alone.
@@ -3645,6 +3962,7 @@ paths:
       summary: Get a project's trust state
       tags:
         - trust
+      x-remote: true
     post:
       description: 'Records the answer for the project folder: skip it, trust it once, always, or never. Idle sessions of the folder and its worktrees close, so they reopen under the new answer.'
       operationId: Settings_decide
@@ -3689,6 +4007,7 @@ paths:
       summary: Decide whether to trust a project
       tags:
         - trust
+      x-remote: true
   /api/import:
     post:
       description: Copies a pi session file into a new thread in a project folder, and answers with the thread.
@@ -3920,6 +4239,7 @@ paths:
       summary: Get the redaction settings
       tags:
         - secrets
+      x-remote: true
     put:
       description: Replaces the redaction patterns and the folders where the pass is off, and answers with the settings and the patterns that could not be used.
       operationId: Secrets_saveRedaction
@@ -4027,6 +4347,7 @@ paths:
       summary: Get the session tree
       tags:
         - tree
+      x-remote: true
   /api/threads/{id}/entries/{entryId}:
     get:
       description: Returns the role and text of one entry of the session, for "Edit and branch".
@@ -4066,6 +4387,7 @@ paths:
       summary: Get an entry
       tags:
         - tree
+      x-remote: true
   /api/threads/{id}/navigate:
     post:
       description: Moves the leaf of the session to an entry, optionally with a summary of the branch being left, and resets the transcript to that branch.
@@ -4117,6 +4439,7 @@ paths:
       summary: Go to an entry
       tags:
         - tree
+      x-remote: true
   /api/threads/{id}/summarize-branch:
     post:
       description: Moves the leaf to an entry like `navigate`, with a model-written summary of the branch being left attached at the target.
@@ -4168,6 +4491,7 @@ paths:
       summary: Summarize a branch
       tags:
         - tree
+      x-remote: true
   /api/threads/{id}/label:
     post:
       description: Sets or, with an empty label, clears the label of an entry, and answers with the tree.
@@ -4213,6 +4537,7 @@ paths:
       summary: Label an entry
       tags:
         - tree
+      x-remote: true
   /api/mcp:
     get:
       description: Lists the MCP servers of pi's configuration and, with `thread`, their connection state in that thread's session.
@@ -6098,6 +6423,7 @@ paths:
       summary: Get the voice status
       tags:
         - transcribe
+      x-remote: true
   /api/transcribe/model:
     post:
       description: 'Starts the download of the speech model after the person agreed, with `accept: true`. Progress is in the status.'
@@ -6229,6 +6555,7 @@ paths:
       summary: Transcribe a recording
       tags:
         - transcribe
+      x-remote: true
   /api/transcribe/stream:
     post:
       description: 'Takes a recording as the request body and streams server-sent events: `partial` with the newly committed words, then `done` with the whole result, or `error`.'
@@ -6294,6 +6621,7 @@ paths:
       summary: Transcribe a recording as a stream
       tags:
         - transcribe
+      x-remote: true
   /api/transcribe/live:
     post:
       description: Starts a transcription that takes audio while the person is still speaking, and answers with its id.
@@ -6326,6 +6654,7 @@ paths:
       summary: Start a live transcription
       tags:
         - transcribe
+      x-remote: true
   /api/transcribe/live/{id}/chunk:
     post:
       description: Appends a few seconds of 16-bit 16 kHz mono PCM to a live transcription.
@@ -6375,6 +6704,7 @@ paths:
       summary: Send audio to a live transcription
       tags:
         - transcribe
+      x-remote: true
   /api/transcribe/live/{id}/events:
     get:
       description: 'Streams server-sent events while the audio is taken: `partial` with the words committed so far, then `done` or `error`.'
@@ -6405,6 +6735,7 @@ paths:
       summary: Stream a live transcription
       tags:
         - transcribe
+      x-remote: true
   /api/transcribe/live/{id}/end:
     post:
       description: Ends the audio of a live transcription and answers with the whole text.
@@ -6438,6 +6769,7 @@ paths:
       summary: End a live transcription
       tags:
         - transcribe
+      x-remote: true
   /api/transcribe/live/{id}:
     delete:
       description: Drops a live transcription and its audio without a result.
@@ -6461,6 +6793,7 @@ paths:
       summary: Abort a live transcription
       tags:
         - transcribe
+      x-remote: true
   /api/attendant:
     get:
       description: Returns the attendant's settings, what it did (newest first, with cost), today's spending and whether the cap is reached.
@@ -6653,6 +6986,7 @@ paths:
       summary: List a thread's background agents
       tags:
         - threads
+      x-remote: true
   /api/threads/{id}/agents/{agent}/message:
     post:
       description: 'More instructions for a running agent: a steer (now, mid-task) or a follow-up (after its current task).'
@@ -6704,6 +7038,7 @@ paths:
       summary: Message a background agent
       tags:
         - threads
+      x-remote: true
   /api/threads/{id}/agents/{agent}/answer:
     post:
       description: The user's answer to the question the agent waits on (`text`), or its dismissal (`cancelled`). The agent gets it verbatim; the main agent gets a receipt.
@@ -6761,6 +7096,7 @@ paths:
       summary: Answer a background agent's question
       tags:
         - threads
+      x-remote: true
   /api/threads/{id}/agents/{agent}/resume:
     post:
       description: 'An agent held after a restart goes on: the processes of its interrupted command are gone (or may be), or the crash-loop limit is lifted.'
@@ -6800,6 +7136,7 @@ paths:
       summary: Resume a held background agent
       tags:
         - threads
+      x-remote: true
   /api/threads/{id}/agents/{agent}/stop:
     post:
       description: Aborts its work; it keeps what it did so far and stays in History as stopped.
@@ -6839,6 +7176,7 @@ paths:
       summary: Stop a background agent
       tags:
         - threads
+      x-remote: true
   /api/threads/{id}/agents/{agent}:
     delete:
       description: Stops it if it runs and removes it from the thread, History included; its durable transcript stays in the store.
@@ -7527,6 +7865,7 @@ paths:
       summary: Get a thread's score
       tags:
         - score
+      x-remote: true
     post:
       description: 'Labels every hunk of the thread’s outcome with the attendant’s model and computes the scores. While the attendant is off, the first request for a thread answers `consent` with the sentence to show and the model’s name; send it again with `consent: true` once the person agreed. Scoring again replaces the model’s labels and keeps the person’s corrections.'
       operationId: Score_request
@@ -7649,6 +7988,7 @@ paths:
       summary: Get the score distribution of every project
       tags:
         - score
+      x-remote: true
   /api/computer-use:
     get:
       description: Whether the package is installed and computer use is on, which app macOS gives the permissions to (pi-kit, Electron for a development build, or the terminal that started the backend), and on macOS, while it is on, whether Accessibility and Screen Recording are granted and whether a relaunch is needed for a new Screen Recording grant.
@@ -7771,6 +8111,7 @@ paths:
       summary: Detect the setup
       tags:
         - setup
+      x-remote: true
   /api/setup/state:
     post:
       description: Records that the person finished the onboarding or left it, so it does not open by itself again.
@@ -8886,6 +9227,272 @@ paths:
       summary: Get a provider's usage
       tags:
         - pi-settings
+      x-remote: true
+  /api/instances:
+    get:
+      description: Self and reciprocal peers, filtered to the requesting device; this is not tailnet-wide discovery.
+      operationId: Peers_list
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerManager'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: List configured instances
+      tags:
+        - instances
+  /api/instances/invitations:
+    post:
+      description: Owner-only, short-lived instance enrollment; creates an OS-protected key only on this explicit action.
+      operationId: Peers_invite
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerInvitationResult'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Invite an instance
+      tags:
+        - instances
+  /api/instances/connect:
+    post:
+      description: Owner-initiated enrollment bound to the invitation identity; the other owner must approve the matching code.
+      operationId: Peers_connect
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PeerConnect'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerManager'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Request reciprocal pairing
+      tags:
+        - instances
+  /api/instances/requests/{pairId}/approve:
+    post:
+      description: Owner explicitly approves both directions and chooses whether approved phones may relay through the pair.
+      operationId: Peers_approve
+      parameters:
+        - name: pairId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PeerConsent'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerManager'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Approve reciprocal control
+      tags:
+        - instances
+  /api/instances/requests/{pairId}:
+    delete:
+      description: Owner rejects pending enrollment without granting access or changing publication.
+      operationId: Peers_reject
+      parameters:
+        - name: pairId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerManager'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Reject an instance request
+      tags:
+        - instances
+  /api/instances/{peerId}:
+    delete:
+      description: Local access stops immediately and a durable notification is retried if the peer is offline.
+      operationId: Peers_unpair
+      parameters:
+        - name: peerId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerManager'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Unpair an instance
+      tags:
+        - instances
+    patch:
+      description: Owner changes a display alias, never the peer identity, endpoint or project ownership.
+      operationId: Peers_rename
+      parameters:
+        - name: peerId
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameEnvironment'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PeerManager'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Rename a peer locally
+      tags:
+        - instances
+  /api/instances/{peerId}/projects:
+    get:
+      description: Reads only the selected authorized peer; failures do not replace local projects or change chat targets.
+      operationId: Peers_projects
+      parameters:
+        - name: peerId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Workspace'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: List projects on a paired instance
+      tags:
+        - instances
+  /api/project-folders:
+    get:
+      description: Lists directory names on the authenticated execution owner; never interprets a remote path on the controller machine or loads project resources.
+      operationId: ProjectFolders_list
+      parameters:
+        - name: directory
+          required: false
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 4096
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectFolders'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Browse project folders on this instance
+      tags:
+        - instances
+      x-remote: true
 components:
   securitySchemes:
     bearer:
@@ -10724,6 +11331,27 @@ components:
         - text
         - parentId
       additionalProperties: false
+    Environment:
+      type: object
+      properties:
+        instanceId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          pattern: ^[^\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+$
+        protocolVersion:
+          type: number
+          enum:
+            - 1
+      required:
+        - instanceId
+        - name
+        - protocolVersion
+      additionalProperties: false
     ExportRequest:
       type: object
       properties:
@@ -11051,6 +11679,19 @@ components:
         - source
         - name
         - scope
+      additionalProperties: false
+    InstanceAccessPreferences:
+      type: object
+      properties:
+        desiredEnabled:
+          type: boolean
+        httpsPort:
+          type: integer
+          minimum: 1
+          maximum: 65535
+      required:
+        - desiredEnabled
+        - httpsPort
       additionalProperties: false
     KeybindingInfo:
       type: object
@@ -14237,6 +14878,147 @@ components:
           items:
             $ref: '#/components/schemas/SetupScript'
       additionalProperties: false
+    PeerConnect:
+      type: object
+      properties:
+        invitation:
+          type: string
+          minLength: 10
+          maxLength: 8192
+          writeOnly: true
+          x-secret: true
+        allowRelay:
+          type: boolean
+      required:
+        - invitation
+        - allowRelay
+      additionalProperties: false
+    PeerConsent:
+      type: object
+      properties:
+        allowRelay:
+          type: boolean
+      required:
+        - allowRelay
+      additionalProperties: false
+    PeerInvitationResult:
+      type: object
+      properties:
+        invitation:
+          type: string
+        expiresAt:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+      required:
+        - invitation
+        - expiresAt
+      additionalProperties: false
+    PeerManager:
+      type: object
+      properties:
+        self:
+          $ref: '#/components/schemas/Environment'
+        keyInitialized:
+          type: boolean
+        endpoint:
+          type: string
+          maxLength: 300
+        peers:
+          type: array
+          items:
+            $ref: '#/components/schemas/PeerSummary'
+        requests:
+          type: array
+          items:
+            type: object
+            properties:
+              pairId:
+                type: string
+                format: uuid
+                pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              name:
+                type: string
+                minLength: 1
+                maxLength: 80
+                pattern: ^[^\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+$
+              origin:
+                type: string
+                maxLength: 300
+              fingerprint:
+                type: string
+                pattern: ^[A-Za-z0-9_-]{43}$
+              confirmationCode:
+                type: string
+              expiresAt:
+                type: integer
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+            required:
+              - pairId
+              - name
+              - origin
+              - fingerprint
+              - confirmationCode
+              - expiresAt
+            additionalProperties: false
+      required:
+        - self
+        - keyInitialized
+        - peers
+        - requests
+      additionalProperties: false
+    PeerSummary:
+      type: object
+      properties:
+        peerId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        pairId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          pattern: ^[^\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+$
+        origin:
+          type: string
+          maxLength: 300
+        fingerprint:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{43}$
+        state:
+          type: string
+          enum:
+            - pending
+            - active
+            - revoked
+        allowRelay:
+          type: boolean
+        remoteAllowRelay:
+          type: boolean
+        sharedWithPhones:
+          type: boolean
+        unpairPending:
+          type: boolean
+        confirmationCode:
+          type: string
+          pattern: ^\d{6}$
+      required:
+        - peerId
+        - pairId
+        - name
+        - origin
+        - fingerprint
+        - state
+        - allowRelay
+        - remoteAllowRelay
+        - sharedWithPhones
+        - unpairPending
+      additionalProperties: false
     PiBashContent:
       type: object
       properties:
@@ -14455,6 +15237,38 @@ components:
       required:
         - statusCode
         - message
+      additionalProperties: false
+    ProjectFolders:
+      type: object
+      properties:
+        instanceId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        directory:
+          type: string
+        parent:
+          type:
+            - string
+            - 'null'
+        folders:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              path:
+                type: string
+            required:
+              - name
+              - path
+            additionalProperties: false
+      required:
+        - instanceId
+        - directory
+        - parent
+        - folders
       additionalProperties: false
     ProjectGit:
       type: object
@@ -14882,6 +15696,17 @@ components:
           maximum: 9007199254740991
       required:
         - commands
+      additionalProperties: false
+    RenameEnvironment:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          pattern: ^[^\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+$
+      required:
+        - name
       additionalProperties: false
     RequestScore:
       type: object
@@ -16057,6 +16882,42 @@ components:
           minLength: 1
           maxLength: 20000
       additionalProperties: false
+    StoredDeviceGrant:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{1,128}$
+        name:
+          type: string
+          maxLength: 100
+        createdAt:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        lastSeenAt:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        cookieHash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        csrf:
+          type: string
+          pattern: ^[A-Za-z0-9_-]{32,128}$
+      required:
+        - id
+        - name
+        - createdAt
+        - lastSeenAt
+        - cookieHash
+        - csrf
+      additionalProperties: false
+    StoredDeviceGrants:
+      maxItems: 20
+      type: array
+      items:
+        $ref: '#/components/schemas/StoredDeviceGrant'
     SummarizeBranchRequest:
       type: object
       properties:
@@ -16159,6 +17020,10 @@ components:
     ThreadDetail:
       type: object
       properties:
+        instanceId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
         id:
           type: string
         cwd:
@@ -16636,6 +17501,10 @@ components:
     ThreadSummary:
       type: object
       properties:
+        instanceId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
         id:
           type: string
         cwd:
@@ -17687,6 +18556,10 @@ components:
     Workspace:
       type: object
       properties:
+        instanceId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
         cwd:
           type: string
         name:

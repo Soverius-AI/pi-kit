@@ -24,6 +24,8 @@ This site is the documentation of the code base. It is written for the people wh
 | [System refactoring plan](refactoring.md) | The ordered refactoring of the code base by responsibility, how each step is verified, and the evidence recorded for the steps done. |
 | [Design system](design-system.md) | The tokens, type, spacing, layout and component inventory of the app. |
 | [Plugins](plugins.md) | The event contract a pi package uses to talk to pi-kit. |
+| [Remote access](remote-access.md) | Using pi-kit from a phone and across paired computers over the user's own tailnet: how publication, pairing, environments and the route allowlist work, and the security model. |
+| [Onboarding site](remote-onboarding-site.md) | The static guide at remote.pi-kit.dev and how a release tag deploys it. |
 | [Decision records](adr/README.md) | One record per decision, numbered, with the reasoning and what was verified. |
 
 ## Beside the pages

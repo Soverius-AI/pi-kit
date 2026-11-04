@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, Get, HttpCode, Param, Put } from
 import { ApiNoContentResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { AppSettingsSchema, PutAppSettingSchema } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Responds } from '../contract';
+import { Responds, Remote } from '../contract';
 import { MetaRepository } from '../db/meta.repository';
 
 const KEY = /^[a-zA-Z][\w.-]{0,63}$/;
@@ -13,6 +13,7 @@ const KEY = /^[a-zA-Z][\w.-]{0,63}$/;
 export class AppSettingsController {
   constructor(private readonly meta: MetaRepository) {}
 
+  @Remote()
   @Get()
   @ApiOperation({
     summary: 'Get app settings',
@@ -23,6 +24,7 @@ export class AppSettingsController {
     return this.meta.allSettings();
   }
 
+  @Remote()
   @Put(':key')
   @HttpCode(204)
   @ApiOperation({

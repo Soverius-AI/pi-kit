@@ -2379,7 +2379,7 @@
   margin: 4px 0;
   background: var(--color-base-300);
 }
-.dropdown-content.pk-viewport-menu:popover-open {
+.dropdown-content.pk-viewport-menu:is(:popover-open, .pk-viewport-menu-fallback) {
   position: fixed;
   inset: auto;
   margin: 0;
@@ -3271,7 +3271,8 @@
   place-items: center;
   background: rgb(20 24 32 / 0.45);
   z-index: 50;
-  padding: 24px;
+  padding: max(24px, var(--pk-safe-top)) max(24px, var(--pk-safe-right)) max(24px, var(--pk-safe-bottom))
+    max(24px, var(--pk-safe-left));
 }
 .pk-settings .win {
   width: min(1040px, 100%);
@@ -3316,6 +3317,21 @@
 }
 .pk-settings .head input[type='search'] {
   max-width: 320px;
+}
+.pk-settings .env-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-settings .env-row .kind {
+  margin-left: auto;
+  white-space: nowrap;
 }
 .pk-settings nav {
   padding: 12px 8px;
@@ -4172,13 +4188,14 @@ pk-onboarding-strip {
 
 @media (max-width: 767px) {
   .pk-settings {
-    padding: 0;
+    padding: var(--pk-safe-top) var(--pk-safe-right) var(--pk-safe-bottom) var(--pk-safe-left);
   }
   .pk-settings .win {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 56px auto minmax(0, 1fr);
     border-radius: 0;
-    height: 100dvh;
+    height: 100%;
+    min-height: 0;
     width: 100%;
   }
   .pk-group > header {
@@ -5031,8 +5048,11 @@ pk-transcript[data-usage='show'] .pk-usage {
 .pk-usage-pop .kv dt.sub {
   padding-left: 12px;
 }
-/* Phones: two rows. Row 1 keeps the tools pill and the right cluster (ring, send) beside the text; row 2 holds the
-   chips, left-aligned, each able to shrink. Nothing overflows the well at 375px. */
+.pk-composer-settings {
+  display: contents;
+}
+/* Phones: deliberate action and settings rows, never individual chips wrapping
+   into the empty space beside Stop. The settings row owns its available width. */
 @media (max-width: 767px) {
   .pk-toolbar.compact {
     flex-wrap: wrap;
@@ -5047,11 +5067,36 @@ pk-transcript[data-usage='show'] .pk-usage {
   .pk-toolbar.compact .end {
     order: 3;
   }
-  .pk-toolbar.compact .pk-chip {
+  .pk-toolbar.compact .pk-composer-settings {
+    display: flex;
+    align-items: center;
     order: 4;
+    flex: 0 0 100%;
+    min-width: 0;
+    gap: 6px;
+    border-top: 1px solid var(--color-base-300);
+    padding-top: 6px;
+  }
+  .pk-composer-settings .pk-chip:not(.effort-control):not(.mode) {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .pk-toolbar.compact .pk-composer-settings .pk-chip > .btn {
+    width: 100%;
+    justify-content: flex-start;
+    height: 40px;
+    min-height: 40px;
+  }
+  .pk-toolbar.compact .pk-composer-settings .effort-control,
+  .pk-toolbar.compact .pk-composer-settings .pk-chip.mode {
+    flex: none;
+    min-height: 40px;
   }
   .pk-toolbar.compact .pk-chip > .btn .v {
-    max-width: 140px;
+    max-width: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 

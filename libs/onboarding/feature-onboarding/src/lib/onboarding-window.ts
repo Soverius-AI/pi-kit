@@ -1,4 +1,5 @@
 import { Language } from '@pi-kit/i18n';
+import { isLocalExecution } from '@pi-kit/api';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import {
   ChangeDetectionStrategy,
@@ -486,7 +487,7 @@ export class OnboardingWindow {
     const words = this.scopeFilter().toLowerCase().split(/\s+/).filter(Boolean);
     return this.ob.defaults().options.filter((o) => words.every((w) => o.label.toLowerCase().includes(w)));
   });
-  protected readonly hasPicker = typeof window !== 'undefined' && !!window.piKit?.showOpenDialog;
+  protected readonly hasPicker = isLocalExecution() && typeof window !== 'undefined' && !!window.piKit?.showOpenDialog;
 
   constructor() {
     // The flow takes the focus when it opens, so the keyboard starts in it.

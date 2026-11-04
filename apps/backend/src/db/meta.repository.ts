@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Optional } from '@nestjs/common';
 import type { BranchMode, CarryChanges, RemoveFolder, SetupScript, StartMode } from '@pi-kit/protocol';
 import { DatabaseService } from './database.service';
+import { InstanceRepository } from './instance.repository';
 
 export interface WorkspaceRow {
   cwd: string;
@@ -56,7 +57,14 @@ function parseScripts(json: string | null): SetupScript[] | null {
 /** `workspaces` (known folders) and `settings` (UI preferences). */
 @Injectable()
 export class MetaRepository {
-  constructor(private readonly database: DatabaseService) {}
+  /** Owner of every local project/session; never derived from a label, path or selected UI target. */
+  readonly instanceId: string;
+  constructor(
+    private readonly database: DatabaseService,
+    @Optional() instance?: InstanceRepository,
+  ) {
+    this.instanceId = (instance ?? new InstanceRepository(database)).instanceId;
+  }
 
   private get db() {
     return this.database.db;

@@ -1,4 +1,55 @@
 {
+  "environments": {
+    "projects": {
+      "title": "Projekt auswählen",
+      "environment": "Umgebung",
+      "local": "Einstiegsinstanz",
+      "inherited": "Chats übernehmen die Umgebung ihres Projekts. Lokal / Worktree bestimmt die Ablage innerhalb dieser Umgebung.",
+      "folder": "Ordner auf der ausgewählten Umgebung",
+      "browse": "Durchsuchen",
+      "up": "Übergeordneter Ordner",
+      "loading": "Projekte werden geladen…",
+      "unavailable": "Diese Umgebung oder dieser Ordner ist nicht erreichbar. Es wurde nicht auf lokal ausgewichen.",
+      "cancel": "Abbrechen",
+      "open": "Diesen Ordner öffnen",
+      "retry": "Nicht erreichbar — erneut prüfen",
+      "other": "Projekte auf anderen Umgebungen…",
+      "draftReview": "Umgebung wechseln? Ungesendeter Text und Bilder im Eingabefeld gehen verloren.",
+      "changed": "Der ursprüngliche Chat hat sich geändert. Bitte das Projekt erneut auswählen.",
+      "emptyRetained": "Der ursprüngliche Chat hat sich geändert. Der neue leere Chat bleibt erhalten; bestehende Arbeit wurde weder verschoben noch gelöscht.",
+      "unknown": "Unbekannte Umgebung",
+      "ownerMissing": "Diese Umgebung ist nicht mehr mit {{name}} gekoppelt.",
+      "backToEntry": "Zurück zu {{name}}",
+      "remote": "Entfernt"
+    },
+    "pairing": {
+      "title": "Gekoppelte Instanzen",
+      "trust": "Die Kopplung erlaubt gegenseitigen Agenten-, Datei- und Terminalzugriff mit dem Betriebssystemkonto der jeweiligen Instanz. Nur vollständig vertrauenswürdige Instanzen koppeln. Dadurch werden weder Zugriff veröffentlicht noch Netzwerkrichtlinien geändert.",
+      "keyPolicy": "Die Kopplung verwendet einen separaten, vom Betriebssystem geschützten Dienstschlüssel zur Wiederverbindung nach der Anmeldung. Bestehende Entsperranforderungen für Datenbanken und Anbieter bleiben unverändert. Vor einer Einladung den privaten Zugriff unten aktivieren.",
+      "phones": "Genehmigten Geräten beider Instanzen die Nutzung dieser Kopplung erlauben",
+      "invite": "Einladung erstellen (5 Minuten)",
+      "copy": "Diese einmalige Einladung zur anderen Instanz kopieren",
+      "paste": "Einladung der anderen Instanz einfügen",
+      "connect": "Gegenseitige Kopplung anfragen",
+      "compare": "Nur genehmigen, wenn derselbe Code auf der anderen Instanz erscheint. Namen allein beweisen keine Identität.",
+      "approve": "Beide Richtungen genehmigen",
+      "reject": "Ablehnen",
+      "pending": "Gegenseitige Bestätigung ausstehend",
+      "active": "Gekoppelt",
+      "revoked": "Entkoppelt",
+      "unpairPending": "Zugriff ist hier gesperrt. Die Benachrichtigung wird wiederholt, sobald die andere Instanz erreichbar und der geschützte Schlüssel verfügbar ist.",
+      "rename": "Lokaler Anzeigename",
+      "unpair": "Entkoppeln",
+      "unpairQuestion": "Diese Instanz entkoppeln? Der Zugriff hier endet sofort. Ist die andere Instanz offline, bleibt ihre Benachrichtigung bis zur Erreichbarkeit ausstehend."
+    },
+    "switch": {
+      "title": "Umgebung",
+      "label": "Umgebung wechseln",
+      "thisComputer": "Dieser Computer",
+      "paired": "Gekoppelter Computer",
+      "remote": "Entfernt"
+    }
+  },
   "shell": {
     "app": {
       "threads": "Chats",
@@ -36,7 +87,8 @@
       "sidebar": "{{value1}}-Seitenleiste ({{value2}})",
       "show": "Anzeigen",
       "hide": "Ausblenden",
-      "sidePanels": "Seitenleisten"
+      "sidePanels": "Seitenleisten",
+      "noThreadIsOpenCompact": "Kein Chat geöffnet. Öffne das Menü, um einen auszuwählen, oder starte einen neuen."
     },
     "toastHost": {
       "dismiss": "Schließen"
@@ -458,6 +510,7 @@
   },
   "chat": {
     "composerField": {
+      "messagePiShort": "Nachricht an pi …",
       "messageToPi": "Nachricht an pi"
     },
     "modelPicker": {
@@ -513,6 +566,7 @@
       "close": "schließen"
     },
     "composerToolbar": {
+      "messageSettings": "Nachrichteneinstellungen",
       "insert": "Einfügen",
       "stopEsc": "Stoppen (esc)",
       "stop": "Stoppen",
@@ -2100,7 +2154,9 @@
       "computerUseAppHint": "macOS erteilt diese Berechtigungen der App, in der pi läuft, nicht dem Paket.",
       "grantedByMacOS": "Von macOS unter Systemeinstellungen › Datenschutz & Sicherheit der App erteilt, nicht von pi-kit gespeichert.",
       "followUpPrompts": "Meinen nächsten Prompt vorschlagen",
-      "followUpPromptsDescription": "Nach einem abgeschlossenen Lauf einen bearbeitbaren Folgeprompt aus dem Gespräch und den Berichten der Hintergrundagenten vorschlagen. Nutzt Modell und Budget des Attendant; sendet nichts für dich."
+      "followUpPromptsDescription": "Nach einem abgeschlossenen Lauf einen bearbeitbaren Folgeprompt aus dem Gespräch und den Berichten der Hintergrundagenten vorschlagen. Nutzt Modell und Budget des Attendant; sendet nichts für dich.",
+      "remoteAccess": "Smartphone-Zugriff",
+      "remoteAccessIntro": "Kopple dein Smartphone oder ein anderes Gerät sicher über Tailscale, um Agent, Dateien und Terminal dieses Computers zu steuern."
     },
     "shortcuts": {
       "newThread": "Neuer Chat",
@@ -3069,7 +3125,8 @@
       "and": " und ",
       "signedIn": "{{value1}} angemeldet",
       "on": "{{value1}} an",
-      "clash": "{{value1}} Konflikt"
+      "clash": "{{value1}} Konflikt",
+      "environmentHint": "Diese Einstellungen gehören zu {{name}}."
     },
     "voiceSection": {
       "speechModel": "Sprachmodell",
@@ -4130,6 +4187,93 @@
       "windowsNoPermissions": "Windows braucht für die Computer-Steuerung keine Berechtigungen.",
       "linuxNoPermissions": "Linux braucht für die Computer-Steuerung keine Berechtigungen. Es braucht eine Desktop-Sitzung und den AT-SPI-Bus für Barrierefreiheit (at-spi2-core). Unter Hyprland ist die Computer-Steuerung read-only.",
       "hyprlandReadOnly": "Unter Hyprland ist die Computer-Steuerung read-only: pi kann den Bildschirm sehen, aber nicht klicken oder tippen. Cua Driver unterstützt Eingaben unter Hyprland noch nicht."
+    },
+    "environmentSection": {
+      "title": "Diese Umgebung",
+      "hint": "Wähle einen Namen für diese pi-kit-Instanz. Das Umbenennen verschiebt keine Projekte oder Chats.",
+      "name": "Name der Umgebung",
+      "invalid": "Verwende 1–80 sichtbare Zeichen ohne Steuerzeichen.",
+      "save": "Namen speichern"
+    },
+    "remoteAccessSection": {
+      "explanation": "Verbinde Tailscale auf deinem Mac und iPhone mit demselben Tailnet.",
+      "safety": "Ein genehmigtes Gerät kann Agent, Dateien und Terminal mit deinem Benutzerkonto auf diesem Computer steuern.",
+      "download": "Tailscale herunterladen",
+      "httpsSettings": "Tailscale-HTTPS-Einstellungen",
+      "portLabel": "HTTPS-Port",
+      "portHint": "Standard ist 8443. Mit 443 benötigt die Adresse keine Portnummer. Die Tailnet-Regeln müssen deinen gewählten Port erlauben.",
+      "portLocked": "Deaktiviere den Smartphone-Zugriff, bevor du den Port änderst.",
+      "portInvalid": "Gib einen ganzzahligen Port von 1 bis 65535 ein.",
+      "httpsApprovedTitle": "HTTPS-Zertifikate sind genehmigt",
+      "httpsApprovedHelp": "Tailscale kann das Zertifikat dieses Computers automatisch ausstellen und erneuern. Eine weitere Genehmigung ist nicht nötig.",
+      "desktopOnly": "Der Smartphone-Zugriff ist nur in der Desktop-App verfügbar, nicht im Browser.",
+      "unavailable": "Tailscale ist nicht installiert oder nicht verfügbar.",
+      "disconnected": "Tailscale ist installiert, aber nicht verbunden. Verbinde Tailscale und aktualisiere dann den Status.",
+      "available": "Tailscale ist verbunden. Smartphone-Zugriff ist deaktiviert.",
+      "starting": "Smartphone-Zugriff wird aktiviert…",
+      "serving": "Fernzugriff ist aktiviert. Kopple ein Gerät, um dich zu verbinden.",
+      "error": "Der Smartphone-Zugriff konnte nicht geprüft oder geändert werden. Aktualisiere den Status zur erneuten Prüfung.",
+      "checking": "Tailscale wird geprüft…",
+      "version": "Installierte Tailscale-Version: {{value1}}",
+      "refresh": "Aktualisieren",
+      "start": "Smartphone-Zugriff aktivieren",
+      "stop": "Smartphone-Zugriff deaktivieren",
+      "pair": "Gerät koppeln",
+      "scan": "Scanne diesen QR-Code mit deinem iPhone, um die Kopplung anzufragen. Halte den Code geheim.",
+      "qrAlt": "Privater QR-Code zur Gerätekopplung",
+      "expires": "Gültig bis:",
+      "expired": "Kopplungscode abgelaufen. Wähle „Gerät koppeln“, um einen neuen Code zu erstellen.",
+      "requests": "Ausstehende Kopplungsanfragen",
+      "confirm": "Genehmige nur, wenn dieser Bestätigungscode mit dem auf deinem Gerät übereinstimmt.",
+      "approve": "Genehmigen",
+      "deny": "Ablehnen",
+      "noRequests": "Keine ausstehenden Anfragen.",
+      "devices": "Genehmigte Geräte",
+      "noDevices": "Keine genehmigten Geräte.",
+      "created": "Gekoppelt:",
+      "lastSeen": "Zuletzt gesehen:",
+      "revoke": "Zugriff widerrufen",
+      "title": "Gerät verbinden",
+      "privateTailnet": "Privates Tailnet",
+      "safetyTitle": "Nur vertrauenswürdige Geräte genehmigen",
+      "lifetime": "Geräte bleiben bis zum Widerruf freigegeben, auch nach Neustarts oder dem Deaktivieren des Zugriffs. Halte den Computer zum Verbinden wach und die App geöffnet. Gelöschte Browserdaten können erneutes Koppeln erfordern.",
+      "connectTitle": "Tailscale verbinden",
+      "completed": "Abgeschlossen",
+      "connectedTitle": "Tailscale ist auf diesem Computer verbunden",
+      "connectedHelp": "Verbinde auch dein iPhone mit demselben Tailnet.",
+      "httpsTitle": "HTTPS genehmigen",
+      "httpsHelp": "Öffne Tailscales DNS-Einstellungen und aktiviere HTTPS unter „HTTPS Certificates“. Dafür ist möglicherweise die Zustimmung eines Tailnet-Administrators nötig. Wähle danach hier „Erneut prüfen“.",
+      "enableTitle": "Zugriff aktivieren, dann koppeln",
+      "enableHelp": "Aktiviere nach der Einrichtung den Fernzugriff. Wähle danach „Gerät koppeln“, scanne den privaten QR-Code und genehmige hier den passenden Code.",
+      "details": "Technische Details",
+      "retry": "Verbindung erneut versuchen",
+      "setup": {
+        "tailscale": "Tailscale öffnen",
+        "https": "HTTPS einrichten",
+        "authorize": "HTTPS genehmigen"
+      },
+      "statusTitle": {
+        "unavailable": "Tailscale einrichten",
+        "disconnected": "Mit deinem Tailnet verbinden",
+        "available": "Bereit zum Verbinden",
+        "starting": "Verbindung wird gestartet",
+        "serving": "Deine private Verbindung ist aktiv",
+        "error": "Verbindung erfordert Aufmerksamkeit",
+        "checking": "Verbindung wird geprüft",
+        "setup": "Verbindung fertig einrichten"
+      },
+      "chip": {
+        "unavailable": "Einrichtung nötig",
+        "disconnected": "Offline",
+        "available": "Aus · Bereit",
+        "starting": "Wird gestartet",
+        "serving": "Aktiv",
+        "error": "Aktion nötig",
+        "checking": "Wird geprüft",
+        "setup": "Einrichtung nötig"
+      },
+      "setupOpened": "Schließe die Einrichtung im geöffneten Fenster ab und prüfe dann erneut. Das Öffnen aktiviert noch keinen Smartphone-Zugriff.",
+      "checkAgain": "Erneut prüfen"
     }
   },
   "agents": {
@@ -4407,5 +4551,42 @@
       "emptyTooltip": "pi-kit · keine aktiven Chats",
       "more": "{{count}} weitere…"
     }
+  },
+  "remoteSite": {
+    "language": "Sprache",
+    "title": "pi-kit vom Handy aus nutzen",
+    "intro": "pi-kit läuft auf deinem Computer. Dein Handy erreicht ihn über dein eigenes privates Tailscale-Netz. Nichts läuft über diese Website.",
+    "privacy": "Diese Seite führt nur durch die Einrichtung. Sie sieht weder deinen Computer noch deine Chats oder Kopplungscodes.",
+    "openTitle": "Mein pi-kit öffnen",
+    "openLabel": "Private Adresse deines Computers",
+    "openButton": "Öffnen",
+    "openInvalid": "Gib die https://…ts.net-Adresse ein, die pi-kit unter Einstellungen › Fernzugriff anzeigt.",
+    "s1Title": "pi-kit auf dem Computer installieren",
+    "s1Text": "Lade pi-kit herunter, öffne es und schließe die erste Einrichtung ab.",
+    "s2Title": "Tailscale auf beiden Geräten installieren",
+    "s2Text": "Melde dich auf Computer und Handy mit demselben Konto an und verbinde beide.",
+    "tsDesktop": "Tailscale für macOS, Windows und Linux",
+    "tsIos": "Tailscale für iPhone und iPad",
+    "tsAndroid": "Tailscale für Android",
+    "s3Title": "Fernzugriff in pi-kit aktivieren",
+    "s3Text": "Öffne am Computer Einstellungen › Fernzugriff und wähle Fernzugriff aktivieren. pi-kit zeigt dann die private https://…ts.net-Adresse.",
+    "s3Note": "Wenn Tailscale HTTPS-Zertifikate verlangt, aktiviere sie in der Tailscale-Admin-Konsole und prüfe erneut.",
+    "s4Title": "Dieses Gerät koppeln",
+    "s4Text": "Wähle am Computer Gerät koppeln und scanne den QR-Code oben mit QR-Code scannen, oder öffne die Adresse mit /phone am Ende und tippe den Kopplungscode ein. Vergleiche den sechsstelligen Bestätigungscode und genehmige die Anfrage am Computer.",
+    "s4Note": "Genehmige nur eine Anfrage, deren Code mit dem auf deinem Handy übereinstimmt.",
+    "scanButton": "QR-Code scannen",
+    "scanner": "QR-Scanner",
+    "cancelScan": "Scannen abbrechen",
+    "scanHint": "Richte die Kamera auf den QR-Code in pi-kit. Das Bild bleibt auf diesem Handy.",
+    "scanWrong": "Dieser QR-Code ist kein pi-kit-Kopplungslink. Scanne den Code, den pi-kit am Computer zeigt.",
+    "scanNoCamera": "Kamera-Scannen ist hier nicht möglich. Nutze die Kamera-App oder tippe die Adresse ein.",
+    "scanDenied": "Kamerazugriff wurde blockiert. Erlaube ihn für diese Seite oder nutze die Kamera-App.",
+    "scanFailed": "Die Kamera konnte nicht starten. Nutze die Kamera-App oder tippe die Adresse ein.",
+    "s5Title": "Zum Home-Bildschirm hinzufügen",
+    "s5Text": "Öffne in Safari die private Adresse, tippe auf Teilen und wähle Zum Home-Bildschirm. Lass Als Web-App öffnen eingeschaltet.",
+    "s5Warn": "Füge deine private …ts.net-Adresse hinzu, nicht diese Seite. Diese Seite ist nur die Anleitung.",
+    "footer": "Der Computer muss wach sein, pi-kit muss laufen und Tailscale auf beiden Geräten verbunden sein.",
+    "download": "pi-kit herunterladen",
+    "downloadNote": "Die neueste Version für macOS, Windows und Linux liegt auf GitHub."
   }
 }

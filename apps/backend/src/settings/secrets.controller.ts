@@ -17,7 +17,7 @@ import {
   SecretsStatusSchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Fails, Responds } from '../contract';
+import { Fails, Responds, Remote } from '../contract';
 import { RedactionService } from '../db/redaction.service';
 import { PiConfigService } from '../pi/pi-config.service';
 import { SecretsService } from '../secrets/secrets.service';
@@ -137,6 +137,7 @@ export class SecretsController {
 
   // ---- redaction (Settings › Advanced)
 
+  @Remote()
   @Get('redaction')
   @ApiOperation({
     summary: 'Get the redaction settings',

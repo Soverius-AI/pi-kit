@@ -1,8 +1,117 @@
 import { TestBed } from '@angular/core/testing';
-import { BACKEND_CONNECTION, BackendService, type BackendConnection } from './backend.service';
+import {
+  BACKEND_CONNECTION,
+  BackendService,
+  createBackendConnection,
+  isDeviceConnection,
+  type BackendConnection,
+} from './backend.service';
 
 describe('BackendService transport', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    document.querySelectorAll('meta[name="pi-kit-connection"]').forEach((meta) => meta.remove());
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('uses a same-origin phone session without reading or persisting a desktop/dev token', async () => {
+    vi.stubGlobal('piKit', undefined);
+    const meta = document.createElement('meta');
+    meta.name = 'pi-kit-connection';
+    meta.content = 'device';
+    document.head.append(meta);
+    const read = vi.spyOn(Storage.prototype, 'getItem');
+    const write = vi.spyOn(Storage.prototype, 'setItem');
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({ token: 'phone-csrf-nonce-not-the-backend-token' }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const connection = createBackendConnection('http://127.0.0.1:9999');
+    expect(isDeviceConnection()).toBe(true);
+    expect(connection.mode).toBe('phone');
+    expect(await connection.url()).toBe(window.location.origin);
+    const [first, second] = await Promise.all([connection.token(), connection.token()]);
+    expect(first).toBe('phone-csrf-nonce-not-the-backend-token');
+    expect(second).toBe(first);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledWith('/phone/session', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      redirect: 'error',
+    });
+    expect(read).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('revalidates after foreground resume without resending an API mutation', async () => {
+    vi.stubGlobal('piKit', undefined);
+    const marker = document.createElement('meta');
+    marker.name = 'pi-kit-connection';
+    marker.content = 'device';
+    document.head.append(marker);
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ token: 'persistent-phone-csrf-nonce' }));
+    vi.stubGlobal('fetch', fetch);
+    const connection = createBackendConnection();
+    expect(await connection.token()).toBe('persistent-phone-csrf-nonce');
+    await connection.resume?.();
+    expect(await connection.token()).toBe('persistent-phone-csrf-nonce');
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls.every(([url]) => url === '/phone/session')).toBe(true);
+  });
+
+  it('ignores the phone marker in the trusted Electron renderer', async () => {
+    const meta = document.createElement('meta');
+    meta.name = 'pi-kit-connection';
+    meta.content = 'device';
+    document.head.append(meta);
+    vi.stubGlobal('piKit', {
+      getBackendUrl: async () => 'http://127.0.0.1:1234',
+      getToken: async () => 'desktop-token',
+    });
+    const connection = createBackendConnection();
+    expect(isDeviceConnection()).toBe(false);
+    expect(await connection.token()).toBe('desktop-token');
+  });
+
+  it('retries a failed phone nonce request without falling back to dev token discovery', async () => {
+    vi.stubGlobal('piKit', undefined);
+    const meta = document.createElement('meta');
+    meta.name = 'pi-kit-connection';
+    meta.content = 'device';
+    document.head.append(meta);
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json({ token: 'short' }))
+      .mockResolvedValueOnce(Response.json({ token: 'valid-phone-csrf-nonce' }));
+    vi.stubGlobal('fetch', fetch);
+    const connection = createBackendConnection();
+    await expect(connection.token()).rejects.toThrow('Invalid phone session');
+    expect(await connection.token()).toBe('valid-phone-csrf-nonce');
+    expect(fetch.mock.calls.every(([url]) => url === '/phone/session')).toBe(true);
+  });
+
+  it('sends the phone nonce with its cookie while retaining replay headers and cancellation', async () => {
+    const connection: BackendConnection = {
+      mode: 'phone',
+      url: async () => window.location.origin,
+      token: async () => 'phone-nonce',
+    };
+    TestBed.configureTestingModule({ providers: [{ provide: BACKEND_CONNECTION, useValue: connection }] });
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetch);
+    const signal = new AbortController().signal;
+    await TestBed.inject(BackendService).fetch('/api/threads/events', {
+      signal,
+      headers: { 'x-pi-replay-cursor': 'g:1' },
+      credentials: 'omit',
+    });
+    const [, init] = fetch.mock.calls[0];
+    expect(init?.credentials).toBe('same-origin');
+    expect(init?.redirect).toBe('error');
+    expect(init?.signal).toBe(signal);
+    expect(new Headers(init?.headers).get('authorization')).toBe('Bearer phone-nonce');
+    expect(new Headers(init?.headers).get('x-pi-replay-cursor')).toBe('g:1');
+  });
 
   it('uses the provided connection, keeps headers and cancellation, and reads the token per request', async () => {
     const connection: BackendConnection = {

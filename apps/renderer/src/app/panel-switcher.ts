@@ -1,8 +1,9 @@
 import { Language, TranslocoPipe } from '@pi-kit/i18n';
+import { isLocalExecution } from '@pi-kit/api';
 import { CdkMenu, CdkMenuItemCheckbox, CdkMenuTrigger } from '@angular/cdk/menu';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { UiStore } from '@pi-kit/data-access';
-import { PkIcon, PkTip } from '@pi-kit/design-system';
+import { PkIcon, PkTip, PkSafeOverlay } from '@pi-kit/design-system';
 import { ThreadsStore } from '@pi-kit/threads/api';
 import { ShellStore } from './shell.store';
 
@@ -13,7 +14,7 @@ import { ShellStore } from './shell.store';
  */
 @Component({
   selector: 'pk-panel-switcher',
-  imports: [CdkMenu, CdkMenuItemCheckbox, CdkMenuTrigger, PkIcon, PkTip, TranslocoPipe],
+  imports: [CdkMenu, CdkMenuItemCheckbox, CdkMenuTrigger, PkIcon, PkTip, PkSafeOverlay, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="panel-buttons pk-seg pk-seg-icons" role="group" [attr.aria-label]="'shell.app.sidePanel' | transloco">
@@ -43,7 +44,7 @@ import { ShellStore } from './shell.store';
       <pk-icon name="more" size="18" />
     </button>
     <ng-template #panelMenu>
-      <div cdkMenu class="panel-menu" [attr.aria-label]="'shell.app.sidePanels' | transloco">
+      <div cdkMenu pkSafeOverlay class="panel-menu" [attr.aria-label]="'shell.app.sidePanels' | transloco">
         @for (action of actions(); track action.id) {
           <button
             type="button"
@@ -121,7 +122,7 @@ export class PanelSwitcher {
   protected readonly bus = inject(UiStore);
   private readonly shell = inject(ShellStore);
   private readonly threads = inject(ThreadsStore);
-  private readonly browserAvailable = !!window.piKit?.setBrowserViewport;
+  private readonly browserAvailable = isLocalExecution() && !!window.piKit?.setBrowserViewport;
   protected readonly actions = computed(() => [
     {
       id: 'tree' as const,

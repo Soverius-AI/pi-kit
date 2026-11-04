@@ -19,7 +19,8 @@ export type SettingsSectionId =
   | 'attendant'
   | 'advanced'
   | 'voice'
-  | 'computer-use';
+  | 'computer-use'
+  | 'remote-access';
 export type SettingsNavGroup = 'App' | 'pi' | 'Workspace';
 
 export interface SettingsSection {
@@ -48,6 +49,12 @@ export const settingsSections = (translate: Translate): readonly SettingsSection
     label: translate('shared.catalog.keybindings'),
     group: 'App',
     intro: translate('shared.catalog.piKitSShortcutsAndPiS'),
+  },
+  {
+    id: 'remote-access',
+    label: translate('shared.catalog.remoteAccess'),
+    group: 'App',
+    intro: translate('shared.catalog.remoteAccessIntro'),
   },
   {
     id: 'models',
@@ -877,6 +884,42 @@ export const settingsCatalog = (translate: Translate): readonly SettingEntry[] =
     keywords: 'voice privacy network offline local microphone',
   },
 
+  {
+    id: 'remote-access',
+    section: 'remote-access',
+    group: translate('shared.catalog.remoteAccess'),
+    name: translate('shared.catalog.remoteAccess'),
+    description: translate('shared.catalog.remoteAccessIntro'),
+    storage: 'pi-kit',
+    keywords: 'phone mobile tailscale pairing approve revoke remote network desktop',
+  },
+  {
+    id: 'remote-access-port',
+    section: 'remote-access',
+    group: translate('shared.catalog.remoteAccess'),
+    name: translate('settings.remoteAccessSection.portLabel'),
+    description: translate('settings.remoteAccessSection.portHint'),
+    storage: 'pi-kit',
+    keywords: 'port https tailscale serve 8443',
+  },
+  {
+    id: 'environment-name',
+    section: 'remote-access',
+    group: translate('settings.environmentSection.title'),
+    name: translate('settings.environmentSection.name'),
+    description: translate('settings.environmentSection.hint'),
+    storage: 'pi-kit',
+    keywords: 'environment instance name rename identity',
+  },
+  {
+    id: 'environment-peers',
+    section: 'remote-access',
+    group: translate('environments.pairing.title'),
+    name: translate('environments.pairing.title'),
+    description: translate('environments.pairing.trust'),
+    storage: 'pi-kit',
+    keywords: 'environment instance peer pair invitation connect unpair relay',
+  },
   // ---- Computer use (@pi-kit/computer-use, packages/pi-computer-use)
   {
     id: 'computer-use',

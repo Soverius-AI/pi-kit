@@ -20,7 +20,7 @@ import {
   ThreadSummarySchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Fails, Responds, Streams } from '../contract';
+import { Fails, Responds, Streams, Remote } from '../contract';
 import { FeedbackRepository } from '../db/feedback.repository';
 import { ThreadStatusService } from './thread-status.service';
 import { ThreadsService } from './threads.service';
@@ -48,6 +48,7 @@ export class ThreadsController {
     private readonly status: ThreadStatusService,
   ) {}
 
+  @Remote()
   @Get('threads')
   @ApiOperation({
     summary: 'List threads',
@@ -67,6 +68,7 @@ export class ThreadsController {
    * changes (a run starts or ends, a question opens or is answered, the attendant writes a summary), `gone` for a deleted thread, `list` when
    * threads or projects were added, removed, renamed or reordered, and a `ping` every 20 s. It must be declared before `threads/:id`.
    */
+  @Remote()
   @Get('threads/events')
   @ApiOperation({
     summary: 'Stream thread status',
@@ -93,6 +95,7 @@ export class ThreadsController {
     });
   }
 
+  @Remote()
   @Post('threads')
   @ApiOperation({
     summary: 'Create a thread',
@@ -109,6 +112,7 @@ export class ThreadsController {
   }
 
   /** Says where a thread without a message runs: the folder on another branch, or a new worktree (the Where row of the new-thread page). */
+  @Remote()
   @Post('threads/:id/placement')
   @HttpCode(200)
   @ApiOperation({
@@ -130,6 +134,7 @@ export class ThreadsController {
     return this.threads.place(id, body);
   }
 
+  @Remote()
   @Get('threads/:id')
   @ApiOperation({ summary: 'Get a thread', description: 'Returns one thread with the path of its session file.' })
   @ApiParam(THREAD_ID)
@@ -140,6 +145,7 @@ export class ThreadsController {
   }
 
   /** The user looked at the thread: clears its unread dot and "cli" badge. */
+  @Remote()
   @Post('threads/:id/seen')
   @HttpCode(204)
   @ApiOperation({
@@ -153,6 +159,7 @@ export class ThreadsController {
     this.threads.markSeen(id);
   }
 
+  @Remote()
   @Patch('threads/:id')
   @ApiOperation({
     summary: 'Change a thread',
@@ -170,6 +177,7 @@ export class ThreadsController {
   }
 
   /** Deletes the thread. `?worktree=remove` also removes its worktree (409 while it holds uncommitted changes), `?worktree=force` whatever it holds; the default keeps it. */
+  @Remote()
   @Delete('threads/:id')
   @HttpCode(204)
   @ApiOperation({
@@ -190,6 +198,7 @@ export class ThreadsController {
     await this.threads.remove(id, query.worktree);
   }
 
+  @Remote()
   @Post('threads/:id/fork')
   @ApiOperation({
     summary: 'Fork a thread',
@@ -206,6 +215,7 @@ export class ThreadsController {
     return this.threads.fork(id, body);
   }
 
+  @Remote()
   @Post('threads/:id/clone')
   @ApiOperation({
     summary: 'Clone a thread',
@@ -222,6 +232,7 @@ export class ThreadsController {
   }
 
   /** The thumbs up / down the user gave to assistant messages of the thread. */
+  @Remote()
   @Get('threads/:id/feedback')
   @ApiOperation({
     summary: 'List message ratings',
@@ -236,6 +247,7 @@ export class ThreadsController {
   }
 
   /** Sets, changes or (`rating: null`) clears one message's rating; answers with the thread's ratings. */
+  @Remote()
   @Put('threads/:id/feedback')
   @ApiOperation({
     summary: 'Rate a message',

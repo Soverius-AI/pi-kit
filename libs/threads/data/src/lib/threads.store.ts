@@ -3,6 +3,7 @@ import { patchState, signalStore, withComputed, withHooks, withMethods, withProp
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import {
   ApiClient,
+  WORKBENCH,
   appSettingsSetSetting,
   appSettingsSettings,
   threadsClone,
@@ -20,7 +21,13 @@ import {
   workspacesPatchWorkspace,
   workspacesWorkspaces,
 } from '@pi-kit/api';
-import { CONTEXT_POLICY, withLatestRequest, withRequestStatus, withSelection } from '@pi-kit/data-access';
+import {
+  CONTEXT_POLICY,
+  EnvironmentsStore,
+  withLatestRequest,
+  withRequestStatus,
+  withSelection,
+} from '@pi-kit/data-access';
 import type {
   NewLocal,
   NewWorktree,
@@ -139,6 +146,7 @@ export const ThreadsStore = signalStore(
   withFolderChanges(),
   withMethods((store) => {
     const api = inject(ApiClient);
+    const workbench = inject(WORKBENCH);
     const trust = inject(TrustStore);
     const destroyRef = inject(DestroyRef);
     let selectToken = 0;
@@ -146,6 +154,23 @@ export const ThreadsStore = signalStore(
     let timer: ReturnType<typeof setInterval> | undefined;
     let polls = 0;
     destroyRef.onDestroy(() => clearInterval(timer));
+
+    const rememberRef = (threadId?: string, cwd = store.workspace()): void => {
+      const instanceId = workbench.ownerId ?? store.workspaces()[0]?.instanceId;
+      if (instanceId)
+        EnvironmentsStore.remember({ instanceId, ...(cwd ? { cwd } : {}), ...(threadId ? { threadId } : {}) });
+    };
+    const checkOwners = (values: { instanceId?: string }[]): void => {
+      if (
+        workbench.ownerId &&
+        values.some((value) =>
+          workbench.remote
+            ? value.instanceId !== workbench.ownerId
+            : !!value.instanceId && value.instanceId !== workbench.ownerId,
+        )
+      )
+        throw new Error('Execution owner mismatch.');
+    };
 
     /** A write that should not interrupt the user when it fails: the selection is remembered, or it is not. */
     const remember = async (key: string, value: unknown): Promise<void> => {
@@ -181,10 +206,19 @@ export const ThreadsStore = signalStore(
             unwrap(workspacesWorkspaces({ client: api.client, signal: undefined })),
             unwrap(appSettingsSettings({ client: api.client })),
           ]);
+          checkOwners(workspaces);
           patchState(store, { workspaces });
-          const savedWorkspace = typeof saved['workspace'] === 'string' ? saved['workspace'] : undefined;
+          const savedWorkspace =
+            workbench.selection?.cwd ?? (typeof saved['workspace'] === 'string' ? saved['workspace'] : undefined);
           patchState(store, { workspace: workspaces.find((w) => w.cwd === savedWorkspace)?.cwd ?? workspaces[0]?.cwd });
-          initialSelection = { threadId: typeof saved['thread'] === 'string' ? saved['thread'] : undefined, token };
+          initialSelection = {
+            threadId: workbench.selection
+              ? workbench.selection.threadId
+              : typeof saved['thread'] === 'string'
+                ? saved['thread']
+                : undefined,
+            token,
+          };
           await methods.refresh();
           store.requestDone();
         } catch (error) {
@@ -215,6 +249,8 @@ export const ThreadsStore = signalStore(
           {
             valid: () => showArchived === store.showArchived(),
             next: ([threads, workspaces]) => {
+              checkOwners(threads);
+              checkOwners(workspaces);
               patchState(store, { threads, workspaces });
               // Startup's read may be superseded by a status-channel refresh. Restore only after the winning read publishes the list.
               const restore = initialSelection;
@@ -236,6 +272,7 @@ export const ThreadsStore = signalStore(
       async selectWorkspace(cwd: string): Promise<void> {
         if (cwd === store.workspace() && !store.selectedId()) return;
         patchState(store, { workspace: cwd, selectedId: undefined });
+        rememberRef(undefined, cwd);
         selectToken += 1;
         void remember('workspace', cwd);
         void remember('thread', null);
@@ -260,6 +297,7 @@ export const ThreadsStore = signalStore(
         const token = ++selectToken;
         if (!id) {
           store.setSelected(undefined);
+          rememberRef();
           void remember('thread', null);
           return;
         }
@@ -267,6 +305,7 @@ export const ThreadsStore = signalStore(
         void (cwd ? trust.ensure(cwd) : Promise.resolve()).then(() => {
           if (token !== selectToken) return;
           store.setSelected(id);
+          rememberRef(id, cwd);
           if (cwd && cwd !== store.workspace()) {
             patchState(store, { workspace: cwd });
             void remember('workspace', cwd);

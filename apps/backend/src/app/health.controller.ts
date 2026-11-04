@@ -2,7 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { type Health, HealthSchema } from '@pi-kit/protocol';
 import { BgAgentsService } from '../bg-agents/bg-agents.service';
-import { Responds } from '../contract';
+import { Responds, Remote } from '../contract';
 import { BOOT_ID, STARTED_AT } from './boot';
 
 /** `GET /api/health`: the backend is up, its boot id and start time, and whether it runs background agents. */
@@ -11,6 +11,7 @@ import { BOOT_ID, STARTED_AT } from './boot';
 export class HealthController {
   constructor(private readonly agents: BgAgentsService) {}
 
+  @Remote()
   @Get()
   @ApiOperation({
     summary: 'Check the backend',

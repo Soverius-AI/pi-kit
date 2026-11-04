@@ -17,6 +17,13 @@ const sidebars: SidebarsConfig = {
     'plugins',
     {
       type: 'category',
+      label: 'Remote access',
+      collapsed: false,
+      link: { type: 'doc', id: 'remote-access' },
+      items: ['remote-onboarding-site'],
+    },
+    {
+      type: 'category',
       label: 'Decision records',
       collapsed: true,
       link: { type: 'doc', id: 'adr/README' },

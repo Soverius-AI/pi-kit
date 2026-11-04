@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { BackendService, BackendStatus } from '@pi-kit/api';
+import { BACKEND_CONNECTION, BackendService, BackendStatus } from '@pi-kit/api';
 import { Subject } from 'rxjs';
 import { HealthStore } from './health.store';
 import { DEFAULT_RENDERER_POLICY, RENDERER_POLICY } from './renderer-policy';
@@ -10,6 +10,7 @@ describe('HealthStore', () => {
   let answer: () => Response;
   const channel = new Subject<BackendStatus>();
   const fakeBackend = { fetch: vi.fn(async () => answer()) };
+  const resume = vi.fn(async () => undefined);
   const ok = (bootId: string) => () => new Response(JSON.stringify({ status: 'ok', bootId }), { status: 200 });
   const make = async () => {
     const store = TestBed.inject(HealthStore);
@@ -21,10 +22,12 @@ describe('HealthStore', () => {
     vi.useFakeTimers();
     answer = ok('boot-1');
     fakeBackend.fetch.mockClear();
+    resume.mockClear();
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
         { provide: BackendService, useValue: fakeBackend },
+        { provide: BACKEND_CONNECTION, useValue: { resume } },
         { provide: BACKEND_STATUS, useValue: channel },
       ],
     });
@@ -35,6 +38,22 @@ describe('HealthStore', () => {
     const health = await make();
     expect(health.state()).toBe('ok');
     expect(health.epoch()).toBe(0);
+  });
+
+  it('revalidates once on foreground/online and reconnects suspended streams without a boot change', async () => {
+    const health = await make();
+    const before = fakeBackend.fetch.mock.calls.length;
+    window.dispatchEvent(new Event('online'));
+    window.dispatchEvent(new Event('pageshow'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(fakeBackend.fetch).toHaveBeenCalledTimes(before + 1);
+    expect(health.epoch()).toBe(1);
+    TestBed.resetTestingModule();
+    window.dispatchEvent(new Event('online'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(resume).toHaveBeenCalledTimes(1);
   });
 
   it('allows 30 seconds for a health response', async () => {

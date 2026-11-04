@@ -114,6 +114,7 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     const counts = new Map<string, number>();
     for (const row of this.threads.list()) counts.set(row.cwd, (counts.get(row.cwd) ?? 0) + 1);
     return this.meta.listWorkspaces().map((w) => ({
+      instanceId: this.meta.instanceId,
       cwd: w.cwd,
       name: w.name,
       lastOpenedAt: w.lastOpenedAt,
@@ -655,6 +656,7 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     const state = this.status.stateOf(row, lookups);
     const sourceThreadId = learning[row.id];
     return {
+      instanceId: this.meta.instanceId,
       id: row.id,
       cwd: row.cwd,
       title: row.title,

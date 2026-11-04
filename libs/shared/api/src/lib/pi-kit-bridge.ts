@@ -1,3 +1,6 @@
+// eslint-disable-next-line @nx/enforce-module-boundaries -- Type-only Electron IPC contract; protocol validators never enter the transport runtime.
+import type { RemoteAccessSetupAction, RemoteAccessStatus } from '@pi-kit/protocol';
+
 /** API exposed by apps/desktop/src/preload.ts through contextBridge. */
 /** The backend watchdog's state (apps/desktop/src/watchdog.ts). */
 export interface BackendStatus {
@@ -43,6 +46,18 @@ export interface PiKitBridge {
   }): Promise<void>;
   /** User opt-in for invalid certificates on literal loopback hosts, in artifact sessions only. Closes pages to clear cached trust. */
   setBrowserLocalCertificates?(enabled: boolean): Promise<void>;
+  /** Read-only Tailscale discovery. Does not connect the VPN or publish anything. */
+  getRemoteAccessStatus?(): Promise<RemoteAccessStatus>;
+  /** Open only the app-owned Tailscale application/settings/validated approval page. */
+  openRemoteAccessSetup?(action: RemoteAccessSetupAction): Promise<void>;
+  /** Explicitly publish the authenticated phone gateway. */
+  startRemoteAccess?(port?: number): Promise<RemoteAccessStatus>;
+  /** Stop only pi-kit's phone gateway, leaving other Tailscale services intact. */
+  stopRemoteAccess?(): Promise<RemoteAccessStatus>;
+  beginRemotePairing?(): Promise<RemoteAccessStatus>;
+  approveRemotePairing?(id: string): Promise<RemoteAccessStatus>;
+  rejectRemotePairing?(id: string): Promise<RemoteAccessStatus>;
+  revokeRemoteDevice?(id: string): Promise<RemoteAccessStatus>;
   getBackendUrl(): Promise<string>;
   getToken(): Promise<string>;
   /** Async native UI cache; undefined in development, where browser storage is used. */

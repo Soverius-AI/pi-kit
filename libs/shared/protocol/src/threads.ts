@@ -100,6 +100,8 @@ export type ThreadsEvent = z.infer<typeof ThreadsEventSchema>;
 
 export const ThreadSummarySchema = z
   .object({
+    /** Stable owner; optional only for pre-federation wire compatibility. New hosts always supply it. */
+    instanceId: z.uuid().optional(),
     /** The pi session id. */
     id: z.string(),
     /** The project's folder; for a thread in a worktree the main checkout, so the thread stays under its project. */
@@ -185,6 +187,8 @@ export const CloneThreadSchema = z
 /** A project of the sidebar: a known folder. */
 export const WorkspaceSchema = z
   .object({
+    /** This project and all its threads execute on this owner, not a mutable UI default. */
+    instanceId: z.uuid().optional(),
     cwd: z.string(),
     name: z.string(),
     lastOpenedAt: z.number(),
