@@ -21,14 +21,4 @@ Every `v*` tag deploys the site: the `deploy-onboarding` job in `.github/workflo
 
 The Coolify application `onboarding` (`wtymbsuvufvd9wtvpiauejrs`) lives in the project `remote.pi-kit.dev` on the `localhost` server of https://appz.coderabbit.at: public repository `Soverius-AI/pi-kit`, branch `main`, Dockerfile build pack with `apps/onboarding-site/Dockerfile` from base directory `/`, port 8080, domain `https://remote.pi-kit.dev`, no auto deploy. The instance API is enabled and the token `github-release remote.pi-kit.dev` (write and deploy, scoped to the `remote.pi-kit.dev` project only, no expiry) is stored with the URL and the application UUID as the repository secrets `COOLIFY_URL`, `COOLIFY_TOKEN` and `COOLIFY_ONBOARDING_UUID`.
 
-Before the first tag deploy, remove the interim container so the domain has one router: `ssh root@46.224.163.73 'docker rm -f pi-kit-onboarding'`. To rotate the token, create a new one under Keys & Tokens in Coolify and replace `COOLIFY_TOKEN`.
-
-### Interim push-to-deploy
-
-Until the Coolify application exists, a build can still be pushed by hand:
-
-```sh
-pnpm run deploy:onboarding
-```
-
-`deploy:onboarding` builds the app locally and copies `dist/apps/onboarding-site/browser`, `nginx.conf` and `compose.yaml` over SSH into `/srv/pi-kit-onboarding/site`, then runs `docker compose up` there. The container is the stock `nginx-unprivileged` image with the build output bind-mounted; it joins the `coolify` network with Traefik labels for `remote.pi-kit.dev`, so Coolify's proxy issues the certificate. Nothing needs to be committed.
+To rotate the token, create a new one under Keys & Tokens in Coolify and replace `COOLIFY_TOKEN`.
