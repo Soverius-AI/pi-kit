@@ -150,8 +150,16 @@ function installNotarizationRecovery(context, env = process.env, overrides = {})
   wrappedHelpers.add(helper);
 }
 
-function verify(file, diskImage = false) {
-  execFileSync('xcrun', ['stapler', 'validate', file], { stdio: 'inherit' });
+/** Ticket delivery is a CloudKit request that can drop mid-check; the ticket itself is already attached. */
+async function verify(file, diskImage = false) {
+  for (let attempt = 1; ; attempt++) {
+    const validated = await runNotaryCommand(['stapler', 'validate', file], 45_000);
+    console.log(validated.output.trim());
+    if (validated.code === 0) break;
+    if (attempt === 3 || !transientNetworkFailure(validated.output))
+      throw new Error(`Could not validate the notarization ticket of ${file}.`);
+    await sleep(5_000 * attempt);
+  }
   execFileSync(
     'spctl',
     [
@@ -169,7 +177,7 @@ function afterSign(context) {
   if (!notarizationEnabled()) return;
   const app = join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
   execFileSync('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' });
-  verify(app);
+  return verify(app);
 }
 
 /** Also notarize the outer DMG, then refresh its update metadata after stapling changes its bytes. */
@@ -182,7 +190,7 @@ async function notarizeArtifact(event, env = process.env, overrides = {}) {
     overrides.blockmap ||
     createRequire(require.resolve('electron-builder'))('app-builder-lib/out/targets/blockmap/blockmap').buildBlockMap;
   await notarize(event.file);
-  verifyArtifact(event.file, true);
+  await verifyArtifact(event.file, true);
   if (event.updateInfo) event.updateInfo = await blockmap(event.file, 'gzip', `${event.file}.blockmap`);
   // artifactCreated (which writes latest-mac.yml) follows this hook, so it receives the final digest/size.
 }
