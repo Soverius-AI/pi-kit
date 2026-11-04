@@ -14,7 +14,10 @@ const { installNotarizationRecovery } = require('./mac-notarization.cjs');
 exports.default = async function afterPack(context) {
   const triple = `${context.electronPlatformName}-${Arch[context.arch]}`;
   const source = resolve(__dirname, '..', 'dist', 'stage', triple, 'backend');
-  if (!existsSync(join(source, 'main.js'))) throw new Error(`The backend for ${triple} is not staged at ${source}; run scripts/package-stage.mjs --target ${triple}.`);
+  if (!existsSync(join(source, 'main.js')))
+    throw new Error(
+      `The backend for ${triple} is not staged at ${source}; run scripts/package-stage.mjs --target ${triple}.`,
+    );
   const resources =
     context.electronPlatformName === 'darwin'
       ? join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')

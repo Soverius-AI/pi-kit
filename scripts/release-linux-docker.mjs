@@ -27,10 +27,15 @@ const { values } = parseArgs({
     shell: { type: 'boolean', default: false },
   },
 });
-const archs = { arm64: { docker: 'linux/arm64', appimage: 'arm64' }, x64: { docker: 'linux/amd64', appimage: 'x86_64' } };
+const archs = {
+  arm64: { docker: 'linux/arm64', appimage: 'arm64' },
+  x64: { docker: 'linux/amd64', appimage: 'x86_64' },
+};
 const arch = archs[values.arch];
 if (!arch) {
-  console.error(`Unknown --arch "${values.arch}". Usage: node scripts/release-linux-docker.mjs [--arch arm64|x64] [--dir] [--smoke] [--fresh] [--shell]`);
+  console.error(
+    `Unknown --arch "${values.arch}". Usage: node scripts/release-linux-docker.mjs [--arch arm64|x64] [--dir] [--smoke] [--fresh] [--shell]`,
+  );
   process.exit(2);
 }
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
@@ -44,14 +49,18 @@ const release = join(root, 'dist', 'release');
 
 const docker = (args, options = {}) => {
   const result = spawnSync('docker', args, { cwd: root, stdio: 'inherit', ...options });
-  if (result.error?.code === 'ENOENT') throw new Error('Docker is not installed (or not on PATH). Linux builds on a Mac run in a Linux container: install Docker Desktop, or build on a Linux host of the target CPU.');
+  if (result.error?.code === 'ENOENT')
+    throw new Error(
+      'Docker is not installed (or not on PATH). Linux builds on a Mac run in a Linux container: install Docker Desktop, or build on a Linux host of the target CPU.',
+    );
   if (result.status !== 0) throw new Error(`docker ${args.slice(0, 2).join(' ')} failed (exit code ${result.status})`);
   return result;
 };
 
 docker(['info'], { stdio: 'ignore' });
 if (values.fresh) {
-  for (const volume of [workVolume, cacheVolume]) spawnSync('docker', ['volume', 'rm', '-f', volume], { stdio: 'ignore' });
+  for (const volume of [workVolume, cacheVolume])
+    spawnSync('docker', ['volume', 'rm', '-f', volume], { stdio: 'ignore' });
 }
 
 // ---- the image: what the release workflow's Linux job installs on its runner
@@ -66,20 +75,37 @@ ENV NX_DAEMON=false CI=1 ELECTRON_CACHE=/root/.cache/electron
 WORKDIR /work
 `;
 console.log(`=== image ${image} (${arch.docker})`);
-docker(['build', '--platform', arch.docker, '--build-arg', `PNPM_VERSION=${pnpmVersion}`, '-t', image, '-'], { input: dockerfile, stdio: ['pipe', 'inherit', 'inherit'] });
+docker(['build', '--platform', arch.docker, '--build-arg', `PNPM_VERSION=${pnpmVersion}`, '-t', image, '-'], {
+  input: dockerfile,
+  stdio: ['pipe', 'inherit', 'inherit'],
+});
 
 // ---- the build, in a copy of the working tree that lives in the volume
 mkdirSync(release, { recursive: true });
 const tty = process.stdout.isTTY && process.stdin.isTTY;
 const runArgs = [
   // --init reaps what Xvfb and Electron leave behind; without it xvfb-run never returns as PID 1.
-  'run', '--rm', '--init', ...(tty ? ['-it'] : []), '--platform', arch.docker,
-  '-v', `${root}:/src:ro`, '-v', `${release}:/out`, '-v', `${workVolume}:/work`, '-v', `${cacheVolume}:/root/.cache`,
+  'run',
+  '--rm',
+  '--init',
+  ...(tty ? ['-it'] : []),
+  '--platform',
+  arch.docker,
+  '-v',
+  `${root}:/src:ro`,
+  '-v',
+  `${release}:/out`,
+  '-v',
+  `${workVolume}:/work`,
+  '-v',
+  `${cacheVolume}:/root/.cache`,
   image,
 ];
 const sync = `rsync -a --delete --exclude node_modules --exclude /dist --exclude /.git --exclude /.nx --exclude /.angular --exclude /.pnpm-store /src/ /work/`;
 if (values.shell) {
-  console.log(`\n=== shell in ${image}: the tree is in /work (synced from this checkout), dist/release of the host is /out`);
+  console.log(
+    `\n=== shell in ${image}: the tree is in /work (synced from this checkout), dist/release of the host is /out`,
+  );
   docker([...runArgs, 'bash', '-c', `${sync} && exec bash`]);
   process.exit(0);
 }
@@ -94,7 +120,11 @@ const steps = [
   'pnpm install --frozen-lockfile --store-dir /work/.pnpm-store',
   `node scripts/release.mjs --only linux-${values.arch}${values.dir ? ' --dir' : ''}`,
   // The container runs as root, which Electron only allows without its sandbox (the smoke test launches the real app).
-  ...(values.smoke && !values.dir ? [`ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/release-smoke.mjs dist/release/pi-kit-${pkg.version}-linux-${arch.appimage}.AppImage`] : []),
+  ...(values.smoke && !values.dir
+    ? [
+        `ELECTRON_DISABLE_SANDBOX=1 xvfb-run -a node scripts/release-smoke.mjs dist/release/pi-kit-${pkg.version}-linux-${arch.appimage}.AppImage`,
+      ]
+    : []),
   ...outputs,
 ];
 docker([...runArgs, 'bash', '-c', steps.join('\n')]);

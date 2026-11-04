@@ -16,9 +16,27 @@ import { AttendantService } from './attendant.service';
 import { cleanFollowUp, followUpPrompt } from './follow-up-text';
 import { FollowUpService } from './follow-up.service';
 
-const msg = (id: string, parentId: string | null, role: string, text: string): PiSessionEntry => ({ id, parentId, type: 'message', message: { role, content: [{ type: 'text', text }] } });
-const entries = [msg('u', null, 'user', 'Compare two approaches with independent reviewers'), msg('a', 'u', 'assistant', 'The reviewers have reported. '.repeat(30) + 'Both checks passed.')];
-const reviewer = (over: Partial<BgAgentRow> = {}): BgAgentRow => ({ id: 'reviewer', threadId: 't', name: 'reviewer', role: 'Review', brief: 'Check composer changes', status: 'done', report: 'No regressions found', ...over }) as BgAgentRow;
+const msg = (id: string, parentId: string | null, role: string, text: string): PiSessionEntry => ({
+  id,
+  parentId,
+  type: 'message',
+  message: { role, content: [{ type: 'text', text }] },
+});
+const entries = [
+  msg('u', null, 'user', 'Compare two approaches with independent reviewers'),
+  msg('a', 'u', 'assistant', 'The reviewers have reported. '.repeat(30) + 'Both checks passed.'),
+];
+const reviewer = (over: Partial<BgAgentRow> = {}): BgAgentRow =>
+  ({
+    id: 'reviewer',
+    threadId: 't',
+    name: 'reviewer',
+    role: 'Review',
+    brief: 'Check composer changes',
+    status: 'done',
+    report: 'No regressions found',
+    ...over,
+  }) as BgAgentRow;
 
 let dir: string;
 let db: DatabaseService;
@@ -52,31 +70,96 @@ beforeEach(() => {
   const path = join(dir, 't.jsonl');
   writeFileSync(path, '{}\n');
   rows.insertDraft({ id: 't', cwd: '/proj', sessionPath: path, title: 'A named thread' });
-  rows.upsertFromSession({ id: 't', cwd: '/proj', sessionPath: path, title: 'A named thread', preview: '', parentSessionPath: undefined, messageCount: 2, createdAt: 1, updatedAt: 2 }, 1);
-  settings = { ...DEFAULT_ATTENDANT_SETTINGS, enabled: true, followUpSuggestions: true, when: { onEnd: false, onInterrupt: false, everyMinutes: 0 } };
+  rows.upsertFromSession(
+    {
+      id: 't',
+      cwd: '/proj',
+      sessionPath: path,
+      title: 'A named thread',
+      preview: '',
+      parentSessionPath: undefined,
+      messageCount: 2,
+      createdAt: 1,
+      updatedAt: 2,
+    },
+    1,
+  );
+  settings = {
+    ...DEFAULT_ATTENDANT_SETTINGS,
+    enabled: true,
+    followUpSuggestions: true,
+    when: { onEnd: false, onInterrupt: false, everyMinutes: 0 },
+  };
   meta.setSetting('attendant', settings);
-  leaf = 'a'; agents = [reviewer()]; pending = []; queued = []; reply = 'Compare the two reviewer reports'; gate = undefined;
+  leaf = 'a';
+  agents = [reviewer()];
+  pending = [];
+  queued = [];
+  reply = 'Compare the two reviewer reports';
+  gate = undefined;
   ask.mockReset().mockImplementation(async () => {
     await gate;
     return { text: reply, model: 'test/model', inputTokens: 90, outputTokens: 8, cost: 0.01 };
   });
-  const model = { calls: 0, resolve: async () => ({ provider: 'test', id: 'model', price: 1, reasoning: false }), ask } as unknown as AttendantModelPort;
+  const model = {
+    calls: 0,
+    resolve: async () => ({ provider: 'test', id: 'model', price: 1, reasoning: false }),
+    ask,
+  } as unknown as AttendantModelPort;
   const threads = { treeSource: async () => ({ entries, leafId: leaf }) };
   const status = { touch, touchAll: vi.fn() };
   const sessions = {
-    has: () => true, isStreaming: () => false, queue: () => ({ steering: queued, followUp: [] }), pendingDialogs: () => pending,
-    onTreeChanged: (fn: typeof treeChanged) => { treeChanged = fn; return () => undefined; },
+    has: () => true,
+    isStreaming: () => false,
+    queue: () => ({ steering: queued, followUp: [] }),
+    pendingDialogs: () => pending,
+    onTreeChanged: (fn: typeof treeChanged) => {
+      treeChanged = fn;
+      return () => undefined;
+    },
     onDialogsChanged: () => () => undefined,
   };
-  const background = { list: () => agents, userQuestions: () => [], state: () => ({ enabled: true }), onChange: (fn: typeof agentsChanged) => { agentsChanged = fn; return () => undefined; } };
-  attendant = new AttendantService(meta, repo, threads as never, rows, status as never, events, sessions as never, model, {} as never);
-  service = new FollowUpService(attendant, repo, events, rows, threads as never, sessions as never, background as never, meta, status as never, { state: async () => ({ status: 'trusted' }) } as never);
+  const background = {
+    list: () => agents,
+    userQuestions: () => [],
+    state: () => ({ enabled: true }),
+    onChange: (fn: typeof agentsChanged) => {
+      agentsChanged = fn;
+      return () => undefined;
+    },
+  };
+  attendant = new AttendantService(
+    meta,
+    repo,
+    threads as never,
+    rows,
+    status as never,
+    events,
+    sessions as never,
+    model,
+    {} as never,
+  );
+  service = new FollowUpService(
+    attendant,
+    repo,
+    events,
+    rows,
+    threads as never,
+    sessions as never,
+    background as never,
+    meta,
+    status as never,
+    { state: async () => ({ status: 'trusted' }) } as never,
+  );
   service.onModuleInit();
-  events.beginRun('t', 'r1'); events.endRun('r1', 'finished');
+  events.beginRun('t', 'r1');
+  events.endRun('r1', 'finished');
 });
 
 afterEach(() => {
-  service.onModuleDestroy(); attendant.onModuleDestroy(); db.onApplicationShutdown();
+  service.onModuleDestroy();
+  attendant.onModuleDestroy();
+  db.onApplicationShutdown();
   rmSync(dir, { recursive: true, force: true });
   Logger.overrideLogger(['log', 'warn', 'error']);
 });
@@ -97,7 +180,18 @@ describe('contextual follow-ups', () => {
     expect(ask).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['off', 'feature-off', 'cap', 'project-off', 'archived', 'failed', 'active-agent', 'blocked-agent', 'dialog', 'queue'])('makes no model call for %s', async (reason) => {
+  it.each([
+    'off',
+    'feature-off',
+    'cap',
+    'project-off',
+    'archived',
+    'failed',
+    'active-agent',
+    'blocked-agent',
+    'dialog',
+    'queue',
+  ])('makes no model call for %s', async (reason) => {
     if (reason === 'off') attendant.patch({ enabled: false });
     if (reason === 'feature-off') attendant.patch({ followUpSuggestions: false });
     if (reason === 'cap') attendant.patch({ dailyCostCap: 0 });
@@ -115,9 +209,15 @@ describe('contextual follow-ups', () => {
 
   it('treats SKIP as a normal paid result and does not retry it', async () => {
     reply = 'SKIP';
-    await service.generate('t'); await service.generate('t');
+    await service.generate('t');
+    await service.generate('t');
     expect(repo.openSuggestions('t')).toEqual([]);
-    expect(repo.actions()[0]).toMatchObject({ kind: 'prompt', status: 'done', text: 'No clear follow-up.', cost: 0.01 });
+    expect(repo.actions()[0]).toMatchObject({
+      kind: 'prompt',
+      status: 'done',
+      text: 'No clear follow-up.',
+      cost: 0.01,
+    });
     expect(ask).toHaveBeenCalledTimes(1);
   });
 
@@ -155,10 +255,14 @@ describe('contextual follow-ups', () => {
 
   it('drops an in-flight result after a branch changes and still accounts for its cost', async () => {
     let release!: () => void;
-    gate = new Promise<void>((resolve) => { release = resolve; });
+    gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const request = service.generate('t');
     await vi.waitFor(() => expect(ask).toHaveBeenCalled());
-    leaf = 'u'; treeChanged('t'); release();
+    leaf = 'u';
+    treeChanged('t');
+    release();
     await request;
     expect(repo.openSuggestions('t')).toEqual([]);
     expect(repo.usageSince(0).cost).toBe(0.01);
@@ -172,11 +276,16 @@ describe('contextual follow-ups', () => {
 });
 
 describe('follow-up output and bounded context', () => {
-  it.each(['SKIP', 'Prompt: run tests', 'I can review it', 'one\ntwo', '!dangerous-command', 'a'.repeat(161)])('rejects %s', (value) => expect(cleanFollowUp(value)).toBeUndefined());
+  it.each(['SKIP', 'Prompt: run tests', 'I can review it', 'one\ntwo', '!dangerous-command', 'a'.repeat(161)])(
+    'rejects %s',
+    (value) => expect(cleanFollowUp(value)).toBeUndefined(),
+  );
   it('includes capability restrictions and bounds agent reports', () => {
     const prompt = followUpPrompt(entries, 'a', [reviewer({ report: 'x'.repeat(100_000) })], false);
     expect(JSON.parse(prompt.user).backgroundAgentsEnabled).toBe(false);
     expect(prompt.user.length).toBeLessThan(8000);
-    expect(cleanFollowUp('Have an independent agent review this approach')).toBe('Have an independent agent review this approach');
+    expect(cleanFollowUp('Have an independent agent review this approach')).toBe(
+      'Have an independent agent review this approach',
+    );
   });
 });

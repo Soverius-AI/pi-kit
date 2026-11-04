@@ -25,7 +25,8 @@ const spawned = [];
 async function ensureBackend() {
   const up = async () => {
     try {
-      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })).ok;
+      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } }))
+        .ok;
     } catch {
       return false;
     }
@@ -33,7 +34,13 @@ async function ensureBackend() {
   if (await up()) return;
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: 'ignore',
     detached: true,
   });
@@ -44,7 +51,11 @@ async function ensureBackend() {
 
 async function call(method, path, body) {
   const { token } = await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${env.api}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const res = await fetch(`${env.api}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
   const text = await res.text();
   return { status: res.status, body: text ? JSON.parse(text) : undefined };
 }
@@ -110,7 +121,12 @@ async function send(text) {
 
 /** Waits until the element with this test id reads exactly `expected` (the page draws a moment after the click). */
 const waitText = (id, expected, timeout = 5000) =>
-  app.page.waitForFunction(([testId, want]) => (document.querySelector(`[data-testid="${testId}"]`)?.textContent ?? '').trim().replace(/\s+/g, ' ') === want, [id, expected], { timeout });
+  app.page.waitForFunction(
+    ([testId, want]) =>
+      (document.querySelector(`[data-testid="${testId}"]`)?.textContent ?? '').trim().replace(/\s+/g, ' ') === want,
+    [id, expected],
+    { timeout },
+  );
 
 const rename = async (id, title) => {
   await call('PATCH', `/api/threads/${id}`, { title });
@@ -128,7 +144,9 @@ describe('the setup scripts of a project', () => {
     const workspace = async () => (await api('/api/workspaces')).find((w) => w.name === NAME).worktree;
     assert.deepEqual((await workspace()).setupScripts, []);
     writeFileSync(join(project, 'pnpm-lock.yaml'), '');
-    assert.deepEqual((await workspace()).setupScripts, [{ id: 'pnpm', name: 'pnpm', command: 'pnpm install --frozen-lockfile' }]);
+    assert.deepEqual((await workspace()).setupScripts, [
+      { id: 'pnpm', name: 'pnpm', command: 'pnpm install --frozen-lockfile' },
+    ]);
     assert.equal((await workspace()).setup, null, 'a suggestion is not a saved setting');
     rmSync(join(project, 'pnpm-lock.yaml'));
     writeFileSync(join(project, 'package-lock.json'), '{}');
@@ -187,16 +205,25 @@ describe('a folder with uncommitted files', () => {
     assert.match(await app.page.getByTestId('where-from').innerText(), /the folder as it is/);
     await develop.click({ force: true });
     await app.h.settle(300);
-    assert.equal((await app.page.getByTestId('where-branch-button').innerText()).trim(), 'main', 'a disabled entry does nothing');
+    assert.equal(
+      (await app.page.getByTestId('where-branch-button').innerText()).trim(),
+      'main',
+      'a disabled entry does nothing',
+    );
     // The same rule on the server, for a request that does not come from the row.
     const refused = await call('POST', '/api/threads', { cwd: project, local: { branch: 'develop' } });
     assert.equal(refused.status, 409);
-    assert.match(refused.body.detail ?? refused.body.message ?? JSON.stringify(refused.body), /1 uncommitted file\. Stash or commit it, then switch to develop/);
+    assert.match(
+      refused.body.detail ?? refused.body.message ?? JSON.stringify(refused.body),
+      /1 uncommitted file\. Stash or commit it, then switch to develop/,
+    );
     const placed = await call('POST', `/api/threads/${empty.id}/placement`, { local: { branch: 'develop' } });
     assert.equal(placed.status, 409);
     assert.equal(branchHere(), 'main');
     // Staying where it is needs no permission.
-    await call('POST', `/api/threads/${empty.id}/placement`, { local: { branch: 'main' } }).then((r) => assert.equal(r.status, 200));
+    await call('POST', `/api/threads/${empty.id}/placement`, { local: { branch: 'main' } }).then((r) =>
+      assert.equal(r.status, 200),
+    );
     await app.page.keyboard.press('Escape');
   });
 
@@ -219,7 +246,7 @@ describe('a worktree from the Where row', () => {
   let path;
   const TITLE = 'Carried changes';
 
-  it('carries the folder\'s uncommitted changes, is named from the first message, and leaves the folder as it was', async () => {
+  it("carries the folder's uncommitted changes, is named from the first message, and leaves the folder as it was", async () => {
     writeFileSync(join(project, 'README.md'), '# where-row\n\nEdited but not committed.\n');
     const status = gitHere('status', '--porcelain');
     assert.equal(status.split('\n').length, 2);
@@ -242,7 +269,10 @@ describe('a worktree from the Where row', () => {
     await app.page.getByTestId('where-carry').check();
     await app.page.getByTestId('where-remember').check();
     await send('Say ok in one short sentence.');
-    const thread = await eventually(async () => (await threads()).find((t) => t.id === empty.id && t.worktree?.exists), 'the thread in its worktree');
+    const thread = await eventually(
+      async () => (await threads()).find((t) => t.id === empty.id && t.worktree?.exists),
+      'the thread in its worktree',
+    );
     id = thread.id;
     path = thread.worktree.path;
     assert.equal(thread.worktree.branch, 'pi-kit/say-ok-in-one-short-sentence');
@@ -258,7 +288,7 @@ describe('a worktree from the Where row', () => {
     await rowOf(TITLE).getByTestId('worktree-badge').waitFor();
   });
 
-  it('Remember made Worktree, branches named from the message and carrying the changes the project\'s default', async () => {
+  it("Remember made Worktree, branches named from the message and carrying the changes the project's default", async () => {
     const settings = (await api('/api/workspaces')).find((w) => w.name === NAME).worktree;
     assert.equal(settings.start, 'worktree');
     assert.equal(settings.carryChanges, 'always');
@@ -279,7 +309,10 @@ describe('a worktree from the Where row', () => {
     await waitText('where-branch-button', 'detached');
     assert.match(await app.page.getByTestId('where-hint').innerText(), /detached checkout from main/);
     await send('Say ok in one short word.');
-    const thread = await eventually(async () => (await threads()).find((t) => t.id === empty.id && t.worktree?.exists), 'the detached thread');
+    const thread = await eventually(
+      async () => (await threads()).find((t) => t.id === empty.id && t.worktree?.exists),
+      'the detached thread',
+    );
     assert.equal(thread.worktree.branch, null);
     assert.equal(thread.worktree.detached, true);
     assert.equal(gitIn(thread.worktree.path, 'rev-parse', '--abbrev-ref', 'HEAD').trim(), 'HEAD');
@@ -294,7 +327,10 @@ describe('a worktree from the Where row', () => {
     await dialog.waitFor();
     await dialog.getByRole('textbox').fill('feature/loose-idea');
     await dialog.getByRole('button', { name: 'Save' }).click();
-    await eventually(async () => (await threads()).find((t) => t.id === empty.id)?.worktree?.branch === 'feature/loose-idea', 'the branch to be created');
+    await eventually(
+      async () => (await threads()).find((t) => t.id === empty.id)?.worktree?.branch === 'feature/loose-idea',
+      'the branch to be created',
+    );
     assert.equal(gitIn(thread.worktree.path, 'rev-parse', '--abbrev-ref', 'HEAD').trim(), 'feature/loose-idea');
     assert.ok(!(await threads()).find((t) => t.id === empty.id).worktree.detached);
   });
@@ -308,7 +344,10 @@ describe('a worktree from the Where row', () => {
     const dialog = app.page.getByTestId('handoff-dialog');
     await dialog.waitFor();
     await app.page.getByTestId('handoff-blocked').waitFor();
-    assert.match(await app.page.getByTestId('handoff-blocked').innerText(), /The folder has 2 uncommitted files\. Commit or stash them, then hand off\./);
+    assert.match(
+      await app.page.getByTestId('handoff-blocked').innerText(),
+      /The folder has 2 uncommitted files\. Commit or stash them, then hand off\./,
+    );
     assert.equal(await app.page.getByTestId('do-handoff').isDisabled(), true);
     const refused = await call('POST', `/api/threads/${id}/worktree/handoff`, { to: 'local', remove: true });
     assert.equal(refused.status, 409);
@@ -318,8 +357,15 @@ describe('a worktree from the Where row', () => {
     gitHere('stash', 'push', '--include-untracked', '-m', 'the copies');
     await threadMenu(TITLE, /Hand off to local/);
     await app.page.getByTestId('handoff-summary').waitFor();
-    assert.match(await app.page.getByTestId('handoff-summary').innerText(), /The folder switches to pi-kit\/say-ok-in-one-short-sentence/);
-    assert.equal(await app.page.getByTestId('handoff-remove').isChecked(), true, 'the project\'s rule is ask: removing is offered, on');
+    assert.match(
+      await app.page.getByTestId('handoff-summary').innerText(),
+      /The folder switches to pi-kit\/say-ok-in-one-short-sentence/,
+    );
+    assert.equal(
+      await app.page.getByTestId('handoff-remove').isChecked(),
+      true,
+      "the project's rule is ask: removing is offered, on",
+    );
     await app.page.getByTestId('do-handoff').click();
     await app.page.getByTestId('handoff-result').waitFor();
     assert.equal(branchHere(), branch);
@@ -341,7 +387,7 @@ describe('a worktree from the Where row', () => {
     gitHere('checkout', '-q', 'main');
   });
 
-  it('moves a Local thread into a worktree, with the folder\'s changes', async () => {
+  it("moves a Local thread into a worktree, with the folder's changes", async () => {
     await selectThread('On develop');
     writeFileSync(join(project, 'moving.txt'), 'm\n');
     await threadMenu('On develop', /Move into a worktree/);
@@ -351,7 +397,10 @@ describe('a worktree from the Where row', () => {
     await app.page.getByTestId('do-handoff').click();
     await app.page.getByTestId('handoff-result').waitFor();
     await app.page.getByRole('button', { name: 'Done', exact: true }).click();
-    const thread = await eventually(async () => (await threads()).find((t) => t.title === 'On develop' && t.worktree?.exists), 'the thread in its worktree');
+    const thread = await eventually(
+      async () => (await threads()).find((t) => t.title === 'On develop' && t.worktree?.exists),
+      'the thread in its worktree',
+    );
     assert.equal(thread.worktree.base, 'main');
     assert.equal(readFileSync(join(thread.worktree.path, 'moving.txt'), 'utf8'), 'm\n');
     assert.ok(!existsSync(join(project, 'moving.txt')), 'the change left the folder');
@@ -364,7 +413,7 @@ describe('a worktree from the Where row', () => {
 });
 
 describe('setup scripts in a new worktree', () => {
-  it('copies a script\'s files and runs its command in the new folder\'s terminal; the row offers the scripts', async () => {
+  it("copies a script's files and runs its command in the new folder's terminal; the row offers the scripts", async () => {
     writeFileSync(join(project, '.gitignore'), '.env.local\n');
     writeFileSync(join(project, '.env.local'), 'SECRET=1\n');
     await call('PATCH', '/api/workspaces', {
@@ -385,7 +434,10 @@ describe('setup scripts in a new worktree', () => {
     setTimeout(() => abort.abort(), 8000);
     let seen = '';
     try {
-      const res = await fetch(`${env.api}/api/workspaces/${encodeURIComponent(made.body.worktree.path)}/terminal/stream`, { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal });
+      const res = await fetch(
+        `${env.api}/api/workspaces/${encodeURIComponent(made.body.worktree.path)}/terminal/stream`,
+        { headers: { Authorization: `Bearer ${token}` }, signal: abort.signal },
+      );
       for await (const chunk of res.body) {
         seen += Buffer.from(chunk).toString('utf8');
         if (seen.includes('node:ok')) break;

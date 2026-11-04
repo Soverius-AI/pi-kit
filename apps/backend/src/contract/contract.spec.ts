@@ -14,9 +14,15 @@ import { ContractModule, ContractValidationPipe, createContractDocument, Respond
 
 const KEY = 'sk-made-up-key-0123456789abcdef';
 
-const ItemSchema = z.object({ id: z.string(), count: z.number().int(), note: z.string().nullable() }).meta({ id: 'Item' });
+const ItemSchema = z
+  .object({ id: z.string(), count: z.number().int(), note: z.string().nullable() })
+  .meta({ id: 'Item' });
 const CreateItemSchema = z
-  .object({ name: z.string().min(1), key: z.string().meta({ secret: true }).optional(), count: z.number().int().default(1) })
+  .object({
+    name: z.string().min(1),
+    key: z.string().meta({ secret: true }).optional(),
+    count: z.number().int().default(1),
+  })
   .strict()
   .meta({ id: 'CreateItem' });
 const ListItemsQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(10).default(5) });
@@ -43,7 +49,9 @@ class ItemsController {
 
   @Get()
   @Responds(ItemSchema, { array: true })
-  list(@Query({ schema: ListItemsQuerySchema }) query: z.infer<typeof ListItemsQuerySchema>): z.input<typeof ItemSchema>[] {
+  list(
+    @Query({ schema: ListItemsQuerySchema }) query: z.infer<typeof ListItemsQuerySchema>,
+  ): z.input<typeof ItemSchema>[] {
     return Array.from({ length: query.limit }, (_, index) => ({ id: String(index), count: index, note: null }));
   }
 
@@ -67,7 +75,11 @@ async function start(dev: boolean): Promise<{ app: INestApplication; url: string
 }
 
 const post = (url: string, body?: unknown) =>
-  fetch(`${url}/items`, { method: 'POST', headers: body === undefined ? {} : { 'content-type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+  fetch(`${url}/items`, {
+    method: 'POST',
+    headers: body === undefined ? {} : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 
 /** Everything the application printed, by any level. */
 function captureLog(): () => string {
@@ -93,7 +105,9 @@ describe('the validation pipe', () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { message: string[]; statusCode: number };
     expect(body.statusCode).toBe(400);
-    expect(body.message).toEqual(expect.arrayContaining([expect.stringMatching(/^name: /), expect.stringMatching(/^count: /)]));
+    expect(body.message).toEqual(
+      expect.arrayContaining([expect.stringMatching(/^name: /), expect.stringMatching(/^count: /)]),
+    );
   });
 
   it('refuses a key the schema does not name when the schema is strict', async () => {
@@ -206,9 +220,16 @@ describe('the document', () => {
   });
 
   it('writes a nullable field the 3.1 way, and the secret mark as writeOnly', async () => {
-    const schemas = (await documentOf()).components?.schemas as Record<string, { properties: Record<string, Record<string, unknown>> }>;
+    const schemas = (await documentOf()).components?.schemas as Record<
+      string,
+      { properties: Record<string, Record<string, unknown>> }
+    >;
     expect(schemas['Item'].properties['note']).toEqual({ type: ['string', 'null'] });
-    expect(schemas['CreateItem'].properties['key']).toMatchObject({ type: 'string', writeOnly: true, 'x-secret': true });
+    expect(schemas['CreateItem'].properties['key']).toMatchObject({
+      type: 'string',
+      writeOnly: true,
+      'x-secret': true,
+    });
     expect(schemas['CreateItem'].properties['key']).not.toHaveProperty('secret');
   });
 

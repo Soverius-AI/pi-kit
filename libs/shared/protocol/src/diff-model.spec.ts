@@ -31,19 +31,34 @@ describe('hunksToModel', () => {
 });
 
 describe('splitRows', () => {
-  const rows = (lines: string[]) => hunksToModel([hunk(1, 1, lines)])[0].split.map((r) => [r.left?.text ?? null, r.right?.text ?? null]);
+  const rows = (lines: string[]) =>
+    hunksToModel([hunk(1, 1, lines)])[0].split.map((r) => [r.left?.text ?? null, r.right?.text ?? null]);
 
   it('puts context on both sides', () => {
-    expect(rows([' a', ' b'])).toEqual([['a', 'a'], ['b', 'b']]);
+    expect(rows([' a', ' b'])).toEqual([
+      ['a', 'a'],
+      ['b', 'b'],
+    ]);
   });
 
   it('pairs a removed run with the added run that follows and lets the longer run overhang', () => {
-    expect(rows([' a', '-x', '-y', '+X', ' z'])).toEqual([['a', 'a'], ['x', 'X'], ['y', null], ['z', 'z']]);
-    expect(rows(['-x', '+X', '+Y'])).toEqual([['x', 'X'], [null, 'Y']]);
+    expect(rows([' a', '-x', '-y', '+X', ' z'])).toEqual([
+      ['a', 'a'],
+      ['x', 'X'],
+      ['y', null],
+      ['z', 'z'],
+    ]);
+    expect(rows(['-x', '+X', '+Y'])).toEqual([
+      ['x', 'X'],
+      [null, 'Y'],
+    ]);
   });
 
   it('starts a new block when a removal follows an addition', () => {
-    expect(rows(['+A', '-b'])).toEqual([[null, 'A'], ['b', null]]);
+    expect(rows(['+A', '-b'])).toEqual([
+      [null, 'A'],
+      ['b', null],
+    ]);
   });
 
   it('is empty for no lines', () => {

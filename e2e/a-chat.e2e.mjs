@@ -14,7 +14,12 @@ after(async () => {
 });
 
 const newestThread = async () => (await api('/api/threads')).toSorted((a, b) => b.updatedAt - a.updatedAt)[0];
-const branchLabels = (page) => page.evaluate(() => [...document.querySelectorAll('copilot-chat-user-message-branch-navigation')].map((e) => e.innerText.replace(/\s+/g, ' ').trim()));
+const branchLabels = (page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('copilot-chat-user-message-branch-navigation')].map((e) =>
+      e.innerText.replace(/\s+/g, ' ').trim(),
+    ),
+  );
 const turnPieces = (page) => page.locator('pk-transcript pk-turn');
 /** The composer's text, once the store has put it there (a click answers before Angular has drawn the new value). */
 const composerIs = async (page, value) => {
@@ -29,9 +34,18 @@ describe('the chat view is CopilotKit with pi-kit slots', () => {
       assert.equal(await page.locator(tag).count(), 1, tag);
     }
     // The transcript is virtual: one `copilot-chat-message-view` per row on screen, so a thread without a message has none.
-    assert.equal(await page.locator('pk-transcript copilot-chat-message-view').count(), 0, 'copilot-chat-message-view in an empty thread');
+    assert.equal(
+      await page.locator('pk-transcript copilot-chat-message-view').count(),
+      0,
+      'copilot-chat-message-view in an empty thread',
+    );
     // The slots are pi-kit's: the textarea and toolbar components, the transcript wrapper, the input container with the hint row.
-    for (const tag of ['pk-composer-field', 'pk-composer-toolbar', 'pk-transcript', 'copilot-chat-view-input-container .pk-hint']) {
+    for (const tag of [
+      'pk-composer-field',
+      'pk-composer-toolbar',
+      'pk-transcript',
+      'copilot-chat-view-input-container .pk-hint',
+    ]) {
       assert.equal(await page.locator(tag).count(), 1, tag);
     }
   });
@@ -46,7 +60,11 @@ describe('regenerate, branch navigation and thumbs', () => {
       await route.continue();
     };
     await page.route('**/api/threads', delayCreate);
-    try { await h.newThread(); } finally { await page.unroute('**/api/threads', delayCreate); }
+    try {
+      await h.newThread();
+    } finally {
+      await page.unroute('**/api/threads', delayCreate);
+    }
     await h.prompt('Say the word alpha and nothing else.');
     const answer = page.locator('pk-turn', { has: page.locator('copilot-chat-assistant-message') }).last();
     await answer.hover();
@@ -60,7 +78,10 @@ describe('regenerate, branch navigation and thumbs', () => {
     await page.getByLabel('Message to pi').waitFor();
     await page.locator('.pk-rate.on').waitFor();
     // Rating the same answer again clears it.
-    await page.locator('pk-turn', { has: page.locator('copilot-chat-assistant-message') }).last().hover();
+    await page
+      .locator('pk-turn', { has: page.locator('copilot-chat-assistant-message') })
+      .last()
+      .hover();
     await page.locator('copilot-chat-assistant-message-thumbs-up-button button').click();
     await page.locator('.pk-rate.on').waitFor({ state: 'detached' });
     assert.deepEqual(await api(`/api/threads/${thread.id}/feedback`), []);
@@ -77,7 +98,10 @@ describe('regenerate, branch navigation and thumbs', () => {
     await answer.locator('copilot-chat-assistant-message-regenerate-button button').click();
     await h.waitIdle();
     // The same text was prompted again as a sibling: two turns that continue from the same place, and the message shows "2/2".
-    await page.waitForFunction(() => document.querySelectorAll('copilot-chat-user-message-branch-navigation').length > 0, undefined);
+    await page.waitForFunction(
+      () => document.querySelectorAll('copilot-chat-user-message-branch-navigation').length > 0,
+      undefined,
+    );
     assert.deepEqual(await branchLabels(page), ['2/2']);
     const tree = await api(`/api/threads/${thread.id}/tree`);
     const turns = tree.rows.filter((r) => r.kind === 'turn');
@@ -88,13 +112,23 @@ describe('regenerate, branch navigation and thumbs', () => {
     const user = page.locator('pk-turn[role="user"]').first();
     await user.hover();
     await page.getByLabel('Previous message branch').click();
-    await page.waitForFunction(() => document.querySelector('copilot-chat-user-message-branch-navigation')?.innerText.includes('1/2'), undefined);
+    await page.waitForFunction(
+      () => document.querySelector('copilot-chat-user-message-branch-navigation')?.innerText.includes('1/2'),
+      undefined,
+    );
     const activeLeaf = (await api(`/api/threads/${thread.id}/tree`)).rows.find((r) => r.isLeaf);
-    assert.equal(activeLeaf.id, turns.toSorted((a, b) => (a.timestamp ?? '').localeCompare(b.timestamp ?? ''))[0].id, 'the leaf moved to the first sibling');
+    assert.equal(
+      activeLeaf.id,
+      turns.toSorted((a, b) => (a.timestamp ?? '').localeCompare(b.timestamp ?? ''))[0].id,
+      'the leaf moved to the first sibling',
+    );
     // Next goes forward again.
     await page.locator('pk-turn[role="user"]').first().hover();
     await page.getByLabel('Next message branch').click();
-    await page.waitForFunction(() => document.querySelector('copilot-chat-user-message-branch-navigation')?.innerText.includes('2/2'), undefined);
+    await page.waitForFunction(
+      () => document.querySelector('copilot-chat-user-message-branch-navigation')?.innerText.includes('2/2'),
+      undefined,
+    );
     assert.ok((await turnPieces(page).count()) >= 2);
   });
 
@@ -106,12 +140,18 @@ describe('regenerate, branch navigation and thumbs', () => {
     await user.hover();
     await user.locator('copilot-chat-user-message-edit-button button').click();
     const box = page.getByLabel('Message to pi');
-    await page.waitForFunction(() => /gamma/.test(document.querySelector('[aria-label="Message to pi"]')?.value ?? ''), undefined);
+    await page.waitForFunction(
+      () => /gamma/.test(document.querySelector('[aria-label="Message to pi"]')?.value ?? ''),
+      undefined,
+    );
     assert.match(await page.locator('copilot-chat-view-input-container').innerText(), /Branching from turn 1/);
     await box.fill('Say the word delta and nothing else.');
     await box.press('Enter');
     await h.waitIdle();
-    await page.waitForFunction(() => document.querySelector('copilot-chat-user-message-branch-navigation')?.innerText.includes('2/2'), undefined);
+    await page.waitForFunction(
+      () => document.querySelector('copilot-chat-user-message-branch-navigation')?.innerText.includes('2/2'),
+      undefined,
+    );
   });
 });
 
@@ -157,7 +197,10 @@ describe('what a pi extension adds to the composer, without touching the rendere
         const status = page.locator(selector);
         await status.waitFor();
         assert.equal(await status.innerText(), '87.2 tok/s');
-        assert.equal(await status.locator('pk-ansi-text span').evaluate((e) => getComputedStyle(e).color), 'rgb(135, 135, 135)');
+        assert.equal(
+          await status.locator('pk-ansi-text span').evaluate((e) => getComputedStyle(e).color),
+          'rgb(135, 135, 135)',
+        );
       }
     };
     await assertStatus();

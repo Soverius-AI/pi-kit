@@ -3,28 +3,17 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "apps/backend-runtime/src",
-  "tags": [
-    "scope:backend"
-  ],
+  "tags": ["scope:backend"],
   "targets": {
     "build": {
       "executor": "nx:noop",
-      "dependsOn": [
-        "bundle-pi",
-        "bundle-needle",
-        "bundle-natives"
-      ]
+      "dependsOn": ["bundle-pi", "bundle-needle", "bundle-natives"]
     },
     "bundle-worker": {
       "executor": "@nx/esbuild:esbuild",
       "cache": true,
-      "inputs": [
-        "default",
-        "{workspaceRoot}/pnpm-lock.yaml"
-      ],
-      "outputs": [
-        "{options.outputPath}"
-      ],
+      "inputs": ["default", "{workspaceRoot}/pnpm-lock.yaml"],
+      "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
       "configurations": {
         "production": {
@@ -40,9 +29,7 @@
       "options": {
         "tsConfig": "apps/backend-runtime/tsconfig.json",
         "platform": "node",
-        "format": [
-          "esm"
-        ],
+        "format": ["esm"],
         "target": "node24",
         "bundle": true,
         "thirdParty": true,
@@ -57,13 +44,8 @@
     "bundle-pi": {
       "executor": "@nx/esbuild:esbuild",
       "cache": true,
-      "inputs": [
-        "default",
-        "{workspaceRoot}/pnpm-lock.yaml"
-      ],
-      "outputs": [
-        "{options.outputPath}"
-      ],
+      "inputs": ["default", "{workspaceRoot}/pnpm-lock.yaml"],
+      "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
       "configurations": {
         "production": {
@@ -76,15 +58,11 @@
           "sourcemap": true
         }
       },
-      "dependsOn": [
-        "bundle-worker"
-      ],
+      "dependsOn": ["bundle-worker"],
       "options": {
         "tsConfig": "apps/backend-runtime/tsconfig.json",
         "platform": "node",
-        "format": [
-          "esm"
-        ],
+        "format": ["esm"],
         "target": "node24",
         "bundle": true,
         "thirdParty": true,
@@ -139,13 +117,8 @@
     "bundle-needle": {
       "executor": "@nx/esbuild:esbuild",
       "cache": true,
-      "inputs": [
-        "default",
-        "{workspaceRoot}/pnpm-lock.yaml"
-      ],
-      "outputs": [
-        "{options.outputPath}"
-      ],
+      "inputs": ["default", "{workspaceRoot}/pnpm-lock.yaml"],
+      "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
       "configurations": {
         "production": {
@@ -161,9 +134,7 @@
       "options": {
         "tsConfig": "apps/backend-runtime/tsconfig.json",
         "platform": "node",
-        "format": [
-          "esm"
-        ],
+        "format": ["esm"],
         "target": "node24",
         "bundle": true,
         "thirdParty": true,
@@ -199,13 +170,8 @@
     "bundle-natives": {
       "executor": "@nx/esbuild:esbuild",
       "cache": true,
-      "inputs": [
-        "default",
-        "{workspaceRoot}/pnpm-lock.yaml"
-      ],
-      "outputs": [
-        "{options.outputPath}"
-      ],
+      "inputs": ["default", "{workspaceRoot}/pnpm-lock.yaml"],
+      "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
       "configurations": {
         "production": {
@@ -221,9 +187,7 @@
       "options": {
         "tsConfig": "apps/backend-runtime/tsconfig.json",
         "platform": "node",
-        "format": [
-          "cjs"
-        ],
+        "format": ["cjs"],
         "target": "node24",
         "bundle": true,
         "thirdParty": true,
@@ -244,10 +208,7 @@
             ".js": ".js"
           }
         },
-        "external": [
-          "*.node",
-          "@napi-rs/keyring-*"
-        ],
+        "external": ["*.node", "@napi-rs/keyring-*"],
         "assets": [
           {
             "input": "node_modules/@napi-rs/keyring",

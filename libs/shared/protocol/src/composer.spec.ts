@@ -3,20 +3,37 @@ import { CompleteRequestSchema, ComposerRegistrationSchema, PutFeedbackSchema, p
 
 describe('composer registrations', () => {
   it('accepts an action, a suggestion and a removal', () => {
-    expect(ComposerRegistrationSchema.safeParse({ op: 'action', id: 'a', label: 'Say hello', icon: 'Hi', text: '/pk-hello ', send: false }).success).toBe(true);
-    expect(ComposerRegistrationSchema.safeParse({ op: 'suggestion', id: 's', title: 'Ask', text: 'hello' }).success).toBe(true);
+    expect(
+      ComposerRegistrationSchema.safeParse({
+        op: 'action',
+        id: 'a',
+        label: 'Say hello',
+        icon: 'Hi',
+        text: '/pk-hello ',
+        send: false,
+      }).success,
+    ).toBe(true);
+    expect(
+      ComposerRegistrationSchema.safeParse({ op: 'suggestion', id: 's', title: 'Ask', text: 'hello' }).success,
+    ).toBe(true);
     expect(ComposerRegistrationSchema.safeParse({ op: 'remove', id: 'a' }).success).toBe(true);
   });
 
   it('rejects an unknown op, a missing field and a long icon', () => {
     expect(ComposerRegistrationSchema.safeParse({ op: 'toggle', id: 'a' }).success).toBe(false);
     expect(ComposerRegistrationSchema.safeParse({ op: 'action', id: 'a', text: 'x' }).success).toBe(false);
-    expect(ComposerRegistrationSchema.safeParse({ op: 'action', id: 'a', label: 'x', icon: 'too long icon', text: 'x' }).success).toBe(false);
+    expect(
+      ComposerRegistrationSchema.safeParse({ op: 'action', id: 'a', label: 'x', icon: 'too long icon', text: 'x' })
+        .success,
+    ).toBe(false);
     expect(ComposerRegistrationSchema.safeParse({ op: 'remove', id: '' }).success).toBe(false);
   });
 
   it('is the value of the pi.composer custom event', () => {
-    expect(parsePiCustomEvent({ name: 'pi.composer', value: { op: 'remove', id: 'a' } })).toEqual({ name: 'pi.composer', value: { op: 'remove', id: 'a' } });
+    expect(parsePiCustomEvent({ name: 'pi.composer', value: { op: 'remove', id: 'a' } })).toEqual({
+      name: 'pi.composer',
+      value: { op: 'remove', id: 'a' },
+    });
     expect(parsePiCustomEvent({ name: 'pi.composer', value: { op: 'nope' } })).toBeUndefined();
   });
 });

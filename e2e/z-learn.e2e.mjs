@@ -29,7 +29,11 @@ let userSkills;
 
 async function call(method, path, body) {
   const { token } = await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${env.api}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const res = await fetch(`${env.api}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
   return { status: res.status, body: res.status === 204 ? undefined : await res.json().catch(() => undefined) };
 }
 
@@ -38,7 +42,8 @@ const spawned = [];
 async function ensureBackend() {
   const up = async () => {
     try {
-      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })).ok;
+      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } }))
+        .ok;
     } catch {
       return false;
     }
@@ -46,7 +51,13 @@ async function ensureBackend() {
   if (await up()) return;
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: 'ignore',
     detached: true,
   });
@@ -57,7 +68,10 @@ async function ensureBackend() {
 
 before(async () => {
   await ensureBackend();
-  fake = await startFakeModel({ answer: (body) => (JSON.stringify(body.messages?.[0] ?? '').includes('reusable skill') ? CANNED_SKILL : 'Notes work') });
+  fake = await startFakeModel({
+    answer: (body) =>
+      JSON.stringify(body.messages?.[0] ?? '').includes('reusable skill') ? CANNED_SKILL : 'Notes work',
+  });
   registerFakeModel(env.agentDir, fake.url);
   userSkills = join(env.agentDir, 'skills');
   app = await openApp();
@@ -85,7 +99,11 @@ after(async () => {
 
 const head = () => app.page.locator(`.pk-project[data-project="${NAME}"] .pk-project-head`);
 const group = () => app.page.locator(`.pk-project[data-project="${NAME}"]`);
-const rowOf = (text) => group().locator('.pk-thread').filter({ has: app.page.getByText(text, { exact: true }) }).first();
+const rowOf = (text) =>
+  group()
+    .locator('.pk-thread')
+    .filter({ has: app.page.getByText(text, { exact: true }) })
+    .first();
 const threads = async () => (await api('/api/threads')).filter((t) => t.cwd === project);
 const box = () => app.page.getByLabel('Message to pi');
 const dialog = () => app.page.getByTestId('review-dialog');
@@ -128,21 +146,31 @@ async function plainThread(title) {
   await app.page.getByRole('button', { name: `New thread in ${NAME}` }).click();
   await box().waitFor();
   await app.h.settle(500);
-  const created = (await threads()).filter((t) => !t.title && t.messageCount === 0).sort((a, b) => b.createdAt - a.createdAt)[0];
+  const created = (await threads())
+    .filter((t) => !t.title && t.messageCount === 0)
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
   assert.ok(created, 'the new thread is listed');
   await call('PATCH', `/api/threads/${created.id}`, { title });
   await eventually(async () => (await rowOf(title).count()) > 0, `the row of ${title}`);
   return created.id;
 }
 
-const skillFolders = () => [...(existsSync(userSkills) ? readdirSync(userSkills) : []), ...(existsSync(join(project, '.pi', 'skills')) ? readdirSync(join(project, '.pi', 'skills')).map((n) => `project:${n}`) : [])];
+const skillFolders = () => [
+  ...(existsSync(userSkills) ? readdirSync(userSkills) : []),
+  ...(existsSync(join(project, '.pi', 'skills'))
+    ? readdirSync(join(project, '.pi', 'skills')).map((n) => `project:${n}`)
+    : []),
+];
 const draftOf = async (id) => call('GET', `/api/threads/${id}/skill-draft`);
-const learnRequests = () => fake.requests.filter((r) => JSON.stringify(r.messages?.[0] ?? '').includes('reusable skill')).length;
+const learnRequests = () =>
+  fake.requests.filter((r) => JSON.stringify(r.messages?.[0] ?? '').includes('reusable skill')).length;
 /** The user prompt of the last learn request: with the attendant on, an outcome also queues a score, so the fake model's last request may be the attribution prompt. */
 const lastLearnPrompt = () => {
   const r = [...fake.requests].reverse().find((r) => JSON.stringify(r.messages?.[0] ?? '').includes('reusable skill'));
   const user = [...(r?.messages ?? [])].reverse().find((m) => m.role === 'user');
-  return typeof user?.content === 'string' ? user.content : (user?.content ?? []).map((part) => part.text ?? '').join('\n');
+  return typeof user?.content === 'string'
+    ? user.content
+    : (user?.content ?? []).map((part) => part.text ?? '').join('\n');
 };
 const attendantActions = async () => (await call('GET', '/api/attendant')).body.actions;
 
@@ -157,7 +185,11 @@ describe('the package', () => {
     const settings = JSON.parse(readFileSync(join(env.agentDir, 'settings.json'), 'utf8'));
     const learnFolder = settings.packages.map(String).find((p) => /pi-kit-learn\/?$/.test(p));
     assert.ok(learnFolder, JSON.stringify(settings.packages));
-    assert.ok(existsSync(join(learnFolder.startsWith('/') ? learnFolder : join(env.agentDir, learnFolder), 'extensions', 'learn.ts')));
+    assert.ok(
+      existsSync(
+        join(learnFolder.startsWith('/') ? learnFolder : join(env.agentDir, learnFolder), 'extensions', 'learn.ts'),
+      ),
+    );
 
     await plainThread('Command list');
     await rowOf('Command list').click();
@@ -175,7 +207,12 @@ describe('an outcome lands with the attendant on', () => {
 
   it('drafts a skill from a thread that did enough, and shows the card and the chip; nothing is written', async () => {
     // The attendant on with the fake model, looking only when an outcome lands (its other jobs would send the canned skill to the title and the summary).
-    await call('PATCH', '/api/attendant/settings', { enabled: true, model: { provider: FAKE_PROVIDER, modelId: FAKE_MODEL }, dailyCostCap: null, when: { onEnd: false, onInterrupt: false, everyMinutes: 0 } });
+    await call('PATCH', '/api/attendant/settings', {
+      enabled: true,
+      model: { provider: FAKE_PROVIDER, modelId: FAKE_MODEL },
+      dailyCostCap: null,
+      when: { onEnd: false, onInterrupt: false, everyMinutes: 0 },
+    });
     id = await worktreeThread(TITLE);
     worktree = (await threads()).find((t) => t.id === id).worktree.path;
     await prompt(
@@ -188,19 +225,30 @@ describe('an outcome lands with the attendant on', () => {
     assert.ok(written.length >= 6, `pi wrote the six notes in the worktree:\n${written.join('\n')}`);
     assert.equal(learnRequests(), 0, 'nothing was sent to the model before an outcome');
 
-    const merged = await call('POST', `/api/threads/${id}/worktree/merge`, { mode: 'merge', message: 'Add six notes', remove: true });
+    const merged = await call('POST', `/api/threads/${id}/worktree/merge`, {
+      mode: 'merge',
+      message: 'Add six notes',
+      remove: true,
+    });
     assert.equal(merged.body.status, 'merged', JSON.stringify(merged.body));
 
-    const draft = await eventually(async () => {
-      const got = await draftOf(id);
-      return got.status === 200 ? got.body : undefined;
-    }, 'the attendant’s draft', 90_000);
+    const draft = await eventually(
+      async () => {
+        const got = await draftOf(id);
+        return got.status === 200 ? got.body : undefined;
+      },
+      'the attendant’s draft',
+      90_000,
+    );
     assert.equal(draft.state, 'pending');
     assert.equal(draft.madeBy, 'attendant');
     assert.equal(draft.name, 'add-notes-with-an-index');
     assert.equal(draft.scope, 'project');
     skillName = draft.name;
-    assert.match(draft.text, new RegExp(`x-pi-kit:\\n  learnedFrom: ${id}\\n  base: [0-9a-f]{40}\\n  head: [0-9a-f]{40}\\n  verified: null`));
+    assert.match(
+      draft.text,
+      new RegExp(`x-pi-kit:\\n  learnedFrom: ${id}\\n  base: [0-9a-f]{40}\\n  head: [0-9a-f]{40}\\n  verified: null`),
+    );
     assert.equal(learnRequests(), 1, 'one model call for the draft');
     assert.deepEqual(skillFolders(), [], 'a draft is in the database; no skills folder exists for it');
     assert.equal(existsSync(join(project, '.pi')), false);
@@ -223,7 +271,10 @@ describe('an outcome lands with the attendant on', () => {
     assert.equal(await rowOf(TITLE).getByTestId('learn-chip').innerText(), 'Skill “add-notes-with-an-index”, drafted');
     const card = app.page.getByTestId('draft-card');
     await card.waitFor();
-    assert.match(await card.innerText(), /The attendant drafted a skill from this thread:\s*add-notes-with-an-index\s*Read/);
+    assert.match(
+      await card.innerText(),
+      /The attendant drafted a skill from this thread:\s*add-notes-with-an-index\s*Read/,
+    );
   });
 
   it('Read opens the review dialog: the SKILL.md as pi will load it, the scope, Verify first, where it comes from', async () => {
@@ -234,9 +285,15 @@ describe('an outcome lands with the attendant on', () => {
     assert.match(text, /x-pi-kit:\n {2}learnedFrom: /);
     assert.equal(await app.page.getByTestId('skill-name').inputValue(), 'add-notes-with-an-index');
     assert.equal(await app.page.getByTestId('scope-project').getAttribute('aria-pressed'), 'true');
-    assert.match(await app.page.getByTestId('scope-project').innerText(), /\.pi\/skills\/add-notes-with-an-index\/SKILL\.md/);
+    assert.match(
+      await app.page.getByTestId('scope-project').innerText(),
+      /\.pi\/skills\/add-notes-with-an-index\/SKILL\.md/,
+    );
     assert.equal(await app.page.getByTestId('verify-switch').isChecked(), true);
-    assert.match(await app.page.getByTestId('provenance').innerText(), /Add six notes[\s\S]*the attendant with learn-fake\/canned/);
+    assert.match(
+      await app.page.getByTestId('provenance').innerText(),
+      /Add six notes[\s\S]*the attendant with learn-fake\/canned/,
+    );
     assert.equal(await app.page.getByTestId('approve').isEnabled(), true);
     await app.h.settle(300);
   });
@@ -244,16 +301,29 @@ describe('an outcome lands with the attendant on', () => {
   it('refuses a name that is taken and keeps the dialog open; another name is approved and the folder is written', async () => {
     // The name is taken in the user's folder.
     mkdirSync(join(userSkills, skillName), { recursive: true });
-    writeFileSync(join(userSkills, skillName, 'SKILL.md'), '---\nname: add-notes-with-an-index\ndescription: Mine\n---\n\nMy own.\n');
+    writeFileSync(
+      join(userSkills, skillName, 'SKILL.md'),
+      '---\nname: add-notes-with-an-index\ndescription: Mine\n---\n\nMy own.\n',
+    );
     await app.page.getByTestId('scope-user').click();
     // "Verify first" is on by default, and the button then replays the skill before it approves (z-verify.e2e.mjs covers that). These checks are about the approval itself.
     assert.equal(await app.page.getByTestId('verify-switch').isChecked(), true);
     await app.page.getByTestId('verify-switch').click();
-    await eventually(async () => (await app.page.getByTestId('approve').innerText()).trim() === 'Approve', 'the button to say Approve');
+    await eventually(
+      async () => (await app.page.getByTestId('approve').innerText()).trim() === 'Approve',
+      'the button to say Approve',
+    );
     await app.page.getByTestId('approve').click();
-    const error = await app.page.getByTestId('learn-error').waitFor().then(() => app.page.getByTestId('learn-error').innerText());
+    const error = await app.page
+      .getByTestId('learn-error')
+      .waitFor()
+      .then(() => app.page.getByTestId('learn-error').innerText());
     assert.match(error, /Choose another name/);
-    assert.equal(readFileSync(join(userSkills, skillName, 'SKILL.md'), 'utf8').includes('My own.'), true, 'the existing skill was not overwritten');
+    assert.equal(
+      readFileSync(join(userSkills, skillName, 'SKILL.md'), 'utf8').includes('My own.'),
+      true,
+      'the existing skill was not overwritten',
+    );
     assert.equal((await draftOf(id)).body.state, 'pending');
     assert.ok(await dialog().isVisible());
 
@@ -283,9 +353,15 @@ describe('an outcome lands with the attendant on', () => {
 
   it('is in the / menu at once, and can be added to a message as a chip', async () => {
     await box().fill('/skill:add-notes-v');
-    await app.page.locator('[role="option"][id^="pk-composer-opt-"]', { hasText: `skill:${skillName}` }).first().waitFor();
+    await app.page
+      .locator('[role="option"][id^="pk-composer-opt-"]', { hasText: `skill:${skillName}` })
+      .first()
+      .waitFor();
     await box().press('Enter');
-    const chip = app.page.getByTestId('chip-strip').getByTestId('skill-chip').filter({ has: app.page.locator(`.name:text-is("${skillName}")`) });
+    const chip = app.page
+      .getByTestId('chip-strip')
+      .getByTestId('skill-chip')
+      .filter({ has: app.page.locator(`.name:text-is("${skillName}")`) });
     await chip.first().waitFor();
     assert.equal(await box().inputValue(), '');
     await chip.first().getByTestId('skill-chip-remove').click();
@@ -300,10 +376,20 @@ describe('a thread that is too small, and a draft that is discarded', () => {
   it('is not drafted by the attendant: the activity says why, and nothing is asked of the model', async () => {
     const before = learnRequests();
     id = await worktreeThread(TITLE);
-    await prompt('Use the write tool once to create notes/solo.md with the single line "A solo note." Then say done in one short sentence.');
-    const merged = await call('POST', `/api/threads/${id}/worktree/merge`, { mode: 'merge', message: 'Add one note', remove: true });
+    await prompt(
+      'Use the write tool once to create notes/solo.md with the single line "A solo note." Then say done in one short sentence.',
+    );
+    const merged = await call('POST', `/api/threads/${id}/worktree/merge`, {
+      mode: 'merge',
+      message: 'Add one note',
+      remove: true,
+    });
     assert.equal(merged.body.status, 'merged', JSON.stringify(merged.body));
-    const action = await eventually(async () => (await attendantActions()).find((a) => a.kind === 'learn' && a.threadId === id), 'the attendant’s note', 60_000);
+    const action = await eventually(
+      async () => (await attendantActions()).find((a) => a.kind === 'learn' && a.threadId === id),
+      'the attendant’s note',
+      60_000,
+    );
     assert.equal(action.status, 'skipped');
     assert.match(action.text, /Not worth a skill: Only \d+ tool calls? \(a draft needs 6\)/);
     assert.equal(learnRequests(), before, 'no model call');
@@ -352,7 +438,10 @@ describe('a thread that is too small, and a draft that is discarded', () => {
     assert.ok(await app.page.getByTestId('approve').isEnabled());
     await app.page.keyboard.press('Escape');
     await dialog().waitFor({ state: 'detached' });
-    await eventually(async () => (await app.page.getByTestId('draft-card').count()) > 0, 'the card of the reopened draft');
+    await eventually(
+      async () => (await app.page.getByTestId('draft-card').count()) > 0,
+      'the card of the reopened draft',
+    );
     assert.deepEqual(skillFolders().includes('add-notes-with-an-index'), true);
   });
 });
@@ -366,14 +455,19 @@ describe('with the attendant off', () => {
     id = await plainThread(TITLE);
     await rowOf(TITLE).click();
     await box().waitFor();
-    await prompt('Use the write tool once to create notes/off.md with the single line "Written with the attendant off." Then say done in one short sentence.');
+    await prompt(
+      'Use the write tool once to create notes/off.md with the single line "Written with the attendant off." Then say done in one short sentence.',
+    );
     const asked = learnRequests();
     // The trailing space closes the menu, so Enter sends the command instead of completing it.
     await box().fill('/learn ');
     await box().press('Enter');
     const approval = app.page.locator('.pk-approval', { hasText: 'Learn a skill from this thread?' });
     await approval.waitFor();
-    assert.match(await approval.innerText(), /This sends the thread’s transcript[\s\S]*learn-fake\/canned[\s\S]*The attendant is off/);
+    assert.match(
+      await approval.innerText(),
+      /This sends the thread’s transcript[\s\S]*learn-fake\/canned[\s\S]*The attendant is off/,
+    );
     assert.equal(learnRequests(), asked, 'nothing was sent before the answer');
     assert.equal((await draftOf(id)).status, 404);
 
@@ -383,14 +477,19 @@ describe('with the attendant off', () => {
     const draft = (await draftOf(id)).body;
     assert.equal(draft.state, 'pending');
     assert.equal(draft.madeBy, 'person');
-    assert.match(await app.page.getByTestId('draft-card').innerText(), /A skill was drafted from this thread:\s*add-notes-with-an-index/);
+    assert.match(
+      await app.page.getByTestId('draft-card').innerText(),
+      /A skill was drafted from this thread:\s*add-notes-with-an-index/,
+    );
   });
 
   it('the thread menu asks too, with a dialog, and drafts after the agreement', async () => {
     const other = await plainThread('Ask from the menu');
     await rowOf('Ask from the menu').click();
     await box().waitFor();
-    await prompt('Use the write tool once to create notes/menu.md with the single line "Menu." Then say done in one short sentence.');
+    await prompt(
+      'Use the write tool once to create notes/menu.md with the single line "Menu." Then say done in one short sentence.',
+    );
     const asked = learnRequests();
     await rowOf('Ask from the menu').hover();
     await rowOf('Ask from the menu').locator('summary').click();
@@ -398,7 +497,10 @@ describe('with the attendant off', () => {
     await dialog().waitFor();
     await app.page.getByTestId('consent-text').waitFor();
     assert.equal(await dialog().getAttribute('data-view'), 'consent');
-    assert.match(await app.page.getByTestId('consent-text').innerText(), /This sends the thread’s transcript[\s\S]*to learn-fake\/canned/);
+    assert.match(
+      await app.page.getByTestId('consent-text').innerText(),
+      /This sends the thread’s transcript[\s\S]*to learn-fake\/canned/,
+    );
     assert.equal(learnRequests(), asked, 'nothing sent yet');
     await app.page.getByTestId('consent-agree').click();
     await app.page.getByTestId('skill-text').waitFor();

@@ -19,7 +19,10 @@ describe('requestMicrophone', () => {
   it('has nothing to ask on other systems', async () => {
     const explain = vi.fn();
     for (const platform of ['win32', 'linux'] as const) {
-      expect(await requestMicrophone(platform, access(['denied'], false), explain)).toEqual({ granted: true, status: 'granted' });
+      expect(await requestMicrophone(platform, access(['denied'], false), explain)).toEqual({
+        granted: true,
+        status: 'granted',
+      });
     }
     expect(explain).not.toHaveBeenCalled();
   });

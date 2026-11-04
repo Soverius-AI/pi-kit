@@ -25,7 +25,10 @@ async function bootstrap() {
   configureJsonBody(app);
   app.enableShutdownHooks(['SIGINT', 'SIGTERM']);
   app.setGlobalPrefix('api');
-  app.enableCors({ origin: config.origins, allowedHeaders: ['Authorization', 'Content-Type', REPLAY_CURSOR_HEADER, THREAD_HYDRATION_HEADER] });
+  app.enableCors({
+    origin: config.origins,
+    allowedHeaders: ['Authorization', 'Content-Type', REPLAY_CURSOR_HEADER, THREAD_HYDRATION_HEADER],
+  });
   // The contract: the OpenAPI document at GET /api/openapi.json behind the token; the Swagger UI only for dev:web.
   mountContract(app, { ui: config.dev });
   await app.listen(config.port, config.host);
@@ -35,7 +38,8 @@ async function bootstrap() {
 void bootstrap().catch((error: unknown) => {
   Logger.error(error);
   process.exitCode = 1;
-  if (error instanceof DatabaseBrokenError) process.send?.({ type: 'startup-failure', reason: 'database-broken', message: error.message });
+  if (error instanceof DatabaseBrokenError)
+    process.send?.({ type: 'startup-failure', reason: 'database-broken', message: error.message });
   // Open handles (e.g. the desktop IPC listener) would otherwise keep the process alive.
   setTimeout(() => process.exit(1), 1000).unref();
 });

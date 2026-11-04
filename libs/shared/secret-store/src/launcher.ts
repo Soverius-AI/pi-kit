@@ -21,11 +21,16 @@ const cmd = (text: string): string => `"${text.replace(/"/g, '""')}"`;
 
 export function launcherScript(platform: ResolverPlatform, target: LauncherTarget): string {
   const setting = target.secretStore;
-  if (setting !== undefined && (
-    !(['macos', 'legacy', 'memory', 'none'].includes(setting) || (setting.startsWith('file:') && setting.length > 5)) ||
-    /[\0\r\n]/.test(setting) ||
-    (platform === 'win32' && /["%!^&|<>]/.test(setting))
-  )) throw new Error('Invalid secret store setting for launcher.');
+  if (
+    setting !== undefined &&
+    (!(
+      ['macos', 'legacy', 'memory', 'none'].includes(setting) ||
+      (setting.startsWith('file:') && setting.length > 5)
+    ) ||
+      /[\0\r\n]/.test(setting) ||
+      (platform === 'win32' && /["%!^&|<>]/.test(setting)))
+  )
+    throw new Error('Invalid secret store setting for launcher.');
   if (platform === 'win32') {
     return `@echo off\r\nrem Written by pi-kit (Settings > Advanced). Reads and writes pi-kit's entries in the Windows Credential Manager.\r\n${target.electron ? 'set ELECTRON_RUN_AS_NODE=1\r\n' : ''}${setting === undefined ? '' : `set "PI_KIT_SECRET_STORE=${setting}"\r\n`}${cmd(target.runtime)} ${cmd(target.script)} %*\r\n`;
   }
@@ -33,7 +38,8 @@ export function launcherScript(platform: ResolverPlatform, target: LauncherTarge
 }
 
 /** The file name of the launcher on this platform. */
-export const launcherName = (platform: ResolverPlatform): string => (platform === 'win32' ? 'pi-kit-secret.cmd' : 'pi-kit-secret');
+export const launcherName = (platform: ResolverPlatform): string =>
+  platform === 'win32' ? 'pi-kit-secret.cmd' : 'pi-kit-secret';
 
 /** Where "Install on PATH" puts it when nothing else is chosen: a folder that is on PATH for most shells already, or that the user is told to add. */
 export function defaultInstallDir(platform: ResolverPlatform, env: NodeJS.ProcessEnv, home: string): string {

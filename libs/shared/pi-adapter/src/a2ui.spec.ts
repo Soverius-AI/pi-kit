@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { normalizeA2uiOperations } from './a2ui';
 
 const surface = { version: 'v0.9', createSurface: { surfaceId: 's', catalogId: 'c' } };
-const data = (path: string | undefined, value: unknown) => ({ version: 'v0.9', updateDataModel: { surfaceId: 's', ...(path === undefined ? {} : { path }), value } });
+const data = (path: string | undefined, value: unknown) => ({
+  version: 'v0.9',
+  updateDataModel: { surfaceId: 's', ...(path === undefined ? {} : { path }), value },
+});
 
 describe('normalizeA2uiOperations (the data-model convention)', () => {
   it('turns the array an old extension wrote at /specs into an object at the root', () => {
@@ -11,7 +14,12 @@ describe('normalizeA2uiOperations (the data-model convention)', () => {
   });
 
   it('leaves the new payload (an object at the root, or at a path) exactly as it is', () => {
-    const operations = [surface, data('/', { specs: [{ spec: 'a' }] }), data('/filters', { open: true }), data(undefined, { specs: [] })];
+    const operations = [
+      surface,
+      data('/', { specs: [{ spec: 'a' }] }),
+      data('/filters', { open: true }),
+      data(undefined, { specs: [] }),
+    ];
     expect(normalizeA2uiOperations(operations)).toEqual(operations);
   });
 
@@ -23,7 +31,15 @@ describe('normalizeA2uiOperations (the data-model convention)', () => {
   });
 
   it('does not touch a delete (null or no value), a root update, a relative path or other operations', () => {
-    const operations = [surface, data('/x', null), data('/y', undefined), data('/', [1]), data('x', [1]), data('', 'text'), { version: 'v0.9', deleteSurface: { surfaceId: 's' } }];
+    const operations = [
+      surface,
+      data('/x', null),
+      data('/y', undefined),
+      data('/', [1]),
+      data('x', [1]),
+      data('', 'text'),
+      { version: 'v0.9', deleteSurface: { surfaceId: 's' } },
+    ];
     expect(normalizeA2uiOperations(operations)).toEqual(operations);
   });
 

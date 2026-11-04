@@ -59,7 +59,10 @@ const time = (entry: PiSessionEntry | undefined): number | undefined => {
 
 /** What an entry cost, if it cost anything (the same entries `getSessionStats()` reads). */
 function chargesOf(entry: PiSessionEntry, parent: PiSessionEntry | undefined): Charge[] {
-  const message = entry.type === 'message' ? (entry['message'] as { role?: string; usage?: RawUsage; provider?: string; model?: string } | undefined) : undefined;
+  const message =
+    entry.type === 'message'
+      ? (entry['message'] as { role?: string; usage?: RawUsage; provider?: string; model?: string } | undefined)
+      : undefined;
   if (message?.role === 'assistant' && message.usage) {
     const end = time(entry);
     const start = time(parent);
@@ -72,17 +75,33 @@ function chargesOf(entry: PiSessionEntry, parent: PiSessionEntry | undefined): C
       },
     ];
   }
-  if (message?.role === 'toolResult' && message.usage) return [{ usage: message.usage, provider: '', model: 'nested tool usage' }];
+  if (message?.role === 'toolResult' && message.usage)
+    return [{ usage: message.usage, provider: '', model: 'nested tool usage' }];
   if (entry.type === 'usage' && entry['usage']) {
-    return [{ usage: entry['usage'] as RawUsage, provider: String(entry['provider'] ?? ''), model: String(entry['model'] ?? entry['kind'] ?? 'usage') }];
+    return [
+      {
+        usage: entry['usage'] as RawUsage,
+        provider: String(entry['provider'] ?? ''),
+        model: String(entry['model'] ?? entry['kind'] ?? 'usage'),
+      },
+    ];
   }
   if ((entry.type === 'compaction' || entry.type === 'branch_summary') && entry['usage']) {
-    return [{ usage: entry['usage'] as RawUsage, provider: String(entry['provider'] ?? ''), model: String(entry['model'] ?? (entry.type === 'compaction' ? 'compaction summary' : 'branch summary')) }];
+    return [
+      {
+        usage: entry['usage'] as RawUsage,
+        provider: String(entry['provider'] ?? ''),
+        model: String(entry['model'] ?? (entry.type === 'compaction' ? 'compaction summary' : 'branch summary')),
+      },
+    ];
   }
   return [];
 }
 
-export function aggregateUsage(entries: readonly PiSessionEntry[], meta: { sessionId: string; sessionFile: string | null }): ThreadUsage {
+export function aggregateUsage(
+  entries: readonly PiSessionEntry[],
+  meta: { sessionId: string; sessionFile: string | null },
+): ThreadUsage {
   const byId = new Map(entries.map((e) => [e.id, e] as const));
   const userTurn = new Map<string, number>();
   const turnEntry = new Map<number, string>();
@@ -98,7 +117,11 @@ export function aggregateUsage(entries: readonly PiSessionEntry[], meta: { sessi
   const turnOf = (entry: PiSessionEntry): number => {
     const path: string[] = [];
     let turn = 0;
-    for (let current: PiSessionEntry | undefined = entry; current; current = current.parentId ? byId.get(current.parentId) : undefined) {
+    for (
+      let current: PiSessionEntry | undefined = entry;
+      current;
+      current = current.parentId ? byId.get(current.parentId) : undefined
+    ) {
       const known = userTurn.get(current.id) ?? turnOfCache.get(current.id);
       if (known !== undefined) {
         turn = known;
@@ -120,8 +143,17 @@ export function aggregateUsage(entries: readonly PiSessionEntry[], meta: { sessi
       const entry = turnEntry.get(turn);
       const user = entry ? byId.get(entry) : undefined;
       const content = (user?.['message'] as { content?: Parameters<typeof userMessageText>[0] } | undefined)?.content;
-      const preview = turn === 0 ? 'Before the first message' : userMessageText(content).replace(/\s+/g, ' ').trim().slice(0, 80);
-      r = { turn, ...(entry ? { entryId: entry } : {}), ...(user?.timestamp ? { timestamp: user.timestamp } : {}), preview, models: [], ...zero(), _models: new Set() };
+      const preview =
+        turn === 0 ? 'Before the first message' : userMessageText(content).replace(/\s+/g, ' ').trim().slice(0, 80);
+      r = {
+        turn,
+        ...(entry ? { entryId: entry } : {}),
+        ...(user?.timestamp ? { timestamp: user.timestamp } : {}),
+        preview,
+        models: [],
+        ...zero(),
+        _models: new Set(),
+      };
       rows.set(turn, r);
     }
     return r;
@@ -154,7 +186,8 @@ export function aggregateUsage(entries: readonly PiSessionEntry[], meta: { sessi
     let tokensAfter: number | undefined;
     for (let i = index + 1; i < entries.length && tokensAfter === undefined; i++) {
       const next = entries[i];
-      const message = next.type === 'message' ? (next['message'] as { role?: string; usage?: RawUsage } | undefined) : undefined;
+      const message =
+        next.type === 'message' ? (next['message'] as { role?: string; usage?: RawUsage } | undefined) : undefined;
       if (message?.role !== 'assistant' || !message.usage) continue;
       for (let up: PiSessionEntry | undefined = next; up; up = up.parentId ? byId.get(up.parentId) : undefined) {
         if (up.id === entry.id) {

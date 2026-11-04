@@ -28,7 +28,17 @@ afterEach(() => {
 function stream(snapshot: Partial<SnapshotEvent> = {}) {
   let listener: Parameters<DurableEventStream['start']>[0] | undefined;
   return {
-    snapshot: { type: 'snapshot', entries: [], tools: [], nestedTools: [], compactions: [], inbox: [], agent: {}, usage: { models: {}, tools: {} }, ...snapshot } as SnapshotEvent,
+    snapshot: {
+      type: 'snapshot',
+      entries: [],
+      tools: [],
+      nestedTools: [],
+      compactions: [],
+      inbox: [],
+      agent: {},
+      usage: { models: {}, tools: {} },
+      ...snapshot,
+    } as SnapshotEvent,
     start: (fn: Parameters<DurableEventStream['start']>[0]): void => void (listener = fn),
     stop: vi.fn(async (): Promise<WatchEnd> => ({ reason: 'closed' }) as unknown as WatchEnd),
     emit: (events: AgentEvent[]) => listener?.(events, {} as never),
@@ -43,14 +53,36 @@ describe('BgAgentRunner (the AG-UI agent pi-bg)', () => {
     expect(runner.owns('t1')).toBe(false);
     // A connection stays open while the agent is followed: what is stored comes first, the live feed after it.
     const live = firstValueFrom(runner.connect({ threadId: '7', agentId: 'pi-bg' } as never).pipe(toArray()));
-    await s.emit([{ type: 'run_start', inputs: [] }, { type: 'message_end', entry: { id: 1, conversationId: 7, kind: 'pi.user', model: [{ role: 'user', content: 'go', timestamp: 1 }] } as never }]);
+    await s.emit([
+      { type: 'run_start', inputs: [] },
+      {
+        type: 'message_end',
+        entry: {
+          id: 1,
+          conversationId: 7,
+          kind: 'pi.user',
+          model: [{ role: 'user', content: 'go', timestamp: 1 }],
+        } as never,
+      },
+    ]);
     expect(runner.isRunning('7')).toBe(true);
     await s.emit([{ type: 'run_end', inputs: [] }]);
     await runner.detach('7');
     const events = await live;
-    expect(events.slice(0, 4).map((e) => e.type)).toEqual([EventType.CUSTOM, EventType.RUN_STARTED, EventType.MESSAGES_SNAPSHOT, EventType.RUN_FINISHED]);
+    expect(events.slice(0, 4).map((e) => e.type)).toEqual([
+      EventType.CUSTOM,
+      EventType.RUN_STARTED,
+      EventType.MESSAGES_SNAPSHOT,
+      EventType.RUN_FINISHED,
+    ]);
     expect(events.filter((e) => e.type === EventType.TEXT_MESSAGE_START)).toHaveLength(1);
-    expect(events.every((e) => (e.metadata as Record<string, unknown> | undefined)?.[REPLAY_CURSOR_METADATA] !== undefined || e.type === EventType.CUSTOM)).toBe(true);
+    expect(
+      events.every(
+        (e) =>
+          (e.metadata as Record<string, unknown> | undefined)?.[REPLAY_CURSOR_METADATA] !== undefined ||
+          e.type === EventType.CUSTOM,
+      ),
+    ).toBe(true);
     expect(events.at(-1)?.type).toBe(EventType.RUN_FINISHED);
     expect(s.stop).toHaveBeenCalled();
     expect(runner.isRunning('7')).toBe(false);
@@ -63,7 +95,19 @@ describe('BgAgentRunner (the AG-UI agent pi-bg)', () => {
     const actions: BgAgentActions = { send: vi.fn(async () => undefined), stop: vi.fn(async () => undefined) };
     runner.useActions(actions);
     runner.attach('7', stream());
-    const events = await firstValueFrom(runner.run({ threadId: '7', input: { threadId: '7', runId: 'r1', messages: [{ id: 'm', role: 'user', content: 'Also cover greet.' }], forwardedProps: { streamingBehavior: 'steer' } } } as never).pipe(toArray()));
+    const events = await firstValueFrom(
+      runner
+        .run({
+          threadId: '7',
+          input: {
+            threadId: '7',
+            runId: 'r1',
+            messages: [{ id: 'm', role: 'user', content: 'Also cover greet.' }],
+            forwardedProps: { streamingBehavior: 'steer' },
+          },
+        } as never)
+        .pipe(toArray()),
+    );
     expect(events.map((e) => e.type)).toEqual([EventType.RUN_STARTED, EventType.RUN_FINISHED]);
     expect(actions.send).toHaveBeenCalledWith('7', 'Also cover greet.', 'steer', 'message:r1');
     expect(await runner.stop({ threadId: '7' } as never)).toBe(true);

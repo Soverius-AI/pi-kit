@@ -46,7 +46,14 @@ beforeEach(() => {
     contextShare: () => 42,
   };
   outcomeRows = new OutcomesRepository(db);
-  service = new ThreadStatusService(rows, events, attendant, sessions as never, outcomeRows, new SkillDraftsRepository(db));
+  service = new ThreadStatusService(
+    rows,
+    events,
+    attendant,
+    sessions as never,
+    outcomeRows,
+    new SkillDraftsRepository(db),
+  );
   service.onModuleInit();
   seen = [];
   service.subscribe((event) => seen.push(event));
@@ -77,7 +84,11 @@ describe('ThreadStatusService', () => {
     expect(seen.at(-1)).toMatchObject({ type: 'state', id: 't1', state: { activity: 'running' } });
     events.endRun('r1', 'finished');
     await tick();
-    expect(seen.at(-1)).toMatchObject({ type: 'state', id: 't1', state: { activity: 'idle', lastRun: 'finished', unread: true, context: null } });
+    expect(seen.at(-1)).toMatchObject({
+      type: 'state',
+      id: 't1',
+      state: { activity: 'idle', lastRun: 'finished', unread: true, context: null },
+    });
     rows.markSeen('t1', Date.now() + 1000);
     service.touch('t1');
     expect(seen.at(-1)).toMatchObject({ state: { unread: false } });
@@ -98,20 +109,37 @@ describe('ThreadStatusService', () => {
     dialogs = [{ id: 'd1', request: { method: 'confirm', title: 'Proceed with the test?' } }];
     attendant.addSuggestion({ threadId: 't1', kind: 'answer', target: 'd1', text: 'Allow' });
     onDialogs?.('t1');
-    expect(seen.at(-1)).toMatchObject({ state: { activity: 'waiting', question: 'Proceed with the test?', suggestions: [{ kind: 'answer', target: 'd1', text: 'Allow' }] } });
+    expect(seen.at(-1)).toMatchObject({
+      state: {
+        activity: 'waiting',
+        question: 'Proceed with the test?',
+        suggestions: [{ kind: 'answer', target: 'd1', text: 'Allow' }],
+      },
+    });
     dialogs = [];
     onDialogs?.('t1');
     expect(seen.at(-1)).toMatchObject({ state: { activity: 'idle', question: null, suggestions: [] } });
   });
 
-  it('a background agent\'s question for the user makes the thread wait, with the question in its state', () => {
+  it("a background agent's question for the user makes the thread wait, with the question in its state", () => {
     addThread('t1');
     service.snapshot();
-    const question = { id: 'agent-question:7:q1', agentId: '7', request: { method: 'input' as const, title: 'Change greet?', agent: 'reviewer' } };
+    const question = {
+      id: 'agent-question:7:q1',
+      agentId: '7',
+      request: { method: 'input' as const, title: 'Change greet?', agent: 'reviewer' },
+    };
     let questions = [question];
     service.setAgentQuestions(() => questions);
     service.touch('t1');
-    expect(seen.at(-1)).toMatchObject({ state: { activity: 'waiting', question: 'Change greet?', dialog: { id: 'agent-question:7:q1', method: 'input' }, agentQuestions: [question] } });
+    expect(seen.at(-1)).toMatchObject({
+      state: {
+        activity: 'waiting',
+        question: 'Change greet?',
+        dialog: { id: 'agent-question:7:q1', method: 'input' },
+        agentQuestions: [question],
+      },
+    });
     questions = [];
     service.touch('t1');
     expect(seen.at(-1)).toMatchObject({ state: { activity: 'idle', question: null } });
@@ -143,16 +171,41 @@ describe('ThreadStatusService', () => {
     addThread('t1');
     addThread('t2');
     expect(service.snapshot()['t1']?.outcome).toBeNull();
-    outcomeRows.put({ threadId: 't1', kind: 'merged', baseCommit: 'b', headCommit: 'h'.repeat(40), mergeCommit: 'h'.repeat(40), prUrl: null, at: 1234, files: ['a.ts'] });
+    outcomeRows.put({
+      threadId: 't1',
+      kind: 'merged',
+      baseCommit: 'b',
+      headCommit: 'h'.repeat(40),
+      mergeCommit: 'h'.repeat(40),
+      prUrl: null,
+      at: 1234,
+      files: ['a.ts'],
+    });
     service.touch('t1');
-    expect(seen.at(-1)).toMatchObject({ type: 'state', id: 't1', state: { outcome: { kind: 'merged', head: 'h'.repeat(40), at: 1234 } } });
+    expect(seen.at(-1)).toMatchObject({
+      type: 'state',
+      id: 't1',
+      state: { outcome: { kind: 'merged', head: 'h'.repeat(40), at: 1234 } },
+    });
     // A pass over every thread reads the outcomes once and puts each on its own thread.
     const states = service.snapshot();
     expect(states['t1']?.outcome).toMatchObject({ kind: 'merged' });
     expect(states['t2']?.outcome).toBeNull();
-    outcomeRows.put({ threadId: 't2', kind: 'pr', baseCommit: 'b', headCommit: 'p'.repeat(40), mergeCommit: null, prUrl: 'https://example.test/pr/1', at: 99, files: [] });
+    outcomeRows.put({
+      threadId: 't2',
+      kind: 'pr',
+      baseCommit: 'b',
+      headCommit: 'p'.repeat(40),
+      mergeCommit: null,
+      prUrl: 'https://example.test/pr/1',
+      at: 99,
+      files: [],
+    });
     service.touchAll();
-    expect(seen.at(-1)).toMatchObject({ id: 't2', state: { outcome: { kind: 'pr', url: 'https://example.test/pr/1' } } });
+    expect(seen.at(-1)).toMatchObject({
+      id: 't2',
+      state: { outcome: { kind: 'pr', url: 'https://example.test/pr/1' } },
+    });
   });
 
   it('a skill draft reaches the state of its thread, and a decision changes it', () => {
@@ -160,9 +213,19 @@ describe('ThreadStatusService', () => {
     addThread('t2');
     expect(service.snapshot()['t1']?.draft).toBeNull();
     const drafts = new SkillDraftsRepository(db);
-    const made = drafts.insert({ threadId: 't1', name: 'add-a-migration', text: '---\nname: add-a-migration\ndescription: d\n---\nB', scope: 'project', madeBy: 'attendant' });
+    const made = drafts.insert({
+      threadId: 't1',
+      name: 'add-a-migration',
+      text: '---\nname: add-a-migration\ndescription: d\n---\nB',
+      scope: 'project',
+      madeBy: 'attendant',
+    });
     service.touch('t1');
-    expect(seen.at(-1)).toMatchObject({ type: 'state', id: 't1', state: { draft: { id: made.id, name: 'add-a-migration', state: 'pending', madeBy: 'attendant' } } });
+    expect(seen.at(-1)).toMatchObject({
+      type: 'state',
+      id: 't1',
+      state: { draft: { id: made.id, name: 'add-a-migration', state: 'pending', madeBy: 'attendant' } },
+    });
     expect(service.snapshot()['t2']?.draft).toBeNull();
     drafts.setState(made.id, 'discarded');
     service.touch('t1');

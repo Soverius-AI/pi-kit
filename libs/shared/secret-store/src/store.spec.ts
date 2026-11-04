@@ -2,7 +2,14 @@ import { mkdtempSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FileSecretStore, KeyringSecretStore, MemorySecretStore, NoSecretStore, osStoreLabel, selectSecretStore } from './store';
+import {
+  FileSecretStore,
+  KeyringSecretStore,
+  MemorySecretStore,
+  NoSecretStore,
+  osStoreLabel,
+  selectSecretStore,
+} from './store';
 
 const scratch = (): string => realpathSync(mkdtempSync(join(tmpdir(), 'pk-secrets-')));
 
@@ -35,7 +42,10 @@ function fakeKeyring(options: { failOn?: 'set' | 'load' } = {}) {
             return data.delete(`${this.service}/${this.account}`);
           }
         },
-        findCredentials: (service: string) => [...data.keys()].filter((k) => k.startsWith(`${service}/`)).map((k) => ({ account: k.slice(service.length + 1) })),
+        findCredentials: (service: string) =>
+          [...data.keys()]
+            .filter((k) => k.startsWith(`${service}/`))
+            .map((k) => ({ account: k.slice(service.length + 1) })),
       };
     },
   };
@@ -83,7 +93,9 @@ describe('the operating system store', () => {
   it('separates a missing native module from a locked credential store', () => {
     expect(new KeyringSecretStore(fakeKeyring({ failOn: 'load' }).load, 'linux').available()).toBe(false);
     expect(new KeyringSecretStore(fakeKeyring({ failOn: 'set' }).load, 'linux').available()).toBe(true);
-    expect(() => new KeyringSecretStore(fakeKeyring({ failOn: 'load' }).load, 'linux').get('x')).toThrow(/not available/);
+    expect(() => new KeyringSecretStore(fakeKeyring({ failOn: 'load' }).load, 'linux').get('x')).toThrow(
+      /not available/,
+    );
   });
 
   it('does not retry a failed account until requested, without blocking other accounts or caching successful secrets', () => {

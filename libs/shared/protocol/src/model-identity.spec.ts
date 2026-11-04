@@ -8,7 +8,15 @@ describe('model identity', () => {
     expect(modelIdentity('llama-swap', 'org/model:Q8_0')).not.toBe(modelIdentity('llama-swap', 'org/model:Q4_K_M'));
   });
   it('does not confuse tuple boundaries, punctuation or Unicode', () => {
-    const identities = [['a/b', 'c'], ['a', 'b/c'], ['a', 'b_c'], ['a', '模型'], ['a', '模型2'], ['a\0b', 'c'], ['a', 'b\0c']].map(([provider, model]) => modelIdentity(provider, model));
+    const identities = [
+      ['a/b', 'c'],
+      ['a', 'b/c'],
+      ['a', 'b_c'],
+      ['a', '模型'],
+      ['a', '模型2'],
+      ['a\0b', 'c'],
+      ['a', 'b\0c'],
+    ].map(([provider, model]) => modelIdentity(provider, model));
     expect(new Set(identities).size).toBe(identities.length);
   });
 });

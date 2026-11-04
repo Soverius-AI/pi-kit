@@ -43,7 +43,12 @@ export const WHISTLE: Omit<ModelSpec, 'url'> = {
 export function whistleSpec(env: NodeJS.ProcessEnv = process.env): ModelSpec {
   const url = `https://huggingface.co/${WHISTLE.repository}/resolve/${WHISTLE.revision}/${WHISTLE.file}`;
   if (env['NODE_ENV'] === 'production' || !env['PI_KIT_WHISTLE_URL']) return { ...WHISTLE, url };
-  return { ...WHISTLE, url: env['PI_KIT_WHISTLE_URL'], sha256: env['PI_KIT_WHISTLE_SHA256'] ?? WHISTLE.sha256, bytes: Number(env['PI_KIT_WHISTLE_BYTES']) || WHISTLE.bytes };
+  return {
+    ...WHISTLE,
+    url: env['PI_KIT_WHISTLE_URL'],
+    sha256: env['PI_KIT_WHISTLE_SHA256'] ?? WHISTLE.sha256,
+    bytes: Number(env['PI_KIT_WHISTLE_BYTES']) || WHISTLE.bytes,
+  };
 }
 
 const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
@@ -144,7 +149,8 @@ export class ModelStore {
       const check = new Transform({
         transform: (chunk: Buffer, _encoding, callback) => {
           this.received += chunk.length;
-          if (this.received > this.spec.bytes) return callback(new Error(`The file is larger than the pinned ${this.spec.bytes} bytes.`));
+          if (this.received > this.spec.bytes)
+            return callback(new Error(`The file is larger than the pinned ${this.spec.bytes} bytes.`));
           hash.update(chunk);
           callback(null, chunk);
         },
@@ -156,7 +162,11 @@ export class ModelStore {
       await rename(part, this.path);
     } catch (error) {
       rmSync(part, { force: true });
-      this.failure = abort.signal.aborted ? String((abort.signal.reason as Error)?.message ?? 'Download cancelled.') : error instanceof Error ? error.message : String(error);
+      this.failure = abort.signal.aborted
+        ? String((abort.signal.reason as Error)?.message ?? 'Download cancelled.')
+        : error instanceof Error
+          ? error.message
+          : String(error);
       throw new Error(this.failure, { cause: error });
     } finally {
       clearTimeout(timer);

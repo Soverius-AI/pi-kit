@@ -9,7 +9,9 @@ function nodeToolDirectories(env: NodeJS.ProcessEnv): string[] {
   const nvm = join(env['NVM_DIR'] || join(home, '.nvm'), 'versions', 'node');
   let versions: string[] = [];
   try {
-    versions = readdirSync(nvm).filter((name) => /^v\d+\.\d+\.\d+$/.test(name)).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+    versions = readdirSync(nvm)
+      .filter((name) => /^v\d+\.\d+\.\d+$/.test(name))
+      .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
   } catch {
     // nvm is optional.
   }
@@ -43,7 +45,11 @@ export function loginShellPath(timeoutMs = 4000): string | undefined {
   const shell = process.env['SHELL'] || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/sh');
   const marker = '__PI_KIT_PATH__';
   // Separate arguments keep the trailing marker out of the shell variable name.
-  const result = spawnSync(shell, ['-ilc', `printf '%s%s%s' '${marker}' "$PATH" '${marker}'`], { encoding: 'utf8', timeout: timeoutMs, stdio: ['ignore', 'pipe', 'ignore'] });
+  const result = spawnSync(shell, ['-ilc', `printf '%s%s%s' '${marker}' "$PATH" '${marker}'`], {
+    encoding: 'utf8',
+    timeout: timeoutMs,
+    stdio: ['ignore', 'pipe', 'ignore'],
+  });
   const match = result.status === 0 ? new RegExp(`${marker}(.*?)${marker}`, 's').exec(result.stdout) : undefined;
   const paths = [match?.[1], process.env['PATH'], ...nodeToolDirectories(process.env)]
     .filter((path): path is string => !!path)

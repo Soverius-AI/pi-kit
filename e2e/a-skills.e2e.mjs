@@ -34,22 +34,36 @@ const sessionEntries = async () => {
     .map((line) => JSON.parse(line));
 };
 /** The user messages pi stored, as the text it was given. */
-const promptsOf = (entries) => entries.filter((e) => e.type === 'message' && e.message.role === 'user').map((e) => (typeof e.message.content === 'string' ? e.message.content : e.message.content.map((p) => p.text ?? '').join('')));
-const skillBlock = (name) => new RegExp(`<skill name="${name}" location="[^"]*/\\.pi/skills/${name}/SKILL\\.md">\\nReferences are relative to [^\\n]*/\\.pi/skills/${name}\\.\\n\\n# ${name}\\n\\n[^\\n]+\\n</skill>`);
+const promptsOf = (entries) =>
+  entries
+    .filter((e) => e.type === 'message' && e.message.role === 'user')
+    .map((e) =>
+      typeof e.message.content === 'string' ? e.message.content : e.message.content.map((p) => p.text ?? '').join(''),
+    );
+const skillBlock = (name) =>
+  new RegExp(
+    `<skill name="${name}" location="[^"]*/\\.pi/skills/${name}/SKILL\\.md">\\nReferences are relative to [^\\n]*/\\.pi/skills/${name}\\.\\n\\n# ${name}\\n\\n[^\\n]+\\n</skill>`,
+  );
 
 /** Types `/skill:name` and picks it from the menu with Enter: it becomes a chip, not text. */
 async function pick(typed, option, name = option.replace(/^skill:/, '')) {
   await box().fill(typed);
   await app.page.locator('[role="option"][id^="pk-composer-opt-"]', { hasText: option }).first().waitFor();
   await box().press('Enter');
-  await chips().filter({ has: app.page.locator(`.name:text-is("${name}")`) }).first().waitFor();
+  await chips()
+    .filter({ has: app.page.locator(`.name:text-is("${name}")`) })
+    .first()
+    .waitFor();
 }
 
 async function send(text) {
   await box().fill(text);
   await box().press('Enter');
   // The composer's own stop button (a running tool row has a Stop button of its own).
-  await app.page.getByTestId('stop').waitFor({ timeout: 30_000 }).catch(() => undefined);
+  await app.page
+    .getByTestId('stop')
+    .waitFor({ timeout: 30_000 })
+    .catch(() => undefined);
   await app.page.getByTestId('stop').waitFor({ state: 'detached' });
   await app.h.settle(800);
 }
@@ -63,7 +77,11 @@ describe('skills and prompt templates are chips', () => {
     // A `/` after other words offers the skills too (not the built-ins); the words stay.
     await box().fill('then also /skill:pk-be');
     await page.locator('[role="option"][id^="pk-composer-opt-"]', { hasText: 'skill:pk-beta' }).first().waitFor();
-    assert.equal(await page.locator('[role="option"][id^="pk-composer-opt-"]', { hasText: 'compact' }).count(), 0, 'a built-in is only offered at the start');
+    assert.equal(
+      await page.locator('[role="option"][id^="pk-composer-opt-"]', { hasText: 'compact' }).count(),
+      0,
+      'a built-in is only offered at the start',
+    );
     await box().press('Enter');
     await chips().nth(1).waitFor();
     assert.equal(await box().inputValue(), 'then also ');
@@ -78,11 +96,18 @@ describe('skills and prompt templates are chips', () => {
     const beta = skillBlock('pk-beta').exec(prompt);
     assert.ok(alpha && beta, `both skill blocks are in the prompt pi got:\n${prompt}`);
     assert.ok(alpha.index < beta.index, 'in chip order');
-    assert.ok(prompt.endsWith('</skill>\n\nthen also Say hello in one short sentence.') || prompt.endsWith('</skill>\n\nSay hello in one short sentence.'), 'the sentence follows after a blank line');
+    assert.ok(
+      prompt.endsWith('</skill>\n\nthen also Say hello in one short sentence.') ||
+        prompt.endsWith('</skill>\n\nSay hello in one short sentence.'),
+      'the sentence follows after a blank line',
+    );
     const recorded = entries.find((e) => e.type === 'custom' && e.customType === 'pi-kit.skills');
     assert.deepEqual(
       recorded.data.chips.map((c) => [c.kind, c.name, c.pinned]),
-      [['skill', 'pk-alpha', false], ['skill', 'pk-beta', false]],
+      [
+        ['skill', 'pk-alpha', false],
+        ['skill', 'pk-beta', false],
+      ],
     );
     assert.match(recorded.data.text, /Say hello in one short sentence\.$/);
 
@@ -91,15 +116,25 @@ describe('skills and prompt templates are chips', () => {
     const user = page.locator('pk-transcript .pk-user').first();
     assert.deepEqual(await user.locator('[data-testid="skill-chip"] .name').allInnerTexts(), ['pk-alpha', 'pk-beta']);
     assert.match(await user.innerText(), /Say hello in one short sentence\./);
-    assert.ok(!(await page.locator('pk-transcript').innerText()).includes('<skill'), 'the transcript does not show the instructions');
+    assert.ok(
+      !(await page.locator('pk-transcript').innerText()).includes('<skill'),
+      'the transcript does not show the instructions',
+    );
     assert.equal(await bubbleChips().count(), 1);
-    assert.equal(await user.locator('[data-testid="skill-chip-remove"]').count(), 0, 'the chips in the bubble are read-only');
+    assert.equal(
+      await user.locator('[data-testid="skill-chip-remove"]').count(),
+      0,
+      'the chips in the bubble are read-only',
+    );
 
     // After a reload the same bubble is drawn from the session entry.
     await page.reload();
     await box().waitFor();
     await bubbleChips().first().waitFor();
-    assert.deepEqual(await page.locator('pk-transcript .pk-user').first().locator('[data-testid="skill-chip"] .name').allInnerTexts(), ['pk-alpha', 'pk-beta']);
+    assert.deepEqual(
+      await page.locator('pk-transcript .pk-user').first().locator('[data-testid="skill-chip"] .name').allInnerTexts(),
+      ['pk-alpha', 'pk-beta'],
+    );
     assert.ok(!(await page.locator('pk-transcript').innerText()).includes('<skill'));
 
     // The Entries inspector shows the prompt as pi got it, both blocks.
@@ -142,7 +177,11 @@ describe('skills and prompt templates are chips', () => {
     // The pinned chip stays in the composer; the unpinned ones would have gone.
     assert.equal(await chips().count(), 1);
     await pinned().waitFor();
-    assert.equal((await page.getByRole('button', { name: 'Send' }).isDisabled()), true, 'a pinned chip alone is not a message');
+    assert.equal(
+      await page.getByRole('button', { name: 'Send' }).isDisabled(),
+      true,
+      'a pinned chip alone is not a message',
+    );
     // A pin is remembered (localStorage): the chip is still on the thread after the page is loaded again.
     await page.reload();
     await box().waitFor();
@@ -151,7 +190,10 @@ describe('skills and prompt templates are chips', () => {
     await send('Second message, say two.');
     let prompts = promptsOf(await sessionEntries());
     assert.equal(prompts.length, 2);
-    assert.ok(skillBlock('pk-alpha').test(prompts[0]) && skillBlock('pk-alpha').test(prompts[1]), 'both messages carry the skill');
+    assert.ok(
+      skillBlock('pk-alpha').test(prompts[0]) && skillBlock('pk-alpha').test(prompts[1]),
+      'both messages carry the skill',
+    );
     assert.equal(await bubbleChips().count(), 2, 'both bubbles show the chip');
     // Unpin: it goes with the next message and is gone after it.
     await chips().first().hover();
@@ -168,7 +210,9 @@ describe('skills and prompt templates are chips', () => {
     await pick('/skill:pk-be', 'skill:pk-beta');
     await box().focus();
     await box().press('Backspace');
-    await page.waitForFunction(() => document.querySelectorAll('[data-testid="chip-strip"] [data-testid="skill-chip"]').length === 0);
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="chip-strip"] [data-testid="skill-chip"]').length === 0,
+    );
   });
 
   it('a /skill:name typed first, without a chip, still goes to pi as text and pi expands it', async () => {
@@ -196,6 +240,8 @@ describe('skills and prompt templates are chips', () => {
     assert.deepEqual(await chips().locator('.name').allInnerTexts(), ['pk-alpha']);
     assert.equal(await box().evaluate((el) => document.activeElement === el), true, 'the composer has the focus');
     await chips().first().getByTestId('skill-chip-remove').click();
-    await page.waitForFunction(() => document.querySelectorAll('[data-testid="chip-strip"] [data-testid="skill-chip"]').length === 0);
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid="chip-strip"] [data-testid="skill-chip"]').length === 0,
+    );
   });
 });

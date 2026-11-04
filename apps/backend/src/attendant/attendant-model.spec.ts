@@ -27,7 +27,19 @@ beforeEach(() => {
   const agent = join(base, 'agent');
   mkdirSync(agent, { recursive: true });
   // A provider pi can select but never reach: a request that got as far as the model would fail on the connection, not on its abort.
-  writeFileSync(join(agent, 'models.json'), JSON.stringify({ providers: { fixture: { baseUrl: 'http://127.0.0.1:1/v1', api: 'openai-completions', apiKey: 'fixture', models: [{ id: 'local', contextWindow: 8192 }] } } }));
+  writeFileSync(
+    join(agent, 'models.json'),
+    JSON.stringify({
+      providers: {
+        fixture: {
+          baseUrl: 'http://127.0.0.1:1/v1',
+          api: 'openai-completions',
+          apiKey: 'fixture',
+          models: [{ id: 'local', contextWindow: 8192 }],
+        },
+      },
+    }),
+  );
   vi.stubEnv('PI_CODING_AGENT_DIR', agent);
   vi.stubEnv('PI_OFFLINE', '1');
   loading.count = 0;
@@ -55,19 +67,47 @@ it('an abort that lands while pi sets the session up ends the request before any
   expect(model.calls).toBe(1);
 }, 15_000);
 
-
 it('aborting an HTTP request in flight reports cancellation, and a later request can still answer', async () => {
   let enter!: () => void;
   let release!: (text: string) => void;
-  const entered = new Promise<void>((resolve) => { enter = resolve; });
-  const held = new Promise<string>((resolve) => { release = resolve; });
-  const server = await startFakeModel({ answer: () => { enter(); return held; } });
-  writeFileSync(join(base, 'agent', 'models.json'), JSON.stringify({ providers: { fixture: { baseUrl: server.url, api: 'openai-completions', apiKey: 'fixture', models: [{ id: 'local', contextWindow: 8192 }] } } }));
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const held = new Promise<string>((resolve) => {
+    release = resolve;
+  });
+  const server = await startFakeModel({
+    answer: () => {
+      enter();
+      return held;
+    },
+  });
+  writeFileSync(
+    join(base, 'agent', 'models.json'),
+    JSON.stringify({
+      providers: {
+        fixture: {
+          baseUrl: server.url,
+          api: 'openai-completions',
+          apiKey: 'fixture',
+          models: [{ id: 'local', contextWindow: 8192 }],
+        },
+      },
+    }),
+  );
   const caller = new AbortController();
   const pending = model.ask(prompt, choice, caller.signal);
-  const outcome = pending.then(() => undefined, (error: unknown) => error);
+  const outcome = pending.then(
+    () => undefined,
+    (error: unknown) => error,
+  );
   try {
-    await Promise.race([entered, outcome.then((error) => { throw error ?? new Error('Answered before the server was released.'); })]);
+    await Promise.race([
+      entered,
+      outcome.then((error) => {
+        throw error ?? new Error('Answered before the server was released.');
+      }),
+    ]);
     caller.abort();
     await expect(pending).rejects.toThrow('The model request was aborted.');
     release('4');

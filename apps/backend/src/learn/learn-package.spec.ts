@@ -17,7 +17,11 @@ let agent: string;
 let bundled: string;
 let db: DatabaseService;
 let pkg: LearnPackage;
-const previous = { agent: process.env['PI_CODING_AGENT_DIR'], dir: process.env['PI_KIT_LEARN_PACKAGE_DIR'], off: process.env['PI_KIT_LEARN_PACKAGE'] };
+const previous = {
+  agent: process.env['PI_CODING_AGENT_DIR'],
+  dir: process.env['PI_KIT_LEARN_PACKAGE_DIR'],
+  off: process.env['PI_KIT_LEARN_PACKAGE'],
+};
 
 /** A copy of the package as the app ships it (no specs), where `dir` says. */
 function ship(dir: string): void {
@@ -26,7 +30,8 @@ function ship(dir: string): void {
     cpSync(join(SOURCE, file), join(dir, file));
   }
 }
-const settings = (): { packages?: unknown[] } => (existsSync(join(agent, 'settings.json')) ? JSON.parse(readFileSync(join(agent, 'settings.json'), 'utf8')) : {});
+const settings = (): { packages?: unknown[] } =>
+  existsSync(join(agent, 'settings.json')) ? JSON.parse(readFileSync(join(agent, 'settings.json'), 'utf8')) : {};
 
 beforeEach(() => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-learnpkg-')));
@@ -45,7 +50,11 @@ beforeEach(() => {
 afterEach(() => {
   db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
-  for (const [key, value] of [['PI_CODING_AGENT_DIR', previous.agent], ['PI_KIT_LEARN_PACKAGE_DIR', previous.dir], ['PI_KIT_LEARN_PACKAGE', previous.off]] as const) {
+  for (const [key, value] of [
+    ['PI_CODING_AGENT_DIR', previous.agent],
+    ['PI_KIT_LEARN_PACKAGE_DIR', previous.dir],
+    ['PI_KIT_LEARN_PACKAGE', previous.off],
+  ] as const) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
@@ -103,7 +112,28 @@ describe('the learn package ships with the app and is installed into pi once', (
   it('loads the analysis of the installed copy', async () => {
     await pkg.ensureInstalled();
     const analysis = await pkg.analysis();
-    expect(analysis?.parseDraftReply('---\nname: x-y\ndescription: Use when z\n---\n\nBody\n')).toMatchObject({ ok: true, name: 'x-y' });
-    expect(analysis?.buildAnalysisPrompt({ threadId: 't', title: null, cwd: '/', prompts: ['p'], toolCalls: 0, steps: [], errors: [], checks: [], diff: null, changedLines: 0, commitMessage: null, base: null, head: null, truncated: false, redactions: 0 }).system).toContain('SKILL.md');
+    expect(analysis?.parseDraftReply('---\nname: x-y\ndescription: Use when z\n---\n\nBody\n')).toMatchObject({
+      ok: true,
+      name: 'x-y',
+    });
+    expect(
+      analysis?.buildAnalysisPrompt({
+        threadId: 't',
+        title: null,
+        cwd: '/',
+        prompts: ['p'],
+        toolCalls: 0,
+        steps: [],
+        errors: [],
+        checks: [],
+        diff: null,
+        changedLines: 0,
+        commitMessage: null,
+        base: null,
+        head: null,
+        truncated: false,
+        redactions: 0,
+      }).system,
+    ).toContain('SKILL.md');
   });
 });

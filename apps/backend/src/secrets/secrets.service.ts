@@ -3,8 +3,24 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSy
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { type DatabaseProtection, type DiskEncryption, type ResolverPlatform, type SecretsStatus, bearerFromResolver, isProviderAccount, resolverCommand } from '@pi-kit/protocol';
-import { type SecretStore, defaultInstallDir, launcherName, launcherScript, readSecurityPreferences, writeSecurityPreferences, selectSecretStore } from '@pi-kit/secret-store';
+import {
+  type DatabaseProtection,
+  type DiskEncryption,
+  type ResolverPlatform,
+  type SecretsStatus,
+  bearerFromResolver,
+  isProviderAccount,
+  resolverCommand,
+} from '@pi-kit/protocol';
+import {
+  type SecretStore,
+  defaultInstallDir,
+  launcherName,
+  launcherScript,
+  readSecurityPreferences,
+  writeSecurityPreferences,
+  selectSecretStore,
+} from '@pi-kit/secret-store';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
 import { DatabaseService } from '../db/database.service';
@@ -49,11 +65,17 @@ export class SecretsService implements OnModuleInit {
     if (!this.credentialsEnabled() && !this.retainedHelperReferences) return;
     try {
       const launcher = this.ensureLauncher();
-      if (this.store.helperResolver && !launcher) throw new Error('The signed pi-kit-secret helper is required for Touch ID storage.');
+      if (this.store.helperResolver && !launcher)
+        throw new Error('The signed pi-kit-secret helper is required for Touch ID storage.');
       // Existing keys move only through the explicit migration action, never on startup.
     } catch (error) {
-      if (this.store.protected) throw new Error('The secure credential helper could not be prepared. Original credentials were retained.', { cause: error });
-      this.logger.warn(`Could not write the pi-kit-secret launcher: ${error instanceof Error ? error.message : String(error)}`);
+      if (this.store.protected)
+        throw new Error('The secure credential helper could not be prepared. Original credentials were retained.', {
+          cause: error,
+        });
+      this.logger.warn(
+        `Could not write the pi-kit-secret launcher: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -65,7 +87,11 @@ export class SecretsService implements OnModuleInit {
 
   /** The built `pi-kit-secret.cjs`: next to the backend bundle when packaged, in `dist/apps/secret-cli` in a checkout, or where `PI_KIT_SECRET_CLI` says. */
   cliBundle(): string | undefined {
-    const candidates = [process.env['PI_KIT_SECRET_CLI'], join(__dirname, 'pi-kit-secret.cjs'), join(__dirname, '..', 'secret-cli', 'pi-kit-secret.cjs')].filter((c): c is string => !!c);
+    const candidates = [
+      process.env['PI_KIT_SECRET_CLI'],
+      join(__dirname, 'pi-kit-secret.cjs'),
+      join(__dirname, '..', 'secret-cli', 'pi-kit-secret.cjs'),
+    ].filter((c): c is string => !!c);
     return candidates.find((c) => existsSync(c));
   }
 
@@ -73,10 +99,19 @@ export class SecretsService implements OnModuleInit {
     const script = this.cliBundle();
     if (!script) return undefined;
     const electron = !!process.versions['electron'] || process.env['ELECTRON_RUN_AS_NODE'] === '1';
-    const secretStore = this.store.kind === 'keychain' && this.platform() === 'darwin'
-      ? this.store.protected ? 'macos' : 'legacy'
-      : process.env['PI_KIT_SECRET_STORE'] || (this.platform() === 'darwin' && this.retainedHelperReferences ? 'macos' : undefined);
-    return launcherScript(this.platform(), { runtime: process.execPath, electron, script, ...(secretStore ? { secretStore } : {}) });
+    const secretStore =
+      this.store.kind === 'keychain' && this.platform() === 'darwin'
+        ? this.store.protected
+          ? 'macos'
+          : 'legacy'
+        : process.env['PI_KIT_SECRET_STORE'] ||
+          (this.platform() === 'darwin' && this.retainedHelperReferences ? 'macos' : undefined);
+    return launcherScript(this.platform(), {
+      runtime: process.execPath,
+      electron,
+      script,
+      ...(secretStore ? { secretStore } : {}),
+    });
   }
 
   binDir(): string {
@@ -119,7 +154,10 @@ export class SecretsService implements OnModuleInit {
   }
 
   private secretToolInstalled(): boolean {
-    return this.platform() === 'linux' && this.userPath.split(delimiter).some((dir) => dir && existsSync(join(dir, 'secret-tool')));
+    return (
+      this.platform() === 'linux' &&
+      this.userPath.split(delimiter).some((dir) => dir && existsSync(join(dir, 'secret-tool')))
+    );
   }
 
   // ---- keys
@@ -133,7 +171,8 @@ export class SecretsService implements OnModuleInit {
     if (this.store.helperResolver) return this.cliBundle() ? resolverCommand('win32', provider) : undefined;
     if (this.store.kind === 'keychain') {
       const platform = this.platform();
-      if (platform !== 'darwin' && !this.cliBundle() && !(platform === 'linux' && this.secretToolInstalled())) return undefined;
+      if (platform !== 'darwin' && !this.cliBundle() && !(platform === 'linux' && this.secretToolInstalled()))
+        return undefined;
       return resolverCommand(platform, provider, { secretTool: this.secretToolInstalled() });
     }
     return this.cliBundle() ? resolverCommand('win32', provider) : undefined;
@@ -149,13 +188,16 @@ export class SecretsService implements OnModuleInit {
     }
     try {
       await this.store.set(provider, key);
-      if (await this.store.get(provider) !== key) throw new Error('The store did not return what was written.');
+      if ((await this.store.get(provider)) !== key) throw new Error('The store did not return what was written.');
       // `secret-tool` only sees the Secret Service; if it cannot read the entry back, the helper is the resolver.
-      if (resolver.startsWith('!secret-tool') && !this.resolves(resolver, key)) resolver = resolverCommand('linux', provider);
+      if (resolver.startsWith('!secret-tool') && !this.resolves(resolver, key))
+        resolver = resolverCommand('linux', provider);
       return { value: resolver, storage: 'keychain' };
     } catch (error) {
       if (this.store.protected) throw error;
-      this.logger.warn(`The credential store did not take the key for ${provider}: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(
+        `The credential store did not take the key for ${provider}: ${error instanceof Error ? error.message : String(error)}`,
+      );
       return { value: key, storage: 'auth.json' };
     }
   }
@@ -173,7 +215,12 @@ export class SecretsService implements OnModuleInit {
   /** Runs a resolver the way pi does (a shell, ten seconds) and compares its output with the key. */
   private resolves(command: string, key: string): boolean {
     try {
-      const out = execFileSync('/bin/sh', ['-c', command.slice(1)], { timeout: 10_000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: process.env });
+      const out = execFileSync('/bin/sh', ['-c', command.slice(1)], {
+        timeout: 10_000,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        env: process.env,
+      });
       return out.trim() === key;
     } catch {
       return false;
@@ -188,7 +235,9 @@ export class SecretsService implements OnModuleInit {
       await this.store.delete(provider);
     } catch (error) {
       if (this.store.protected) throw error;
-      this.logger.warn(`Could not remove the stored key for ${provider}: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(
+        `Could not remove the stored key for ${provider}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -198,14 +247,22 @@ export class SecretsService implements OnModuleInit {
     const previous = this.meta.getSetting('credentialStoreEnabled');
     if (typeof previous === 'boolean') return previous;
     // Scratch stores remain explicit opt-ins; a new macOS profile starts with no store.
-    return this.store.kind !== 'none' && (process.platform !== 'darwin' || this.store.kind !== 'keychain' || !!process.env['PI_KIT_SECRET_STORE']);
+    return (
+      this.store.kind !== 'none' &&
+      (process.platform !== 'darwin' || this.store.kind !== 'keychain' || !!process.env['PI_KIT_SECRET_STORE'])
+    );
   }
 
   private enabledStore(): SecretStore {
-    const store = this.store.kind !== 'none' ? this.store : selectSecretStore({
-      ...process.env,
-      ...(!process.env['PI_KIT_SECRET_STORE'] && process.platform === 'darwin' ? { PI_KIT_SECRET_STORE: 'macos' } : {}),
-    });
+    const store =
+      this.store.kind !== 'none'
+        ? this.store
+        : selectSecretStore({
+            ...process.env,
+            ...(!process.env['PI_KIT_SECRET_STORE'] && process.platform === 'darwin'
+              ? { PI_KIT_SECRET_STORE: 'macos' }
+              : {}),
+          });
     if (!store.available()) throw new Error('Secure storage is unavailable in this build.');
     return store;
   }
@@ -215,7 +272,11 @@ export class SecretsService implements OnModuleInit {
     const files = ['auth.json', 'models.json', 'mcp.json'].map((name) => join(agent, name));
     for (const workspace of this.meta.listWorkspaces?.() ?? []) files.push(join(workspace.cwd, '.pi', 'mcp.json'));
     return files.some((path) => {
-      try { return pattern.test(readFileSync(path, 'utf8')); } catch { return false; }
+      try {
+        return pattern.test(readFileSync(path, 'utf8'));
+      } catch {
+        return false;
+      }
     });
   }
 
@@ -226,7 +287,8 @@ export class SecretsService implements OnModuleInit {
       const previous = this.store;
       this.store = this.enabledStore();
       try {
-        if (this.store.helperResolver && !this.cliBundle()) throw new Error('Secure storage requires the signed pi-kit-secret helper.');
+        if (this.store.helperResolver && !this.cliBundle())
+          throw new Error('Secure storage requires the signed pi-kit-secret helper.');
         this.ensureLauncher();
         writeSecurityPreferences(this.config.dataDir, { credentialStoreEnabled: true });
       } catch (error) {
@@ -242,16 +304,26 @@ export class SecretsService implements OnModuleInit {
     const agent = agentDirOf(process.env);
     // This is an explicit export action, so existing references may authorize access to their old store.
     // Respect explicit test/automation overrides; default startup still never selects it for new saves.
-    const exportStore = this.store.kind === 'none' && this.platform() === 'darwin' && !process.env['PI_KIT_SECRET_STORE']
-      && this.hasCredentialReference(/!(?:pi-kit-secret get |security find-generic-password -s pi-kit -a |echo Bearer \$\()/)
-      ? selectSecretStore({ ...process.env, PI_KIT_SECRET_STORE: 'macos' }) : this.store;
+    const exportStore =
+      this.store.kind === 'none' &&
+      this.platform() === 'darwin' &&
+      !process.env['PI_KIT_SECRET_STORE'] &&
+      this.hasCredentialReference(
+        /!(?:pi-kit-secret get |security find-generic-password -s pi-kit -a |echo Bearer \$\()/,
+      )
+        ? selectSecretStore({ ...process.env, PI_KIT_SECRET_STORE: 'macos' })
+        : this.store;
     for (const name of ['auth.json', 'models.json', 'mcp.json']) {
       try {
         const exported = await plaintextCredentialFile(join(agent, name), exportStore, name === 'auth.json');
         result.moved.push(...exported.moved);
         result.failed.push(...exported.failed);
       } catch {
-        result.failed.push({ provider: name, reason: 'The configuration could not be migrated. It was retained; re-enter its credentials or retry after fixing the file.' });
+        result.failed.push({
+          provider: name,
+          reason:
+            'The configuration could not be migrated. It was retained; re-enter its credentials or retry after fixing the file.',
+        });
       }
     }
     // Project configuration is intentionally never rewritten with plaintext secrets.
@@ -269,11 +341,13 @@ export class SecretsService implements OnModuleInit {
       label: this.store.label,
       available,
       credentialsEnabled,
-      access: available ? this.store.accessStatus?.() ?? { state: 'ready' } : { state: 'unavailable' },
+      access: available ? (this.store.accessStatus?.() ?? { state: 'ready' }) : { state: 'unavailable' },
       movable: available ? readMovableKeys(agentDirOf(process.env)) : [],
       ...(resolver ? { resolver: resolver.replace(/(-a |get |username )provider\b/, '$1<provider>') } : {}),
       cliOnPath: this.cliOnUserPath(),
-      ...(this.cliBundle() ? { cliInstallDir: process.env['PI_KIT_BIN_DIR'] || defaultInstallDir(this.platform(), process.env, homedir()) } : {}),
+      ...(this.cliBundle()
+        ? { cliInstallDir: process.env['PI_KIT_BIN_DIR'] || defaultInstallDir(this.platform(), process.env, homedir()) }
+        : {}),
       cliNeeded: !!resolver && resolver.includes('pi-kit-secret') && !this.cliOnUserPath(),
     };
   }
@@ -289,7 +363,8 @@ export class SecretsService implements OnModuleInit {
 
   /** The recovery key, once: the first call returns it and records that it was shown, every later call refuses (the person saved it, or knows they did not). */
   recoveryKey(): { key: string } {
-    if (this.meta.getSetting('recoveryKeyShown') === true) throw new Error('The recovery key was shown once already and is not shown again.');
+    if (this.meta.getSetting('recoveryKeyShown') === true)
+      throw new Error('The recovery key was shown once already and is not shown again.');
     const key = this.database.recoveryKey();
     if (!key) throw new Error('The database is not encrypted, so there is no key to export.');
     this.meta.setSetting('recoveryKeyShown', true);

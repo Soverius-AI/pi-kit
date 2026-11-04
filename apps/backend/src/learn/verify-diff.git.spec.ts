@@ -21,7 +21,12 @@ it.each(['true', 'false'])('accounts for every real Git-quoted path with core.qu
     const patch = git('-c', `core.quotepath=${quotePath}`, 'diff', '--no-renames', '-U0');
     const parsed = parseDiff(patch);
     expect(parsed.map((file) => file.path).sort()).toEqual([...names].sort());
-    expect(parsed.every((file) => file.hunks.length === 1 && file.hunks[0].removed[0] === 'before' && file.hunks[0].added[0] === 'after')).toBe(true);
+    expect(
+      parsed.every(
+        (file) =>
+          file.hunks.length === 1 && file.hunks[0].removed[0] === 'before' && file.hunks[0].added[0] === 'after',
+      ),
+    ).toBe(true);
     // A replay that changed nothing must fail, even when every outcome filename needs Git quoting.
     expect(verdict(compareDiffs(parsed, []), [])).toBe('failed');
   } finally {

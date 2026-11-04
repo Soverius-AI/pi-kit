@@ -18,7 +18,8 @@ describe.skipIf(process.platform === 'win32')('desktop tool discovery', () => {
     symlinkSync(process.execPath, join(dir, 'node'));
     writeFileSync(join(dir, 'npm'), '#!/usr/bin/env node\nconsole.log("fixture-npm");\n', { mode: 0o755 });
   };
-  const npm = (path: string | undefined) => spawnSync('npm', ['--version'], { env: { ...process.env, PATH: path }, encoding: 'utf8' });
+  const npm = (path: string | undefined) =>
+    spawnSync('npm', ['--version'], { env: { ...process.env, PATH: path }, encoding: 'utf8' });
 
   beforeEach(() => {
     home = mkdtempSync(join(tmpdir(), 'pk-desktop-path-'));

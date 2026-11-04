@@ -33,7 +33,11 @@ describe('writeMcpServer', () => {
 
   it('keeps every other server, every other top-level key and the indentation of the file', () => {
     const { user } = folders();
-    writeFileSync(user, '{\n\t"autoEnableCodemode": false,\n\t"mcpServers": {\n\t\t"files": { "command": "npx", "args": ["-y", "server-files", "."], "env": { "A": "${B}" } },\n\t\t"off": { "url": "https://example.com/mcp", "enabled": false }\n\t},\n\t"extra": { "nested": [1, 2, 3] }\n}\n', { mode: 0o644 });
+    writeFileSync(
+      user,
+      '{\n\t"autoEnableCodemode": false,\n\t"mcpServers": {\n\t\t"files": { "command": "npx", "args": ["-y", "server-files", "."], "env": { "A": "${B}" } },\n\t\t"off": { "url": "https://example.com/mcp", "enabled": false }\n\t},\n\t"extra": { "nested": [1, 2, 3] }\n}\n',
+      { mode: 0o644 },
+    );
     writeMcpServer(user, 'linear', LINEAR);
     const after = read(user);
     expect(after['autoEnableCodemode']).toBe(false);
@@ -53,7 +57,10 @@ describe('writeMcpServer', () => {
     writeMcpServer(user, 'a', { url: 'https://a.example/mcp' });
     writeMcpServer(user, 'b', { url: 'https://b.example/mcp' });
     expect(writeMcpServer(user, 'a', { url: 'https://a2.example/mcp' })).toBe(true);
-    expect(read(user)['mcpServers']).toEqual({ a: { url: 'https://a2.example/mcp' }, b: { url: 'https://b.example/mcp' } });
+    expect(read(user)['mcpServers']).toEqual({
+      a: { url: 'https://a2.example/mcp' },
+      b: { url: 'https://b.example/mcp' },
+    });
   });
 
   it('never overwrites a file it cannot read as a configuration', () => {
@@ -84,20 +91,31 @@ describe('writeMcpServer', () => {
     ]);
     // an untrusted folder's file is not read at all, so a project-only connector exists only where it was trusted
     expect(readMcpConfig({ agentDir, cwd, projectTrusted: false }).servers.map((s) => s.name)).toEqual(['linear']);
-    expect(readMcpConfig({ agentDir, cwd: join(cwd, '..', 'elsewhere'), projectTrusted: true }).servers.map((s) => s.name)).toEqual(['linear']);
+    expect(
+      readMcpConfig({ agentDir, cwd: join(cwd, '..', 'elsewhere'), projectTrusted: true }).servers.map((s) => s.name),
+    ).toEqual(['linear']);
   });
 
   it('a bearer entry is recognised as not needing OAuth', () => {
     const { agentDir, user } = folders();
-    writeMcpServer(user, 'github', { url: 'https://api.githubcopilot.com/mcp/', headers: { Authorization: '!echo Bearer $(security find-generic-password -s pi-kit -a connector-github -w)' } });
-    expect(readMcpConfig({ agentDir, projectTrusted: false }).servers[0]).toMatchObject({ name: 'github', oauth: false });
+    writeMcpServer(user, 'github', {
+      url: 'https://api.githubcopilot.com/mcp/',
+      headers: { Authorization: '!echo Bearer $(security find-generic-password -s pi-kit -a connector-github -w)' },
+    });
+    expect(readMcpConfig({ agentDir, projectTrusted: false }).servers[0]).toMatchObject({
+      name: 'github',
+      oauth: false,
+    });
   });
 });
 
 describe('removeMcpServer', () => {
   it('removes one entry and nothing else', () => {
     const { user } = folders();
-    writeFileSync(user, JSON.stringify({ keep: true, mcpServers: { a: { command: 'x' }, b: { command: 'y' } } }, null, 2));
+    writeFileSync(
+      user,
+      JSON.stringify({ keep: true, mcpServers: { a: { command: 'x' }, b: { command: 'y' } } }, null, 2),
+    );
     expect(removeMcpServer(user, 'a')).toBe(true);
     expect(read(user)).toEqual({ keep: true, mcpServers: { b: { command: 'y' } } });
   });
@@ -125,9 +143,14 @@ describe('setMcpServerExposure', () => {
     writeMcpServer(user, 'linear', { url: 'https://mcp.linear.app/mcp' });
     const entry = readMcpConfig({ agentDir, projectTrusted: false }).servers[0];
     setMcpServerExposure(entry, 'deferred');
-    expect((read(user)['mcpServers'] as Record<string, unknown>)['linear']).toEqual({ url: 'https://mcp.linear.app/mcp', exposure: 'deferred' });
+    expect((read(user)['mcpServers'] as Record<string, unknown>)['linear']).toEqual({
+      url: 'https://mcp.linear.app/mcp',
+      exposure: 'deferred',
+    });
     setMcpServerExposure(entry, 'codemode');
-    expect((read(user)['mcpServers'] as Record<string, unknown>)['linear']).toEqual({ url: 'https://mcp.linear.app/mcp' });
+    expect((read(user)['mcpServers'] as Record<string, unknown>)['linear']).toEqual({
+      url: 'https://mcp.linear.app/mcp',
+    });
   });
 
   it('goes to the project override when the project overrides a user server', () => {
@@ -136,7 +159,12 @@ describe('setMcpServerExposure', () => {
     writeMcpServer(project, 'linear', { enabled: true });
     const entry = readMcpConfig({ agentDir, cwd, projectTrusted: true }).servers[0];
     setMcpServerExposure(entry, 'direct');
-    expect((read(project)['mcpServers'] as Record<string, unknown>)['linear']).toEqual({ enabled: true, exposure: 'direct' });
-    expect((read(user)['mcpServers'] as Record<string, unknown>)['linear']).toEqual({ url: 'https://mcp.linear.app/mcp' });
+    expect((read(project)['mcpServers'] as Record<string, unknown>)['linear']).toEqual({
+      enabled: true,
+      exposure: 'direct',
+    });
+    expect((read(user)['mcpServers'] as Record<string, unknown>)['linear']).toEqual({
+      url: 'https://mcp.linear.app/mcp',
+    });
   });
 });

@@ -19,9 +19,19 @@ import {
 
 describe('pi custom events', () => {
   it('defines every name', () => {
-    expect(Object.keys(PI_CUSTOM_EVENTS).sort()).toEqual(
-      ['pi.compaction', 'pi.composer', 'pi.model', 'pi.notify', 'pi.queue', 'pi.retry', 'pi.session_info', 'pi.status', 'pi.title', 'pi.tree', 'pi.usage'],
-    );
+    expect(Object.keys(PI_CUSTOM_EVENTS).sort()).toEqual([
+      'pi.compaction',
+      'pi.composer',
+      'pi.model',
+      'pi.notify',
+      'pi.queue',
+      'pi.retry',
+      'pi.session_info',
+      'pi.status',
+      'pi.title',
+      'pi.tree',
+      'pi.usage',
+    ]);
   });
 
   it('parses a valid event and strips unknown keys', () => {
@@ -75,26 +85,56 @@ describe('the Outcome source', () => {
   });
 
   it('is carried by the thread state as a badge or null', () => {
-    const state = { activity: 'idle', question: null, context: null, lastRun: null, unread: false, unseen: false, cli: false, summary: null, suggestions: [], draft: null };
+    const state = {
+      activity: 'idle',
+      question: null,
+      context: null,
+      lastRun: null,
+      unread: false,
+      unseen: false,
+      cli: false,
+      summary: null,
+      suggestions: [],
+      draft: null,
+    };
     expect(ThreadStateSchema.safeParse({ ...state, outcome: null }).success).toBe(true);
-    expect(ThreadStateSchema.safeParse({ ...state, outcome: { kind: 'pr', head: 'abc', at: 1, url: 'https://example.test/pr/1' } }).success).toBe(true);
-    expect(ThreadStateSchema.safeParse({ ...state, outcome: { kind: 'reverted', head: 'abc', at: 1 } }).success).toBe(false);
+    expect(
+      ThreadStateSchema.safeParse({
+        ...state,
+        outcome: { kind: 'pr', head: 'abc', at: 1, url: 'https://example.test/pr/1' },
+      }).success,
+    ).toBe(true);
+    expect(ThreadStateSchema.safeParse({ ...state, outcome: { kind: 'reverted', head: 'abc', at: 1 } }).success).toBe(
+      false,
+    );
     expect(ThreadStateSchema.safeParse(state).success).toBe(false);
   });
 });
 
 describe(' shapes', () => {
   it('validates the tool and compaction activities and derives their message ids', () => {
-    expect(PI_ACTIVITY_TYPES['pi.tool'].parse({ toolCallId: 'c', toolName: 'bash', status: 'running', startedAt: 1 })).toBeTruthy();
-    expect(() => PI_ACTIVITY_TYPES['pi.tool'].parse({ toolCallId: 'c', toolName: 'bash', status: 'paused', startedAt: 1 })).toThrow();
+    expect(
+      PI_ACTIVITY_TYPES['pi.tool'].parse({ toolCallId: 'c', toolName: 'bash', status: 'running', startedAt: 1 }),
+    ).toBeTruthy();
+    expect(() =>
+      PI_ACTIVITY_TYPES['pi.tool'].parse({ toolCallId: 'c', toolName: 'bash', status: 'paused', startedAt: 1 }),
+    ).toThrow();
     expect(PI_ACTIVITY_TYPES['pi.compaction'].parse({})).toEqual({});
     expect(activityId.bash('c1')).toBe('bash:c1');
     expect(activityId.compaction('k')).toBe('compaction:k');
   });
 
   it('keeps the optional status key and the context token count', () => {
-    expect(parsePiCustomEvent({ name: 'pi.status', value: { key: 'git', text: '' } })?.value).toEqual({ key: 'git', text: '' });
-    expect(parsePiCustomEvent({ name: 'pi.usage', value: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 3 } })).toBeDefined();
+    expect(parsePiCustomEvent({ name: 'pi.status', value: { key: 'git', text: '' } })?.value).toEqual({
+      key: 'git',
+      text: '',
+    });
+    expect(
+      parsePiCustomEvent({
+        name: 'pi.usage',
+        value: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 3 },
+      }),
+    ).toBeDefined();
   });
 
   it('names interrupts after the dialog method and parses answers', () => {
@@ -114,7 +154,9 @@ describe(' shapes', () => {
   });
 
   it('describes a command entry', () => {
-    expect(CommandSchema.parse({ name: 'compact', source: 'builtin', kind: 'action' })).toMatchObject({ name: 'compact' });
+    expect(CommandSchema.parse({ name: 'compact', source: 'builtin', kind: 'action' })).toMatchObject({
+      name: 'compact',
+    });
     expect(() => CommandSchema.parse({ name: 'x', source: 'mystery', kind: 'action' })).toThrow();
   });
 });

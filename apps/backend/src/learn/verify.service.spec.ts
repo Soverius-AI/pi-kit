@@ -14,8 +14,12 @@ import { VerifyService } from './verify.service';
 // The backend loads pi through a native `import()` that a test runner's sandbox does not offer; nothing here needs it, but the modules the service imports might.
 vi.mock('../pi/load-pi', () => ({ loadPi: () => import('@earendil-works/pi-coding-agent') }));
 
-const git = (cwd: string, ...args: string[]): string => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd, encoding: 'utf8' });
-const SKILL = stampProvenance('---\nname: add-notes\ndescription: Use when adding notes\n---\n\n# Steps\n1. Write the notes\n', { learnedFrom: 'origin', base: null, head: null });
+const git = (cwd: string, ...args: string[]): string =>
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd, encoding: 'utf8' });
+const SKILL = stampProvenance(
+  '---\nname: add-notes\ndescription: Use when adding notes\n---\n\n# Steps\n1. Write the notes\n',
+  { learnedFrom: 'origin', base: null, head: null },
+);
 const note = (n: number): string => `# Note ${n}\nA short note.\nNote ${n} of 2.\n`;
 
 interface Run {
@@ -45,7 +49,19 @@ let cap: boolean;
 let setup: string | null;
 let used: { provider: string; id: string; name: string } | null;
 let checks: { step: number; command: string; passed: boolean }[];
-let outcome: { kind: 'merged'; base: string; head: string; merge: string; prUrl: null; at: number; files: string[]; baseBranch: string; baseSource: 'start' | 'estimated' } | undefined;
+let outcome:
+  | {
+      kind: 'merged';
+      base: string;
+      head: string;
+      merge: string;
+      prUrl: null;
+      at: number;
+      files: string[];
+      baseBranch: string;
+      baseSource: 'start' | 'estimated';
+    }
+  | undefined;
 let archived: string[];
 let listed: { type: string; name: string }[];
 let sessionCalls: string[];
@@ -54,7 +70,13 @@ const treeSource = vi.fn(async () => ({ entries, leafId: null, path: undefined }
 const attendantNote = vi.fn();
 const previousAgentDir = process.env['PI_CODING_AGENT_DIR'];
 
-const message = (i: number, body: unknown): PiSessionEntry => ({ type: 'message', id: `m${i}`, parentId: i === 0 ? null : `m${i - 1}`, timestamp: '2026-10-17T10:00:00.000Z', message: body });
+const message = (i: number, body: unknown): PiSessionEntry => ({
+  type: 'message',
+  id: `m${i}`,
+  parentId: i === 0 ? null : `m${i - 1}`,
+  timestamp: '2026-10-17T10:00:00.000Z',
+  message: body,
+});
 
 beforeEach(() => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-verify-')));
@@ -74,7 +96,17 @@ beforeEach(() => {
   git(project, 'add', '-A');
   git(project, 'commit', '-q', '-m', 'Add two notes');
   headCommit = git(project, 'rev-parse', 'HEAD').trim();
-  outcome = { kind: 'merged', base: baseCommit, head: headCommit, merge: headCommit, prUrl: null, at: 1, files: ['notes/one.md', 'notes/two.md'], baseBranch: 'main', baseSource: 'start' };
+  outcome = {
+    kind: 'merged',
+    base: baseCommit,
+    head: headCommit,
+    merge: headCommit,
+    prUrl: null,
+    at: 1,
+    files: ['notes/one.md', 'notes/two.md'],
+    baseBranch: 'main',
+    baseSource: 'start',
+  };
 
   db = new DatabaseService({ dataDir: join(base, 'data') });
   meta = new MetaRepository(db);
@@ -95,7 +127,10 @@ beforeEach(() => {
   used = { provider: 'p', id: 'm', name: 'M' };
   listed = [];
   checks = [{ step: 3, command: 'test -f notes/one.md', passed: true }];
-  entries = [message(0, { role: 'user', content: 'Create notes/one.md and notes/two.md' }), message(1, { role: 'assistant', provider: 'p', model: 'm', content: [] })];
+  entries = [
+    message(0, { role: 'user', content: 'Create notes/one.md and notes/two.md' }),
+    message(1, { role: 'assistant', provider: 'p', model: 'm', content: [] }),
+  ];
   treeSource.mockReset().mockImplementation(async () => ({ entries, leafId: null, path: undefined }));
   simulate = async (run) => {
     writeFileSync(join(run.cwd, 'x.tmp'), '');
@@ -109,7 +144,13 @@ beforeEach(() => {
   let n = 0;
   const threads = {
     treeSource,
-    create: async (cwd: string, title: string, worktree: { base: string }, _local: unknown, options: { onId?: (id: string) => void }) => {
+    create: async (
+      cwd: string,
+      title: string,
+      worktree: { base: string },
+      _local: unknown,
+      options: { onId?: (id: string) => void },
+    ) => {
       const id = `verify-${++n}`;
       options.onId?.(id);
       const path = join(root, 'project', `verify-${n}`);
@@ -117,7 +158,14 @@ beforeEach(() => {
       git(cwd, 'worktree', 'add', '-q', path, '-b', `pi-kit/verify-${n}`, worktree.base);
       const sessionFile = join(base, `${id}.jsonl`);
       writeFileSync(sessionFile, '{}\n');
-      rows.insertDraft({ id, sessionPath: sessionFile, cwd: path, title, baseCommit: worktree.base, worktree: { path, branch: `pi-kit/verify-${n}`, projectCwd: cwd, base: worktree.base } });
+      rows.insertDraft({
+        id,
+        sessionPath: sessionFile,
+        cwd: path,
+        title,
+        baseCommit: worktree.base,
+        worktree: { path, branch: `pi-kit/verify-${n}`, projectCwd: cwd, base: worktree.base },
+      });
       return { id, worktree: { path, branch: `pi-kit/verify-${n}`, base: worktree.base, exists: true } };
     },
     openSession: async (id: string) => void sessionCalls.push(`open ${id}`),
@@ -126,7 +174,11 @@ beforeEach(() => {
   const worktrees = {
     settingsOf: () => ({ setup }),
     rootOf: () => root,
-    remove: async (row: { id: string; worktreePath: string | null; cwd: string }, _request: unknown, branch?: string) => {
+    remove: async (
+      row: { id: string; worktreePath: string | null; cwd: string },
+      _request: unknown,
+      branch?: string,
+    ) => {
       if (row.worktreePath && existsSync(row.worktreePath)) {
         git(row.cwd, 'worktree', 'remove', '--force', row.worktreePath);
         if (branch) git(row.cwd, 'branch', '-D', branch);
@@ -139,13 +191,20 @@ beforeEach(() => {
     has: () => true,
     isStreaming: () => false,
     stats: () => ({ model: used, tokens: { total: 420 }, cost: 0.0042 }),
-    setModel: vi.fn(async (id: string, change: { provider: string; modelId: string }) => void sessionCalls.push(`model ${id} ${change.provider}/${change.modelId}`)),
+    setModel: vi.fn(
+      async (id: string, change: { provider: string; modelId: string }) =>
+        void sessionCalls.push(`model ${id} ${change.provider}/${change.modelId}`),
+    ),
     abort: vi.fn(async (id: string) => void sessionCalls.push(`abort ${id}`)),
     dispose: vi.fn((id: string) => void sessionCalls.push(`dispose ${id}`)),
     pendingDialogs: () => [{ request: { title: 'Overwrite the file?' } }],
   };
   const agui = {
-    runHeadless: async (threadId: string, text: string, options: { cwd: string; chips?: readonly { kind: string; name: string }[] }) => {
+    runHeadless: async (
+      threadId: string,
+      text: string,
+      options: { cwd: string; chips?: readonly { kind: string; name: string }[] },
+    ) => {
       const run: Run = { threadId, text, cwd: options.cwd, chips: options.chips ?? [], pinned: undefined };
       const name = run.chips[0]?.name;
       const file = name ? join(options.cwd, '.pi', 'skills', name, 'SKILL.md') : undefined;
@@ -183,7 +242,12 @@ const verify = async (body: Parameters<VerifyService['start']>[1] = {}): Promise
   await service.start(draft.id, body);
   return (await service.whenDone(draft.id)) as SkillVerification;
 };
-const scratchFolders = (): string[] => (existsSync(join(root, 'project')) ? execFileSync('ls', [join(root, 'project')], { encoding: 'utf8' }).split('\n').filter(Boolean) : []);
+const scratchFolders = (): string[] =>
+  existsSync(join(root, 'project'))
+    ? execFileSync('ls', [join(root, 'project')], { encoding: 'utf8' })
+        .split('\n')
+        .filter(Boolean)
+    : [];
 
 describe('the plan', () => {
   it('says what a replay would do', async () => {
@@ -202,12 +266,31 @@ describe('the plan', () => {
 
   it('says why it cannot start: no outcome, a discarded draft, commits that are gone or no prompt', async () => {
     outcome = undefined;
-    expect(await service.plan(draft.id)).toMatchObject({ canVerify: false, reason: expect.stringContaining('no outcome yet') });
-    outcome = { kind: 'merged', base: 'f'.repeat(40), head: 'e'.repeat(40), merge: 'e'.repeat(40), prUrl: null, at: 1, files: [], baseBranch: 'main', baseSource: 'start' };
-    expect(await service.plan(draft.id)).toMatchObject({ canVerify: false, reason: expect.stringContaining('not in the repository any more') });
+    expect(await service.plan(draft.id)).toMatchObject({
+      canVerify: false,
+      reason: expect.stringContaining('no outcome yet'),
+    });
+    outcome = {
+      kind: 'merged',
+      base: 'f'.repeat(40),
+      head: 'e'.repeat(40),
+      merge: 'e'.repeat(40),
+      prUrl: null,
+      at: 1,
+      files: [],
+      baseBranch: 'main',
+      baseSource: 'start',
+    };
+    expect(await service.plan(draft.id)).toMatchObject({
+      canVerify: false,
+      reason: expect.stringContaining('not in the repository any more'),
+    });
     outcome = { ...outcome, base: baseCommit, head: headCommit };
     entries = [message(0, { role: 'assistant', content: [] })];
-    expect(await service.plan(draft.id)).toMatchObject({ canVerify: false, reason: expect.stringContaining('no first prompt') });
+    expect(await service.plan(draft.id)).toMatchObject({
+      canVerify: false,
+      reason: expect.stringContaining('no first prompt'),
+    });
     entries = [message(0, { role: 'user', content: 'Do it' })];
     expect((await service.plan(draft.id)).model).toBeNull();
     drafts.setState(draft.id, 'discarded');
@@ -221,8 +304,12 @@ describe('starting a replay', () => {
   it('reserves a draft before planning awaits so an overlapping start cannot replace its text or launch another replay', async () => {
     let enter!: () => void;
     let release!: () => void;
-    const entered = new Promise<void>((resolve) => { enter = resolve; });
-    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     treeSource.mockImplementation(async () => {
       enter();
       await pending;
@@ -250,16 +337,38 @@ describe('starting a replay', () => {
 describe('a replay that reproduces the thread', () => {
   it('is a pass: the files, the hunks, the check, the pinned skill, the model, and the clean-up', async () => {
     const started = await service.start(draft.id, {});
-    expect(started.verification).toMatchObject({ state: 'running', phase: 'worktree', base: baseCommit, head: headCommit, prompt: 'Create notes/one.md and notes/two.md', model: 'p/m' });
+    expect(started.verification).toMatchObject({
+      state: 'running',
+      phase: 'worktree',
+      base: baseCommit,
+      head: headCommit,
+      prompt: 'Create notes/one.md and notes/two.md',
+      model: 'p/m',
+    });
     const done = (await service.whenDone(draft.id)) as SkillVerification;
-    expect(done).toMatchObject({ state: 'done', result: 'pass', score: 1, files: { reproduced: 2, expected: 2, extra: 0 }, hunks: { matched: 2, expected: 2, actual: 2 }, tokens: 420, cost: 0.0042, model: 'p/m', threadId: 'verify-1' });
+    expect(done).toMatchObject({
+      state: 'done',
+      result: 'pass',
+      score: 1,
+      files: { reproduced: 2, expected: 2, extra: 0 },
+      hunks: { matched: 2, expected: 2, actual: 2 },
+      tokens: 420,
+      cost: 0.0042,
+      model: 'p/m',
+      threadId: 'verify-1',
+    });
     expect(done.phase).toBeUndefined();
-    expect(done.checks).toEqual([expect.objectContaining({ command: 'test -f notes/one.md', originalPassed: true, state: 'passed', exitCode: 0 })]);
+    expect(done.checks).toEqual([
+      expect.objectContaining({ command: 'test -f notes/one.md', originalPassed: true, state: 'passed', exitCode: 0 }),
+    ]);
     expect(done.summary).toBe('Reproduced 2 of 2 files and 2 of 2 hunks; 1 of 1 check passes again.');
 
     // The replay got the thread's prompt and the draft pinned, in the scratch worktree.
     expect(runs).toHaveLength(1);
-    expect(runs[0]).toMatchObject({ text: 'Create notes/one.md and notes/two.md', chips: [{ kind: 'skill', name: 'add-notes', pinned: true }] });
+    expect(runs[0]).toMatchObject({
+      text: 'Create notes/one.md and notes/two.md',
+      chips: [{ kind: 'skill', name: 'add-notes', pinned: true }],
+    });
     expect(runs[0].cwd).toBe(join(root, 'project', 'verify-1'));
     expect(runs[0].pinned).toBe(SKILL);
     expect(sessionCalls.slice(0, 2)).toEqual(['open verify-1', 'model verify-1 p/m']);
@@ -285,11 +394,22 @@ describe('a replay that reproduces the thread', () => {
 
   it('counts under the attendant’s cap, with the tokens, when it ran on the attendant’s own model; plainly when it did not', async () => {
     await verify();
-    expect(attendantNote).toHaveBeenCalledWith('learn', expect.objectContaining({ id: 'origin' }), expect.stringContaining('Verified the skill add-notes: pass.'), 'done', { model: 'p/m', inputTokens: 420, outputTokens: 0, cost: 0.0042 });
+    expect(attendantNote).toHaveBeenCalledWith(
+      'learn',
+      expect.objectContaining({ id: 'origin' }),
+      expect.stringContaining('Verified the skill add-notes: pass.'),
+      'done',
+      { model: 'p/m', inputTokens: 420, outputTokens: 0, cost: 0.0042 },
+    );
     attendantNote.mockClear();
     used = { provider: 'other', id: 'model', name: 'Other' };
     await verify();
-    expect(attendantNote).toHaveBeenCalledWith('learn', expect.anything(), expect.stringContaining('Verified the skill'), 'done');
+    expect(attendantNote).toHaveBeenCalledWith(
+      'learn',
+      expect.anything(),
+      expect.stringContaining('Verified the skill'),
+      'done',
+    );
   });
 
   it('uses the prompt the person edited, and the text they edited in the dialog (a pending draft)', async () => {
@@ -327,7 +447,10 @@ describe('a replay that reproduces the thread', () => {
     setup = 'exit 3';
     outcome = { ...(outcome as NonNullable<typeof outcome>), baseSource: 'estimated' };
     const done = await verify();
-    expect(done.warnings).toEqual([expect.stringContaining('estimated'), expect.stringContaining('setup command failed (exit 3)')]);
+    expect(done.warnings).toEqual([
+      expect.stringContaining('estimated'),
+      expect.stringContaining('setup command failed (exit 3)'),
+    ]);
   });
 
   it('writes the result into the skill file Approve wrote, only its verified lines', async () => {
@@ -350,7 +473,12 @@ describe('a replay that does not', () => {
       return { status: 'finished' };
     };
     const done = await verify();
-    expect(done).toMatchObject({ state: 'done', result: 'partial', files: { reproduced: 1, expected: 2, extra: 0 }, hunks: { matched: 1, expected: 2, actual: 1 } });
+    expect(done).toMatchObject({
+      state: 'done',
+      result: 'partial',
+      files: { reproduced: 1, expected: 2, extra: 0 },
+      hunks: { matched: 1, expected: 2, actual: 1 },
+    });
     expect(done.fileList?.map((f) => [f.path, f.status])).toEqual([
       ['notes/one.md', 'same'],
       ['notes/two.md', 'missing'],
@@ -379,7 +507,11 @@ describe('a replay that does not', () => {
     expect(done.result).toBe('pass');
     expect(done.checks).toEqual([
       expect.objectContaining({ command: 'test -f notes/three.md', state: 'failed', originalPassed: false }),
-      expect.objectContaining({ command: `cd ${project} && npm test`, state: 'skipped', note: expect.stringContaining('absolute path') }),
+      expect.objectContaining({
+        command: `cd ${project} && npm test`,
+        state: 'skipped',
+        note: expect.stringContaining('absolute path'),
+      }),
     ]);
   });
 
@@ -426,8 +558,12 @@ describe('a replay that cannot be carried out, or is stopped', () => {
   it('keeps a progressing replay running past the former thirty-minute deadline until it completes', async () => {
     let enter!: () => void;
     let release!: () => void;
-    const entered = new Promise<void>((resolve) => { enter = resolve; });
-    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     const inner = simulate;
     simulate = async (run) => {
       enter();
@@ -450,37 +586,60 @@ describe('a replay that cannot be carried out, or is stopped', () => {
   });
 
   it('drains verbose checks without killing them at the former output buffer limit', async () => {
-    checks = [{ step: 1, command: `node -e "process.stdout.write('x'.repeat(9*1024*1024)+'\\nCHECK-FINISHED\\n')"`, passed: true }];
+    checks = [
+      {
+        step: 1,
+        command: `node -e "process.stdout.write('x'.repeat(9*1024*1024)+'\\nCHECK-FINISHED\\n')"`,
+        passed: true,
+      },
+    ];
     const done = await verify();
     expect(done).toMatchObject({ state: 'done', result: 'pass' });
-    expect(done.checks?.[0]).toMatchObject({ state: 'passed', exitCode: 0, output: expect.stringContaining('CHECK-FINISHED') });
+    expect(done.checks?.[0]).toMatchObject({
+      state: 'passed',
+      exitCode: 0,
+      output: expect.stringContaining('CHECK-FINISHED'),
+    });
   });
 
-  it.skipIf(process.platform === 'win32').each(['Stop', 'app shutdown'])('%s ends a check and its descendant before removing the scratch worktree', async (action) => {
-    const child = "require('node:fs').writeFileSync('owned-child.pid',String(process.pid));setInterval(()=>{},1000);";
-    const parent = `const{spawn}=require('node:child_process');spawn(process.execPath,['-e',${JSON.stringify(child)}],{stdio:'ignore'});setInterval(()=>{},1000);`;
-    checks = [{ step: 1, command: `node -e '${parent.replaceAll("'", "'\\''")}'`, passed: true }];
-    let pid: number | undefined;
-    try {
-      await service.start(draft.id);
-      await vi.waitFor(() => {
-        const path = rows.get('verify-1')?.worktreePath;
-        expect(path && existsSync(join(path, 'owned-child.pid'))).toBe(true);
-        pid = Number(readFileSync(join(path!, 'owned-child.pid'), 'utf8'));
-      });
-      if (action === 'Stop') service.stop(draft.id);
-      else await service.onModuleDestroy();
-      expect(await service.whenDone(draft.id)).toMatchObject({ state: 'stopped' });
-      let status = '';
-      try { status = execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).trim(); } catch { /* no process remains */ }
-      expect(!status || status.startsWith('Z'), `check descendant ${pid} remains alive: ${status}`).toBe(true);
-      expect(scratchFolders()).toEqual([]);
-    } finally {
-      if (drafts.get(draft.id)?.verification?.state === 'running') service.stop(draft.id);
-      if (pid) { try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ } }
-      await service.whenDone(draft.id);
-    }
-  });
+  it.skipIf(process.platform === 'win32').each(['Stop', 'app shutdown'])(
+    '%s ends a check and its descendant before removing the scratch worktree',
+    async (action) => {
+      const child = "require('node:fs').writeFileSync('owned-child.pid',String(process.pid));setInterval(()=>{},1000);";
+      const parent = `const{spawn}=require('node:child_process');spawn(process.execPath,['-e',${JSON.stringify(child)}],{stdio:'ignore'});setInterval(()=>{},1000);`;
+      checks = [{ step: 1, command: `node -e '${parent.replaceAll("'", "'\\''")}'`, passed: true }];
+      let pid: number | undefined;
+      try {
+        await service.start(draft.id);
+        await vi.waitFor(() => {
+          const path = rows.get('verify-1')?.worktreePath;
+          expect(path && existsSync(join(path, 'owned-child.pid'))).toBe(true);
+          pid = Number(readFileSync(join(path!, 'owned-child.pid'), 'utf8'));
+        });
+        if (action === 'Stop') service.stop(draft.id);
+        else await service.onModuleDestroy();
+        expect(await service.whenDone(draft.id)).toMatchObject({ state: 'stopped' });
+        let status = '';
+        try {
+          status = execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).trim();
+        } catch {
+          /* no process remains */
+        }
+        expect(!status || status.startsWith('Z'), `check descendant ${pid} remains alive: ${status}`).toBe(true);
+        expect(scratchFolders()).toEqual([]);
+      } finally {
+        if (drafts.get(draft.id)?.verification?.state === 'running') service.stop(draft.id);
+        if (pid) {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {
+            /* already gone */
+          }
+        }
+        await service.whenDone(draft.id);
+      }
+    },
+  );
 
   it('stops short when the project is not trusted, runs nothing and cleans up', async () => {
     trustAnswer = 'The project has pi resources that are not trusted yet.';
@@ -549,16 +708,24 @@ describe('a replay that cannot be carried out, or is stopped', () => {
     let released = false;
     const inner = simulate;
     simulate = async (run) => {
-      const status = released ? 'finished' : await new Promise<'finished' | 'aborted'>((resolve) => finish.set(run.threadId, resolve));
+      const status = released
+        ? 'finished'
+        : await new Promise<'finished' | 'aborted'>((resolve) => finish.set(run.threadId, resolve));
       return status === 'aborted' ? { status } : inner(run);
     };
     const sessionPath = join(base, 'origin-2.jsonl');
     writeFileSync(sessionPath, '{}\n');
     rows.insertDraft({ id: 'origin-2', sessionPath, cwd: project, title: 'Another notes thread', baseCommit });
     const other = drafts.insert({
-      threadId: 'origin-2', name: 'other-skill',
-      text: stampProvenance(SKILL.replace('name: add-notes', 'name: other-skill'), { learnedFrom: 'origin-2', base: null, head: null }),
-      scope: 'user', madeBy: 'person',
+      threadId: 'origin-2',
+      name: 'other-skill',
+      text: stampProvenance(SKILL.replace('name: add-notes', 'name: other-skill'), {
+        learnedFrom: 'origin-2',
+        base: null,
+        head: null,
+      }),
+      scope: 'user',
+      madeBy: 'person',
     });
     try {
       await service.start(draft.id);
@@ -612,7 +779,14 @@ describe('after a restart', () => {
     const path = join(root, 'project', 'verify-left');
     mkdirSync(join(root, 'project'), { recursive: true });
     git(project, 'worktree', 'add', '-q', path, '-b', 'pi-kit/verify-left', baseCommit);
-    rows.insertDraft({ id: 'left', sessionPath: join(base, 'left.jsonl'), cwd: path, title: 'Verify: add-notes', baseCommit, worktree: { path, branch: 'pi-kit/verify-left', projectCwd: project, base: baseCommit } });
+    rows.insertDraft({
+      id: 'left',
+      sessionPath: join(base, 'left.jsonl'),
+      cwd: path,
+      title: 'Verify: add-notes',
+      baseCommit,
+      worktree: { path, branch: 'pi-kit/verify-left', projectCwd: project, base: baseCommit },
+    });
     drafts.setVerification(draft.id, { state: 'running', phase: 'run', threadId: 'left', startedAt: 1 });
     service.onModuleInit();
     await vi.waitFor(() => expect(drafts.get(draft.id)?.verification?.state).toBe('error'));

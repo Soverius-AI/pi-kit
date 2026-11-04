@@ -18,7 +18,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { api, env, openApp } from './support/app.mjs';
-import { FAKE_MODEL, FAKE_PROVIDER, cannedSkill, notesAgent, registerFakeModel, startFakeModel } from './support/fake-model.mjs';
+import {
+  FAKE_MODEL,
+  FAKE_PROVIDER,
+  cannedSkill,
+  notesAgent,
+  registerFakeModel,
+  startFakeModel,
+} from './support/fake-model.mjs';
 import { commitFile, gitIn, writeWorktreeProject } from './support/worktree-world.mjs';
 
 const NAME = 'learned-app';
@@ -51,7 +58,11 @@ const spawned = [];
 
 async function call(method, path, body) {
   const { token } = await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${env.api}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const res = await fetch(`${env.api}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
   return { status: res.status, body: res.status === 204 ? undefined : await res.json().catch(() => undefined) };
 }
 
@@ -59,7 +70,8 @@ async function call(method, path, body) {
 async function ensureBackend() {
   const up = async () => {
     try {
-      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })).ok;
+      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } }))
+        .ok;
     } catch {
       return false;
     }
@@ -67,7 +79,13 @@ async function ensureBackend() {
   if (await up()) return;
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: 'ignore',
     detached: true,
   });
@@ -80,7 +98,9 @@ const isLearnPrompt = (body) => JSON.stringify(body.messages?.[0] ?? '').include
 
 before(async () => {
   await ensureBackend();
-  fake = await startFakeModel({ answer: (body) => (isLearnPrompt(body) ? cannedSkill({ name: SKILL }) : notesAgent(body, { slowMs: 15_000 })) });
+  fake = await startFakeModel({
+    answer: (body) => (isLearnPrompt(body) ? cannedSkill({ name: SKILL }) : notesAgent(body, { slowMs: 15_000 })),
+  });
   registerFakeModel(env.agentDir, fake.url);
   app = await openApp();
   project = writeWorktreeProject({ base: join(env.project, '..'), name: NAME });
@@ -89,7 +109,12 @@ before(async () => {
   // The other projects' threads are none of this file's business: the attendant is kept away from them.
   await call('PATCH', '/api/workspaces', { cwd: env.project, attendant: false });
   // The attendant drafts after an outcome (its third job); the schedule switches stay off so it does not rename or summarise anything.
-  await call('PATCH', '/api/attendant/settings', { enabled: true, model: { provider: FAKE_PROVIDER, modelId: FAKE_MODEL }, dailyCostCap: null, when: { onEnd: false, onInterrupt: false, everyMinutes: 0 } });
+  await call('PATCH', '/api/attendant/settings', {
+    enabled: true,
+    model: { provider: FAKE_PROVIDER, modelId: FAKE_MODEL },
+    dailyCostCap: null,
+    when: { onEnd: false, onInterrupt: false, everyMinutes: 0 },
+  });
   await app.page.reload();
   await app.page.waitForSelector('pk-root .pk-shell');
   await head().waitFor();
@@ -112,7 +137,11 @@ after(async () => {
 
 const head = () => app.page.locator(`.pk-project[data-project="${NAME}"] .pk-project-head`);
 const group = () => app.page.locator(`.pk-project[data-project="${NAME}"]`);
-const rowOf = (text) => group().locator('.pk-thread').filter({ has: app.page.getByText(text, { exact: true }) }).first();
+const rowOf = (text) =>
+  group()
+    .locator('.pk-thread')
+    .filter({ has: app.page.getByText(text, { exact: true }) })
+    .first();
 const threads = async () => (await api('/api/threads')).filter((t) => t.cwd === project);
 const box = () => app.page.getByLabel('Message to pi');
 const dialog = () => app.page.getByTestId('review-dialog');
@@ -147,7 +176,9 @@ async function plainThread(title) {
   await app.page.getByRole('button', { name: `New thread in ${NAME}` }).click();
   await box().waitFor();
   await app.h.settle(500);
-  const created = (await threads()).filter((t) => !t.title && t.messageCount === 0).sort((a, b) => b.createdAt - a.createdAt)[0];
+  const created = (await threads())
+    .filter((t) => !t.title && t.messageCount === 0)
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
   assert.ok(created, 'the new thread is listed');
   await call('PATCH', `/api/threads/${created.id}`, { title });
   await eventually(async () => (await rowOf(title).count()) > 0, `the row of ${title}`);
@@ -178,7 +209,8 @@ const closeSettings = async () => {
   await app.page.getByRole('dialog', { name: 'Settings' }).waitFor({ state: 'detached' });
 };
 const learnedBlock = (settings) => settings.locator(`[data-testid=learned-skill][data-skill=${SKILL}]`);
-const recordText = async (settings) => (await learnedBlock(settings).getByTestId('learned-record').innerText()).replace(/\s+/g, ' ').trim();
+const recordText = async (settings) =>
+  (await learnedBlock(settings).getByTestId('learned-record').innerText()).replace(/\s+/g, ' ').trim();
 
 /** Types `/skill:tidy` in the open thread's composer and looks at the `/` menu: is the skill offered? Waits for the answer to be `expected` (the commands load a moment after a change). */
 async function menuOffers(expected) {
@@ -202,34 +234,64 @@ describe('the attendant proposes learning from a merged thread', () => {
   it('a thread that wrote six notes and was merged back gets a draft on its own, with the learn chip on its row', async () => {
     idA = await worktreeThread(TITLE_A);
     await prompt(PROMPT_A);
-    const merged = await call('POST', `/api/threads/${idA}/worktree/merge`, { mode: 'merge', message: 'Add six notes', remove: true });
+    const merged = await call('POST', `/api/threads/${idA}/worktree/merge`, {
+      mode: 'merge',
+      message: 'Add six notes',
+      remove: true,
+    });
     assert.equal(merged.body.status, 'merged', JSON.stringify(merged.body));
-    const draft = await eventually(async () => {
-      const got = await call('GET', `/api/threads/${idA}/skill-draft`);
-      return got.status === 200 ? got.body : undefined;
-    }, 'the attendant’s draft', 60_000);
+    const draft = await eventually(
+      async () => {
+        const got = await call('GET', `/api/threads/${idA}/skill-draft`);
+        return got.status === 200 ? got.body : undefined;
+      },
+      'the attendant’s draft',
+      60_000,
+    );
     assert.equal(draft.madeBy, 'attendant');
     assert.equal(draft.name, SKILL);
     assert.equal(draft.state, 'pending');
-    await eventually(async () => (await rowOf(TITLE_A).getByTestId('learn-chip').count()) > 0, 'the learn chip on the row');
+    await eventually(
+      async () => (await rowOf(TITLE_A).getByTestId('learn-chip').count()) > 0,
+      'the learn chip on the row',
+    );
     assert.match(await rowOf(TITLE_A).getByTestId('learn-chip').innerText(), /Skill “tidy-notes”, drafted/);
     assert.equal(existsSync(userSkillFile()), false, 'a draft is a database row; no skill folder exists for it');
   });
 
   it('Approve (user scope) writes the skill; it is a learned skill with an empty record', async () => {
     const draft = (await call('GET', `/api/threads/${idA}/skill-draft`)).body;
-    const approved = await call('POST', `/api/skill-drafts/${draft.id}/approve`, { name: SKILL, scope: 'user', text: draft.text, verify: false });
+    const approved = await call('POST', `/api/skill-drafts/${draft.id}/approve`, {
+      name: SKILL,
+      scope: 'user',
+      text: draft.text,
+      verify: false,
+    });
     assert.equal(approved.status, 200, JSON.stringify(approved.body));
     skillId = draft.id;
     assert.equal(approved.body.path, userSkillFile());
     const skill = await learned();
     assert.equal(skill.id, draft.id);
-    assert.deepEqual({ uses: skill.uses, mergedAfterUse: skill.mergedAfterUse, threads: skill.threads, lastUsedAt: skill.lastUsedAt, retiredAt: skill.retiredAt, flag: skill.flag, verification: skill.verification }, { uses: 0, mergedAfterUse: 0, threads: 0, lastUsedAt: null, retiredAt: null, flag: null, verification: null });
+    assert.deepEqual(
+      {
+        uses: skill.uses,
+        mergedAfterUse: skill.mergedAfterUse,
+        threads: skill.threads,
+        lastUsedAt: skill.lastUsedAt,
+        retiredAt: skill.retiredAt,
+        flag: skill.flag,
+        verification: skill.verification,
+      },
+      { uses: 0, mergedAfterUse: 0, threads: 0, lastUsedAt: null, retiredAt: null, flag: null, verification: null },
+    );
     assert.equal(skill.learnedFrom.threadId, idA);
     assert.equal(skill.learnedFrom.title, TITLE_A);
     assert.match(skill.learnedFrom.base, /^[0-9a-f]{40}$/);
     assert.match(skill.learnedFrom.head, /^[0-9a-f]{40}$/);
-    assert.equal((await call('GET', `/api/skills/learned/${draft.id}`)).body.text, readFileSync(userSkillFile(), 'utf8'));
+    assert.equal(
+      (await call('GET', `/api/skills/learned/${draft.id}`)).body.text,
+      readFileSync(userSkillFile(), 'utf8'),
+    );
     assert.equal((await call('GET', '/api/skills/learned/nope')).status, 404);
   });
 });
@@ -243,9 +305,16 @@ describe('Settings shows the record under the skill’s row', () => {
     assert.deepEqual(await block.locator('button').allInnerTexts(), ['Re-verify', 'Edit', 'Retire']);
     assert.equal(await block.getByTestId('learned-flag').count(), 0);
     // A skill that was not learned has no record (an earlier file's world may hold another learned skill, which has its own): each record is under a row of the learned list.
-    const learnedNames = (await call('GET', '/api/skills/learned')).body.filter((s) => s.retiredAt === null).map((s) => s.name);
-    const shown = await settings.locator('[data-testid=learned-skill]').evaluateAll((els) => els.map((el) => el.getAttribute('data-skill')));
-    assert.ok(shown.every((name) => learnedNames.includes(name)), `only learned skills have a record: ${shown}`);
+    const learnedNames = (await call('GET', '/api/skills/learned')).body
+      .filter((s) => s.retiredAt === null)
+      .map((s) => s.name);
+    const shown = await settings
+      .locator('[data-testid=learned-skill]')
+      .evaluateAll((els) => els.map((el) => el.getAttribute('data-skill')));
+    assert.ok(
+      shown.every((name) => learnedNames.includes(name)),
+      `only learned skills have a record: ${shown}`,
+    );
     assert.equal(shown.filter((name) => name === SKILL).length, 1);
     await closeSettings();
   });
@@ -262,9 +331,15 @@ describe('a use of the skill is recorded with the outcome of its thread', () => 
     assert.equal(skill.threads, 1);
     assert.equal(skill.mergedAfterUse, 0, 'no outcome yet');
     assert.ok(skill.lastUsedAt > Date.now() - 120_000);
-    const request = fake.requests.findLast((r) => !isLearnPrompt(r) && JSON.stringify(r.messages).includes(`<skill name=\\"${SKILL}\\"`));
+    const request = fake.requests.findLast(
+      (r) => !isLearnPrompt(r) && JSON.stringify(r.messages).includes(`<skill name=\\"${SKILL}\\"`),
+    );
     assert.ok(request, 'pi expanded the typed command into the skill block');
-    const merged = await call('POST', `/api/threads/${idB}/worktree/merge`, { mode: 'merge', message: 'Add three more notes', remove: true });
+    const merged = await call('POST', `/api/threads/${idB}/worktree/merge`, {
+      mode: 'merge',
+      message: 'Add three more notes',
+      remove: true,
+    });
     assert.equal(merged.body.status, 'merged', JSON.stringify(merged.body));
     skill = await eventually(async () => {
       const s = await learned();
@@ -293,7 +368,10 @@ describe('a use of the skill is recorded with the outcome of its thread', () => 
   it('the row says "used 2 times, merged after 1" and when it was last used', async () => {
     const settings = await openSkills();
     await learnedBlock(settings).waitFor();
-    assert.equal(await recordText(settings), `Learned from ${TITLE_A} · not verified · used 2 times, merged after 1 · last used just now`);
+    assert.equal(
+      await recordText(settings),
+      `Learned from ${TITLE_A} · not verified · used 2 times, merged after 1 · last used just now`,
+    );
     await closeSettings();
   });
 
@@ -315,11 +393,19 @@ describe('Re-verify replays the approved skill from the base commit of its threa
     await eventually(async () => (await learned()).verification?.state === 'done', 'the replay to finish', 120_000);
     await learnedBlock(settings).getByTestId('learned-running').waitFor({ state: 'detached' });
     const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    assert.match(await recordText(settings), new RegExp(`^Learned from ${TITLE_A} · verified ${today}, pass · used 2 times, merged after 1 · last used (just now|\\d+ min ago)$`));
+    assert.match(
+      await recordText(settings),
+      new RegExp(
+        `^Learned from ${TITLE_A} · verified ${today}, pass · used 2 times, merged after 1 · last used (just now|\\d+ min ago)$`,
+      ),
+    );
     const skill = await learned();
     assert.equal(skill.verification.result, 'pass');
     assert.equal(skill.verification.stale, false);
-    assert.match(readFileSync(userSkillFile(), 'utf8'), /verified:\n {4}result: pass\n {4}at: [\d\-T:.Z]+\n {4}files: 6\/6\n/);
+    assert.match(
+      readFileSync(userSkillFile(), 'utf8'),
+      /verified:\n {4}result: pass\n {4}at: [\d\-T:.Z]+\n {4}files: 6\/6\n/,
+    );
     const draft = (await call('GET', `/api/threads/${idA}/skill-draft`)).body;
     assert.equal(draft.state, 'approved');
     assert.equal(draft.verification.result, 'pass');
@@ -347,7 +433,12 @@ describe('Edit opens the review dialog on the saved text', () => {
     assert.equal(await app.page.getByTestId('skill-name').evaluate((el) => el.readOnly), true);
     // The verification box shows the report of the replay; an edit makes it stale.
     assert.equal((await app.page.getByTestId('verification-result').innerText()).trim(), 'Pass');
-    const forged = before.replace('learnedFrom: ' + idA, 'learnedFrom: somewhere-else').replace('3. Check the folder listing before you say you are done.', `${EXTRA}\n3. Check the folder listing before you say you are done.`);
+    const forged = before
+      .replace('learnedFrom: ' + idA, 'learnedFrom: somewhere-else')
+      .replace(
+        '3. Check the folder listing before you say you are done.',
+        `${EXTRA}\n3. Check the folder listing before you say you are done.`,
+      );
     await text.fill(forged);
     await app.page.getByTestId('verification-stale').waitFor();
     assert.equal(await app.page.getByTestId('edit-save').isEnabled(), true);
@@ -371,7 +462,10 @@ describe('Edit opens the review dialog on the saved text', () => {
 
     const again = await openSkills();
     await learnedBlock(again).waitFor();
-    assert.match(await recordText(again), /^Learned from Add six notes · verified [A-Z][a-z]{2} \d{1,2}, pass \(edited since\) · used 2 times/);
+    assert.match(
+      await recordText(again),
+      /^Learned from Add six notes · verified [A-Z][a-z]{2} \d{1,2}, pass \(edited since\) · used 2 times/,
+    );
     await closeSettings();
   });
 
@@ -398,7 +492,10 @@ describe('Retire moves the folder to.retired; Restore brings it back', () => {
     await learnedBlock(settings).getByTestId('learned-retire').click();
     const confirm = learnedBlock(settings).getByTestId('learned-confirm');
     await confirm.waitFor();
-    assert.match(await confirm.innerText(), /Retire tidy-notes\? pi stops loading it\. Its folder moves to skills\/\.retired\/tidy-notes\/ in pi’s folder; nothing is deleted and Restore brings it back\./);
+    assert.match(
+      await confirm.innerText(),
+      /Retire tidy-notes\? pi stops loading it\. Its folder moves to skills\/\.retired\/tidy-notes\/ in pi’s folder; nothing is deleted and Restore brings it back\./,
+    );
     await learnedBlock(settings).getByTestId('learned-retire-cancel').click();
     await confirm.waitFor({ state: 'detached' });
     assert.equal(existsSync(userSkillFile()), true);
@@ -416,7 +513,11 @@ describe('Retire moves the folder to.retired; Restore brings it back', () => {
     const skill = await learned();
     assert.ok(skill.retiredAt > 0);
     assert.equal(skill.missing, false);
-    assert.equal((await call('GET', `/api/threads/${idA}/skill-draft`)).body.state, 'approved', 'the draft records the retirement; it stays approved');
+    assert.equal(
+      (await call('GET', `/api/threads/${idA}/skill-draft`)).body.state,
+      'approved',
+      'the draft records the retirement; it stays approved',
+    );
     // The Retired group is there, collapsed, with the count.
     const retired = settings.getByTestId('retired-group');
     await retired.waitFor();
@@ -472,7 +573,10 @@ describe('a skill whose last three threads ended without an outcome is flagged',
     assert.equal(skill.flag?.reason, 'no-outcomes');
     const settings = await openSkills();
     await learnedBlock(settings).getByTestId('learned-flag').waitFor();
-    assert.match(await learnedBlock(settings).getByTestId('learned-flag').innerText(), /Its last three threads ended without a commit, merge or pull request\./);
+    assert.match(
+      await learnedBlock(settings).getByTestId('learned-flag').innerText(),
+      /Its last three threads ended without a commit, merge or pull request\./,
+    );
     assert.equal(await learnedBlock(settings).getAttribute('data-flagged'), 'no-outcomes');
     await closeSettings();
   });

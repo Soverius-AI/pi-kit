@@ -4,16 +4,11 @@
   "sourceRoot": "libs/shared/ui/src",
   "prefix": "pk",
   "projectType": "library",
-  "tags": [
-    "scope:shared",
-    "type:util"
-  ],
+  "tags": ["scope:shared", "type:util"],
   "targets": {
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",
-      "outputs": [
-        "{workspaceRoot}/dist/{projectRoot}"
-      ],
+      "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
       "defaultConfiguration": "production",
       "options": {
         "project": "libs/shared/ui/ng-package.json",
@@ -32,10 +27,7 @@
     "test": {
       "executor": "nx:run-commands",
       "cache": true,
-      "inputs": [
-        "default",
-        "^production"
-      ],
+      "inputs": ["default", "^production"],
       "options": {
         "command": "vitest run",
         "cwd": "libs/shared/ui"

@@ -37,16 +37,31 @@ const freePort = async (): Promise<number> => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   return port;
 };
-const answers = async (baseUrl: string): Promise<boolean> => { try { return (await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(500) })).ok; } catch { return false; } };
+const answers = async (baseUrl: string): Promise<boolean> => {
+  try {
+    return (await fetch(`${baseUrl}/models`, { signal: AbortSignal.timeout(500) })).ok;
+  } catch {
+    return false;
+  }
+};
 
 describe('the llama-swap process pi-kit starts', () => {
-  let dir: string, db: DatabaseService, meta: MetaRepository, swap: LocalLlamaSwapService, managed: LocalLlamaSwapProcessService, listen: string;
+  let dir: string,
+    db: DatabaseService,
+    meta: MetaRepository,
+    swap: LocalLlamaSwapService,
+    managed: LocalLlamaSwapProcessService,
+    listen: string;
   const secrets = new MemorySecretStore();
   beforeEach(async () => {
     dir = realpathSync(mkdtempSync(join(tmpdir(), 'pk-swap-process-')));
     mkdirSync(join(dir, 'bin'));
-    writeFileSync(join(dir, 'bin', 'llama-swap'), FAKE); chmodSync(join(dir, 'bin', 'llama-swap'), 0o755);
-    writeFileSync(join(dir, 'config.yaml'), 'models:\n  alpha:\n    cmd: engine --model /tmp/alpha.gguf\n  beta:\n    cmd: engine --model /tmp/beta.gguf\n');
+    writeFileSync(join(dir, 'bin', 'llama-swap'), FAKE);
+    chmodSync(join(dir, 'bin', 'llama-swap'), 0o755);
+    writeFileSync(
+      join(dir, 'config.yaml'),
+      'models:\n  alpha:\n    cmd: engine --model /tmp/alpha.gguf\n  beta:\n    cmd: engine --model /tmp/beta.gguf\n',
+    );
     listen = `127.0.0.1:${await freePort()}`;
     vi.stubEnv('PATH', `${join(dir, 'bin')}:${process.env['PATH'] ?? ''}`);
     vi.stubEnv('PI_KIT_LLAMA_SWAP_CONFIG', join(dir, 'config.yaml'));
@@ -67,7 +82,13 @@ describe('the llama-swap process pi-kit starts', () => {
 
   it('starts llama-swap with the selected config, reports it running, and stops it with the autostart choice', async () => {
     await managed.refresh();
-    expect(managed.status()).toMatchObject({ state: 'stopped', canStart: true, configPath: join(dir, 'config.yaml'), listen, baseUrl: `http://${listen}/v1` });
+    expect(managed.status()).toMatchObject({
+      state: 'stopped',
+      canStart: true,
+      configPath: join(dir, 'config.yaml'),
+      listen,
+      baseUrl: `http://${listen}/v1`,
+    });
     const states: string[] = [];
     managed.onChange((state) => states.push(state));
     const started = await managed.start({ autostart: true });
@@ -91,10 +112,16 @@ describe('the llama-swap process pi-kit starts', () => {
     await new Promise<void>((resolve) => other.listen(Number(port), host, resolve));
     try {
       await managed.refresh();
-      expect(managed.status()).toMatchObject({ state: 'stopped', canStart: false, reason: expect.stringContaining(`already answers on ${listen}`) });
+      expect(managed.status()).toMatchObject({
+        state: 'stopped',
+        canStart: false,
+        reason: expect.stringContaining(`already answers on ${listen}`),
+      });
       await expect(managed.start({})).rejects.toThrow(`already answers on ${listen}`);
       expect(await answers(`http://${listen}/v1`)).toBe(true);
-    } finally { await new Promise<void>((resolve) => other.close(() => resolve())); }
+    } finally {
+      await new Promise<void>((resolve) => other.close(() => resolve()));
+    }
   });
 
   it('refuses a config without models or with invalid YAML, and reports a process that exits before answering', async () => {
@@ -109,7 +136,11 @@ describe('the llama-swap process pi-kit starts', () => {
     await swap.readConfigs(true);
     vi.stubEnv('FAKE_SWAP_EXIT', '1');
     await expect(managed.start({})).rejects.toThrow('stopped on its own (3)');
-    expect(managed.status()).toMatchObject({ state: 'failed', error: expect.stringContaining('(3)'), log: expect.arrayContaining(['fake llama-swap: cannot bind']) });
+    expect(managed.status()).toMatchObject({
+      state: 'failed',
+      error: expect.stringContaining('(3)'),
+      log: expect.arrayContaining(['fake llama-swap: cannot bind']),
+    });
   });
 
   it('starts the saved choice with the app and drops the older private-engine recipe', async () => {

@@ -132,7 +132,9 @@ export class Harness {
 
   async newThread() {
     // The old composer remains visible while creation and the sidebar refresh are pending. Wait for this thread's selection.
-    const created = this.page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/threads');
+    const created = this.page.waitForResponse(
+      (response) => response.request().method() === 'POST' && new URL(response.url()).pathname === '/api/threads',
+    );
     const selected = this.page.waitForRequest(async (request) => {
       if (request.method() !== 'PUT' || new URL(request.url()).pathname !== '/api/settings/thread') return false;
       const thread = await (await created).json();
@@ -170,7 +172,10 @@ export class Harness {
     const row = this.page.locator('pk-review-view .pk-diff :is(.ln, .split-pane .h)', { hasText: text }).first();
     await row.scrollIntoViewIfNeeded();
     await row.hover();
-    await row.getByRole('button', { name: /Comment on/ }).first().click();
+    await row
+      .getByRole('button', { name: /Comment on/ })
+      .first()
+      .click();
     const field = this.page.getByLabel('Comment', { exact: true });
     await field.fill(comment);
     await this.page.getByRole('button', { name: 'Add to batch' }).click();

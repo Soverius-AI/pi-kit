@@ -10,9 +10,15 @@ const [backend, icon] = process.argv.slice(2);
 const piDir = join(backend, 'assets/pi');
 const load = (path) => import(pathToFileURL(join(piDir, 'dist', path)).href);
 const manifest = JSON.parse(readFileSync(join(piDir, 'package.json'), 'utf8'));
-assert.ok(!existsSync(join(backend, 'node_modules/@earendil-works/pi-coding-agent')), 'Pi must be built, not copied into node_modules');
+assert.ok(
+  !existsSync(join(backend, 'node_modules/@earendil-works/pi-coding-agent')),
+  'Pi must be built, not copied into node_modules',
+);
 for (const entry of [manifest.bin.pi, manifest.exports['./rpc-entry'].import]) {
-  const version = execFileSync(process.execPath, [join(piDir, entry), '--version'], { encoding: 'utf8', timeout: 15_000 });
+  const version = execFileSync(process.execPath, [join(piDir, entry), '--version'], {
+    encoding: 'utf8',
+    timeout: 15_000,
+  });
   assert.equal(version.trim(), manifest.version);
 }
 console.log('built Pi CLI and RPC entrypoints: version OK');
@@ -29,11 +35,17 @@ assert.ok(resized?.wasResized && resized.width <= 32 && resized.height <= 32);
 console.log('image worker + packaged Photon WASM: resize OK');
 
 const { CodemodeSandbox, getCodemodeWorkerSpecifier, getQuickJSWasmPath } = await load('codemode.js');
-const sandbox = new CodemodeSandbox({ workerUrl: getCodemodeWorkerSpecifier(), wasm: WebAssembly.compile(readFileSync(getQuickJSWasmPath())) });
+const sandbox = new CodemodeSandbox({
+  workerUrl: getCodemodeWorkerSpecifier(),
+  wasm: WebAssembly.compile(readFileSync(getQuickJSWasmPath())),
+});
 try {
   const result = await sandbox.execute('text(6 * 7)', { timeoutMs: 5000 });
   assert.ok(result.ok, JSON.stringify(result));
-  assert.ok(result.output.some((item) => item.type === 'text' && item.text === '42'), JSON.stringify(result));
+  assert.ok(
+    result.output.some((item) => item.type === 'text' && item.text === '42'),
+    JSON.stringify(result),
+  );
   console.log('codemode worker + packaged QuickJS WASM: execution OK');
 } finally {
   await sandbox.close();

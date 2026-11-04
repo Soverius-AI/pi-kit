@@ -51,9 +51,16 @@ export function writePin(pin: string | null, env: NodeJS.ProcessEnv = process.en
 export function piResolution(): PiResolution {
   if (resolution) return resolution;
   const bundledDir = bundledPiDir();
-  if (!bundledDir) throw new Error('The pi package bundled with pi-kit was not found (node_modules/@earendil-works/pi-coding-agent).');
+  if (!bundledDir)
+    throw new Error('The pi package bundled with pi-kit was not found (node_modules/@earendil-works/pi-coding-agent).');
   const pinned = readPin();
-  resolution = resolvePi({ env: process.env, agentDir: agentDirOf(process.env), bundledDir, range: PI_SDK_RANGE, ...(pinned ? { pinned } : {}) });
+  resolution = resolvePi({
+    env: process.env,
+    agentDir: agentDirOf(process.env),
+    bundledDir,
+    range: PI_SDK_RANGE,
+    ...(pinned ? { pinned } : {}),
+  });
   return resolution;
 }
 
@@ -70,14 +77,16 @@ export function loadPiMcp(): Promise<PiMcpModule> {
   return piMcpModule;
 }
 export function loadPi(): Promise<PiModule> {
-  piModule ??= nativeImport<PiModule>(pathToFileURL(join(piResolution().packageDir, 'dist', 'index.js')).href).then((pi) => {
-    try {
-      // Extensions read `ctx.ui.theme`; pi's own RPC mode has the same global to hand them.
-      pi.initTheme('dark', false);
-    } catch {
-      // No theme means `ctx.ui.theme` throws for an extension that uses it; nothing else depends on it.
-    }
-    return pi;
-  });
+  piModule ??= nativeImport<PiModule>(pathToFileURL(join(piResolution().packageDir, 'dist', 'index.js')).href).then(
+    (pi) => {
+      try {
+        // Extensions read `ctx.ui.theme`; pi's own RPC mode has the same global to hand them.
+        pi.initTheme('dark', false);
+      } catch {
+        // No theme means `ctx.ui.theme` throws for an extension that uses it; nothing else depends on it.
+      }
+      return pi;
+    },
+  );
   return piModule;
 }

@@ -38,7 +38,10 @@ export function parsePromptSuggestion(content: string): PromptSuggestion | undef
 
 /** Reads prompt templates' frontmatter for the command list, remembering the answer for a file until it changes (path and mtime). */
 export class PromptSuggestionReader {
-  private readonly cache = new Map<string, { mtimeMs: number; size: number; suggestion: PromptSuggestion | undefined }>();
+  private readonly cache = new Map<
+    string,
+    { mtimeMs: number; size: number; suggestion: PromptSuggestion | undefined }
+  >();
 
   read(path: string): PromptSuggestion | undefined {
     try {

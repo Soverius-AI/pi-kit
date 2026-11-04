@@ -18,7 +18,14 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { api, env, openApp } from './support/app.mjs';
-import { FAKE_MODEL, FAKE_PROVIDER, cannedSkill, notesAgent, registerFakeModel, startFakeModel } from './support/fake-model.mjs';
+import {
+  FAKE_MODEL,
+  FAKE_PROVIDER,
+  cannedSkill,
+  notesAgent,
+  registerFakeModel,
+  startFakeModel,
+} from './support/fake-model.mjs';
 import { commitFile, gitIn, writeWorktreeProject } from './support/worktree-world.mjs';
 
 const NAME = 'verify-app';
@@ -49,7 +56,11 @@ const spawned = [];
 
 async function call(method, path, body) {
   const { token } = await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${env.api}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const res = await fetch(`${env.api}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
   return { status: res.status, body: res.status === 204 ? undefined : await res.json().catch(() => undefined) };
 }
 
@@ -57,7 +68,8 @@ async function call(method, path, body) {
 async function ensureBackend() {
   const up = async () => {
     try {
-      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })).ok;
+      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } }))
+        .ok;
     } catch {
       return false;
     }
@@ -65,7 +77,13 @@ async function ensureBackend() {
   if (await up()) return;
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: 'ignore',
     detached: true,
   });
@@ -78,7 +96,9 @@ const isLearnPrompt = (body) => JSON.stringify(body.messages?.[0] ?? '').include
 
 before(async () => {
   await ensureBackend();
-  fake = await startFakeModel({ answer: (body) => (isLearnPrompt(body) ? cannedSkill({ name: SKILL }) : notesAgent(body, { slowMs: 15_000 })) });
+  fake = await startFakeModel({
+    answer: (body) => (isLearnPrompt(body) ? cannedSkill({ name: SKILL }) : notesAgent(body, { slowMs: 15_000 })),
+  });
   registerFakeModel(env.agentDir, fake.url);
   worktreeRoot = join(env.project, '..', 'worktrees');
   app = await openApp();
@@ -88,7 +108,12 @@ before(async () => {
   // The other projects' threads are none of this file's business: the attendant is kept away from them, so switching it on does not rename them.
   await call('PATCH', '/api/workspaces', { cwd: env.project, attendant: false });
   // The attendant's model is the fake one, which is also the model of the threads: a replay on it counts under the attendant's cap.
-  await call('PATCH', '/api/attendant/settings', { enabled: true, model: { provider: FAKE_PROVIDER, modelId: FAKE_MODEL }, dailyCostCap: null, when: { onEnd: false, onInterrupt: false, everyMinutes: 0 } });
+  await call('PATCH', '/api/attendant/settings', {
+    enabled: true,
+    model: { provider: FAKE_PROVIDER, modelId: FAKE_MODEL },
+    dailyCostCap: null,
+    when: { onEnd: false, onInterrupt: false, everyMinutes: 0 },
+  });
   await app.page.reload();
   await app.page.waitForSelector('pk-root .pk-shell');
   await head().waitFor();
@@ -109,7 +134,11 @@ after(async () => {
 
 const head = () => app.page.locator(`.pk-project[data-project="${NAME}"] .pk-project-head`);
 const group = () => app.page.locator(`.pk-project[data-project="${NAME}"]`);
-const rowOf = (text) => group().locator('.pk-thread').filter({ has: app.page.getByText(text, { exact: true }) }).first();
+const rowOf = (text) =>
+  group()
+    .locator('.pk-thread')
+    .filter({ has: app.page.getByText(text, { exact: true }) })
+    .first();
 /** Opens a thread from its title: the row also carries chips (a drafted skill's opens the Learn chat), so its middle is not a safe place to click. */
 const openRow = (text) => rowOf(text).getByText(text, { exact: true }).first().click();
 const threads = async () => (await api('/api/threads')).filter((t) => t.cwd === project);
@@ -118,7 +147,8 @@ const dialog = () => app.page.getByTestId('review-dialog');
 const git = (...args) => gitIn(project, ...args).trim();
 const draftOf = async (threadId) => call('GET', `/api/threads/${threadId}/skill-draft`);
 const verificationOf = async () => (await draftOf(id)).body.verification;
-const projectSkills = () => (existsSync(join(project, '.pi', 'skills')) ? readdirSync(join(project, '.pi', 'skills')) : []);
+const projectSkills = () =>
+  existsSync(join(project, '.pi', 'skills')) ? readdirSync(join(project, '.pi', 'skills')) : [];
 
 async function eventually(check, what, ms = 30_000) {
   const deadline = Date.now() + ms;
@@ -133,10 +163,14 @@ async function eventually(check, what, ms = 30_000) {
 
 /** Waits until the draft's verification is over (not running) and returns it. */
 const verificationDone = (ms = 120_000) =>
-  eventually(async () => {
-    const v = await verificationOf();
-    return v && v.state !== 'running' ? v : undefined;
-  }, 'the verification to end', ms);
+  eventually(
+    async () => {
+      const v = await verificationOf();
+      return v && v.state !== 'running' ? v : undefined;
+    },
+    'the verification to end',
+    ms,
+  );
 
 const replayThread = async () => (await threads()).find((t) => t.title === REPLAY);
 
@@ -154,7 +188,9 @@ async function plainThread(title) {
   await app.page.getByRole('button', { name: `New thread in ${NAME}` }).click();
   await box().waitFor();
   await app.h.settle(500);
-  const created = (await threads()).filter((t) => !t.title && t.messageCount === 0).sort((a, b) => b.createdAt - a.createdAt)[0];
+  const created = (await threads())
+    .filter((t) => !t.title && t.messageCount === 0)
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
   assert.ok(created, 'the new thread is listed');
   await call('PATCH', `/api/threads/${created.id}`, { title });
   await eventually(async () => (await rowOf(title).count()) > 0, `the row of ${title}`);
@@ -162,7 +198,10 @@ async function plainThread(title) {
   return created.id;
 }
 
-const scratchFolders = () => (existsSync(join(worktreeRoot, NAME)) ? readdirSync(join(worktreeRoot, NAME)).filter((n) => n.startsWith('verify-')) : []);
+const scratchFolders = () =>
+  existsSync(join(worktreeRoot, NAME))
+    ? readdirSync(join(worktreeRoot, NAME)).filter((n) => n.startsWith('verify-'))
+    : [];
 const verifyBranches = () => git('branch', '--list', 'pi-kit/verify-*');
 
 describe('the thread that will be replayed', () => {
@@ -176,9 +215,15 @@ describe('the thread that will be replayed', () => {
     await box().waitFor();
     await prompt(PROMPT);
     const worktree = (await threads()).find((t) => t.id === id).worktree.path;
-    const written = gitIn(worktree, 'status', '--porcelain', '--untracked-files=all').split('\n').filter((l) => /notes\/.+\.md/.test(l));
+    const written = gitIn(worktree, 'status', '--porcelain', '--untracked-files=all')
+      .split('\n')
+      .filter((l) => /notes\/.+\.md/.test(l));
     assert.equal(written.length, 6, `the six notes are in the worktree:\n${written.join('\n')}`);
-    const merged = await call('POST', `/api/threads/${id}/worktree/merge`, { mode: 'merge', message: 'Add six notes', remove: true });
+    const merged = await call('POST', `/api/threads/${id}/worktree/merge`, {
+      mode: 'merge',
+      message: 'Add six notes',
+      remove: true,
+    });
     assert.equal(merged.body.status, 'merged', JSON.stringify(merged.body));
     const outcome = (await call('GET', `/api/threads/${id}/outcome`)).body;
     assert.equal(outcome.kind, 'merged');
@@ -242,15 +287,31 @@ describe('Approve with Verify first on replays the skill from the base commit', 
     assert.equal(slowThread.worktree.exists, true);
     const scratch = slowThread.worktree.path;
     assert.ok(scratch.startsWith(worktreeRoot), `the scratch worktree is under the worktree root: ${scratch}`);
-    assert.equal(gitIn(scratch, 'rev-parse', 'HEAD').trim(), (await call('GET', `/api/threads/${id}/outcome`)).body.base, 'it starts at the base commit');
+    assert.equal(
+      gitIn(scratch, 'rev-parse', 'HEAD').trim(),
+      (await call('GET', `/api/threads/${id}/outcome`)).body.base,
+      'it starts at the base commit',
+    );
     const pinned = join(scratch, '.pi', 'skills', SKILL, 'SKILL.md');
     await eventually(() => existsSync(pinned), 'the pinned skill');
     assert.match(readFileSync(pinned, 'utf8'), new RegExp(`^---\\nname: ${SKILL}\\n`));
     await rowOf(REPLAY).waitFor();
     // The dialog asks for the report every second and a half.
-    await eventually(async () => (await app.page.getByTestId('verification-phase').innerText()) === 'The thread is running with the skill pinned…', 'the phase in the dialog', 10_000);
+    await eventually(
+      async () =>
+        (await app.page.getByTestId('verification-phase').innerText()) ===
+        'The thread is running with the skill pinned…',
+      'the phase in the dialog',
+      10_000,
+    );
     // The model was sent the skill block in the replay's first message, with the thread's prompt.
-    const replayRequest = await eventually(() => fake.requests.find((r) => !isLearnPrompt(r) && JSON.stringify(r.messages).includes(`<skill name=\\"${SKILL}\\"`)), 'the pinned skill in a request');
+    const replayRequest = await eventually(
+      () =>
+        fake.requests.find(
+          (r) => !isLearnPrompt(r) && JSON.stringify(r.messages).includes(`<skill name=\\"${SKILL}\\"`),
+        ),
+      'the pinned skill in a request',
+    );
     assert.match(JSON.stringify(replayRequest.messages), /Take your time\./);
 
     assert.equal(git('rev-parse', 'HEAD'), mainHead, 'the main checkout did not move');
@@ -267,7 +328,17 @@ describe('Approve with Verify first on replays the skill from the base commit', 
     assert.deepEqual(done.hunks, { matched: 6, expected: 6, actual: 6 });
     assert.equal(done.score, 1);
     assert.equal(done.checks.length, 1);
-    assert.deepEqual({ ...done.checks[0], seconds: 0, output: '' }, { command: 'node --test notes.test.mjs', originalPassed: true, state: 'passed', exitCode: 0, seconds: 0, output: '' });
+    assert.deepEqual(
+      { ...done.checks[0], seconds: 0, output: '' },
+      {
+        command: 'node --test notes.test.mjs',
+        originalPassed: true,
+        state: 'passed',
+        exitCode: 0,
+        seconds: 0,
+        output: '',
+      },
+    );
     assert.equal(done.summary, 'Reproduced 6 of 6 files and 6 of 6 hunks; 1 of 1 check passes again.');
     assert.match(done.prompt, /Take your time\.$/);
     assert.equal(done.model, `${FAKE_PROVIDER}/${FAKE_MODEL}`);
@@ -281,15 +352,24 @@ describe('Approve with Verify first on replays the skill from the base commit', 
     assert.match(await app.page.getByTestId('verification-score').innerText(), /100 % of the changed lines match/);
     const files = app.page.getByTestId('verification-files').locator('li');
     assert.equal(await files.count(), 6);
-    assert.deepEqual(await files.evaluateAll((items) => items.map((li) => li.getAttribute('data-status'))), Array(6).fill('same'));
-    assert.match(await app.page.getByTestId('verification-checks').innerText(), /node --test notes\.test\.mjs\s+passed\s+passed in the thread/);
+    assert.deepEqual(
+      await files.evaluateAll((items) => items.map((li) => li.getAttribute('data-status'))),
+      Array(6).fill('same'),
+    );
+    assert.match(
+      await app.page.getByTestId('verification-checks').innerText(),
+      /node --test notes\.test\.mjs\s+passed\s+passed in the thread/,
+    );
     const approve = app.page.getByTestId('approve');
     assert.equal((await approve.innerText()).trim(), 'Approve');
     assert.equal(await approve.getAttribute('data-step'), 'approve');
     assert.equal(await approve.isEnabled(), true);
     // The verdict is in the text the person will approve, with the numbers.
     const text = await app.page.getByTestId('skill-text').inputValue();
-    assert.match(text, /verified:\n {4}result: pass\n {4}at: \d{4}-\d\d-\d\dT[\d:.]+Z\n {4}files: 6\/6\n {4}hunks: 6\/6\n {4}checks: 1\/1\n {4}similarity: 1\.00\n {4}replayedFrom: [0-9a-f]{40}/);
+    assert.match(
+      text,
+      /verified:\n {4}result: pass\n {4}at: \d{4}-\d\d-\d\dT[\d:.]+Z\n {4}files: 6\/6\n {4}hunks: 6\/6\n {4}checks: 1\/1\n {4}similarity: 1\.00\n {4}replayedFrom: [0-9a-f]{40}/,
+    );
     assert.equal(await app.page.getByTestId('verification-stale').count(), 0);
   });
 
@@ -299,7 +379,11 @@ describe('Approve with Verify first on replays the skill from the base commit', 
     assert.equal(git('worktree', 'list').split('\n').length, 1, 'only the main checkout is a worktree of the project');
     assert.equal(existsSync(slowThread.worktree.path), false);
     assert.equal(git('status', '--porcelain'), '');
-    assert.equal((await threads()).some((t) => t.title === REPLAY), false, 'the record is archived, not in the sidebar');
+    assert.equal(
+      (await threads()).some((t) => t.title === REPLAY),
+      false,
+      'the record is archived, not in the sidebar',
+    );
     const archived = (await api('/api/threads?archived=1')).find((t) => t.id === slowThread.id);
     assert.equal(archived.archived, true);
     assert.equal(archived.messageCount > 0, true);
@@ -314,9 +398,17 @@ describe('Approve with Verify first on replays the skill from the base commit', 
     assert.equal(verified.length, 1);
     assert.equal(verified[0].kind, 'learn');
     assert.match(verified[0].text, /Verified the skill replay-notes: pass\. Reproduced 6 of 6 files/);
-    assert.equal(verified[0].model, `${FAKE_PROVIDER}/${FAKE_MODEL}`, 'on the attendant’s own model, so it counts under the cap');
+    assert.equal(
+      verified[0].model,
+      `${FAKE_PROVIDER}/${FAKE_MODEL}`,
+      'on the attendant’s own model, so it counts under the cap',
+    );
     assert.ok(verified[0].inputTokens > 0, 'with the tokens of the replay');
-    assert.deepEqual(all.filter((a) => a.threadId === slowThread.id), [], 'nothing was done to the replay thread itself');
+    assert.deepEqual(
+      all.filter((a) => a.threadId === slowThread.id),
+      [],
+      'nothing was done to the replay thread itself',
+    );
   });
 
   it('returning to the source keeps the draft pending, and its card says what the replay found', async () => {
@@ -324,7 +416,10 @@ describe('Approve with Verify first on replays the skill from the base commit', 
     await dialog().waitFor({ state: 'detached' });
     await openRow(TITLE);
     await app.page.getByTestId('draft-card').waitFor();
-    await eventually(async () => /verified: it reproduces its thread/.test(await app.page.getByTestId('draft-card').innerText()), 'the verified note on the card');
+    await eventually(
+      async () => /verified: it reproduces its thread/.test(await app.page.getByTestId('draft-card').innerText()),
+      'the verified note on the card',
+    );
     assert.equal(projectSkills().length, 0);
   });
 });
@@ -336,7 +431,10 @@ describe('a skill that was edited is replayed again and found partial', () => {
     await app.page.getByTestId('verification-result').waitFor();
     assert.equal((await app.page.getByTestId('approve').innerText()).trim(), 'Approve');
     const text = await app.page.getByTestId('skill-text').inputValue();
-    const narrower = text.replace('1. Create each note in its own file under the notes folder, one tool call per file.', '1. Create the first five notes only, each in its own file under the notes folder.');
+    const narrower = text.replace(
+      '1. Create each note in its own file under the notes folder, one tool call per file.',
+      '1. Create the first five notes only, each in its own file under the notes folder.',
+    );
     assert.notEqual(narrower, text);
     await app.page.getByTestId('skill-text').fill(narrower);
     await app.page.getByTestId('verification-stale').waitFor();
@@ -357,12 +455,30 @@ describe('a skill that was edited is replayed again and found partial', () => {
     assert.ok(done.score > 0.9 && done.score < 0.92, `score ${done.score}`);
     assert.equal(done.summary, 'Reproduced 5 of 6 files and 5 of 6 hunks; 1 of 1 check passes again.');
     assert.equal(done.prompt, PROMPT, 'the thread’s own prompt this time');
-    assert.deepEqual(done.fileList.filter((f) => f.status === 'missing').map((f) => f.path), ['notes/six.md']);
+    assert.deepEqual(
+      done.fileList.filter((f) => f.status === 'missing').map((f) => f.path),
+      ['notes/six.md'],
+    );
 
-    await eventually(async () => (await app.page.getByTestId('verification-result').innerText()).trim() === 'Partial', 'the Partial chip');
-    assert.equal(await app.page.getByTestId('verification-stale').count(), 0, 'the report is for the text in the editor again');
-    const rows = await app.page.getByTestId('verification-files').locator('li').evaluateAll((items) => items.map((li) => [li.getAttribute('data-status'), li.querySelector('.path').textContent]));
-    assert.deepEqual(rows.filter(([status]) => status === 'missing'), [['missing', 'notes/six.md']]);
+    await eventually(
+      async () => (await app.page.getByTestId('verification-result').innerText()).trim() === 'Partial',
+      'the Partial chip',
+    );
+    assert.equal(
+      await app.page.getByTestId('verification-stale').count(),
+      0,
+      'the report is for the text in the editor again',
+    );
+    const rows = await app.page
+      .getByTestId('verification-files')
+      .locator('li')
+      .evaluateAll((items) =>
+        items.map((li) => [li.getAttribute('data-status'), li.querySelector('.path').textContent]),
+      );
+    assert.deepEqual(
+      rows.filter(([status]) => status === 'missing'),
+      [['missing', 'notes/six.md']],
+    );
     assert.equal(rows.filter(([status]) => status === 'same').length, 5);
     assert.match(await app.page.getByTestId('verification-score').innerText(), /91 % of the changed lines match/);
     // Partial does not block Approve: it is information, and the person decides.
@@ -375,7 +491,9 @@ describe('a skill that was edited is replayed again and found partial', () => {
     await app.page.getByTestId('approve').click();
     await dialog().waitFor({ state: 'detached' });
     // A project skill is project resources: pi asks to trust the folder now, as it does for any project that gets one. The answer goes into the scratch agent folder.
-    const trusted = await call('POST', `/api/workspaces/${encodeURIComponent(project)}/trust`, { decision: 'remember' });
+    const trusted = await call('POST', `/api/workspaces/${encodeURIComponent(project)}/trust`, {
+      decision: 'remember',
+    });
     assert.equal(trusted.status, 200, JSON.stringify(trusted.body));
     await app.page.reload();
     await app.page.waitForSelector('pk-root .pk-shell');
@@ -384,7 +502,10 @@ describe('a skill that was edited is replayed again and found partial', () => {
     assert.ok(existsSync(file));
     const written = readFileSync(file, 'utf8');
     assert.match(written, /first five notes only/);
-    assert.match(written, /verified:\n {4}result: partial\n {4}at: [\d\-T:.Z]+\n {4}files: 5\/6\n {4}hunks: 5\/6\n {4}checks: 1\/1\n/);
+    assert.match(
+      written,
+      /verified:\n {4}result: partial\n {4}at: [\d\-T:.Z]+\n {4}files: 5\/6\n {4}hunks: 5\/6\n {4}checks: 1\/1\n/,
+    );
     const draft = (await draftOf(id)).body;
     assert.equal(draft.state, 'approved');
     assert.equal(draft.verification.result, 'partial');
@@ -415,7 +536,11 @@ describe('a replay can be stopped, and nothing stays behind', () => {
     await eventually(async () => scratchFolders().length === 0, 'the scratch worktree to be removed');
     assert.equal(verifyBranches(), '');
     assert.equal((await call('POST', `/api/skill-drafts/${draftId}/verify/stop`)).status, 409, 'nothing to stop now');
-    assert.equal(readFileSync(join(project, '.pi', 'skills', SKILL, 'SKILL.md'), 'utf8'), before, 'a stopped replay leaves the written skill as it was');
+    assert.equal(
+      readFileSync(join(project, '.pi', 'skills', SKILL, 'SKILL.md'), 'utf8'),
+      before,
+      'a stopped replay leaves the written skill as it was',
+    );
   });
 
   it('the verification thread itself has the ordinary Stop button', async () => {
@@ -433,7 +558,10 @@ describe('a replay can be stopped, and nothing stays behind', () => {
     assert.equal(done.threadId, thread.id);
     await eventually(async () => scratchFolders().length === 0, 'the scratch worktree to be removed');
     assert.equal(verifyBranches(), '');
-    assert.equal((await threads()).some((t) => t.title === REPLAY), false);
+    assert.equal(
+      (await threads()).some((t) => t.title === REPLAY),
+      false,
+    );
   });
 
   it('an approved skill can be verified again, and the written file gets the new result', async () => {
@@ -446,7 +574,11 @@ describe('a replay can be stopped, and nothing stays behind', () => {
     assert.equal(done.result, 'partial');
     const written = readFileSync(file, 'utf8');
     assert.match(written, /verified:\n {4}result: partial/);
-    assert.equal(written.split('\n---\n').slice(1).join('\n---\n'), body, 'only the frontmatter’s verified lines changed');
+    assert.equal(
+      written.split('\n---\n').slice(1).join('\n---\n'),
+      body,
+      'only the frontmatter’s verified lines changed',
+    );
     await eventually(async () => scratchFolders().length === 0, 'the scratch worktree to be removed');
   });
 });
@@ -459,11 +591,18 @@ describe('/learn verify in the composer', () => {
     await box().fill('/learn verify ');
     // The Send button, not Enter: Enter did not send this message in the test (the composer kept the text), where `/learn ` alone is sent by Enter in z-learn.e2e.mjs; the button always sends.
     await app.page.getByTestId('send').click();
-    await eventually(async () => {
-      const v = await verificationOf();
-      return v.finishedAt > before && v.state === 'done' ? v : undefined;
-    }, 'the verification started by /learn verify', 120_000);
-    await app.page.getByText(/replay-notes: partial\. Reproduced 5 of 6 files and 5 of 6 hunks/).first().waitFor();
+    await eventually(
+      async () => {
+        const v = await verificationOf();
+        return v.finishedAt > before && v.state === 'done' ? v : undefined;
+      },
+      'the verification started by /learn verify',
+      120_000,
+    );
+    await app.page
+      .getByText(/replay-notes: partial\. Reproduced 5 of 6 files and 5 of 6 hunks/)
+      .first()
+      .waitFor();
     await eventually(async () => scratchFolders().length === 0, 'the scratch worktree to be removed');
   });
 });
@@ -475,7 +614,9 @@ describe('a thread without an outcome cannot be replayed', () => {
     plain = await plainThread('Add one note');
     await openRow('Add one note');
     await box().waitFor();
-    await prompt('Use the write tool once to create notes/solo.md with the single line "A solo note." Then say done in one short sentence.');
+    await prompt(
+      'Use the write tool once to create notes/solo.md with the single line "A solo note." Then say done in one short sentence.',
+    );
     const asked = await call('POST', `/api/threads/${plain}/skill-draft`, {});
     assert.equal(asked.body.status, 'drafted', JSON.stringify(asked.body));
     const plan = (await call('GET', `/api/skill-drafts/${asked.body.draft.id}/verify`)).body;
@@ -516,7 +657,9 @@ describe('nothing was left behind', () => {
       assert.equal(t.state.draft, null, 'no draft');
       assert.equal((await call('GET', `/api/threads/${t.id}/outcome`)).status, 404);
     }
-    const actions = (await call('GET', '/api/attendant')).body.actions.filter((a) => replays.some((t) => t.id === a.threadId));
+    const actions = (await call('GET', '/api/attendant')).body.actions.filter((a) =>
+      replays.some((t) => t.id === a.threadId),
+    );
     assert.deepEqual(actions, [], 'the attendant did not name, summarise or look at a replay');
   });
 });

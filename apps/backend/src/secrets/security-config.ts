@@ -16,14 +16,16 @@ export function hasEncryptedDatabase(dataDir: string): boolean {
 export function startupSecretStore(dataDir: string, env: NodeJS.ProcessEnv = process.env): SecretStore {
   const preferences = readSecurityPreferences(dataDir);
   const protectedProfile = preferences?.credentialStoreEnabled || hasEncryptedDatabase(dataDir);
-  const selectedEnv = !env['PI_KIT_SECRET_STORE'] && process.platform === 'darwin' && protectedProfile
-    ? { ...env, PI_KIT_SECRET_STORE: 'macos' }
-    : env;
+  const selectedEnv =
+    !env['PI_KIT_SECRET_STORE'] && process.platform === 'darwin' && protectedProfile
+      ? { ...env, PI_KIT_SECRET_STORE: 'macos' }
+      : env;
   return selectSecretStore(selectedEnv);
 }
 
 /** Explicit scratch/legacy stores retain their test and automation semantics. */
 export function encryptionEnabled(dataDir: string, store: SecretStore): boolean {
-  return hasEncryptedDatabase(dataDir)
-    || (readSecurityPreferences(dataDir)?.credentialStoreEnabled ?? store.kind !== 'none');
+  return (
+    hasEncryptedDatabase(dataDir) || (readSecurityPreferences(dataDir)?.credentialStoreEnabled ?? store.kind !== 'none')
+  );
 }

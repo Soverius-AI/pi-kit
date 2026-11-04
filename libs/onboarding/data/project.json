@@ -4,10 +4,7 @@
   "sourceRoot": "libs/onboarding/data/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:onboarding",
-    "type:data"
-  ],
+  "tags": ["scope:onboarding", "type:data"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"
@@ -19,12 +16,8 @@
         "tsConfig": "libs/onboarding/data/tsconfig.spec.json",
         "buildTarget": "renderer:build:development",
         "runner": "vitest",
-        "include": [
-          "libs/onboarding/data/src/**/*.spec.ts"
-        ],
-        "setupFiles": [
-          "libs/onboarding/data/src/test-setup.ts"
-        ]
+        "include": ["libs/onboarding/data/src/**/*.spec.ts"],
+        "setupFiles": ["libs/onboarding/data/src/test-setup.ts"]
       }
     }
   }

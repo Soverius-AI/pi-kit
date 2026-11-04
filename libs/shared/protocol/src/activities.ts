@@ -34,16 +34,18 @@ export const PiDiffContentSchema = z.object({
   written: z.boolean().optional(),
 });
 
-export const PiBashContentSchema = z.object({
-  command: z.string(),
-  output: z.string(),
-  exitCode: z.number().int().optional(),
-  running: z.boolean(),
-  cancelled: z.boolean().optional(),
-  truncated: z.boolean().optional(),
-  /** The user typed it with `!command` rather than the model calling the bash tool. */
-  user: z.boolean().optional(),
-}).meta({ id: 'PiBashContent' });
+export const PiBashContentSchema = z
+  .object({
+    command: z.string(),
+    output: z.string(),
+    exitCode: z.number().int().optional(),
+    running: z.boolean(),
+    cancelled: z.boolean().optional(),
+    truncated: z.boolean().optional(),
+    /** The user typed it with `!command` rather than the model calling the bash tool. */
+    user: z.boolean().optional(),
+  })
+  .meta({ id: 'PiBashContent' });
 
 /** Live state of one tool call: what the activity row's status dot and sub-line show (from `tool_execution_*`). */
 export const PiToolContentSchema = z.object({

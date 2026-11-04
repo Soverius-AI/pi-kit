@@ -21,7 +21,9 @@ export async function readLlamaSwapText(path: string) {
     if (length > limit) throw new Error('The llama-swap config exceeds 2 MB.');
     const text = bytes.subarray(0, length).toString('utf8');
     return { text, info };
-  } finally { await file.close(); }
+  } finally {
+    await file.close();
+  }
 }
 
 export async function readLlamaSwapDocument(path: string) {
@@ -31,10 +33,14 @@ export async function readLlamaSwapDocument(path: string) {
   try {
     if (document.errors.length) throw new Error('Invalid YAML');
     value = document.toJS({ maxAliasCount: 100 });
-  } catch { throw new Error('The llama-swap config contains invalid YAML.'); }
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('The llama-swap config must be a YAML object.');
+  } catch {
+    throw new Error('The llama-swap config contains invalid YAML.');
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('The llama-swap config must be a YAML object.');
   const models: unknown = (value as Record<string, unknown>)['models'];
-  if (models !== undefined && (!models || typeof models !== 'object' || Array.isArray(models))) throw new Error('The llama-swap models entry must be a YAML object.');
+  if (models !== undefined && (!models || typeof models !== 'object' || Array.isArray(models)))
+    throw new Error('The llama-swap models entry must be a YAML object.');
   return { document, text, info, models: Object.keys(models ?? {}) };
 }
 

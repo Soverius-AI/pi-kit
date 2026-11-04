@@ -6,14 +6,25 @@ import { api, ensureBackend, env, openApp } from './support/app.mjs';
 
 let app;
 let stopBackend;
-before(async () => { stopBackend = await ensureBackend(); app = await openApp(); });
+before(async () => {
+  stopBackend = await ensureBackend();
+  app = await openApp();
+});
 after(async () => {
   try {
     const { token } = await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json();
-    const response = await fetch(`${env.api}/api/settings/language`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ value: 'en' }) });
+    const response = await fetch(`${env.api}/api/settings/language`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ value: 'en' }),
+    });
     assert.ok(response.ok);
   } finally {
-    try { await app?.close(); } finally { await stopBackend?.(); }
+    try {
+      await app?.close();
+    } finally {
+      await stopBackend?.();
+    }
   }
 });
 
@@ -29,7 +40,9 @@ it('defaults to English, switches the open interface to German, and restores the
   await h.theme('pi-dark');
   await page.screenshot({ path: join(out, 'settings-en.png') });
 
-  const saved = page.waitForResponse((response) => response.url().endsWith('/api/settings/language') && response.request().method() === 'PUT');
+  const saved = page.waitForResponse(
+    (response) => response.url().endsWith('/api/settings/language') && response.request().method() === 'PUT',
+  );
   await selector.selectOption('de');
   assert.ok((await saved).ok());
   const german = page.getByRole('dialog', { name: 'Einstellungen', exact: true });

@@ -1,10 +1,40 @@
 import { TestBed } from '@angular/core/testing';
-import { bgAgentsAnswer, bgAgentsList, bgAgentsMessage, bgAgentsRemove, bgAgentsStop, provideMockApi } from '@pi-kit/api';
+import {
+  bgAgentsAnswer,
+  bgAgentsList,
+  bgAgentsMessage,
+  bgAgentsRemove,
+  bgAgentsStop,
+  provideMockApi,
+} from '@pi-kit/api';
 import type { BgAgent, ThreadsEvent } from '@pi-kit/protocol';
 import { ThreadsStore } from '@pi-kit/threads/api';
 import { AgentsStore } from './agents.store';
 
-const agent = (over: Partial<BgAgent>): BgAgent => ({ id: '1', threadId: 't1', name: 'tester', role: 'tests', model: null, permission: 'edit', tokens: { input: 1200, output: 340, cacheRead: 0, cacheWrite: 0 }, context: null, brief: 'Test.', status: 'active', blocked: null, createdAt: 1, finishedAt: null, cost: 0, report: null, activity: 'running', tool: null, question: null, answered: null, turns: 0, worktree: null, ...over });
+const agent = (over: Partial<BgAgent>): BgAgent => ({
+  id: '1',
+  threadId: 't1',
+  name: 'tester',
+  role: 'tests',
+  model: null,
+  permission: 'edit',
+  tokens: { input: 1200, output: 340, cacheRead: 0, cacheWrite: 0 },
+  context: null,
+  brief: 'Test.',
+  status: 'active',
+  blocked: null,
+  createdAt: 1,
+  finishedAt: null,
+  cost: 0,
+  report: null,
+  activity: 'running',
+  tool: null,
+  question: null,
+  answered: null,
+  turns: 0,
+  worktree: null,
+  ...over,
+});
 
 describe('AgentsStore', () => {
   const api = {
@@ -15,7 +45,9 @@ describe('AgentsStore', () => {
     answer: vi.fn(async (id: string, agentId: string, body: unknown) => (void [id, agentId, body], agent({}))),
   };
   let listener: ((event: ThreadsEvent) => void) | undefined;
-  const threads = { onStatusEvent: vi.fn((fn: (event: ThreadsEvent) => void) => ((listener = fn), () => (listener = undefined))) };
+  const threads = {
+    onStatusEvent: vi.fn((fn: (event: ThreadsEvent) => void) => ((listener = fn), () => (listener = undefined))),
+  };
 
   beforeEach(() => {
     for (const fn of Object.values(api)) fn.mockClear();
@@ -87,7 +119,12 @@ describe('AgentsStore', () => {
     store.watch('t1');
     await vi.waitFor(() => expect(store.agents()).toHaveLength(1));
     let reject!: (error: Error) => void;
-    api.message.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+    api.message.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
     const sending = store.message('1', 'Continue.', 'followUp');
     await vi.waitFor(() => expect(api.message).toHaveBeenCalledOnce());
     api.list.mockResolvedValueOnce([agent({ id: '2', threadId: 't2' })]);

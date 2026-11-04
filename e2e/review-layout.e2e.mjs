@@ -21,7 +21,10 @@ before(async () => {
   writeFileSync(join(env.project, 'src/greet.ts'), `${originalGreet}\n// A second file for review navigation.\n`);
   const lines = original.split('\n');
   lines[0] = `// AFTER: ${'a long replacement line '.repeat(30)}`;
-  writeFileSync(file(), `${lines.join('\n')}\n${Array.from({ length: 80 }, (_, i) => `// added line ${i + 1}`).join('\n')}\n`);
+  writeFileSync(
+    file(),
+    `${lines.join('\n')}\n${Array.from({ length: 80 }, (_, i) => `// added line ${i + 1}`).join('\n')}\n`,
+  );
   app = await openApp();
   await app.h.newThread();
   await app.h.openPanel('Changes');
@@ -39,17 +42,31 @@ after(async () => {
 
 async function aligned() {
   await pane('After').waitFor();
-  const rows = await diff().locator('.split-pane').evaluateAll((panes) => panes.map((pane) => Array.from(pane.querySelectorAll('.h'), (row) => {
-    const r = row.getBoundingClientRect();
-    return [r.top, r.height];
-  })));
+  const rows = await diff()
+    .locator('.split-pane')
+    .evaluateAll((panes) =>
+      panes.map((pane) =>
+        Array.from(pane.querySelectorAll('.h'), (row) => {
+          const r = row.getBoundingClientRect();
+          return [r.top, r.height];
+        }),
+      ),
+    );
   assert.ok(rows[0].length > 80);
-  assert.deepEqual(rows[0], rows[1], 'both sides use identical vertical row positions, including empty cells and comment gaps');
+  assert.deepEqual(
+    rows[0],
+    rows[1],
+    'both sides use identical vertical row positions, including empty cells and comment gaps',
+  );
 }
 
 it('navigates files and changes source directly from the review toolbar', async () => {
   const { page } = app;
-  assert.equal(await page.evaluate(() => typeof globalThis.Zone), 'undefined', 'the Angular 22 renderer runs without Zone.js');
+  assert.equal(
+    await page.evaluate(() => typeof globalThis.Zone),
+    'undefined',
+    'the Angular 22 renderer runs without Zone.js',
+  );
   const toolbar = page.locator('pk-review-toolbar');
   const picker = toolbar.getByRole('combobox', { name: 'Changed files', exact: true });
   await toolbar.getByRole('button', { name: 'Previous file', exact: true }).click();
@@ -82,15 +99,25 @@ it('opens find from the diff header and reveals a match in a small nonvirtual di
   await diff().getByRole('search').waitFor({ state: 'detached' });
   const passed = await diff().evaluate((host) => {
     let reachedApp = false;
-    const listener = () => { reachedApp = true; };
+    const listener = () => {
+      reachedApp = true;
+    };
     document.addEventListener('keydown', listener, { once: true });
-    host.dispatchEvent(new KeyboardEvent('keydown', { key: 'F', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+    host.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'F', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }),
+    );
     document.removeEventListener('keydown', listener);
     return reachedApp;
   });
   assert.equal(passed, true, 'the modified shortcut reaches the app');
-  assert.equal(await diff().getByRole('search').count(), 0, 'the modified shortcut reaches the app without opening diff find');
-  await page.locator('pk-review-view').evaluate((el) => { el.scrollTop = 0; });
+  assert.equal(
+    await diff().getByRole('search').count(),
+    0,
+    'the modified shortcut reaches the app without opening diff find',
+  );
+  await page.locator('pk-review-view').evaluate((el) => {
+    el.scrollTop = 0;
+  });
 });
 
 it('keeps Before and After side by side for long lines, and scrolls either pane horizontally in sync', async () => {
@@ -102,38 +129,68 @@ it('keeps Before and After side by side for long lines, and scrolls either pane 
   const body = await diff().locator('.split-body').boundingBox();
   assert.ok(Math.abs(before.width - after.width) < 1);
   assert.ok(Math.abs(after.x - (before.x + before.width)) < 1);
-  assert.ok(Math.abs(after.x + after.width - (body.x + body.width)) < 1, 'After is visible inside the viewer, not beyond the widest old line');
-  assert.match(await pane('Before').locator('.h .c').first().innerText(), new RegExp(original.split('\n')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.ok(
+    Math.abs(after.x + after.width - (body.x + body.width)) < 1,
+    'After is visible inside the viewer, not beyond the widest old line',
+  );
+  assert.match(
+    await pane('Before').locator('.h .c').first().innerText(),
+    new RegExp(original.split('\n')[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+  );
   assert.match(await pane('After').locator('.h .c').first().innerText(), /AFTER:/);
   await aligned();
-  for (const [side, offset] of [['Before', 120], ['After', 240], ['Before', 100000]]) {
-    await pane(side).evaluate((el, left) => { el.scrollLeft = left; }, offset);
+  for (const [side, offset] of [
+    ['Before', 120],
+    ['After', 240],
+    ['Before', 100000],
+  ]) {
+    await pane(side).evaluate((el, left) => {
+      el.scrollLeft = left;
+    }, offset);
     await page.waitForFunction(() => {
       const panes = Array.from(document.querySelectorAll('pk-review-view .split-pane'));
       return panes.length === 2 && panes[0].scrollLeft > 0 && Math.abs(panes[0].scrollLeft - panes[1].scrollLeft) < 1;
     });
   }
-  assert.equal(await diff().locator('.split-body').evaluate((el) => el.scrollWidth), Math.round(body.width));
+  assert.equal(
+    await diff()
+      .locator('.split-body')
+      .evaluate((el) => el.scrollWidth),
+    Math.round(body.width),
+  );
 });
 
 it('uses one vertical scroll when wheeling over either side', async () => {
   const { page } = app;
   for (const side of ['Before', 'After']) {
-    await page.locator('pk-review-view').evaluate((el) => { el.scrollTop = 0; });
+    await page.locator('pk-review-view').evaluate((el) => {
+      el.scrollTop = 0;
+    });
     const box = await pane(side).boundingBox();
     await page.mouse.move(box.x + box.width / 2, Math.max(200, box.y + 80));
     await page.mouse.wheel(0, 300);
     await page.waitForFunction(() => document.querySelector('pk-review-view').scrollTop > 100);
-    assert.deepEqual(await diff().locator('.split-pane').evaluateAll((els) => els.map((el) => el.scrollTop)), [0, 0]);
+    assert.deepEqual(
+      await diff()
+        .locator('.split-pane')
+        .evaluateAll((els) => els.map((el) => el.scrollTop)),
+      [0, 0],
+    );
     await aligned();
   }
 });
 
 it('extends a comment range by dragging across rows with delegated hover handling', async () => {
   const { page } = app;
-  await page.locator('pk-review-view').evaluate((el) => { el.scrollTop = 0; });
-  await pane('Before').evaluate((el) => { el.scrollLeft = 0; });
-  await page.waitForFunction(() => Array.from(document.querySelectorAll('pk-review-view .split-pane')).every((el) => el.scrollLeft === 0));
+  await page.locator('pk-review-view').evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await pane('Before').evaluate((el) => {
+    el.scrollLeft = 0;
+  });
+  await page.waitForFunction(() =>
+    Array.from(document.querySelectorAll('pk-review-view .split-pane')).every((el) => el.scrollLeft === 0),
+  );
   const start = await pane('After').locator('.h').nth(0).getByRole('button').boundingBox();
   const end = await pane('After').locator('.h').nth(2).boundingBox();
   await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
@@ -148,9 +205,15 @@ it('extends a comment range by dragging across rows with delegated hover handlin
 
 it('keeps both sides aligned around a comment editor and saved card, and preserves the comment across layouts', async () => {
   const { page } = app;
-  await page.locator('pk-review-view').evaluate((el) => { el.scrollTop = 0; });
-  await pane('Before').evaluate((el) => { el.scrollLeft = 0; });
-  await page.waitForFunction(() => Array.from(document.querySelectorAll('pk-review-view .split-pane')).every((el) => el.scrollLeft === 0));
+  await page.locator('pk-review-view').evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await pane('Before').evaluate((el) => {
+    el.scrollLeft = 0;
+  });
+  await page.waitForFunction(() =>
+    Array.from(document.querySelectorAll('pk-review-view .split-pane')).every((el) => el.scrollLeft === 0),
+  );
   await pane('After').locator('.h').first().getByRole('button', { name: 'Comment on the new line' }).click();
   await page.getByRole('textbox', { name: 'Comment', exact: true }).fill('Keep these lines aligned.');
   await aligned();
@@ -177,7 +240,9 @@ it('reacts to phone resizing immediately and restores the chosen split layout on
   assert.equal(await diff().locator('.split-pane').count(), 0);
   assert.match(await diff().locator('.pk-cmt').innerText(), /Keep these lines aligned/);
   assert.equal(await page.locator('pk-review-toolbar').evaluate((el) => el.scrollWidth <= el.clientWidth), true);
-  await page.locator('#t-threads').evaluate((el) => { el.checked = false; });
+  await page.locator('#t-threads').evaluate((el) => {
+    el.checked = false;
+  });
   await page.waitForFunction(() => document.querySelector('.pk-threads').getBoundingClientRect().right <= 0);
   await page.screenshot({ path: 'tmp/review-layout/phone.png' });
   await page.setViewportSize({ width: 1024, height: 768 });

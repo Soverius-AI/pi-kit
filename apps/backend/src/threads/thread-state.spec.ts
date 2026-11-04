@@ -23,22 +23,55 @@ const facts = (over: Partial<StateFacts> = {}): StateFacts => ({
 const dialog = (title: string) => ({ id: 'd1', request: { method: 'confirm' as const, title } });
 
 describe('computeThreadState', () => {
-  it('a background agent\'s question for the user makes the thread wait like a dialog, after pi\'s own', () => {
-    const question = { id: 'agent-question:7:q1', agentId: '7', request: { method: 'select' as const, title: 'Change greet to add punctuation?', options: ['Keep as is', 'Change it'], agent: 'reviewer' } };
+  it("a background agent's question for the user makes the thread wait like a dialog, after pi's own", () => {
+    const question = {
+      id: 'agent-question:7:q1',
+      agentId: '7',
+      request: {
+        method: 'select' as const,
+        title: 'Change greet to add punctuation?',
+        options: ['Keep as is', 'Change it'],
+        agent: 'reviewer',
+      },
+    };
     const state = computeThreadState(facts({ agentQuestions: [question] }));
-    expect(state).toMatchObject({ activity: 'waiting', question: 'Change greet to add punctuation?', dialog: { id: 'agent-question:7:q1', method: 'select', options: ['Keep as is', 'Change it'] }, agentQuestions: [question] });
+    expect(state).toMatchObject({
+      activity: 'waiting',
+      question: 'Change greet to add punctuation?',
+      dialog: { id: 'agent-question:7:q1', method: 'select', options: ['Keep as is', 'Change it'] },
+      agentQuestions: [question],
+    });
     expect(computeThreadState(facts({ running: true, agentQuestions: [question] })).activity).toBe('waiting');
-    expect(computeThreadState(facts({ dialogs: [dialog('Allow bash?')], agentQuestions: [question] })).question).toBe('Allow bash?');
+    expect(computeThreadState(facts({ dialogs: [dialog('Allow bash?')], agentQuestions: [question] })).question).toBe(
+      'Allow bash?',
+    );
     expect(computeThreadState(facts({ agentQuestions: [] }))).not.toHaveProperty('agentQuestions');
   });
 
   it('names the run that holds the lock while the thread runs, so a client that follows it needs no second replay', () => {
-    expect(computeThreadState(facts({ running: true, lastRun: { runId: 'turn-1', status: 'running', endedAt: null } })).run).toBe('turn-1');
-    expect(computeThreadState(facts({ lastRun: { runId: 'turn-1', status: 'finished', endedAt: 5 } }))).not.toHaveProperty('run');
+    expect(
+      computeThreadState(facts({ running: true, lastRun: { runId: 'turn-1', status: 'running', endedAt: null } })).run,
+    ).toBe('turn-1');
+    expect(
+      computeThreadState(facts({ lastRun: { runId: 'turn-1', status: 'finished', endedAt: 5 } })),
+    ).not.toHaveProperty('run');
   });
 
   it('an untouched thread is idle and says nothing', () => {
-    expect(computeThreadState(facts())).toEqual({ activity: 'idle', question: null, dialog: null, context: null, lastRun: null, unread: false, unseen: false, cli: false, summary: null, suggestions: [], outcome: null, draft: null });
+    expect(computeThreadState(facts())).toEqual({
+      activity: 'idle',
+      question: null,
+      dialog: null,
+      context: null,
+      lastRun: null,
+      unread: false,
+      unseen: false,
+      cli: false,
+      summary: null,
+      suggestions: [],
+      outcome: null,
+      draft: null,
+    });
   });
 
   it('carries the outcome of the thread as the badge the sidebar draws', () => {
@@ -50,15 +83,29 @@ describe('computeThreadState', () => {
   });
 
   it('names the first pending dialog so the sidebar can answer it: its id, its kind and a select’s options', () => {
-    expect(computeThreadState(facts({ dialogs: [dialog('Proceed?')] })).dialog).toEqual({ id: 'd1', method: 'confirm' });
-    const select = { id: 'd2', request: { method: 'select' as const, title: 'Which runner?', options: ['Vitest', 'Jest'] } };
-    expect(computeThreadState(facts({ dialogs: [select, dialog('Later')] })).dialog).toEqual({ id: 'd2', method: 'select', options: ['Vitest', 'Jest'] });
+    expect(computeThreadState(facts({ dialogs: [dialog('Proceed?')] })).dialog).toEqual({
+      id: 'd1',
+      method: 'confirm',
+    });
+    const select = {
+      id: 'd2',
+      request: { method: 'select' as const, title: 'Which runner?', options: ['Vitest', 'Jest'] },
+    };
+    expect(computeThreadState(facts({ dialogs: [select, dialog('Later')] })).dialog).toEqual({
+      id: 'd2',
+      method: 'select',
+      options: ['Vitest', 'Jest'],
+    });
     // A question in prose has no dialog to resume.
     expect(computeThreadState(facts({ prose: 'Vitest or Jest?' })).dialog).toBeNull();
   });
 
   it('running while the lock row says so', () => {
-    expect(computeThreadState(facts({ running: true, lastRun: { status: 'running', endedAt: null } }))).toMatchObject({ activity: 'running', lastRun: null, unread: false });
+    expect(computeThreadState(facts({ running: true, lastRun: { status: 'running', endedAt: null } }))).toMatchObject({
+      activity: 'running',
+      lastRun: null,
+      unread: false,
+    });
   });
 
   it('an answer that ends in a question is waiting too, with that question, unless a run is on', () => {
@@ -70,7 +117,12 @@ describe('computeThreadState', () => {
   });
 
   it('waiting wins over running, with the first words of the question', () => {
-    const state = computeThreadState(facts({ running: true, dialogs: [dialog('Delete the scratch file in the project folder, including its backups?')] }));
+    const state = computeThreadState(
+      facts({
+        running: true,
+        dialogs: [dialog('Delete the scratch file in the project folder, including its backups?')],
+      }),
+    );
     expect(state.activity).toBe('waiting');
     expect(state.question).toBe('Delete the scratch file in the project folder,…');
   });
@@ -82,8 +134,16 @@ describe('computeThreadState', () => {
   });
 
   it('a stopped or failed run shows its own badge and is never "unread"', () => {
-    expect(computeThreadState(facts({ lastRun: { status: 'aborted', endedAt: 2000 } }))).toMatchObject({ lastRun: 'aborted', unread: false, unseen: true });
-    expect(computeThreadState(facts({ lastRun: { status: 'error', endedAt: 2000 }, seenAt: 3000 }))).toMatchObject({ lastRun: 'error', unread: false, unseen: false });
+    expect(computeThreadState(facts({ lastRun: { status: 'aborted', endedAt: 2000 } }))).toMatchObject({
+      lastRun: 'aborted',
+      unread: false,
+      unseen: true,
+    });
+    expect(computeThreadState(facts({ lastRun: { status: 'error', endedAt: 2000 }, seenAt: 3000 }))).toMatchObject({
+      lastRun: 'error',
+      unread: false,
+      unseen: false,
+    });
   });
 
   it('cli: a session the pi command line made and nobody opened, or a file that changed behind the app', () => {
@@ -101,12 +161,20 @@ describe('computeThreadState', () => {
   it('cli is not shown on a thread that runs, waits, or has an unread result (those say more)', () => {
     expect(computeThreadState(facts({ fileMtime: 9000, logMtime: 5000, running: true })).cli).toBe(false);
     expect(computeThreadState(facts({ fileMtime: 9000, logMtime: 5000, dialogs: [dialog('Ok?')] })).cli).toBe(false);
-    expect(computeThreadState(facts({ fileMtime: 9000, logMtime: 5000, lastRun: { status: 'finished', endedAt: 4000 }, seenAt: 100 })).cli).toBe(false);
+    expect(
+      computeThreadState(
+        facts({ fileMtime: 9000, logMtime: 5000, lastRun: { status: 'finished', endedAt: 4000 }, seenAt: 100 }),
+      ).cli,
+    ).toBe(false);
   });
 
   it('carries the context share, the summary and the suggestions through', () => {
     const suggestions = [{ id: 1, kind: 'answer' as const, target: 'd1', text: 'Allow' }];
-    expect(computeThreadState(facts({ contextPct: 96, summary: 'Adding tests', suggestions }))).toMatchObject({ context: 96, summary: 'Adding tests', suggestions });
+    expect(computeThreadState(facts({ contextPct: 96, summary: 'Adding tests', suggestions }))).toMatchObject({
+      context: 96,
+      summary: 'Adding tests',
+      suggestions,
+    });
   });
 });
 
@@ -116,7 +184,9 @@ describe('questionHead', () => {
   });
 
   it('cuts at eight words, and at 60 characters on a word boundary', () => {
-    expect(questionHead({ method: 'input', title: 'one two three four five six seven eight nine ten' })).toBe('one two three four five six seven eight…');
+    expect(questionHead({ method: 'input', title: 'one two three four five six seven eight nine ten' })).toBe(
+      'one two three four five six seven eight…',
+    );
     const long = questionHead({ method: 'input', title: 'Supercalifragilisticexpialidocious '.repeat(4).trim() });
     expect(long.endsWith('…')).toBe(true);
     expect(long.length).toBeLessThanOrEqual(61);
@@ -129,13 +199,30 @@ describe('questionHead', () => {
 });
 
 describe('lastContext', () => {
-  const assistant = (id: string, parentId: string | null, totalTokens: number, extra: Record<string, unknown> = {}): PiSessionEntry => ({
+  const assistant = (
+    id: string,
+    parentId: string | null,
+    totalTokens: number,
+    extra: Record<string, unknown> = {},
+  ): PiSessionEntry => ({
     type: 'message',
     id,
     parentId,
-    message: { role: 'assistant', provider: 'llama-swap', model: 'gemma', usage: { input: totalTokens - 10, output: 10, totalTokens }, stopReason: 'stop', ...extra },
+    message: {
+      role: 'assistant',
+      provider: 'llama-swap',
+      model: 'gemma',
+      usage: { input: totalTokens - 10, output: 10, totalTokens },
+      stopReason: 'stop',
+      ...extra,
+    },
   });
-  const user = (id: string, parentId: string | null): PiSessionEntry => ({ type: 'message', id, parentId, message: { role: 'user', content: 'x' } });
+  const user = (id: string, parentId: string | null): PiSessionEntry => ({
+    type: 'message',
+    id,
+    parentId,
+    message: { role: 'user', content: 'x' },
+  });
 
   it('is the last response of the branch, counted as pi counts it', () => {
     const entries = [user('u1', null), assistant('a1', 'u1', 1000), user('u2', 'a1'), assistant('a2', 'u2', 190_700)];
@@ -149,14 +236,30 @@ describe('lastContext', () => {
   });
 
   it('skips a stopped or failed request and sums the parts when there is no total', () => {
-    const entries = [user('u1', null), assistant('a1', 'u1', 500), user('u2', 'a1'), assistant('a2', 'u2', 0, { stopReason: 'aborted', usage: { input: 9, output: 0 } })];
+    const entries = [
+      user('u1', null),
+      assistant('a1', 'u1', 500),
+      user('u2', 'a1'),
+      assistant('a2', 'u2', 0, { stopReason: 'aborted', usage: { input: 9, output: 0 } }),
+    ];
     expect(lastContext(entries, 'a2')?.tokens).toBe(500);
-    const parts: PiSessionEntry[] = [{ type: 'message', id: 'a', parentId: null, message: { role: 'assistant', model: 'm', usage: { input: 100, output: 20, cacheRead: 30, cacheWrite: 5 } } }];
+    const parts: PiSessionEntry[] = [
+      {
+        type: 'message',
+        id: 'a',
+        parentId: null,
+        message: { role: 'assistant', model: 'm', usage: { input: 100, output: 20, cacheRead: 30, cacheWrite: 5 } },
+      },
+    ];
     expect(lastContext(parts, 'a')?.tokens).toBe(155);
   });
 
   it('is unknown after a compaction and before any response', () => {
-    const entries = [user('u1', null), assistant('a1', 'u1', 900), { type: 'compaction', id: 'c1', parentId: 'a1' } as PiSessionEntry];
+    const entries = [
+      user('u1', null),
+      assistant('a1', 'u1', 900),
+      { type: 'compaction', id: 'c1', parentId: 'a1' } as PiSessionEntry,
+    ];
     expect(lastContext(entries, 'c1')).toBeNull();
     expect(lastContext([user('u1', null)], 'u1')).toBeNull();
     expect(contextPercent(10, undefined)).toBeNull();
@@ -164,13 +267,28 @@ describe('lastContext', () => {
 });
 
 describe('lastAssistantLine', () => {
-  const user = (id: string, parentId: string | null): PiSessionEntry => ({ type: 'message', id, parentId, message: { role: 'user', content: 'x' } });
-  const reply = (id: string, parentId: string | null, content: unknown, extra: Record<string, unknown> = {}): PiSessionEntry => ({ type: 'message', id, parentId, message: { role: 'assistant', content, ...extra } });
+  const user = (id: string, parentId: string | null): PiSessionEntry => ({
+    type: 'message',
+    id,
+    parentId,
+    message: { role: 'user', content: 'x' },
+  });
+  const reply = (
+    id: string,
+    parentId: string | null,
+    content: unknown,
+    extra: Record<string, unknown> = {},
+  ): PiSessionEntry => ({ type: 'message', id, parentId, message: { role: 'assistant', content, ...extra } });
 
   it('is the first line of the last answer on the branch, without markdown marks', () => {
-    const entries = [user('u1', null), reply('a1', 'u1', [{ type: 'text', text: '## Done\nAll **three** tests pass.' }])];
+    const entries = [
+      user('u1', null),
+      reply('a1', 'u1', [{ type: 'text', text: '## Done\nAll **three** tests pass.' }]),
+    ];
     expect(lastAssistantLine(entries, 'a1')).toBe('Done');
-    expect(lastAssistantLine([user('u1', null), reply('a1', 'u1', 'The summary groups by month.\nSecond line.')], 'a1')).toBe('The summary groups by month.');
+    expect(
+      lastAssistantLine([user('u1', null), reply('a1', 'u1', 'The summary groups by month.\nSecond line.')], 'a1'),
+    ).toBe('The summary groups by month.');
   });
 
   it('skips fenced code, blank lines and a response that only called tools, and follows the leaf', () => {
@@ -187,7 +305,12 @@ describe('lastAssistantLine', () => {
   });
 
   it('ignores a stopped or failed response, cuts a long line and is null without an answer', () => {
-    const entries = [user('u1', null), reply('a1', 'u1', 'Good', {}), user('u2', 'a1'), reply('a2', 'u2', 'Half an ans', { stopReason: 'aborted' })];
+    const entries = [
+      user('u1', null),
+      reply('a1', 'u1', 'Good', {}),
+      user('u2', 'a1'),
+      reply('a2', 'u2', 'Half an ans', { stopReason: 'aborted' }),
+    ];
     expect(lastAssistantLine(entries, 'a2')).toBe('Good');
     const long = lastAssistantLine([reply('a', null, `${'word '.repeat(60)}end`)], 'a') as string;
     expect(long.length).toBeLessThanOrEqual(141);

@@ -26,8 +26,17 @@ export function lastContext(entries: readonly PiSessionEntry[], leafId: string |
   let current = leafId ? byId.get(leafId) : entries.at(-1);
   for (let guard = 0; current && guard <= entries.length; guard++) {
     if (current.type === 'compaction') return null;
-    const message = current.type === 'message' ? (current['message'] as { role?: string; usage?: StoredUsage; stopReason?: string; provider?: string; model?: string } | undefined) : undefined;
-    if (message?.role === 'assistant' && message.usage && message.stopReason !== 'aborted' && message.stopReason !== 'error') {
+    const message =
+      current.type === 'message'
+        ? (current['message'] as
+            { role?: string; usage?: StoredUsage; stopReason?: string; provider?: string; model?: string } | undefined)
+        : undefined;
+    if (
+      message?.role === 'assistant' &&
+      message.usage &&
+      message.stopReason !== 'aborted' &&
+      message.stopReason !== 'error'
+    ) {
       const u = message.usage;
       const tokens = u.totalTokens || (u.input ?? 0) + (u.output ?? 0) + (u.cacheRead ?? 0) + (u.cacheWrite ?? 0);
       if (tokens > 0) return { tokens, provider: message.provider || undefined, model: message.model ?? '' };
@@ -53,7 +62,10 @@ export function lastAssistantLine(entries: readonly PiSessionEntry[], leafId: st
   const byId = new Map(entries.map((e) => [e.id, e] as const));
   let current = leafId ? byId.get(leafId) : entries.at(-1);
   for (let guard = 0; current && guard <= entries.length; guard++) {
-    const message = current.type === 'message' ? (current['message'] as { role?: string; content?: unknown; stopReason?: string } | undefined) : undefined;
+    const message =
+      current.type === 'message'
+        ? (current['message'] as { role?: string; content?: unknown; stopReason?: string } | undefined)
+        : undefined;
     if (message?.role === 'assistant' && message.stopReason !== 'aborted' && message.stopReason !== 'error') {
       const line = firstLine(textOf(message.content));
       if (line) return line;
@@ -66,7 +78,13 @@ export function lastAssistantLine(entries: readonly PiSessionEntry[], leafId: st
 function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
-  return content.map((part) => (part && typeof part === 'object' && (part as { type?: string }).type === 'text' ? String((part as { text?: unknown }).text ?? '') : '')).join('\n');
+  return content
+    .map((part) =>
+      part && typeof part === 'object' && (part as { type?: string }).type === 'text'
+        ? String((part as { text?: unknown }).text ?? '')
+        : '',
+    )
+    .join('\n');
 }
 
 function firstLine(text: string): string | null {

@@ -14,7 +14,9 @@ export class FeedbackRepository {
   /** The thread's ratings, oldest first. */
   list(threadId: string): FeedbackEntry[] {
     const rows = this.db
-      .prepare('SELECT message_id, rating, updated_at FROM feedback WHERE thread_id = ? ORDER BY created_at, message_id')
+      .prepare(
+        'SELECT message_id, rating, updated_at FROM feedback WHERE thread_id = ? ORDER BY created_at, message_id',
+      )
       .all(threadId) as { message_id: string; rating: FeedbackRating; updated_at: number }[];
     return rows.map((r) => ({ messageId: r.message_id, rating: r.rating, updatedAt: r.updated_at }));
   }

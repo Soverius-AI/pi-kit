@@ -6,17 +6,19 @@ import { z } from 'zod';
  */
 
 /** A thread that runs in its own git worktree. `branch` is read from the worktree's `HEAD` when it can be, else what was recorded at creation. */
-export const ThreadWorktreeSchema = z.object({
-  /** The worktree folder pi runs in; the Files, Changes, Terminal and review panels work there. */
-  path: z.string(),
-  branch: z.string().nullable(),
-  /** The branch the worktree was cut from and merges back into. */
-  base: z.string().nullable(),
-  /** False once the folder is gone (removed after a merge, or by hand): the thread then continues in the project's folder. */
-  exists: z.boolean(),
-  /** The worktree has no branch checked out: "Create branch here" gives it one, Merge back merges its `HEAD`. `branch` is `null` then. */
-  detached: z.boolean().optional(),
-}).meta({ id: 'ThreadWorktree' });
+export const ThreadWorktreeSchema = z
+  .object({
+    /** The worktree folder pi runs in; the Files, Changes, Terminal and review panels work there. */
+    path: z.string(),
+    branch: z.string().nullable(),
+    /** The branch the worktree was cut from and merges back into. */
+    base: z.string().nullable(),
+    /** False once the folder is gone (removed after a merge, or by hand): the thread then continues in the project's folder. */
+    exists: z.boolean(),
+    /** The worktree has no branch checked out: "Create branch here" gives it one, Merge back merges its `HEAD`. `branch` is `null` then. */
+    detached: z.boolean().optional(),
+  })
+  .meta({ id: 'ThreadWorktree' });
 export type ThreadWorktree = z.infer<typeof ThreadWorktreeSchema>;
 
 /** One of a project's setup scripts: `command` is typed first into the new folder's terminal, `copy` names files of the project (such as `.env.local`) copied into the new worktree before it. */
@@ -37,7 +39,11 @@ export type SetupScript = z.infer<typeof SetupScriptSchema>;
  * `setup` is the id of a setup script to type into the folder's terminal first (none by default: a Local thread does not install anything unasked).
  */
 export const NewLocalSchema = z
-  .object({ branch: z.string().trim().min(1).max(200).optional(), create: z.boolean().optional(), setup: z.string().trim().min(1).max(64).nullable().optional() })
+  .object({
+    branch: z.string().trim().min(1).max(200).optional(),
+    create: z.boolean().optional(),
+    setup: z.string().trim().min(1).max(64).nullable().optional(),
+  })
   .strict()
   .meta({ id: 'NewLocal' });
 export type NewLocal = z.infer<typeof NewLocalSchema>;
@@ -78,31 +84,33 @@ export const RemoveFolderSchema = z.enum(['ask', 'now', 'after-7-days', 'never']
 export type RemoveFolder = z.infer<typeof RemoveFolderSchema>;
 
 /** A project's worktree settings (Settings › Projects); `null` means the default. */
-export const WorktreeSettingsSchema = z.object({
-  root: z.string().nullable(),
-  base: z.string().nullable(),
-  /** The command of the first setup script (the single setup command, kept for what reads it). */
-  setup: z.string().nullable(),
-  /** What `root` is when it is `null` (`~/.pi-kit/worktrees`, or `PI_KIT_WORKTREE_ROOT`). */
-  defaultRoot: z.string(),
-  /** The folder is inside a git work tree, so a thread can have a worktree of it. */
-  git: z.boolean(),
-  /** Where a new thread starts, the Where row's default: the folder, a worktree, or ask. */
-  start: StartModeSchema,
-  /** A new Local thread may switch the folder's branch. */
-  allowBranchSwitch: z.boolean(),
-  /** Whether a new worktree carries the folder's uncommitted changes. */
-  carryChanges: CarryChangesSchema,
-  /** A new worktree gets a branch named from the first message, or none. */
-  branchMode: BranchModeSchema,
-  branchPrefix: z.string(),
-  /** What happens to a worktree folder after a merge back or a hand off. */
-  removeFolder: RemoveFolderSchema,
-  /** The project's setup scripts, the first being the default. With none saved and no single setup command, one is derived from the project's lockfile. */
-  setupScripts: z.array(SetupScriptSchema),
-  /** `setupScripts` holds the script the project's lockfile suggests and nothing is saved yet (Settings › Projects shows it as "suggested" until the list is saved). */
-  setupSuggested: z.boolean().optional(),
-}).meta({ id: 'WorktreeSettings' });
+export const WorktreeSettingsSchema = z
+  .object({
+    root: z.string().nullable(),
+    base: z.string().nullable(),
+    /** The command of the first setup script (the single setup command, kept for what reads it). */
+    setup: z.string().nullable(),
+    /** What `root` is when it is `null` (`~/.pi-kit/worktrees`, or `PI_KIT_WORKTREE_ROOT`). */
+    defaultRoot: z.string(),
+    /** The folder is inside a git work tree, so a thread can have a worktree of it. */
+    git: z.boolean(),
+    /** Where a new thread starts, the Where row's default: the folder, a worktree, or ask. */
+    start: StartModeSchema,
+    /** A new Local thread may switch the folder's branch. */
+    allowBranchSwitch: z.boolean(),
+    /** Whether a new worktree carries the folder's uncommitted changes. */
+    carryChanges: CarryChangesSchema,
+    /** A new worktree gets a branch named from the first message, or none. */
+    branchMode: BranchModeSchema,
+    branchPrefix: z.string(),
+    /** What happens to a worktree folder after a merge back or a hand off. */
+    removeFolder: RemoveFolderSchema,
+    /** The project's setup scripts, the first being the default. With none saved and no single setup command, one is derived from the project's lockfile. */
+    setupScripts: z.array(SetupScriptSchema),
+    /** `setupScripts` holds the script the project's lockfile suggests and nothing is saved yet (Settings › Projects shows it as "suggested" until the list is saved). */
+    setupSuggested: z.boolean().optional(),
+  })
+  .meta({ id: 'WorktreeSettings' });
 export type WorktreeSettings = z.infer<typeof WorktreeSettingsSchema>;
 
 export const PatchWorktreeSettingsSchema = z
@@ -116,10 +124,16 @@ export const PatchWorktreeSettingsSchema = z
     branchMode: BranchModeSchema,
     branchPrefix: z.string().max(100),
     removeFolder: RemoveFolderSchema,
-    setupScripts: z.array(SetupScriptSchema).max(30).refine((list) => new Set(list.map((s) => s.id)).size === list.length, { message: 'Two setup scripts have the same id.' }),
+    setupScripts: z
+      .array(SetupScriptSchema)
+      .max(30)
+      .refine((list) => new Set(list.map((s) => s.id)).size === list.length, {
+        message: 'Two setup scripts have the same id.',
+      }),
   })
   .partial()
-  .strict().meta({ id: 'PatchWorktreeSettings' });
+  .strict()
+  .meta({ id: 'PatchWorktreeSettings' });
 export type PatchWorktreeSettings = z.infer<typeof PatchWorktreeSettingsSchema>;
 
 /** The defaults for every project (Settings › Projects › Defaults for every project): where worktrees go and where a new thread starts, unless a project says otherwise. */
@@ -142,48 +156,57 @@ export const PatchWorktreeDefaultsSchema = z
 export type PatchWorktreeDefaults = z.infer<typeof PatchWorktreeDefaultsSchema>;
 
 /** What the worktree dialogs need to know before they offer an action. */
-export const WorktreeStatusSchema = z.object({
-  path: z.string(),
-  exists: z.boolean(),
-  branch: z.string().nullable(),
-  base: z.string().nullable(),
-  /** Changed files in the worktree (staged, unstaged and untracked). */
-  dirty: z.number().int().nonnegative(),
-  /** Commits the branch has that the base does not, and the other way round. */
-  ahead: z.number().int().nonnegative(),
-  behind: z.number().int().nonnegative(),
-  /** Files with unresolved conflicts, and the operation they belong to. */
-  conflicts: z.array(z.string()),
-  operation: z.enum(['merge', 'rebase']).nullable(),
-  /** The main checkout has the base branch checked out (a merge back needs that), and is clean. */
-  baseCheckedOut: z.boolean(),
-  projectDirty: z.number().int().nonnegative(),
-  /** The repository has a remote (a sync fetches first, a PR needs one). */
-  remote: z.boolean(),
-  /** `gh` is installed and can open a pull request. */
-  gh: z.boolean(),
-  /** Other threads that run in the same worktree (a removal would take their folder away too). */
-  sharedWith: z.number().int().nonnegative(),
-  /** The project's "Remove the folder" setting: the Merge back dialog's removal switch starts from it. */
-  removeFolder: RemoveFolderSchema,
-}).meta({ id: 'WorktreeStatus' });
+export const WorktreeStatusSchema = z
+  .object({
+    path: z.string(),
+    exists: z.boolean(),
+    branch: z.string().nullable(),
+    base: z.string().nullable(),
+    /** Changed files in the worktree (staged, unstaged and untracked). */
+    dirty: z.number().int().nonnegative(),
+    /** Commits the branch has that the base does not, and the other way round. */
+    ahead: z.number().int().nonnegative(),
+    behind: z.number().int().nonnegative(),
+    /** Files with unresolved conflicts, and the operation they belong to. */
+    conflicts: z.array(z.string()),
+    operation: z.enum(['merge', 'rebase']).nullable(),
+    /** The main checkout has the base branch checked out (a merge back needs that), and is clean. */
+    baseCheckedOut: z.boolean(),
+    projectDirty: z.number().int().nonnegative(),
+    /** The repository has a remote (a sync fetches first, a PR needs one). */
+    remote: z.boolean(),
+    /** `gh` is installed and can open a pull request. */
+    gh: z.boolean(),
+    /** Other threads that run in the same worktree (a removal would take their folder away too). */
+    sharedWith: z.number().int().nonnegative(),
+    /** The project's "Remove the folder" setting: the Merge back dialog's removal switch starts from it. */
+    removeFolder: RemoveFolderSchema,
+  })
+  .meta({ id: 'WorktreeStatus' });
 export type WorktreeStatus = z.infer<typeof WorktreeStatusSchema>;
 
-export const WorktreeSyncRequestSchema = z.object({ strategy: z.enum(['merge', 'rebase']).default('merge') }).strict().meta({ id: 'WorktreeSyncRequest' });
+export const WorktreeSyncRequestSchema = z
+  .object({ strategy: z.enum(['merge', 'rebase']).default('merge') })
+  .strict()
+  .meta({ id: 'WorktreeSyncRequest' });
 export type WorktreeSyncRequest = z.infer<typeof WorktreeSyncRequestSchema>;
 
-export const WorktreeSyncResultSchema = z.object({
-  status: z.enum(['up-to-date', 'synced', 'conflict']),
-  /** The remote was fetched first. */
-  fetched: z.boolean(),
-  /** Conflicting files (`status: conflict`): the merge or rebase is left in progress in the worktree, and review mode shows them with their markers. */
-  conflicts: z.array(z.string()),
-  message: z.string(),
-}).meta({ id: 'WorktreeSyncResult' });
+export const WorktreeSyncResultSchema = z
+  .object({
+    status: z.enum(['up-to-date', 'synced', 'conflict']),
+    /** The remote was fetched first. */
+    fetched: z.boolean(),
+    /** Conflicting files (`status: conflict`): the merge or rebase is left in progress in the worktree, and review mode shows them with their markers. */
+    conflicts: z.array(z.string()),
+    message: z.string(),
+  })
+  .meta({ id: 'WorktreeSyncResult' });
 export type WorktreeSyncResult = z.infer<typeof WorktreeSyncResultSchema>;
 
 /** The commit message pi-kit proposes for the worktree's uncommitted changes; the person edits it in the Merge back dialog. */
-export const WorktreeMessageSchema = z.object({ message: z.string(), files: z.number().int().nonnegative() }).meta({ id: 'WorktreeMessage' });
+export const WorktreeMessageSchema = z
+  .object({ message: z.string(), files: z.number().int().nonnegative() })
+  .meta({ id: 'WorktreeMessage' });
 export type WorktreeMessage = z.infer<typeof WorktreeMessageSchema>;
 
 export const WorktreeMergeRequestSchema = z
@@ -195,21 +218,27 @@ export const WorktreeMergeRequestSchema = z
     /** Remove the worktree (and the merged branch) afterwards. */
     remove: z.boolean().default(false),
   })
-  .strict().meta({ id: 'WorktreeMergeRequest' });
+  .strict()
+  .meta({ id: 'WorktreeMergeRequest' });
 export type WorktreeMergeRequest = z.infer<typeof WorktreeMergeRequestSchema>;
 
-export const WorktreeMergeResultSchema = z.object({
-  status: z.enum(['merged', 'pr', 'conflict']),
-  /** The merge commit on the base (`merged`), or the pull request's URL (`pr`). */
-  commit: z.string().optional(),
-  url: z.string().optional(),
-  conflicts: z.array(z.string()),
-  removed: z.boolean(),
-  message: z.string(),
-}).meta({ id: 'WorktreeMergeResult' });
+export const WorktreeMergeResultSchema = z
+  .object({
+    status: z.enum(['merged', 'pr', 'conflict']),
+    /** The merge commit on the base (`merged`), or the pull request's URL (`pr`). */
+    commit: z.string().optional(),
+    url: z.string().optional(),
+    conflicts: z.array(z.string()),
+    removed: z.boolean(),
+    message: z.string(),
+  })
+  .meta({ id: 'WorktreeMergeResult' });
 export type WorktreeMergeResult = z.infer<typeof WorktreeMergeResultSchema>;
 
-export const WorktreeRemoveRequestSchema = z.object({ force: z.boolean().default(false) }).strict().meta({ id: 'WorktreeRemoveRequest' });
+export const WorktreeRemoveRequestSchema = z
+  .object({ force: z.boolean().default(false) })
+  .strict()
+  .meta({ id: 'WorktreeRemoveRequest' });
 export type WorktreeRemoveRequest = z.infer<typeof WorktreeRemoveRequestSchema>;
 
 /** What happens to a thread's worktree when the thread is archived or deleted. */
@@ -237,11 +266,13 @@ export const OtherAgentInfoSchema = z.object({
 export type OtherAgentInfo = z.infer<typeof OtherAgentInfoSchema>;
 
 /** `GET /api/threads/:id/coordination`: what the Files panel, the Changes panel and review mode show about the agents next to a thread. */
-export const CoordinationSchema = z.object({
-  /** Other threads' active leases on files in the folder the thread works in. */
-  leases: z.array(FileLeaseSchema),
-  others: z.array(OtherAgentInfoSchema),
-}).meta({ id: 'Coordination' });
+export const CoordinationSchema = z
+  .object({
+    /** Other threads' active leases on files in the folder the thread works in. */
+    leases: z.array(FileLeaseSchema),
+    others: z.array(OtherAgentInfoSchema),
+  })
+  .meta({ id: 'Coordination' });
 export type Coordination = z.infer<typeof CoordinationSchema>;
 
 /** The answer of `POST /api/threads/:id/worktree/remove`. */
@@ -309,7 +340,10 @@ export const WorktreeHandoffResultSchema = z
 export type WorktreeHandoffResult = z.infer<typeof WorktreeHandoffResultSchema>;
 
 /** `POST /api/threads/:id/worktree/branch`: gives a detached worktree a branch. */
-export const WorktreeBranchRequestSchema = z.object({ name: z.string().trim().min(1).max(200) }).strict().meta({ id: 'WorktreeBranchRequest' });
+export const WorktreeBranchRequestSchema = z
+  .object({ name: z.string().trim().min(1).max(200) })
+  .strict()
+  .meta({ id: 'WorktreeBranchRequest' });
 export type WorktreeBranchRequest = z.infer<typeof WorktreeBranchRequestSchema>;
 export const WorktreeBranchResultSchema = z.object({ branch: z.string() }).meta({ id: 'WorktreeBranchResult' });
 export type WorktreeBranchResult = z.infer<typeof WorktreeBranchResultSchema>;

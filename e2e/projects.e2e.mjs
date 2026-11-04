@@ -28,7 +28,8 @@ const patches = [];
 async function ensureBackend() {
   const up = async () => {
     try {
-      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })).ok;
+      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } }))
+        .ok;
     } catch {
       return false;
     }
@@ -36,7 +37,13 @@ async function ensureBackend() {
   if (await up()) return;
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: 'ignore',
     detached: true,
   });
@@ -47,7 +54,11 @@ async function ensureBackend() {
 
 async function call(method, path, body) {
   const { token } = await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${env.api}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const res = await fetch(`${env.api}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
   const text = await res.text();
   return { status: res.status, body: text ? JSON.parse(text) : undefined };
 }
@@ -72,7 +83,10 @@ before(async () => {
   project = writeWorktreeProject({ base: join(env.project, '..'), name: NAME });
   gitIn(project, 'branch', 'develop');
   mkdirSync(join(project, '.pi', 'skills', 'release'), { recursive: true });
-  writeFileSync(join(project, '.pi', 'skills', 'release', 'SKILL.md'), '---\nname: release\ndescription: Cut a release.\n---\nRun the release script.\n');
+  writeFileSync(
+    join(project, '.pi', 'skills', 'release', 'SKILL.md'),
+    '---\nname: release\ndescription: Cut a release.\n---\nRun the release script.\n',
+  );
   // committed, so the folder is clean: a hand off needs that
   gitIn(project, 'add', '-A');
   gitIn(project, 'commit', '-q', '-m', 'A skill of its own');
@@ -90,7 +104,8 @@ before(async () => {
 });
 after(async () => {
   // The projects of this file are forgotten again, so the files that count the known folders (sidebar.e2e.mjs) see the ones they expect.
-  for (const cwd of [project, spare]) if (cwd) await call('DELETE', `/api/workspaces/${encodeURIComponent(cwd)}`).catch(() => undefined);
+  for (const cwd of [project, spare])
+    if (cwd) await call('DELETE', `/api/workspaces/${encodeURIComponent(cwd)}`).catch(() => undefined);
   await app?.close();
   for (const pid of spawned) {
     try {
@@ -108,7 +123,8 @@ const page = () => dialog().getByTestId('project-page');
 async function openProjects() {
   if ((await dialog().count()) === 0) await app.h.openSettings();
   // The tab of the section that is open leads back to its list from a project's page, so it is pressed only when another section is showing.
-  if ((await dialog().getByTestId('section-projects').count()) === 0) await dialog().getByRole('tab', { name: 'Projects' }).click();
+  if ((await dialog().getByTestId('section-projects').count()) === 0)
+    await dialog().getByRole('tab', { name: 'Projects' }).click();
   await dialog().getByTestId('section-projects').waitFor();
   if ((await page().count()) > 0) await page().getByTestId('project-back').click();
   await dialog().getByTestId('section-projects').getByRole('tab', { name: 'Folders', exact: true }).click();
@@ -143,7 +159,10 @@ describe('the list', () => {
     assert.ok(names.includes(NAME) && names.includes(SPARE));
     await eventually(async () => (await chips()).includes('waiting'), 'the trust chip to be read');
     assert.deepEqual(await chips(), ['waiting', 'main']);
-    assert.match(await facts(), /page-demo · 0 threads · no worktrees · starts in the folder · 1 project resource not loaded$/);
+    assert.match(
+      await facts(),
+      /page-demo · 0 threads · no worktrees · starts in the folder · 1 project resource not loaded$/,
+    );
     assert.deepEqual(await chips(SPARE), ['nothing to trust', 'not git']);
     assert.match(await facts(SPARE), /^\S*spare-folder · 0 threads$/);
     assert.match(await dialog().getByRole('tab', { name: 'Projects' }).innerText(), new RegExp(`${names.length}$`));
@@ -156,19 +175,31 @@ describe('the list', () => {
     const defaults = dialog().getByTestId('project-defaults');
     assert.equal(await defaults.locator('header h4').innerText(), 'Defaults for every project');
     await defaults.getByTestId('default-start').selectOption('worktree');
-    await eventually(async () => (await call('GET', '/api/workspaces/defaults')).body.start === 'worktree', 'the default start to be saved');
+    await eventually(
+      async () => (await call('GET', '/api/workspaces/defaults')).body.start === 'worktree',
+      'the default start to be saved',
+    );
     await factsMatch(/starts in a worktree/, 'the row to follow the default start');
     // a worktree folder of its own for every project: new worktrees go there, the placeholder of a project's folder says so
     const root = join(env.project, '..', 'all-worktrees');
     await defaults.getByTestId('default-worktree-root').fill(root);
     await defaults.getByTestId('default-worktree-root').blur();
-    await eventually(async () => (await call('GET', '/api/workspaces/defaults')).body.root === root, 'the default folder to be saved');
+    await eventually(
+      async () => (await call('GET', '/api/workspaces/defaults')).body.root === root,
+      'the default folder to be saved',
+    );
     assert.equal((await workspace()).worktree.defaultRoot, root);
     // the default trust is pi's own setting
     await defaults.getByTestId('default-trust').selectOption('never');
-    await eventually(async () => (await api('/api/pi-settings')).settings?.defaultProjectTrust === 'never', 'pi to have the default trust');
+    await eventually(
+      async () => (await api('/api/pi-settings')).settings?.defaultProjectTrust === 'never',
+      'pi to have the default trust',
+    );
     await defaults.getByTestId('default-trust').selectOption('ask');
-    await eventually(async () => (await api('/api/pi-settings')).settings?.defaultProjectTrust === 'ask', 'pi to have the default trust back');
+    await eventually(
+      async () => (await api('/api/pi-settings')).settings?.defaultProjectTrust === 'ask',
+      'pi to have the default trust back',
+    );
     // put the defaults back for the rest of the file
     await defaults.getByTestId('default-start').selectOption('local');
     await defaults.getByTestId('default-worktree-root').fill('');
@@ -189,7 +220,11 @@ describe('the list', () => {
     assert.notEqual(last, first);
     await row(last).dragTo(row(first));
     await eventually(async () => (await workspaceNames())[0] === last, 'the dragged project to be first');
-    assert.equal(await row(last).evaluate((el) => el === el.parentElement.firstElementChild), true, 'the list shows the new order');
+    assert.equal(
+      await row(last).evaluate((el) => el === el.parentElement.firstElementChild),
+      true,
+      'the list shows the new order',
+    );
     // Alt+ArrowDown on the button of the first row moves it back down one place
     await dialog().getByTestId(`open-project-${last}`).focus();
     await app.page.keyboard.press('Alt+ArrowDown');
@@ -223,7 +258,9 @@ describe('a project’s page', () => {
     assert.equal(await page().locator('.pk-path [aria-current]').innerText(), NAME);
     assert.equal(await dialog().getByTestId('projects-list').count(), 0, 'the list gives way to the page');
     assert.deepEqual(
-      await page().locator('section.pk-group').evaluateAll((sections) => sections.map((s) => s.getAttribute('aria-label'))),
+      await page()
+        .locator('section.pk-group')
+        .evaluateAll((sections) => sections.map((s) => s.getAttribute('aria-label'))),
       ['Trust', 'New threads', 'Worktrees', 'Setup scripts', 'Open worktrees', 'Sidebar'],
     );
     await page().getByTestId('project-back').click();
@@ -251,7 +288,10 @@ describe('a project’s page', () => {
     assert.equal(await prefix.inputValue(), 'pi-kit/');
     await prefix.fill('feat');
     await prefix.blur();
-    await eventually(async () => (await workspace()).worktree.branchPrefix === 'feat/', 'the prefix to be saved, with its slash');
+    await eventually(
+      async () => (await workspace()).worktree.branchPrefix === 'feat/',
+      'the prefix to be saved, with its slash',
+    );
     assert.deepEqual(patches.at(-1), { cwd: project, worktree: { branchPrefix: 'feat' } });
     const sent = patches.length;
     await prefix.focus();
@@ -269,7 +309,11 @@ describe('a project’s page', () => {
     await openPage();
     const base = page().getByTestId('project-base');
     await eventually(async () => (await base.locator('option').count()) === 3, 'the branches to be read');
-    assert.deepEqual(await base.locator('option').evaluateAll(options => options.map(option => option.label)), ['the checked-out branch', 'main', 'develop']);
+    assert.deepEqual(await base.locator('option').evaluateAll((options) => options.map((option) => option.label)), [
+      'the checked-out branch',
+      'main',
+      'develop',
+    ]);
     await base.selectOption('develop');
     await eventually(async () => (await workspace()).worktree.base === 'develop', 'Cut from to be saved');
     await page().getByTestId('project-carry').selectOption('always');
@@ -291,7 +335,14 @@ describe('a project’s page', () => {
     await page().getByTestId('project-start-local').check();
     await eventually(async () => {
       const w = (await workspace()).worktree;
-      return w.base === null && w.branchMode === 'named' && w.carryChanges === 'ask' && w.removeFolder === 'ask' && w.allowBranchSwitch === true && w.start === 'local';
+      return (
+        w.base === null &&
+        w.branchMode === 'named' &&
+        w.carryChanges === 'ask' &&
+        w.removeFolder === 'ask' &&
+        w.allowBranchSwitch === true &&
+        w.start === 'local'
+      );
     }, 'the fields to be back');
   });
 
@@ -322,10 +373,16 @@ describe('a project’s page', () => {
     await review.getByRole('button', { name: 'Skip this time' }).click();
     await review.waitFor({ state: 'detached' });
     await page().getByTestId('project-trusted').check();
-    await eventually(async () => (await call('GET', `/api/workspaces/${id}/trust`)).body.status === 'trusted', 'the folder to be trusted');
+    await eventually(
+      async () => (await call('GET', `/api/workspaces/${id}/trust`)).body.status === 'trusted',
+      'the folder to be trusted',
+    );
     assert.equal(await page().getByTestId('project-trust-chip').innerText(), 'trusted');
     await page().getByTestId('project-trusted').uncheck();
-    await eventually(async () => (await call('GET', `/api/workspaces/${id}/trust`)).body.status === 'untrusted', 'the folder to be not trusted');
+    await eventually(
+      async () => (await call('GET', `/api/workspaces/${id}/trust`)).body.status === 'untrusted',
+      'the folder to be not trusted',
+    );
     assert.equal(await page().getByTestId('project-trust-chip').innerText(), 'not trusted');
     await page().getByTestId('project-back').click();
     assert.ok((await chips()).includes('not trusted'));
@@ -334,7 +391,9 @@ describe('a project’s page', () => {
   it('a folder that is not a repository has no worktree groups and says why', async () => {
     await openPage(SPARE);
     assert.deepEqual(
-      await page().locator('section.pk-group').evaluateAll((sections) => sections.map((s) => s.getAttribute('aria-label'))),
+      await page()
+        .locator('section.pk-group')
+        .evaluateAll((sections) => sections.map((s) => s.getAttribute('aria-label'))),
       ['Trust', 'New threads and worktrees', 'Sidebar'],
     );
     assert.match(await page().getByTestId('project-not-git').innerText(), /not a git repository/);
@@ -352,8 +411,11 @@ describe('the setup scripts', () => {
     await openPage();
     const scripts = page().getByTestId('project-scripts');
     await scripts.getByTestId('script-pnpm').waitFor();
-    assert.equal((await scripts.locator('.pk-item').count()), 1);
-    assert.match(await scripts.getByTestId('script-pnpm').innerText(), /pnpm\s+default\s+suggested\s+pnpm install --frozen-lockfile/);
+    assert.equal(await scripts.locator('.pk-item').count(), 1);
+    assert.match(
+      await scripts.getByTestId('script-pnpm').innerText(),
+      /pnpm\s+default\s+suggested\s+pnpm install --frozen-lockfile/,
+    );
     assert.equal((await workspace()).worktree.setup, null, 'a suggestion is not a saved setting');
   });
 
@@ -374,7 +436,10 @@ describe('the setup scripts', () => {
     ]);
     assert.equal((await workspace()).worktree.setupSuggested, undefined, 'saved now');
     assert.equal(await scripts.getByTestId('script-suggested').count(), 0);
-    assert.match(await scripts.getByTestId('script-docs').locator('.ds').innerText(), /make docs\s*·\s*copies\s*\.env\.local,\s*config\/dev\.json/);
+    assert.match(
+      await scripts.getByTestId('script-docs').locator('.ds').innerText(),
+      /make docs\s*·\s*copies\s*\.env\.local,\s*config\/dev\.json/,
+    );
   });
 
   it('edits a script in place, makes another the default, and removes one', async () => {
@@ -383,7 +448,10 @@ describe('the setup scripts', () => {
     assert.equal(await scripts.getByTestId('script-name').inputValue(), 'Docs');
     await scripts.getByTestId('script-command').fill('make docs && make site');
     await scripts.getByTestId('script-save').click();
-    await eventually(async () => (await workspace()).worktree.setupScripts[1].command === 'make docs && make site', 'the edit to be saved');
+    await eventually(
+      async () => (await workspace()).worktree.setupScripts[1].command === 'make docs && make site',
+      'the edit to be saved',
+    );
     // Cancel changes nothing
     await scripts.getByTestId('script-edit-docs').click();
     await scripts.getByTestId('script-command').fill('nope');
@@ -391,7 +459,11 @@ describe('the setup scripts', () => {
     assert.equal((await workspace()).worktree.setupScripts[1].command, 'make docs && make site');
     await scripts.getByTestId('script-default-docs').click();
     await eventually(async () => (await workspace()).worktree.setupScripts[0].id === 'docs', 'Docs to be the default');
-    assert.equal((await workspace()).worktree.setup, 'make docs && make site', 'the single command of 8m is the first script’s');
+    assert.equal(
+      (await workspace()).worktree.setup,
+      'make docs && make site',
+      'the single command of 8m is the first script’s',
+    );
     assert.match(await scripts.locator('.pk-item').first().innerText(), /Docs\s+default/);
     await scripts.getByTestId('script-remove-pnpm').click();
     await eventually(async () => (await workspace()).worktree.setupScripts.length === 1, 'a script to be removed');
@@ -425,7 +497,16 @@ describe('the open worktrees', () => {
     assert.equal(await item.getByTestId('worktree-branch').innerText(), 'pi-kit/demo-branch');
     assert.equal(await item.getByTestId('worktree-state').innerText(), 'idle');
     assert.equal(await item.getByTestId('worktree-thread').innerText(), 'Thread “Cut the cramped rows”');
-    await eventually(async () => /1 commit ahead of main/.test(await item.getByTestId('worktree-ahead').innerText().catch(() => '')), 'the commits ahead');
+    await eventually(
+      async () =>
+        /1 commit ahead of main/.test(
+          await item
+            .getByTestId('worktree-ahead')
+            .innerText()
+            .catch(() => ''),
+        ),
+      'the commits ahead',
+    );
     const detached = group.getByTestId(`worktree-${loose.id}`);
     assert.equal(await detached.getByTestId('worktree-branch').innerText(), 'detached');
     assert.equal(await group.locator('.pk-item').count(), 2);
@@ -440,7 +521,10 @@ describe('the open worktrees', () => {
     const handoff = app.page.getByTestId('handoff-dialog');
     await handoff.waitFor();
     await app.page.getByTestId('do-handoff').waitFor();
-    await eventually(async () => !(await app.page.getByTestId('do-handoff').isDisabled()), 'the hand off to be possible');
+    await eventually(
+      async () => !(await app.page.getByTestId('do-handoff').isDisabled()),
+      'the hand off to be possible',
+    );
     await app.page.getByTestId('do-handoff').click();
     await app.page.getByTestId('handoff-result').waitFor();
     assert.equal(gitIn(project, 'rev-parse', '--abbrev-ref', 'HEAD').trim(), 'pi-kit/demo-branch');
@@ -449,7 +533,11 @@ describe('the open worktrees', () => {
     await handoff.waitFor({ state: 'detached' });
     await group.getByTestId(`worktree-${made.id}`).waitFor({ state: 'detached' });
     assert.equal(await group.locator('.pk-item').count(), 1, 'the detached one is left');
-    assert.equal(await page().locator('.intro .chip.off').first().innerText(), 'pi-kit/demo-branch', 'the page shows the branch the folder is on now');
+    assert.equal(
+      await page().locator('.intro .chip.off').first().innerText(),
+      'pi-kit/demo-branch',
+      'the page shows the branch the folder is on now',
+    );
     gitIn(project, 'switch', 'main');
   });
 
@@ -509,15 +597,33 @@ describe('the alignment rule', () => {
   /** The left edges of the controls of every row of every group, per section: one column, so one edge. */
   async function edges(section) {
     await app.h.openSettings(section);
-    await dialog().getByTestId(`section-${await sectionId(section)}`).waitFor();
-    if (section === 'Advanced') await dialog().getByTestId('section-advanced').getByRole('tab', { name: 'Security', exact: true }).click();
+    await dialog()
+      .getByTestId(`section-${await sectionId(section)}`)
+      .waitFor();
+    if (section === 'Advanced')
+      await dialog().getByTestId('section-advanced').getByRole('tab', { name: 'Security', exact: true }).click();
     await app.h.settle(400);
-    return dialog().locator('.pk-group .row > .ctl.ctl-w').evaluateAll((columns) => {
-      const lefts = new Set(columns.filter((c) => c.getBoundingClientRect().width > 0).map((c) => Math.round(c.getBoundingClientRect().left)));
-      return { lefts: [...lefts], columns: columns.length };
-    });
+    return dialog()
+      .locator('.pk-group .row > .ctl.ctl-w')
+      .evaluateAll((columns) => {
+        const lefts = new Set(
+          columns
+            .filter((c) => c.getBoundingClientRect().width > 0)
+            .map((c) => Math.round(c.getBoundingClientRect().left)),
+        );
+        return { lefts: [...lefts], columns: columns.length };
+      });
   }
-  const sectionId = async (label) => ({ General: 'general', Appearance: 'appearance', Keybindings: 'keybindings', 'Chat models': 'models', Attendant: 'attendant', Advanced: 'advanced', Voice: 'voice' })[label];
+  const sectionId = async (label) =>
+    ({
+      General: 'general',
+      Appearance: 'appearance',
+      Keybindings: 'keybindings',
+      'Chat models': 'models',
+      Attendant: 'attendant',
+      Advanced: 'advanced',
+      Voice: 'voice',
+    })[label];
 
   for (const label of ['General', 'Appearance', 'Chat models', 'Attendant', 'Advanced', 'Voice', 'Keybindings']) {
     it(`${label}: the controls of its rows share one column`, async () => {
@@ -525,7 +631,11 @@ describe('the alignment rule', () => {
       const { lefts, columns } = await edges(label);
       assert.ok(columns > 0, `${label} has rows in the control column`);
       assert.equal(lefts.length, 1, `${label}: controls start at ${lefts.join(', ')}`);
-      assert.equal(await dialog().locator('.pk-group .row .ctl:not(.ctl-w)').count(), 0, `${label}: every control column is ctl-w`);
+      assert.equal(
+        await dialog().locator('.pk-group .row .ctl:not(.ctl-w)').count(),
+        0,
+        `${label}: every control column is ctl-w`,
+      );
     });
   }
 
@@ -539,11 +649,18 @@ describe('the alignment rule', () => {
     await app.h.openSettings('General');
     await dialog().getByTestId('section-general').waitFor();
     await app.h.settle(400);
-    const geometry = await dialog().locator('.pk-group .row').first().evaluate((r) => {
-      const label = r.firstElementChild.getBoundingClientRect();
-      const column = r.querySelector('.ctl').getBoundingClientRect();
-      return { below: column.top >= label.bottom - 1, width: Math.round(column.width), row: Math.round(r.getBoundingClientRect().width) };
-    });
+    const geometry = await dialog()
+      .locator('.pk-group .row')
+      .first()
+      .evaluate((r) => {
+        const label = r.firstElementChild.getBoundingClientRect();
+        const column = r.querySelector('.ctl').getBoundingClientRect();
+        return {
+          below: column.top >= label.bottom - 1,
+          width: Math.round(column.width),
+          row: Math.round(r.getBoundingClientRect().width),
+        };
+      });
     assert.equal(geometry.below, true);
     assert.ok(geometry.width > 250, `the column fills the row: ${JSON.stringify(geometry)}`);
     await app.page.setViewportSize({ width: 1440, height: 900 });

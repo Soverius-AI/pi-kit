@@ -20,8 +20,16 @@ describe('shellEnvironment', () => {
       INIT_CWD: '/repo',
       PI_CODING_AGENT_DIR: '/agent',
     });
-    expect(env).toMatchObject({ HOME: '/home/u', PATH: '/usr/bin:/bin', TERM: 'xterm-256color', COLORTERM: 'truecolor', PI_CODING_AGENT_DIR: '/agent' });
-    expect(Object.keys(env).filter((k) => /^(PI_KIT_|ELECTRON_|npm_|pnpm_|PNPM_)|^(NODE_ENV|INIT_CWD)$/.test(k))).toEqual([]);
+    expect(env).toMatchObject({
+      HOME: '/home/u',
+      PATH: '/usr/bin:/bin',
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      PI_CODING_AGENT_DIR: '/agent',
+    });
+    expect(
+      Object.keys(env).filter((k) => /^(PI_KIT_|ELECTRON_|npm_|pnpm_|PNPM_)|^(NODE_ENV|INIT_CWD)$/.test(k)),
+    ).toEqual([]);
   });
 });
 
@@ -70,7 +78,8 @@ describe.skipIf(process.platform === 'win32')('TerminalService (a real pseudo-te
     service.start(cwd, 80, 24);
     const live = collect();
     service.write(cwd, 'exit 3\r');
-    for (let i = 0; i < 300 && !live.events.some((e) => e.type === 'exit'); i++) await new Promise((r) => setTimeout(r, 50));
+    for (let i = 0; i < 300 && !live.events.some((e) => e.type === 'exit'); i++)
+      await new Promise((r) => setTimeout(r, 50));
     expect(live.events.find((e) => e.type === 'exit')).toMatchObject({ type: 'exit', exitCode: 3 });
     expect(service.has(cwd)).toBe(false);
     expect(service.start(cwd, 80, 24).created).toBe(true);

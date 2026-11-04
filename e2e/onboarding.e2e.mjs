@@ -25,7 +25,14 @@ let logFd;
 /** A request against this file's own backend, with its dev token. */
 async function call(path, init = {}) {
   const { token } = await (await fetch(`${API}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${API}${path}`, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}) } });
+  const res = await fetch(`${API}${path}`, {
+    ...init,
+    headers: {
+      ...init.headers,
+      Authorization: `Bearer ${token}`,
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+  });
   return res.json();
 }
 
@@ -37,7 +44,14 @@ before(async () => {
   logFd = openSync(join(world.base, 'onboarding-backend.log'), 'w');
   backend = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: root,
-    env: { ...process.env, ...world.env, NODE_ENV: 'development', PI_KIT_PORT: String(PORT), PI_KIT_ORIGIN: env.base, PI_KIT_VERSION: '0.0.0-e2e' },
+    env: {
+      ...process.env,
+      ...world.env,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: String(PORT),
+      PI_KIT_ORIGIN: env.base,
+      PI_KIT_VERSION: '0.0.0-e2e',
+    },
     stdio: ['ignore', logFd, logFd],
     detached: true,
   });
@@ -70,7 +84,10 @@ describe('first-run onboarding', () => {
     assert.deepEqual(info.agentDir.auth, []);
     assert.equal(info.agentDir.hasModelsJson, false);
     assert.ok(info.pi.version.match(/^\d+\.\d+\.\d+/), `pi version ${info.pi.version}`);
-    assert.ok(info.localServers.some((s) => s.baseUrl === MODEL_URL.replace(/\/$/, '') && s.models.length > 0), `the local server is found: ${JSON.stringify(info.localServers)}`);
+    assert.ok(
+      info.localServers.some((s) => s.baseUrl === MODEL_URL.replace(/\/$/, '') && s.models.length > 0),
+      `the local server is found: ${JSON.stringify(info.localServers)}`,
+    );
     assert.equal(info.autoOpenOff, false);
   });
 
@@ -88,13 +105,19 @@ describe('first-run onboarding', () => {
   it('adds the local server in one click: pi’s models.json gets the provider and its models, and the card says so', async () => {
     const models = (await (await fetch(`${MODEL_URL}/models`)).json()).data.map((m) => m.id);
     await flow().getByTestId('use-local').click();
-    await flow().getByTestId('card-status').filter({ hasText: /configured in models.json/ }).waitFor();
+    await flow()
+      .getByTestId('card-status')
+      .filter({ hasText: /configured in models.json/ })
+      .waitFor();
     const file = readJson('models.json');
     const provider = Object.values(file.providers)[0];
     assert.equal(provider.baseUrl.replace(/\/$/, ''), MODEL_URL.replace(/\/$/, ''));
     assert.equal(provider.api, 'openai-completions');
     assert.deepEqual(provider.models.map((m) => m.id).sort(), [...models].sort());
-    await flow().getByTestId('model-summary').getByText(/\d+ models? ready/).waitFor();
+    await flow()
+      .getByTestId('model-summary')
+      .getByText(/\d+ models? ready/)
+      .waitFor();
     assert.equal(await flow().getByTestId('continue').isEnabled(), true);
   });
 
@@ -107,7 +130,10 @@ describe('first-run onboarding', () => {
     assert.equal(initial.job, undefined, 'opening setup is read-only');
     await wizard.getByTestId('model-directory').fill(world.base);
     await wizard.getByRole('button', { name: 'Check folder and engines' }).click();
-    await pollUntil(async () => !(await wizard.getByRole('button', { name: 'Check folder and engines' }).isDisabled()), 'folder discovery finished');
+    await pollUntil(
+      async () => !(await wizard.getByRole('button', { name: 'Check folder and engines' }).isDisabled()),
+      'folder discovery finished',
+    );
     await wizard.getByRole('tab', { name: /^Your models/ }).click();
     assert.equal(await wizard.getByTestId('local-context').count(), 0);
     assert.equal(await wizard.getByRole('button', { name: /bench|Measure speed/ }).count(), 0);
@@ -132,7 +158,10 @@ describe('first-run onboarding', () => {
     assert.equal((await wf.getByTestId('key-status').innerText()).trim(), 'not checked');
     await wf.getByTestId('key-done').click();
     // The scratch world has a credential store, so the key is kept there and the card names the store, not the key's last four.
-    await flow().getByTestId('card-status').filter({ hasText: /OpenRouter key/ }).waitFor();
+    await flow()
+      .getByTestId('card-status')
+      .filter({ hasText: /OpenRouter key/ })
+      .waitFor();
     const auth = readJson('auth.json');
     assert.equal(auth.openrouter.type, 'api_key');
     assert.equal(statSync(join(world.agent, 'auth.json')).mode & 0o777, 0o600);
@@ -149,7 +178,9 @@ describe('first-run onboarding', () => {
     const select = flow().getByTestId('default-model');
     // pi has no default yet, so the card picks one itself; the person then chooses.
     await app.page.waitForFunction(() => document.querySelector('[data-testid="default-model"]')?.value);
-    const local = await select.evaluate((el) => [...el.options].map((o) => o.value).find((v) => !v.startsWith('openrouter/')));
+    const local = await select.evaluate((el) =>
+      [...el.options].map((o) => o.value).find((v) => !v.startsWith('openrouter/')),
+    );
     await select.selectOption(local);
     const [provider, ...rest] = local.split('/');
     await pollUntil(() => readJson('settings.json').defaultModel === rest.join('/'), 'the default model is written');
@@ -157,7 +188,11 @@ describe('first-run onboarding', () => {
     // One model checked: the cycle has exactly that one.
     const pinned = flow().getByTestId('pinned-models').getByRole('checkbox').first();
     await pinned.check();
-    await pollUntil(() => Array.isArray(readJson('settings.json').enabledModels) && readJson('settings.json').enabledModels.length === 1, 'the pinned model is written');
+    await pollUntil(
+      () =>
+        Array.isArray(readJson('settings.json').enabledModels) && readJson('settings.json').enabledModels.length === 1,
+      'the pinned model is written',
+    );
     // Compaction off and on again.
     const compaction = flow().getByTestId('auto-compaction');
     await compaction.uncheck();
@@ -174,7 +209,10 @@ describe('first-run onboarding', () => {
     assert.ok(opened.startsWith(join(world.data, 'scratch')), opened);
     assert.ok(existsSync(opened));
     const workspaces = await call('/api/workspaces');
-    assert.ok(workspaces.some((w) => w.cwd === opened), 'the folder is a known project');
+    assert.ok(
+      workspaces.some((w) => w.cwd === opened),
+      'the folder is a known project',
+    );
   });
 
   it('ends on the real chat page: pi answers the readiness request, a suggested prompt fills the real composer, and pi answers it', async () => {
@@ -187,11 +225,19 @@ describe('first-run onboarding', () => {
     const text = (await suggested.getAttribute('title')) ?? '';
     await suggested.click();
     const box = app.page.getByLabel('Message to pi');
-    await pollUntil(async () => (await box.innerText()).includes(text.slice(0, 20)) || (await box.inputValue().catch(() => '')).includes(text.slice(0, 20)), 'the composer holds the prompt');
+    await pollUntil(
+      async () =>
+        (await box.innerText()).includes(text.slice(0, 20)) ||
+        (await box.inputValue().catch(() => '')).includes(text.slice(0, 20)),
+      'the composer holds the prompt',
+    );
     await box.press('Enter');
     await app.page.locator('pk-transcript pk-prose').first().waitFor();
     await app.page.getByRole('button', { name: 'Stop' }).waitFor({ state: 'detached' });
-    assert.ok((await app.page.locator('pk-transcript pk-prose').allInnerTexts()).join('').trim().length > 0, 'pi answered');
+    assert.ok(
+      (await app.page.locator('pk-transcript pk-prose').allInnerTexts()).join('').trim().length > 0,
+      'pi answered',
+    );
   });
 
   it('finishing closes the strip, and the flow stays closed after a reload (it was finished, and a model exists)', async () => {
@@ -213,7 +259,9 @@ describe('first-run onboarding', () => {
     await flow().getByTestId('use-existing').click();
     // The model step is done; the rest of the flow (defaults, folder, first prompt) is still there to look at, and Skip ends it.
     await flow().getByTestId('defaults').waitFor();
-    await flow().getByRole('button', { name: /Skip setup/ }).click();
+    await flow()
+      .getByRole('button', { name: /Skip setup/ })
+      .click();
     await flow().waitFor({ state: 'detached' });
     assert.equal(readFileSync(join(world.agent, 'settings.json'), 'utf8'), before, 'nothing in pi’s folder changed');
   });
@@ -225,7 +273,14 @@ describe('first-run onboarding', () => {
     const fd = openSync(join(second.base, 'backend.log'), 'w');
     const child = spawn('node', ['dist/apps/backend/main.js'], {
       cwd: root,
-      env: { ...process.env, ...second.env, NODE_ENV: 'development', PI_KIT_PORT: String(port), PI_KIT_ORIGIN: env.base, PI_KIT_VERSION: '0.0.0-e2e' },
+      env: {
+        ...process.env,
+        ...second.env,
+        NODE_ENV: 'development',
+        PI_KIT_PORT: String(port),
+        PI_KIT_ORIGIN: env.base,
+        PI_KIT_VERSION: '0.0.0-e2e',
+      },
       stdio: ['ignore', fd, fd],
       detached: true,
     });
@@ -242,7 +297,11 @@ describe('first-run onboarding', () => {
       await other.page.reload();
       await other.page.waitForSelector('pk-root .pk-shell');
       await other.page.waitForTimeout(1500);
-      assert.equal(await other.page.getByTestId('onboarding').count(), 0, 'skipped: it stays closed although there is still no model');
+      assert.equal(
+        await other.page.getByTestId('onboarding').count(),
+        0,
+        'skipped: it stays closed although there is still no model',
+      );
     } finally {
       await other?.close();
       try {

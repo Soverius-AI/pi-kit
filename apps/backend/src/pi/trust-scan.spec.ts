@@ -35,7 +35,7 @@ describe('scanTrustResources', () => {
     ]);
   });
 
-  it('finds .agents/skills in the folder and in an ancestor, but not the user\'s own', () => {
+  it("finds .agents/skills in the folder and in an ancestor, but not the user's own", () => {
     const root = tmp();
     const child = join(root, 'a', 'b');
     mkdirSync(child, { recursive: true });
@@ -43,7 +43,10 @@ describe('scanTrustResources', () => {
     put(child, '.agents/skills/here/SKILL.md');
     const found = scanTrustResources(child, join(root, '.agents', 'skills')).map((r) => r.path);
     expect(found).toEqual(['.agents/skills/here/SKILL.md']);
-    expect(scanTrustResources(child).map((r) => r.path)).toEqual(['.agents/skills/here/SKILL.md', '../../.agents/skills/up/SKILL.md']);
+    expect(scanTrustResources(child).map((r) => r.path)).toEqual([
+      '.agents/skills/here/SKILL.md',
+      '../../.agents/skills/up/SKILL.md',
+    ]);
   });
 
   it('is empty for a bare .pi folder', () => {

@@ -9,28 +9,64 @@ import { modelCommandInfo } from './local-model-options';
  * volume, a deleted download), a launcher that no longer exists (a reinstalled llama.cpp), no models at all. Pure reads; `repair`
  * only touches what an issue names and keeps every other line of the user's YAML.
  */
-export async function inspectModels(document: Document, options: { llamaServer?: string }): Promise<LocalDoctorIssue[]> {
+export async function inspectModels(
+  document: Document,
+  options: { llamaServer?: string },
+): Promise<LocalDoctorIssue[]> {
   const issues: LocalDoctorIssue[] = [];
   const models = document.get('models', true);
   const names = isMap(models) ? models.items.map((item) => String(isScalar(item.key) ? item.key.value : item.key)) : [];
-  if (names.length === 0) issues.push({ kind: 'no-models', detail: 'The config has no models. Add one in Your models (Add to llama-swap) or download one.', fixable: false });
+  if (names.length === 0)
+    issues.push({
+      kind: 'no-models',
+      detail: 'The config has no models. Add one in Your models (Add to llama-swap) or download one.',
+      fixable: false,
+    });
   for (const name of names) {
     let info: ReturnType<typeof modelCommandInfo>;
-    try { info = modelCommandInfo(document, name); } catch { continue; }
-    if (info.modelPath && isAbsolute(info.modelPath) && !info.modelPath.includes('${') && !(await exists(info.modelPath))) {
-      issues.push({ kind: 'missing-file', model: name, detail: `${name}: its model file is missing (${info.modelPath}). Repair removes the entry; the file is not touched.`, fixable: true });
+    try {
+      info = modelCommandInfo(document, name);
+    } catch {
       continue;
     }
-    if (info.executable && isAbsolute(info.executable) && !info.executable.includes('${') && !(await exists(info.executable))) {
+    if (
+      info.modelPath &&
+      isAbsolute(info.modelPath) &&
+      !info.modelPath.includes('${') &&
+      !(await exists(info.modelPath))
+    ) {
+      issues.push({
+        kind: 'missing-file',
+        model: name,
+        detail: `${name}: its model file is missing (${info.modelPath}). Repair removes the entry; the file is not touched.`,
+        fixable: true,
+      });
+      continue;
+    }
+    if (
+      info.executable &&
+      isAbsolute(info.executable) &&
+      !info.executable.includes('${') &&
+      !(await exists(info.executable))
+    ) {
       const fixable = !!options.llamaServer && /llama-server$/.test(info.executable);
-      issues.push({ kind: 'missing-launcher', model: name, detail: `${name}: its launcher is missing (${info.executable}).${fixable ? ` Repair points it at ${options.llamaServer}.` : ' Edit the command in Advanced YAML.'}`, fixable });
+      issues.push({
+        kind: 'missing-launcher',
+        model: name,
+        detail: `${name}: its launcher is missing (${info.executable}).${fixable ? ` Repair points it at ${options.llamaServer}.` : ' Edit the command in Advanced YAML.'}`,
+        fixable,
+      });
     }
   }
   return issues;
 }
 
 /** Applies the fixable issues to the document in place: missing-file entries go, missing launchers are replaced. Returns what changed. */
-export function repairModels(document: Document, issues: LocalDoctorIssue[], llamaServer: string | undefined): string[] {
+export function repairModels(
+  document: Document,
+  issues: LocalDoctorIssue[],
+  llamaServer: string | undefined,
+): string[] {
   const changes: string[] = [];
   const models = document.get('models', true);
   if (!isMap(models)) return changes;
@@ -53,4 +89,7 @@ export function repairModels(document: Document, issues: LocalDoctorIssue[], lla
 }
 
 const quote = (path: string): string => `'${path.replace(/'/g, `'\\''`)}'`;
-const exists = (path: string): Promise<boolean> => stat(path).then((info) => info.isFile()).catch(() => false);
+const exists = (path: string): Promise<boolean> =>
+  stat(path)
+    .then((info) => info.isFile())
+    .catch(() => false);

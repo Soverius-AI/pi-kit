@@ -16,12 +16,25 @@ describe('how a sign-in ended', () => {
   });
 
   it('the person gave up', () => {
-    expect(signInOutcome([waiting, say('Sign-in cancelled.')])).toEqual({ phase: 'cancelled', message: 'Sign-in cancelled.' });
+    expect(signInOutcome([waiting, say('Sign-in cancelled.')])).toEqual({
+      phase: 'cancelled',
+      message: 'Sign-in cancelled.',
+    });
   });
 
   it('a refusal at the authorization page is pi’s own error text, as the card shows it', () => {
-    expect(signInOutcome([waiting, say('The user denied the request', 'error')])).toEqual({ phase: 'failed', message: 'The user denied the request' });
-    expect(signInOutcome([say('Sign-in to MCP server "x" failed: The authorization server does not support dynamic client registration', 'error')])).toMatchObject({ phase: 'failed' });
+    expect(signInOutcome([waiting, say('The user denied the request', 'error')])).toEqual({
+      phase: 'failed',
+      message: 'The user denied the request',
+    });
+    expect(
+      signInOutcome([
+        say(
+          'Sign-in to MCP server "x" failed: The authorization server does not support dynamic client registration',
+          'error',
+        ),
+      ]),
+    ).toMatchObject({ phase: 'failed' });
   });
 
   it('a command that threw is a failure with its message', () => {

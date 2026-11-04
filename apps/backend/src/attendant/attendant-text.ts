@@ -50,7 +50,11 @@ const squeeze = (text: string, max: number): string => {
 export function branchOf(entries: readonly PiSessionEntry[], leafId: string | null): PiSessionEntry[] {
   const byId = new Map(entries.map((e) => [e.id, e] as const));
   const path: PiSessionEntry[] = [];
-  for (let current = leafId ? byId.get(leafId) : entries.at(-1); current && path.length <= entries.length; current = current.parentId ? byId.get(current.parentId) : undefined) {
+  for (
+    let current = leafId ? byId.get(leafId) : entries.at(-1);
+    current && path.length <= entries.length;
+    current = current.parentId ? byId.get(current.parentId) : undefined
+  ) {
     path.push(current);
   }
   return path.reverse();
@@ -68,7 +72,8 @@ export function digestOf(entries: readonly PiSessionEntry[], leafId: string | nu
       if (text) lines.push({ role: 'user', text });
     } else if (message?.role === 'assistant') {
       if (Array.isArray(message.content)) {
-        for (const block of message.content as Block[]) if (block.type === 'toolCall' && block.name && !tools.includes(block.name)) tools.push(block.name);
+        for (const block of message.content as Block[])
+          if (block.type === 'toolCall' && block.name && !tools.includes(block.name)) tools.push(block.name);
       }
       const text = squeeze(textOf(message.content), FIRST_CHARS);
       if (text) {
@@ -87,7 +92,13 @@ export function digestOf(entries: readonly PiSessionEntry[], leafId: string | nu
 }
 
 const conversation = (digest: ThreadDigest): string =>
-  [`First message: ${digest.first || '(none)'}`, '', 'Latest messages:', ...digest.recent.map((l) => `${l.role === 'user' ? 'User' : 'Agent'}: ${l.text}`), ...(digest.tools.length ? ['', `Tools used: ${digest.tools.join(', ')}`] : [])].join('\n');
+  [
+    `First message: ${digest.first || '(none)'}`,
+    '',
+    'Latest messages:',
+    ...digest.recent.map((l) => `${l.role === 'user' ? 'User' : 'Agent'}: ${l.text}`),
+    ...(digest.tools.length ? ['', `Tools used: ${digest.tools.join(', ')}`] : []),
+  ].join('\n');
 
 export interface Prompt {
   system: string;
@@ -114,7 +125,14 @@ export function labelPrompt(point: { preview: string; branches: string[] }): Pro
   return {
     system:
       'You label the point where a conversation with a coding agent branches into different directions. Reply with a label of 2 to 4 words that names what was being decided or tried at that point: no quotes, no markdown, no trailing period, nothing else.',
-    user: [`The conversation at the branch point: ${point.preview}`, '', 'It continues in these directions:', ...point.branches.map((b, i) => `${i + 1}. ${b}`), '', 'Label:'].join('\n'),
+    user: [
+      `The conversation at the branch point: ${point.preview}`,
+      '',
+      'It continues in these directions:',
+      ...point.branches.map((b, i) => `${i + 1}. ${b}`),
+      '',
+      'Label:',
+    ].join('\n'),
   };
 }
 
@@ -131,13 +149,26 @@ export function draftPrompt(request: PiDialogRequest, options: readonly string[]
       'A coding agent has stopped and asks its user a question. You draft the answer only when the question is mechanical: a routine, low-risk confirmation or a choice with an obvious safe default. ' +
       'Never approve anything that deletes, overwrites, publishes, spends money, runs unknown code or touches credentials: answer SKIP for those, and whenever you are unsure. ' +
       `Reply with exactly one of these words or phrases and nothing else: ${[...options, 'SKIP'].join(' | ')}`,
-    user: [`Question: ${request.title}`, ...(request.message ? [`Details: ${request.message}`] : []), `Choices: ${options.join(', ')}`, '', 'What the conversation is about:', conversation(digest), '', 'Answer:'].join('\n'),
+    user: [
+      `Question: ${request.title}`,
+      ...(request.message ? [`Details: ${request.message}`] : []),
+      `Choices: ${options.join(', ')}`,
+      '',
+      'What the conversation is about:',
+      conversation(digest),
+      '',
+      'Answer:',
+    ].join('\n'),
   };
 }
 
 // ---- cleaning what a model said
 
-const firstLine = (text: string): string => text.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+const firstLine = (text: string): string =>
+  text
+    .split('\n')
+    .map((l) => l.trim())
+    .find(Boolean) ?? '';
 
 /** Quotes, markdown and a "Title:" lead-in off a model's one-line answer. */
 const bare = (text: string): string =>

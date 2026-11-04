@@ -18,7 +18,11 @@ export async function startKeyProxy(targetBase, targetModel) {
         if (json.model) json.model = targetModel;
         forwarded = JSON.stringify(json);
       }
-      const upstream = await fetch(url, { method: req.method, headers: { 'Content-Type': 'application/json' }, ...(req.method === 'GET' ? {} : { body: forwarded }) });
+      const upstream = await fetch(url, {
+        method: req.method,
+        headers: { 'Content-Type': 'application/json' },
+        ...(req.method === 'GET' ? {} : { body: forwarded }),
+      });
       res.writeHead(upstream.status, { 'Content-Type': upstream.headers.get('content-type') ?? 'application/json' });
       if (upstream.body) for await (const chunk of upstream.body) res.write(chunk);
       res.end();

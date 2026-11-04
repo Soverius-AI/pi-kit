@@ -18,7 +18,12 @@ const collect = (events: Observable<BaseEvent>) => firstValueFrom(events.pipe(to
 describe('PiAgent: an MCP App request', () => {
   it('relays it to the MCP server and ends with the server answer as the result, without touching pi', async () => {
     const relay = vi.fn().mockResolvedValue({ contents: [{ uri: 'ui://a/b', text: '<p/>' }] });
-    const request = { serverHash: 'pi-mcp:issues', serverId: 'issues', method: 'resources/read', params: { uri: 'ui://a/b' } };
+    const request = {
+      serverHash: 'pi-mcp:issues',
+      serverId: 'issues',
+      method: 'resources/read',
+      params: { uri: 'ui://a/b' },
+    };
     const events = await collect(agent(relay).run(input({ __proxiedMCPRequest: request })));
     expect(relay).toHaveBeenCalledWith('t1', request, expect.any(AbortSignal));
     expect(events.map((e) => e.type)).toEqual([EventType.RUN_STARTED, EventType.RUN_FINISHED]);
@@ -26,23 +31,42 @@ describe('PiAgent: an MCP App request', () => {
   });
 
   it('answers a failure as a result with the error text, which the app host turns into an error for the app', async () => {
-    const events = await collect(agent(() => Promise.reject(new Error('no such tool'))).run(input({ __proxiedMCPRequest: { serverHash: 'h', method: 'tools/call' } })));
+    const events = await collect(
+      agent(() => Promise.reject(new Error('no such tool'))).run(
+        input({ __proxiedMCPRequest: { serverHash: 'h', method: 'tools/call' } }),
+      ),
+    );
     expect(events.at(-1)).toMatchObject({ type: EventType.RUN_FINISHED, result: { error: 'no such tool' } });
   });
 
   it('never turns a malformed request into a prompt', async () => {
     const relay = vi.fn();
-    const events = await collect(agent(relay).run(input({ __proxiedMCPRequest: { method: 1 } }, [{ id: 'u', role: 'user', content: 'hi' }])));
+    const events = await collect(
+      agent(relay).run(input({ __proxiedMCPRequest: { method: 1 } }, [{ id: 'u', role: 'user', content: 'hi' }])),
+    );
     expect(relay).not.toHaveBeenCalled();
-    expect(events.at(-1)).toMatchObject({ type: EventType.RUN_FINISHED, result: { error: expect.stringContaining('does not understand') } });
+    expect(events.at(-1)).toMatchObject({
+      type: EventType.RUN_FINISHED,
+      result: { error: expect.stringContaining('does not understand') },
+    });
   });
 });
 
 describe('a2uiEventPrompt', () => {
   const messages = (name: string): Message[] => [
     { id: 'u', role: 'user', content: 'show specs' },
-    { id: 'a', role: 'assistant', content: '', toolCalls: [{ id: 'c1', type: 'function', function: { name, arguments: '{}' } }] },
-    { id: 't', role: 'tool', toolCallId: 'c1', content: 'User performed action "rerun" on surface "s" (component: b1). Context: {"spec":"a"}' },
+    {
+      id: 'a',
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ id: 'c1', type: 'function', function: { name, arguments: '{}' } }],
+    },
+    {
+      id: 't',
+      role: 'tool',
+      toolCallId: 'c1',
+      content: 'User performed action "rerun" on surface "s" (component: b1). Context: {"spec":"a"}',
+    },
   ];
 
   it('prompts with what the middleware wrote down about the click', () => {
@@ -71,7 +95,10 @@ describe('runWithMiddleware', () => {
       },
     });
     const seen: unknown[] = [];
-    const agentLike = { middlewares: [mw('first'), mw('second')], run: (i: RunAgentInput) => (seen.push(i.forwardedProps), of({ type: EventType.RUN_FINISHED } as BaseEvent)) };
+    const agentLike = {
+      middlewares: [mw('first'), mw('second')],
+      run: (i: RunAgentInput) => (seen.push(i.forwardedProps), of({ type: EventType.RUN_FINISHED } as BaseEvent)),
+    };
     await collect(runWithMiddleware(agentLike as never, input({})));
     expect(order).toEqual(['first', 'second']);
     expect(seen).toEqual([{ first: true, second: true }]);

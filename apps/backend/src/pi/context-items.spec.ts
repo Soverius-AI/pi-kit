@@ -2,14 +2,35 @@ import { describe, expect, it } from 'vitest';
 import { buildContextItems, groupContextItems } from './context-items';
 
 describe('the context, piece by piece', () => {
-  it('names the system prompt sections, the tools, the skill blocks, the summary and every message part, with pi\'s token estimate', () => {
+  it("names the system prompt sections, the tools, the skill blocks, the summary and every message part, with pi's token estimate", () => {
     const summary = 'Earlier: the user asked for a migration.';
     const items = buildContextItems(
       [
-        { role: 'system', content: 'You are pi.', sections: { rules: '<rules>\n- Be concise\n</rules>', 'git-guard': '<git-guard>never push</git-guard>', gone: null } },
+        {
+          role: 'system',
+          content: 'You are pi.',
+          sections: {
+            rules: '<rules>\n- Be concise\n</rules>',
+            'git-guard': '<git-guard>never push</git-guard>',
+            gone: null,
+          },
+        },
         { role: 'user', content: `Context so far:\n${summary}` },
-        { role: 'user', content: [{ type: 'text', text: '<skill name="add-a-migration">do it like this</skill>\nAdd the users table' }, { type: 'image' }] },
-        { role: 'assistant', content: [{ type: 'thinking', thinking: 'hmm' }, { type: 'text', text: 'On it.' }, { type: 'toolCall', id: 'c1', name: 'bash', arguments: { command: 'ls' } }] },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: '<skill name="add-a-migration">do it like this</skill>\nAdd the users table' },
+            { type: 'image' },
+          ],
+        },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'hmm' },
+            { type: 'text', text: 'On it.' },
+            { type: 'toolCall', id: 'c1', name: 'bash', arguments: { command: 'ls' } },
+          ],
+        },
         { role: 'toolResult', toolCallId: 'c1', content: [{ type: 'text', text: 'a.ts\nb.ts' }] },
         { role: 'custom', customType: 'pikit.agent-report', content: 'Report from agent "tester": done' },
       ],

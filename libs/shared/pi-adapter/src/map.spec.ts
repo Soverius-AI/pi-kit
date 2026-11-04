@@ -97,7 +97,10 @@ describe('tool run (text, thinking, tool call)', () => {
       .join('');
     const final = fixture('tool-run')
       .filter((e) => e.type === 'message_end' && (e['message'] as { stopReason: string }).stopReason === 'stop')
-      .map((e) => (e['message'] as { content: { type: string; text?: string }[] }).content.find((c) => c.type === 'text')?.text);
+      .map(
+        (e) =>
+          (e['message'] as { content: { type: string; text?: string }[] }).content.find((c) => c.type === 'text')?.text,
+      );
     expect(text).toBe(final[0]);
     expect(only(out, EventType.TEXT_MESSAGE_START)).toHaveLength(1);
     expect(only(out, EventType.TEXT_MESSAGE_END)).toHaveLength(1);
@@ -119,14 +122,22 @@ describe('tool run (text, thinking, tool call)', () => {
   });
 
   it('puts each completed request in the transcript as a pi.turn_usage activity next to its assistant message', () => {
-    const usage = (only(out, EventType.ACTIVITY_SNAPSHOT) as unknown as { activityType: string; messageId: string; content: unknown }[]).filter((a) => a.activityType === 'pi.turn_usage');
+    const usage = (
+      only(out, EventType.ACTIVITY_SNAPSHOT) as unknown as {
+        activityType: string;
+        messageId: string;
+        content: unknown;
+      }[]
+    ).filter((a) => a.activityType === 'pi.turn_usage');
     expect(usage).toHaveLength(2);
     for (const a of usage) {
       expect(() => PI_ACTIVITY_TYPES['pi.turn_usage'].parse(a.content)).not.toThrow();
       expect(a.messageId).toMatch(/^usage:/);
       expect(a.content).toMatchObject({ provider: 'llama-swap', elapsedMs: expect.any(Number) });
     }
-    const starts = only(out, EventType.TEXT_MESSAGE_START).map((e) => (e as unknown as { messageId: string }).messageId);
+    const starts = only(out, EventType.TEXT_MESSAGE_START).map(
+      (e) => (e as unknown as { messageId: string }).messageId,
+    );
     expect(starts.some((id) => usage[1].messageId === `usage:${id}`)).toBe(true);
   });
 
@@ -137,10 +148,22 @@ describe('tool run (text, thinking, tool call)', () => {
 
   it('gives the SDK and the JSON-mode shape of toolcall_start the same result', () => {
     const asJson = fixture('tool-run').map((e) => {
-      const update = e['assistantMessageEvent'] as { type: string; contentIndex: number; partial?: { content: { id: string; name: string }[] } };
+      const update = e['assistantMessageEvent'] as {
+        type: string;
+        contentIndex: number;
+        partial?: { content: { id: string; name: string }[] };
+      };
       if (e.type !== 'message_update' || update.type !== 'toolcall_start') return e;
       const call = update.partial?.content[update.contentIndex];
-      return { ...e, assistantMessageEvent: { type: 'toolcall_start', contentIndex: update.contentIndex, id: call?.id, toolName: call?.name } };
+      return {
+        ...e,
+        assistantMessageEvent: {
+          type: 'toolcall_start',
+          contentIndex: update.contentIndex,
+          id: call?.id,
+          toolName: call?.name,
+        },
+      };
     });
     expect(run(asJson).out).toEqual(out);
   });
@@ -150,7 +173,11 @@ describe('aborted run', () => {
   const { out } = run(fixture('abort'));
   it('closes the open reasoning block and ends with RUN_FINISHED carrying result.aborted', () => {
     expect(only(out, EventType.REASONING_END)).toHaveLength(1);
-    expect(out.at(-1)).toMatchObject({ type: EventType.RUN_FINISHED, outcome: { type: 'cancelled' }, result: { aborted: true } });
+    expect(out.at(-1)).toMatchObject({
+      type: EventType.RUN_FINISHED,
+      outcome: { type: 'cancelled' },
+      result: { aborted: true },
+    });
     expect(only(out, EventType.RUN_ERROR)).toHaveLength(0);
   });
 });
@@ -173,7 +200,12 @@ describe('queue run', () => {
 
 describe('events without a recording (shapes from pi docs/json.md)', () => {
   const map = (e: PiEvent) => {
-    const ctx = createMapContext({ threadId: 't', runId: 'r', newId: counter(), model: { provider: 'p', modelId: 'm' } });
+    const ctx = createMapContext({
+      threadId: 't',
+      runId: 'r',
+      newId: counter(),
+      model: { provider: 'p', modelId: 'm' },
+    });
     return mapEvent(e, ctx);
   };
 
@@ -182,15 +214,29 @@ describe('events without a recording (shapes from pi docs/json.md)', () => {
       { type: EventType.CUSTOM, name: 'pi.compaction', value: { phase: 'start' } },
     ]);
     expect(
-      map({ type: 'compaction_end', reason: 'threshold', aborted: false, willRetry: false, result: { summary: 's', tokensBefore: 150000, estimatedTokensAfter: 32000 } }),
-    ).toEqual([{ type: EventType.CUSTOM, name: 'pi.compaction', value: { phase: 'end', tokensBefore: 150000, tokensAfter: 32000 } }]);
+      map({
+        type: 'compaction_end',
+        reason: 'threshold',
+        aborted: false,
+        willRetry: false,
+        result: { summary: 's', tokensBefore: 150000, estimatedTokensAfter: 32000 },
+      }),
+    ).toEqual([
+      {
+        type: EventType.CUSTOM,
+        name: 'pi.compaction',
+        value: { phase: 'end', tokensBefore: 150000, tokensAfter: 32000 },
+      },
+    ]);
     expect(map({ type: 'compaction_end', reason: 'manual', aborted: true, willRetry: false })).toEqual([
       { type: EventType.CUSTOM, name: 'pi.compaction', value: { phase: 'end' } },
     ]);
   });
 
   it('auto_retry_start', () => {
-    expect(map({ type: 'auto_retry_start', attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: '529 overloaded' })).toEqual([
+    expect(
+      map({ type: 'auto_retry_start', attempt: 1, maxAttempts: 3, delayMs: 2000, errorMessage: '529 overloaded' }),
+    ).toEqual([
       { type: EventType.CUSTOM, name: 'pi.retry', value: { attempt: 1, maxAttempts: 3, reason: '529 overloaded' } },
     ]);
   });
@@ -210,7 +256,16 @@ describe('events without a recording (shapes from pi docs/json.md)', () => {
   it('a failed assistant message ends the run with RUN_ERROR, unless pi retried successfully', () => {
     const failed: PiEvent[] = [
       { type: 'message_start', message: { role: 'assistant', content: [] } },
-      { type: 'message_end', message: { role: 'assistant', content: [], stopReason: 'error', errorMessage: 'boom', usage: { input: 1, output: 0, cacheRead: 0, cacheWrite: 0 } } },
+      {
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          content: [],
+          stopReason: 'error',
+          errorMessage: 'boom',
+          usage: { input: 1, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      },
       { type: 'agent_settled', aborted: false },
     ];
     expect(run(failed).out.at(-1)).toMatchObject({ type: EventType.RUN_ERROR, message: 'boom', code: 'error' });
@@ -227,7 +282,15 @@ describe('events without a recording (shapes from pi docs/json.md)', () => {
   });
 
   it('a tool call a tool made itself (no toolcall_start) is announced whole', () => {
-    const out = map({ type: 'tool_execution_end', toolCallId: 'c1', toolName: 'read', args: { path: 'a' }, result: { content: [{ type: 'text', text: 'x' }, { type: 'image' }] }, isError: false, parentToolCallId: 'p' });
+    const out = map({
+      type: 'tool_execution_end',
+      toolCallId: 'c1',
+      toolName: 'read',
+      args: { path: 'a' },
+      result: { content: [{ type: 'text', text: 'x' }, { type: 'image' }] },
+      isError: false,
+      parentToolCallId: 'p',
+    });
     expect(types(out)).toEqual([
       EventType.TOOL_CALL_START,
       EventType.TOOL_CALL_ARGS,
@@ -257,15 +320,32 @@ describe('events without a recording (shapes from pi docs/json.md)', () => {
     const ctx = createMapContext({ threadId: 't', runId: 'r', newId: counter() });
     const out = [
       { type: 'message_start', message: { role: 'assistant' } },
-      { type: 'message_update', assistantMessageEvent: { type: 'toolcall_start', contentIndex: 0, id: 'c', toolName: 'read' } },
-      { type: 'message_update', assistantMessageEvent: { type: 'toolcall_end', contentIndex: 0, toolCall: { type: 'toolCall', id: 'c', name: 'read', arguments: { path: 'a' } } } },
+      {
+        type: 'message_update',
+        assistantMessageEvent: { type: 'toolcall_start', contentIndex: 0, id: 'c', toolName: 'read' },
+      },
+      {
+        type: 'message_update',
+        assistantMessageEvent: {
+          type: 'toolcall_end',
+          contentIndex: 0,
+          toolCall: { type: 'toolCall', id: 'c', name: 'read', arguments: { path: 'a' } },
+        },
+      },
     ].flatMap((e) => mapEvent(e, ctx));
     expect(types(out)).toEqual([EventType.TOOL_CALL_START, EventType.TOOL_CALL_ARGS, EventType.TOOL_CALL_END]);
     expect(out[1]).toMatchObject({ delta: '{"path":"a"}' });
   });
 
   it('ignores events it does not map and everything after the run settled', () => {
-    for (const type of ['agent_start', 'turn_start', 'turn_end', 'agent_end', 'summarization_retry_finished', 'bash_execution_update']) {
+    for (const type of [
+      'agent_start',
+      'turn_start',
+      'turn_end',
+      'agent_end',
+      'summarization_retry_finished',
+      'bash_execution_update',
+    ]) {
       expect(map({ type })).toEqual([]);
     }
     for (const role of ['user', 'system', 'toolResult']) {
@@ -281,17 +361,29 @@ describe('events without a recording (shapes from pi docs/json.md)', () => {
 
 describe('tool activities', () => {
   const activities = (events: BaseEvent[]) =>
-    only(events, EventType.ACTIVITY_SNAPSHOT) as unknown as { messageId: string; activityType: string; content: Record<string, unknown> }[];
+    only(events, EventType.ACTIVITY_SNAPSHOT) as unknown as {
+      messageId: string;
+      activityType: string;
+      content: Record<string, unknown>;
+    }[];
   const byId = (events: BaseEvent[], id: string) => activities(events).filter((a) => a.messageId === id);
 
   it('gives every tool call a pi.tool activity that runs, streams a sub-line and ends with its duration', () => {
     const { out } = run(fixture('tool-run'));
-    const tool = byId(out, 'tool:' + (only(out, EventType.TOOL_CALL_START)[0] as unknown as { toolCallId: string }).toolCallId);
+    const tool = byId(
+      out,
+      'tool:' + (only(out, EventType.TOOL_CALL_START)[0] as unknown as { toolCallId: string }).toolCallId,
+    );
     expect(tool.map((a) => (a.content as { status: string }).status)).toEqual(['running', 'running', 'done']);
     expect(tool.at(-1)?.content).toMatchObject({ toolName: 'bash', progress: 'hello pi-kit', durationMs: 12 });
     // The activities come before the tool result, so a row that shows "complete" already has them.
     const kinds = out
-      .filter((e) => e.type === EventType.TOOL_CALL_RESULT || (e.type === EventType.ACTIVITY_SNAPSHOT && (e as unknown as { activityType: string }).activityType !== 'pi.turn_usage'))
+      .filter(
+        (e) =>
+          e.type === EventType.TOOL_CALL_RESULT ||
+          (e.type === EventType.ACTIVITY_SNAPSHOT &&
+            (e as unknown as { activityType: string }).activityType !== 'pi.turn_usage'),
+      )
       .map((e) => e.type);
     expect(kinds.at(-1)).toBe(EventType.TOOL_CALL_RESULT);
   });
@@ -300,7 +392,12 @@ describe('tool activities', () => {
     const { out } = run(fixture('tool-run'));
     const bash = activities(out).filter((a) => a.activityType === 'pi.bash');
     expect(bash[0].content).toEqual({ command: 'cat note.txt', output: '', running: true });
-    expect(bash.at(-1)?.content).toEqual({ command: 'cat note.txt', output: 'hello pi-kit\n', running: false, exitCode: 0 });
+    expect(bash.at(-1)?.content).toEqual({
+      command: 'cat note.txt',
+      output: 'hello pi-kit\n',
+      running: false,
+      exitCode: 0,
+    });
   });
 
   it('throttles streamed updates but always sends the final result', () => {
@@ -308,7 +405,13 @@ describe('tool activities', () => {
     let clock = 0;
     const send = (e: PiEvent) => mapEvent(e, ctx);
     send({ type: 'tool_execution_start', toolCallId: 'c', toolName: 'bash', args: { command: 'x' } });
-    const update = (text: string) => send({ type: 'tool_execution_update', toolCallId: 'c', toolName: 'bash', partialResult: { content: [{ type: 'text', text }] } });
+    const update = (text: string) =>
+      send({
+        type: 'tool_execution_update',
+        toolCallId: 'c',
+        toolName: 'bash',
+        partialResult: { content: [{ type: 'text', text }] },
+      });
     clock = 50;
     expect(update('a')).toEqual([]);
     clock = 130;
@@ -316,14 +419,30 @@ describe('tool activities', () => {
     clock = 140;
     expect(update('a\nb\nc')).toEqual([]);
     clock = 150;
-    const end = send({ type: 'tool_execution_end', toolCallId: 'c', toolName: 'bash', result: { content: [{ type: 'text', text: 'a\nb\nc' }] }, isError: false });
-    expect(activities(end).find((a) => a.activityType === 'pi.bash')?.content).toMatchObject({ output: 'a\nb\nc', running: false });
+    const end = send({
+      type: 'tool_execution_end',
+      toolCallId: 'c',
+      toolName: 'bash',
+      result: { content: [{ type: 'text', text: 'a\nb\nc' }] },
+      isError: false,
+    });
+    expect(activities(end).find((a) => a.activityType === 'pi.bash')?.content).toMatchObject({
+      output: 'a\nb\nc',
+      running: false,
+    });
   });
 
   it('marks a failing bash call with its exit code and the error status', () => {
     const { out } = run([
       { type: 'tool_execution_start', toolCallId: 'c', toolName: 'bash', args: { command: 'false' } },
-      { type: 'tool_execution_end', toolCallId: 'c', toolName: 'bash', result: { content: [{ type: 'text', text: 'oops\n\nCommand exited with code 2' }] }, isError: true, durationMs: 5 },
+      {
+        type: 'tool_execution_end',
+        toolCallId: 'c',
+        toolName: 'bash',
+        result: { content: [{ type: 'text', text: 'oops\n\nCommand exited with code 2' }] },
+        isError: true,
+        durationMs: 5,
+      },
     ]);
     expect(byId(out, 'tool:c').at(-1)?.content).toMatchObject({ status: 'error', durationMs: 5 });
     expect(byId(out, 'bash:c').at(-1)?.content).toMatchObject({ exitCode: 2, running: false });
@@ -333,18 +452,45 @@ describe('tool activities', () => {
     const patch = '--- a.ts\n+++ a.ts\n@@ -1 +1 @@\n-old\n+new\n';
     const { out } = run([
       { type: 'tool_execution_start', toolCallId: 'e', toolName: 'edit', args: { path: 'a.ts', edits: [] } },
-      { type: 'tool_execution_end', toolCallId: 'e', toolName: 'edit', result: { content: [{ type: 'text', text: 'ok' }], details: { patch } }, isError: false },
-      { type: 'tool_execution_start', toolCallId: 'w', toolName: 'write', args: { path: 'b.ts', content: 'one\ntwo\n' } },
-      { type: 'tool_execution_end', toolCallId: 'w', toolName: 'write', result: { content: [{ type: 'text', text: 'ok' }] }, isError: false },
+      {
+        type: 'tool_execution_end',
+        toolCallId: 'e',
+        toolName: 'edit',
+        result: { content: [{ type: 'text', text: 'ok' }], details: { patch } },
+        isError: false,
+      },
+      {
+        type: 'tool_execution_start',
+        toolCallId: 'w',
+        toolName: 'write',
+        args: { path: 'b.ts', content: 'one\ntwo\n' },
+      },
+      {
+        type: 'tool_execution_end',
+        toolCallId: 'w',
+        toolName: 'write',
+        result: { content: [{ type: 'text', text: 'ok' }] },
+        isError: false,
+      },
       { type: 'tool_execution_start', toolCallId: 'f', toolName: 'edit', args: { path: 'c.ts' } },
-      { type: 'tool_execution_end', toolCallId: 'f', toolName: 'edit', result: { content: [{ type: 'text', text: 'no match' }] }, isError: true },
+      {
+        type: 'tool_execution_end',
+        toolCallId: 'f',
+        toolName: 'edit',
+        result: { content: [{ type: 'text', text: 'no match' }] },
+        isError: true,
+      },
     ]);
     expect(byId(out, 'diff:e')[0].content).toEqual({
       path: 'a.ts',
       toolCallId: 'e',
       hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-old', '+new'] }],
     });
-    expect(byId(out, 'diff:w')[0].content).toMatchObject({ path: 'b.ts', written: true, hunks: [{ newLines: 2, lines: ['+one', '+two'] }] });
+    expect(byId(out, 'diff:w')[0].content).toMatchObject({
+      path: 'b.ts',
+      written: true,
+      hunks: [{ newLines: 2, lines: ['+one', '+two'] }],
+    });
     expect(byId(out, 'diff:f')).toHaveLength(0);
   });
 
@@ -359,29 +505,55 @@ describe('tool activities', () => {
 
 describe('steering, compaction marker and usage', () => {
   it('replays a user message that arrives mid-run, but not the prompt the run started with', () => {
-    const user = (text: string) => ({ type: 'message_end', message: { role: 'user', content: [{ type: 'text', text }] } });
+    const user = (text: string) => ({
+      type: 'message_end',
+      message: { role: 'user', content: [{ type: 'text', text }] },
+    });
     const { out } = run([user('the prompt') as PiEvent, user('also do this') as PiEvent]);
-    expect(types(out)).toEqual([EventType.TEXT_MESSAGE_START, EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_END]);
+    expect(types(out)).toEqual([
+      EventType.TEXT_MESSAGE_START,
+      EventType.TEXT_MESSAGE_CONTENT,
+      EventType.TEXT_MESSAGE_END,
+    ]);
     expect(out[0]).toMatchObject({ role: 'user' });
     expect(out[1]).toMatchObject({ delta: 'also do this' });
   });
 
   it('attached to a run in progress (skipUserMessages 0) the first user message is replayed', () => {
-    const { out } = run([{ type: 'message_end', message: { role: 'user', content: 'steer' } }], { skipUserMessages: 0 });
+    const { out } = run([{ type: 'message_end', message: { role: 'user', content: 'steer' } }], {
+      skipUserMessages: 0,
+    });
     expect(out).toHaveLength(3);
   });
 
   it('shows a custom message an extension displays as a user message, and does not count it as the prompt', () => {
-    const custom = (display: boolean) => ({ type: 'message_end', message: { role: 'custom', customType: 'x', display, content: [{ type: 'text', text: 'From the extension' }] } });
-    const { out } = run([custom(true), custom(false), { type: 'message_end', message: { role: 'user', content: 'the prompt' } }]);
-    expect(types(out)).toEqual([EventType.TEXT_MESSAGE_START, EventType.TEXT_MESSAGE_CONTENT, EventType.TEXT_MESSAGE_END]);
+    const custom = (display: boolean) => ({
+      type: 'message_end',
+      message: { role: 'custom', customType: 'x', display, content: [{ type: 'text', text: 'From the extension' }] },
+    });
+    const { out } = run([
+      custom(true),
+      custom(false),
+      { type: 'message_end', message: { role: 'user', content: 'the prompt' } },
+    ]);
+    expect(types(out)).toEqual([
+      EventType.TEXT_MESSAGE_START,
+      EventType.TEXT_MESSAGE_CONTENT,
+      EventType.TEXT_MESSAGE_END,
+    ]);
     expect(out[0]).toMatchObject({ role: 'user' });
     expect(out[1]).toMatchObject({ delta: 'From the extension' });
   });
 
   it('puts a compaction marker in the transcript, with the id sessionToMessages uses', () => {
     const { out } = run([
-      { type: 'compaction_end', reason: 'threshold', aborted: false, willRetry: false, result: { summary: 's', firstKeptEntryId: 'k1', tokensBefore: 90, estimatedTokensAfter: 30 } },
+      {
+        type: 'compaction_end',
+        reason: 'threshold',
+        aborted: false,
+        willRetry: false,
+        result: { summary: 's', firstKeptEntryId: 'k1', tokensBefore: 90, estimatedTokensAfter: 30 },
+      },
     ]);
     expect(out[1]).toMatchObject({
       type: EventType.ACTIVITY_SNAPSHOT,
@@ -410,15 +582,29 @@ describe('steering, compaction marker and usage', () => {
 describe('generative UI', () => {
   const ops = [
     { version: 'v0.9', createSurface: { surfaceId: 's1', catalogId: 'c' } },
-    { version: 'v0.9', updateComponents: { surfaceId: 's1', components: [{ id: 'root', component: 'Text', text: 'hi' }] } },
+    {
+      version: 'v0.9',
+      updateComponents: { surfaceId: 's1', components: [{ id: 'root', component: 'Text', text: 'hi' }] },
+    },
   ];
   const end = (extra: Record<string, unknown>) =>
-    ({ type: 'tool_execution_end', toolCallId: 'c1', toolName: 'show', args: { q: 1 }, isError: false, ...extra }) as PiEvent;
+    ({
+      type: 'tool_execution_end',
+      toolCallId: 'c1',
+      toolName: 'show',
+      args: { q: 1 },
+      isError: false,
+      ...extra,
+    }) as PiEvent;
   const activitiesOf = (out: BaseEvent[], activityType: string) =>
-    only(out, EventType.ACTIVITY_SNAPSHOT).filter((e) => (e as unknown as { activityType: string }).activityType === activityType);
+    only(out, EventType.ACTIVITY_SNAPSHOT).filter(
+      (e) => (e as unknown as { activityType: string }).activityType === activityType,
+    );
 
   it('turns details.a2ui_operations into an a2ui-surface activity before the result, and keeps the result text short', () => {
-    const { out } = run([end({ result: { content: [{ type: 'text', text: 'Showed the table.' }], details: { a2ui_operations: ops } } })]);
+    const { out } = run([
+      end({ result: { content: [{ type: 'text', text: 'Showed the table.' }], details: { a2ui_operations: ops } } }),
+    ]);
     const [surface] = activitiesOf(out, 'a2ui-surface');
     expect(surface).toMatchObject({ messageId: 'a2ui-surface-c1', content: { a2ui_operations: ops }, replace: true });
     const result = only(out, EventType.TOOL_CALL_RESULT)[0] as unknown as { content: string };
@@ -426,12 +612,21 @@ describe('generative UI', () => {
     expect(out.indexOf(surface)).toBeLessThan(out.indexOf(only(out, EventType.TOOL_CALL_RESULT)[0]));
   });
 
-  it('writes a surface\'s data as an object: the old payload (an array at /specs) and the new one (an object at /) reach the renderer the same way', () => {
+  it("writes a surface's data as an object: the old payload (an array at /specs) and the new one (an object at /) reach the renderer the same way", () => {
     const specs = [{ spec: 'export.spec.ts:41' }];
-    const model = (path: string, value: unknown) => ({ version: 'v0.9', updateDataModel: { surfaceId: 's1', path, value } });
+    const model = (path: string, value: unknown) => ({
+      version: 'v0.9',
+      updateDataModel: { surfaceId: 's1', path, value },
+    });
     const drawn = (operation: unknown) => {
-      const { out } = run([end({ result: { content: [{ type: 'text', text: 'Showed.' }], details: { a2ui_operations: [...ops, operation] } } })]);
-      return (activitiesOf(out, 'a2ui-surface')[0] as unknown as { content: { a2ui_operations: unknown[] } }).content.a2ui_operations.at(-1);
+      const { out } = run([
+        end({
+          result: { content: [{ type: 'text', text: 'Showed.' }], details: { a2ui_operations: [...ops, operation] } },
+        }),
+      ]);
+      return (
+        activitiesOf(out, 'a2ui-surface')[0] as unknown as { content: { a2ui_operations: unknown[] } }
+      ).content.a2ui_operations.at(-1);
     };
     expect(drawn(model('/specs', specs))).toEqual(model('/', { specs }));
     expect(drawn(model('/', { specs }))).toEqual(model('/', { specs }));
@@ -445,7 +640,8 @@ describe('generative UI', () => {
   });
 
   it('emits an mcp-apps activity for a call of an MCP tool that links a ui:// resource', () => {
-    const lookup = (server: string, tool: string) => (server === 'issues' && tool === 'open_form' ? 'ui://issues/form' : undefined);
+    const lookup = (server: string, tool: string) =>
+      server === 'issues' && tool === 'open_form' ? 'ui://issues/form' : undefined;
     const result = {
       content: [{ type: 'text', text: 'Form opened' }],
       structuredContent: { content: [{ type: 'text', text: 'Form opened' }], structuredContent: { draft: 'x' } },
@@ -464,13 +660,23 @@ describe('generative UI', () => {
       },
     });
     // another tool of the same server, a failed call and a context without the lookup draw nothing
-    expect(activitiesOf(run([end({ result: { ...result, details: { server: 'issues', tool: 'other' } } })], { mcpApp: lookup }).out, 'mcp-apps')).toHaveLength(0);
+    expect(
+      activitiesOf(
+        run([end({ result: { ...result, details: { server: 'issues', tool: 'other' } } })], { mcpApp: lookup }).out,
+        'mcp-apps',
+      ),
+    ).toHaveLength(0);
     expect(activitiesOf(run([end({ isError: true, result })], { mcpApp: lookup }).out, 'mcp-apps')).toHaveLength(0);
     expect(activitiesOf(run([end({ result })]).out, 'mcp-apps')).toHaveLength(0);
   });
 
   it('falls back to the text pi gave the model when the MCP result was not kept whole', () => {
-    const { out } = run([end({ result: { content: [{ type: 'text', text: 'plain' }], details: { server: 's', tool: 't' } } })], { mcpApp: () => 'ui://s/t' });
-    expect(activitiesOf(out, 'mcp-apps')[0]).toMatchObject({ content: { result: { content: [{ type: 'text', text: 'plain' }] } } });
+    const { out } = run(
+      [end({ result: { content: [{ type: 'text', text: 'plain' }], details: { server: 's', tool: 't' } } })],
+      { mcpApp: () => 'ui://s/t' },
+    );
+    expect(activitiesOf(out, 'mcp-apps')[0]).toMatchObject({
+      content: { result: { content: [{ type: 'text', text: 'plain' }] } },
+    });
   });
 });

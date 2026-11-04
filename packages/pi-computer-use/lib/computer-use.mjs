@@ -32,19 +32,48 @@ export const TOOL_PREFIX = 'computer_';
 
 /** The tools the model sees in its tool list; the driver's other tools are found with tool_search. */
 const COMMON_TOOLS = new Set([
-  'list_apps', 'list_windows', 'get_window_state', 'get_desktop_state', 'get_accessibility_tree', 'zoom', 'verify_state', 'get_screen_size',
-  'launch_app', 'bring_to_front', 'click', 'double_click', 'right_click', 'drag', 'scroll', 'type_text', 'press_key', 'hotkey', 'set_value', 'invoke_menu',
+  'list_apps',
+  'list_windows',
+  'get_window_state',
+  'get_desktop_state',
+  'get_accessibility_tree',
+  'zoom',
+  'verify_state',
+  'get_screen_size',
+  'launch_app',
+  'bring_to_front',
+  'click',
+  'double_click',
+  'right_click',
+  'drag',
+  'scroll',
+  'type_text',
+  'press_key',
+  'hotkey',
+  'set_value',
+  'invoke_menu',
 ]);
 
 /** Run a script or a sequence, end a program, store or download something: asked every time. */
-const ALWAYS_ASK = new Set(['kill_app', 'run_script', 'run_steps', 'replay_trajectory', 'install_ffmpeg', 'browser_download', 'browser_set_input_files', 'set_config']);
+const ALWAYS_ASK = new Set([
+  'kill_app',
+  'run_script',
+  'run_steps',
+  'replay_trajectory',
+  'install_ffmpeg',
+  'browser_download',
+  'browser_set_input_files',
+  'set_config',
+]);
 
 export const piToolName = (name) => `${TOOL_PREFIX}${name}`;
-export const driverToolName = (piName) => (piName.startsWith(TOOL_PREFIX) ? piName.slice(TOOL_PREFIX.length) : undefined);
+export const driverToolName = (piName) =>
+  piName.startsWith(TOOL_PREFIX) ? piName.slice(TOOL_PREFIX.length) : undefined;
 export const exposureFor = (name) => (COMMON_TOOLS.has(name) ? 'direct' : 'deferred');
 
 /** Without this line a model that has a shell often writes AppleScript before it tries the computer tools. */
-export const GUIDELINE = 'To look at or operate desktop apps and windows, use the computer_* tools (start with computer_list_apps), not AppleScript, osascript or `open -a`.';
+export const GUIDELINE =
+  'To look at or operate desktop apps and windows, use the computer_* tools (start with computer_list_apps), not AppleScript, osascript or `open -a`.';
 
 // --- asking ---
 
@@ -58,7 +87,8 @@ export function classify(tool) {
 /** `allow`, `block` (with a reason), or `ask` (`session`: once for the session, `call`: this call). */
 export function decide({ kind, hasUI, sessionAllowed }) {
   if (kind === 'read') return { action: 'allow' };
-  if (!hasUI) return { action: 'block', reason: 'Computer use needs the person’s approval, and this run has no way to ask.' };
+  if (!hasUI)
+    return { action: 'block', reason: 'Computer use needs the person’s approval, and this run has no way to ask.' };
   if (kind === 'guarded') return { action: 'ask', ask: 'call' };
   return sessionAllowed ? { action: 'allow' } : { action: 'ask', ask: 'session' };
 }
@@ -70,7 +100,8 @@ export function describeCall(name, input) {
   const parts = [];
   const pid = args.pid ?? target.pid;
   if (pid !== undefined) parts.push(`pid ${pid}`);
-  if (typeof args.text === 'string') parts.push(JSON.stringify(args.text.length > 60 ? `${args.text.slice(0, 57)}...` : args.text));
+  if (typeof args.text === 'string')
+    parts.push(JSON.stringify(args.text.length > 60 ? `${args.text.slice(0, 57)}...` : args.text));
   if (typeof args.key === 'string') parts.push(`key ${args.key}`);
   if (typeof args.bundle_id === 'string') parts.push(args.bundle_id);
   if (typeof args.url === 'string') parts.push(args.url);
@@ -91,9 +122,11 @@ export function toToolResult(name, result, env = process.env) {
   /** @type {({ type: 'text', text: string } | { type: 'image', data: string, mimeType: string })[]} */
   const content = [];
   let text = result.text ?? '';
-  if (text.length > MAX_TEXT_CHARS) text = `${text.slice(0, MAX_TEXT_CHARS)}\n…${text.length - MAX_TEXT_CHARS} more characters cut. Use a smaller window or zoom.`;
+  if (text.length > MAX_TEXT_CHARS)
+    text = `${text.slice(0, MAX_TEXT_CHARS)}\n…${text.length - MAX_TEXT_CHARS} more characters cut. Use a smaller window or zoom.`;
   if (text) content.push({ type: 'text', text });
-  for (const image of result.images ?? []) content.push({ type: 'image', data: image.dataBase64, mimeType: image.mimeType || 'image/png' });
+  for (const image of result.images ?? [])
+    content.push({ type: 'image', data: image.dataBase64, mimeType: image.mimeType || 'image/png' });
   if (content.length === 0) content.push({ type: 'text', text: 'Done.' });
   return { content, details: { tool: name } };
 }
@@ -103,7 +136,8 @@ export function toToolResult(name, result, env = process.env) {
 export const SUPPORTED_PLATFORMS = ['darwin', 'win32', 'linux'];
 export const PLATFORM_NAMES = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
 export const isSupported = (platform = process.platform) => SUPPORTED_PLATFORMS.includes(platform);
-export const unsupportedMessage = (platform = process.platform) => `Computer use supports macOS, Windows and Linux; this is ${platform}.`;
+export const unsupportedMessage = (platform = process.platform) =>
+  `Computer use supports macOS, Windows and Linux; this is ${platform}.`;
 /** Outside macOS there is nothing to grant: Windows needs no permissions, Linux a desktop session; Hyprland is read-only. */
 export const noPermissionsNote = (platform = process.platform) =>
   platform === 'linux'
@@ -112,7 +146,8 @@ export const noPermissionsNote = (platform = process.platform) =>
 
 /** The switch that turns on Cua Driver's native Wayland routes; without it a Wayland session only reaches apps that run under XWayland. */
 export const WAYLAND_SWITCH = 'CUA_DRIVER_RS_ENABLE_WAYLAND';
-export const isWaylandSession = (env = process.env) => env.XDG_SESSION_TYPE === 'wayland' || Boolean(env.WAYLAND_DISPLAY);
+export const isWaylandSession = (env = process.env) =>
+  env.XDG_SESSION_TYPE === 'wayland' || Boolean(env.WAYLAND_DISPLAY);
 /** Turns on the native Wayland routes in a Linux Wayland session, before the driver is created. A value the person set (`0` included) is kept. */
 export function enableWayland(env = process.env, platform = process.platform) {
   if (platform !== 'linux' || !isWaylandSession(env) || env[WAYLAND_SWITCH] !== undefined) return false;
@@ -130,10 +165,12 @@ export const isHyprland = (env = process.env) => Boolean(env.HYPRLAND_INSTANCE_S
 export const HYPRLAND_READ_ONLY_NOTE = 'Hyprland: read-only. pi can see the screen but cannot click or type.';
 
 /** Appended to an input the driver refused, so the model stops retrying and the person knows why. */
-export const HYPRLAND_TOOL_HINT = 'Hyprland: pi cannot click or type here, only look (and act on an element it has read, where the app exposes one).';
+export const HYPRLAND_TOOL_HINT =
+  'Hyprland: pi cannot click or type here, only look (and act on an element it has read, where the app exposes one).';
 
 /** What the driver answers an input it cannot deliver on Hyprland. */
-const HYPRLAND_INPUT_REFUSED = /Hyprland input plugin is unavailable|no focus-free input backend|cua-compositor activation requires/;
+const HYPRLAND_INPUT_REFUSED =
+  /Hyprland input plugin is unavailable|no focus-free input backend|cua-compositor activation requires/;
 
 /** The warning for `/computer-use on | status | setup` on Linux: Hyprland is read-only; nothing elsewhere. */
 export function linuxInputHelp(env = process.env, platform = process.platform) {
@@ -149,8 +186,16 @@ export function explainToolError(text, env = process.env) {
 
 /** The two macOS permissions, in the order setup goes through them, with the System Settings page of each. */
 export const PERMISSIONS = [
-  { key: 'accessibility', name: 'Accessibility', pane: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility' },
-  { key: 'screenRecording', name: 'Screen & System Audio Recording', pane: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture' },
+  {
+    key: 'accessibility',
+    name: 'Accessibility',
+    pane: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
+  },
+  {
+    key: 'screenRecording',
+    name: 'Screen & System Audio Recording',
+    pane: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
+  },
 ];
 
 export function missingPermissions(platform, status) {
@@ -158,7 +203,10 @@ export function missingPermissions(platform, status) {
   return PERMISSIONS.filter((p) => !status?.[p.key]).map((p) => p.name);
 }
 
-const terminalName = (env) => ({ Apple_Terminal: 'Terminal', 'iTerm.app': 'iTerm', vscode: 'Visual Studio Code' })[env.TERM_PROGRAM] ?? env.TERM_PROGRAM ?? 'your terminal app';
+const terminalName = (env) =>
+  ({ Apple_Terminal: 'Terminal', 'iTerm.app': 'iTerm', vscode: 'Visual Studio Code' })[env.TERM_PROGRAM] ??
+  env.TERM_PROGRAM ??
+  'your terminal app';
 
 /**
  * The app macOS gives the permissions to: the one that started this process. pi-kit's desktop app starts its backend (`PI_KIT_DESKTOP`): a packaged build is

@@ -18,13 +18,20 @@ export function shellEnvironment(env: NodeJS.ProcessEnv = process.env): Record<s
     if (value !== undefined && !HIDDEN_ENV.test(key)) out[key] = value;
   }
   // `pnpm run` (like `npm run`) puts the repository's `node_modules/.bin` in front of PATH (pnpm as a relative `./node_modules/.bin` too); the user's shell should not start with it.
-  if (out['PATH']) out['PATH'] = out['PATH'].split(':').filter((dir) => !dir.endsWith('/node_modules/.bin')).join(':');
+  if (out['PATH'])
+    out['PATH'] = out['PATH']
+      .split(':')
+      .filter((dir) => !dir.endsWith('/node_modules/.bin'))
+      .join(':');
   out['TERM'] = 'xterm-256color';
   out['COLORTERM'] = 'truecolor';
   return out;
 }
 
-export function defaultShell(env: NodeJS.ProcessEnv = process.env, platform = process.platform): { file: string; args: string[] } {
+export function defaultShell(
+  env: NodeJS.ProcessEnv = process.env,
+  platform = process.platform,
+): { file: string; args: string[] } {
   if (platform === 'win32') return { file: env['COMSPEC'] ?? 'powershell.exe', args: [] };
   // A login shell, like a terminal window opens, so PATH and the user's profile are what they expect.
   return { file: env['SHELL'] || '/bin/sh', args: ['-l'] };
@@ -47,7 +54,10 @@ export function ensureSpawnHelper(): void {
   const resources = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
   if (resources) roots.push(join(resources, 'backend', 'node_modules', 'node-pty'));
   for (const root of roots) {
-    for (const dir of [join(root, 'prebuilds', `${process.platform}-${process.arch}`), join(root, 'build', 'Release')]) {
+    for (const dir of [
+      join(root, 'prebuilds', `${process.platform}-${process.arch}`),
+      join(root, 'build', 'Release'),
+    ]) {
       const helper = join(dir, 'spawn-helper');
       try {
         if (existsSync(helper)) chmodSync(helper, 0o755);
@@ -95,11 +105,17 @@ export class TerminalService implements OnModuleDestroy {
     ensureSpawnHelper();
     const { file, args } = defaultShell();
     const pty = spawn(file, args, { name: 'xterm-256color', cols, rows, cwd, env: shellEnvironment() });
-    const terminal: Terminal = { pty, info: { cwd, shell: file, pid: pty.pid, cols, rows }, scrollback: '', listeners: new Set() };
+    const terminal: Terminal = {
+      pty,
+      info: { cwd, shell: file, pid: pty.pid, cols, rows },
+      scrollback: '',
+      listeners: new Set(),
+    };
     this.terminals.set(cwd, terminal);
     // What the terminal of this folder last showed (before the backend restarted) comes first, marked as over.
     const previous = this.replay?.get(cwd);
-    if (previous?.data) terminal.scrollback = `${previous.data}\r\n\x1b[2m--- end of the previous terminal session ---\x1b[0m\r\n`;
+    if (previous?.data)
+      terminal.scrollback = `${previous.data}\r\n\x1b[2m--- end of the previous terminal session ---\x1b[0m\r\n`;
     pty.onData((data) => {
       terminal.scrollback = (terminal.scrollback + data).slice(-SCROLLBACK_CHARS);
       this.emit(terminal, { type: 'data', data });
@@ -121,7 +137,11 @@ export class TerminalService implements OnModuleDestroy {
     const terminal = this.terminals.get(cwd);
     if (!terminal) return undefined;
     // A client that connects late is shown the screen with key shapes masked, as it is kept; what streams live is the shell's own output.
-    if (terminal.scrollback) listener({ type: 'data', data: this.redaction ? this.redaction.text(cwd, terminal.scrollback) : terminal.scrollback });
+    if (terminal.scrollback)
+      listener({
+        type: 'data',
+        data: this.redaction ? this.redaction.text(cwd, terminal.scrollback) : terminal.scrollback,
+      });
     terminal.listeners.add(listener);
     return () => terminal.listeners.delete(listener);
   }
@@ -176,7 +196,9 @@ export class TerminalService implements OnModuleDestroy {
       // Key shapes are masked before the screen is kept (a cut at the 256 KB edge may split one; the next write sees the whole).
       this.replay.set(cwd, this.redaction ? this.redaction.text(cwd, terminal.scrollback) : terminal.scrollback);
     } catch (error) {
-      this.logger.warn(`Could not save the terminal's last screen: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.warn(
+        `Could not save the terminal's last screen: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

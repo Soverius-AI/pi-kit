@@ -34,19 +34,33 @@ const banner = (dialog) => dialog.getByTestId('reload-banner');
 
 /** Ends the backend and starts it again on the same port, token and folders, as the desktop app's watchdog does (dev:web has none); the page reconnects. */
 async function restartBackend(page) {
-  const { pid } = await (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })).json();
+  const { pid } = await (
+    await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })
+  ).json();
   process.kill(pid, 'SIGKILL');
-  await page.getByText(/Backend unreachable/).first().waitFor();
+  await page
+    .getByText(/Backend unreachable/)
+    .first()
+    .waitFor();
   const { spawn } = await import('node:child_process');
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: 'ignore',
     detached: true,
   });
   child.unref();
   spawned.push(child.pid);
-  await page.locator('.toast', { hasText: /restarted|Reconnected/ }).first().waitFor();
+  await page
+    .locator('.toast', { hasText: /restarted|Reconnected/ })
+    .first()
+    .waitFor();
   await page.getByText('Backend connected').first().waitFor();
 }
 
@@ -173,7 +187,8 @@ describe('tree', () => {
     const row = graph.getByRole('option').filter({ hasText: 'Remember the number 7' }).first();
     assert.equal(Math.round((await row.boundingBox())?.height ?? 0), 36, 'a turn row is 36px high');
     await row.hover();
-    for (const name of ['Edit and branch', 'Fork to new thread', 'Label', 'More']) assert.ok(await row.getByRole('button', { name }).isVisible(), `${name} shows on hover`);
+    for (const name of ['Edit and branch', 'Fork to new thread', 'Label', 'More'])
+      assert.ok(await row.getByRole('button', { name }).isVisible(), `${name} shows on hover`);
     await page.getByLabel('Find a turn').fill('remember the number 7');
     assert.equal(await graph.getByRole('option').count(), 1);
     assert.equal((await graph.locator('mark').first().innerText()).toLowerCase(), 'remember the number 7');
@@ -198,18 +213,35 @@ describe('files panel', () => {
       const menu = page.getByRole('menu', { name: 'File actions' });
       await menu.waitFor();
       const labels = await menu.getByRole('menuitem').allInnerTexts();
-      for (const label of ['Open in editor', 'Copy relative path', 'Add to message', 'Rename…', 'Delete…', 'Open diff', 'Revert…']) {
-        assert.ok(labels.some((text) => text.startsWith(label)), `the menu offers ${label}`);
+      for (const label of [
+        'Open in editor',
+        'Copy relative path',
+        'Add to message',
+        'Rename…',
+        'Delete…',
+        'Open diff',
+        'Revert…',
+      ]) {
+        assert.ok(
+          labels.some((text) => text.startsWith(label)),
+          `the menu offers ${label}`,
+        );
       }
       // "Add to message" is a UiBus request the composer answers with `@path` at the caret.
       await menu.getByRole('menuitem', { name: /^Add to message/ }).click();
-      await page.waitForFunction(() => /@README\.md/.test(document.querySelector('[aria-label="Message to pi"]')?.value ?? ''), undefined);
+      await page.waitForFunction(
+        () => /@README\.md/.test(document.querySelector('[aria-label="Message to pi"]')?.value ?? ''),
+        undefined,
+      );
       await page.getByLabel('Message to pi').fill('');
       await node('README.md').click({ button: 'right' });
       await menu.waitFor();
       await menu.getByRole('menuitem', { name: /^Revert/ }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Revert file' }).click();
-      await page.locator('.toast').getByText(/Reverted README\.md/).waitFor();
+      await page
+        .locator('.toast')
+        .getByText(/Reverted README\.md/)
+        .waitFor();
       await page.waitForFunction(() => !document.querySelector('.pk-node[data-path="README.md"] .bdg'), undefined);
       assert.equal(git('status', '--porcelain', 'README.md').trim(), '', 'the file is back as HEAD has it');
     } finally {
@@ -228,7 +260,10 @@ describe('files panel', () => {
       await h.newThread();
       await h.openPanel('Files');
       await row('src').click({ button: 'right' });
-      await page.getByRole('menu', { name: 'File actions' }).getByRole('menuitem', { name: /^New file/ }).click();
+      await page
+        .getByRole('menu', { name: 'File actions' })
+        .getByRole('menuitem', { name: /^New file/ })
+        .click();
       const name = page.getByRole('textbox', { name: 'New file in src', exact: true });
       await name.fill(original);
       await name.press('Enter');
@@ -299,7 +334,10 @@ describe('review mode', () => {
     await h.newThread();
     await h.prompt('Say ready.');
     // A change in the working tree that pi did not make: the review works on git's view as well.
-    editProjectFile('src/math.ts', (text) => `${text}\nexport function mul(a: number, b: number): number {\n  return a * b;\n}\n`);
+    editProjectFile(
+      'src/math.ts',
+      (text) => `${text}\nexport function mul(a: number, b: number): number {\n  return a * b;\n}\n`,
+    );
     try {
       await h.openPanel('Changes');
       await page.getByRole('button', { name: 'Working tree', exact: true }).click();
@@ -310,7 +348,10 @@ describe('review mode', () => {
       await page.getByRole('button', { name: /^Send 1 comment to pi$/ }).click();
       // Back in the chat: the message carries the batch as a chip, and pi answers it.
       await page.getByRole('button', { name: '1 review comment' }).waitFor();
-      await page.getByTestId('stop').waitFor({ timeout: 30_000 }).catch(() => undefined);
+      await page
+        .getByTestId('stop')
+        .waitFor({ timeout: 30_000 })
+        .catch(() => undefined);
       await page.getByTestId('stop').waitFor({ state: 'detached' });
       await page.getByRole('button', { name: '1 review comment' }).click();
       const list = page.getByRole('list', { name: 'Review comments' });
@@ -350,7 +391,10 @@ describe('settings', () => {
     const check = async (expectCompaction) => {
       await page.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'pi-light');
       const again = await h.openSettings('General');
-      assert.equal(await again.getByRole('checkbox', { name: /Compact the context automatically/ }).isChecked(), expectCompaction);
+      assert.equal(
+        await again.getByRole('checkbox', { name: /Compact the context automatically/ }).isChecked(),
+        expectCompaction,
+      );
       await again.getByRole('tab', { name: 'Chat models' }).click();
       assert.equal(await again.getByTestId('default-effort').inputValue(), 'low');
       await page.keyboard.press('Escape');
@@ -359,7 +403,11 @@ describe('settings', () => {
     await page.waitForSelector('pk-root .pk-shell');
     await check(!before);
     await restartBackend(page);
-    assert.equal((await api('/api/settings')).theme, 'pi-light', 'the theme is in the database, which survived the restart');
+    assert.equal(
+      (await api('/api/settings')).theme,
+      'pi-light',
+      'the theme is in the database, which survived the restart',
+    );
     assert.equal((await api('/api/pi-settings')).settings.defaultThinkingLevel, 'low');
     await page.reload();
     await page.waitForSelector('pk-root .pk-shell');
@@ -415,7 +463,10 @@ describe('settings', () => {
     await row.getByRole('button', { name: /^Change/ }).click();
     await row.getByTestId('recording').waitFor();
     await page.keyboard.press('Meta+K');
-    await row.getByTestId('clash-message').getByText(/already used by Command palette/).waitFor();
+    await row
+      .getByTestId('clash-message')
+      .getByText(/already used by Command palette/)
+      .waitFor();
     assert.equal(await page.getByLabel('Search commands').count(), 0, 'the recorded key did not reach the app');
     await row.getByRole('button', { name: 'Cancel' }).click();
     assert.equal(await dialog.getByTestId('kit-conflicts').count(), 0);
@@ -440,13 +491,28 @@ describe('settings', () => {
     const exported = JSON.parse(readFileSync(await download.path(), 'utf8'));
     assert.equal(exported.format, 'pi-kit-keybindings');
     assert.deepEqual(exported['pi-kit'], { 'new-thread': 'mod+shift+j' });
-    const clashing = { format: 'pi-kit-keybindings', version: 1, 'pi-kit': { 'new-thread': 'mod+k', nonsense: 'mod+x' }, pi: {} };
-    await again.getByTestId('import-file').setInputFiles({ name: 'keys.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(clashing)) });
-    await again.getByTestId('import-message').getByText(/Imported 1 shortcut.*Skipped: pi-kit shortcut nonsense/).waitFor();
+    const clashing = {
+      format: 'pi-kit-keybindings',
+      version: 1,
+      'pi-kit': { 'new-thread': 'mod+k', nonsense: 'mod+x' },
+      pi: {},
+    };
+    await again.getByTestId('import-file').setInputFiles({
+      name: 'keys.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(clashing)),
+    });
+    await again
+      .getByTestId('import-message')
+      .getByText(/Imported 1 shortcut.*Skipped: pi-kit shortcut nonsense/)
+      .waitFor();
     await again.getByTestId('section-keybindings').getByRole('tab', { name: 'pi-kit shortcuts', exact: true }).click();
     await again.getByTestId('kit-conflicts').getByText('2 clash').waitFor();
     await again.getByTestId('key-new-thread').getByText('Shares its key with Command palette').waitFor();
-    await again.getByTestId('key-new-thread').getByRole('button', { name: /^Reset/ }).click();
+    await again
+      .getByTestId('key-new-thread')
+      .getByRole('button', { name: /^Reset/ })
+      .click();
     await again.getByTestId('kit-conflicts').waitFor({ state: 'detached' });
     assert.deepEqual((await api('/api/settings')).shortcuts, {});
 
@@ -455,10 +521,15 @@ describe('settings', () => {
     const piRow = again.getByTestId('key-app.session.new');
     await piRow.getByRole('button', { name: /^Change/ }).click();
     await page.keyboard.press('Control+p');
-    await piRow.getByTestId('clash-message').getByText(/already used by Cycle to next model/).waitFor();
+    await piRow
+      .getByTestId('clash-message')
+      .getByText(/already used by Cycle to next model/)
+      .waitFor();
     await piRow.getByRole('button', { name: 'Use it anyway' }).click();
     await again.getByTestId('pi-conflicts').getByText('2 clash').waitFor();
-    assert.deepEqual(JSON.parse(readFileSync(join(env.agentDir, 'keybindings.json'), 'utf8')), { 'app.session.new': 'ctrl+p' });
+    assert.deepEqual(JSON.parse(readFileSync(join(env.agentDir, 'keybindings.json'), 'utf8')), {
+      'app.session.new': 'ctrl+p',
+    });
     // pi's keybindings need a reload of the session, and the dialog offers it.
     await banner(again).waitFor();
     await piRow.getByRole('button', { name: /^Reset/ }).click();
@@ -471,10 +542,17 @@ describe('settings', () => {
   it('adds an API key through the workflow: it lands in the credential store, auth.json holds only the command, and the UI shows only its last four characters', async () => {
     const { page, h } = app;
     const key = `sk-or-v1-${randomBytes(28).toString('hex')}`;
-    assert.ok(!existsSync(authFile()) || !JSON.parse(readFileSync(authFile(), 'utf8')).openrouter, 'a clean agent folder');
+    assert.ok(
+      !existsSync(authFile()) || !JSON.parse(readFileSync(authFile(), 'utf8')).openrouter,
+      'a clean agent folder',
+    );
     const dialog = await h.openSettings('Providers');
     // The page lists what is signed in; adding is the "+" in the header, which opens the wizard: how, which, then the key workflow's own steps inside it.
-    assert.equal(await dialog.getByTestId('section-providers').locator('pk-get-model').count(), 0, 'no "Add a provider" group on the page');
+    assert.equal(
+      await dialog.getByTestId('section-providers').locator('pk-get-model').count(),
+      0,
+      'no "Add a provider" group on the page',
+    );
     await dialog.getByTestId('add-provider').click();
     const wf = page.getByTestId('add-provider-wizard');
     await wf.getByTestId('choice-api_key').click();
@@ -512,14 +590,21 @@ describe('settings', () => {
     assert.equal(await page.locator('input[type="password"]').count(), 0, 'the field is gone');
     const overview = await api('/api/pi-settings');
     assert.ok(!JSON.stringify(overview).includes(key), 'not in /api/pi-settings');
-    assert.equal(overview.providers.find((p) => p.id === 'openrouter').credential.lastFour, undefined, 'a keychain entry is not read to show it');
+    assert.equal(
+      overview.providers.find((p) => p.id === 'openrouter').credential.lastFour,
+      undefined,
+      'a keychain entry is not read to show it',
+    );
     assert.equal(overview.providers.find((p) => p.id === 'openrouter').credential.store, 'keychain');
     // pi has a default model already, so the switch "Make … the default" is off and the person's default stays as it was.
     assert.equal(await wf.getByTestId('make-default').locator('input').isChecked(), false);
     await wf.getByTestId('key-done').click();
     await wf.waitFor({ state: 'detached' });
     const card = dialog.locator('[data-provider="openrouter"]');
-    await card.getByTestId('credential-line').getByText(/key from keychain \(.*\) · added today/).waitFor();
+    await card
+      .getByTestId('credential-line')
+      .getByText(/key from keychain \(.*\) · added today/)
+      .waitFor();
     assert.ok(!(await dialog.innerText()).includes(key));
 
     // Sign out removes it from pi's file again.
@@ -578,7 +663,10 @@ describe('settings', () => {
     assert.match(await versions.innerText(), new RegExp(`pi-kit\\s+${pkg.version.replace(/\./g, '\\.')}`));
     assert.match(await versions.innerText(), /pi\s+\d+\.\d+\.\d+/);
     // The tests start the backend with PI_SKIP_VERSION_CHECK, as pi itself honours it: the line says so instead of calling pi.dev.
-    await versions.getByTestId('pi-update').getByText(/turned off \(PI_SKIP_VERSION_CHECK is set\)/).waitFor();
+    await versions
+      .getByTestId('pi-update')
+      .getByText(/turned off \(PI_SKIP_VERSION_CHECK is set\)/)
+      .waitFor();
     const about = await api('/api/about');
     assert.equal(about.app.version, pkg.version);
     await page.keyboard.press('Escape');
@@ -618,7 +706,10 @@ describe('model and effort', () => {
     const box = page.getByLabel('Message to pi');
     await box.fill('Say the word beta.');
     await box.press('Enter');
-    await page.locator('.pk-usage', { hasText: `${ALT_MODEL.id}` }).first().waitFor({ state: 'attached' });
+    await page
+      .locator('.pk-usage', { hasText: `${ALT_MODEL.id}` })
+      .first()
+      .waitFor({ state: 'attached' });
     if (await stop.count()) await stop.click();
     await stop.waitFor({ state: 'detached' });
     await h.settle(500);
@@ -629,7 +720,10 @@ describe('model and effort', () => {
     // pi's own file has the model_change entry the CLI (`pi -c`) restores the model from.
     const thread = await newestThread();
     const entries = sessionEntries((await api(`/api/threads/${thread.id}/stats`)).sessionFile);
-    assert.deepEqual(entries.filter((e) => e.type === 'model_change').map((e) => e.modelId), [MODEL.id, ALT_MODEL.id]);
+    assert.deepEqual(
+      entries.filter((e) => e.type === 'model_change').map((e) => e.modelId),
+      [MODEL.id, ALT_MODEL.id],
+    );
     const answered = entries.filter((e) => e.message?.role === 'assistant').map((e) => e.message.model);
     assert.equal(answered[0], MODEL.id);
     assert.equal(answered.at(-1), `${ALT_MODEL.id}`);
@@ -652,7 +746,10 @@ describe('model and effort', () => {
     const current = (await page.getByRole('button', { name: 'Model', exact: true }).innerText()).trim();
     await page.keyboard.press('Escape');
     // Effort has its own popup. The current model accepts only off, with an explicit explanation.
-    await page.locator('pk-composer-well').getByRole('button', { name: /^Thinking effort:/ }).click();
+    await page
+      .locator('pk-composer-well')
+      .getByRole('button', { name: /^Thinking effort:/ })
+      .click();
     const dialog = page.getByRole('dialog', { name: 'Thinking effort', exact: true });
     await dialog.waitFor();
     const slider = dialog.getByRole('slider', { name: 'Thinking effort', exact: true });
@@ -668,11 +765,17 @@ describe('model and effort', () => {
     await page.getByRole('button', { name: 'Model', exact: true }).filter({ hasText: MODEL.id }).waitFor();
     await page.getByRole('button', { name: 'Model', exact: true }).click();
     await page.getByRole('option', { name: THINKING_MODEL.id }).click();
-    await page.getByRole('button', { name: 'Model', exact: true }).filter({ hasText: `${THINKING_MODEL.id}` }).waitFor();
+    await page
+      .getByRole('button', { name: 'Model', exact: true })
+      .filter({ hasText: `${THINKING_MODEL.id}` })
+      .waitFor();
     // qwen thinks: ⌘⇧E moves to the next level it accepts.
     await page.keyboard.press('Meta+Shift+E');
     await page.locator('.toast', { hasText: /Effort: minimal/ }).waitFor();
-    await page.locator('pk-composer-well').getByRole('button', { name: 'Thinking effort: minimal', exact: true }).waitFor();
+    await page
+      .locator('pk-composer-well')
+      .getByRole('button', { name: 'Thinking effort: minimal', exact: true })
+      .waitFor();
     // During a run the change is queued with a visible hint.
     const box = page.getByLabel('Message to pi');
     await box.fill('Count from 1 to 40, one number per line, and write nothing else.');
@@ -685,7 +788,10 @@ describe('model and effort', () => {
     await page.locator('pk-composer-well').getByRole('button', { name: 'Stop' }).waitFor({ state: 'detached' });
     const thread = await newestThread();
     const entries = sessionEntries((await api(`/api/threads/${thread.id}/stats`)).sessionFile);
-    assert.deepEqual(entries.filter((e) => e.type === 'thinking_level_change').map((e) => e.thinkingLevel), ['off', 'minimal', 'low']);
+    assert.deepEqual(
+      entries.filter((e) => e.type === 'thinking_level_change').map((e) => e.thinkingLevel),
+      ['off', 'minimal', 'low'],
+    );
     assert.equal(entries.filter((e) => e.type === 'model_change').at(-1).modelId, `${THINKING_MODEL.id}`);
   });
 });
@@ -701,7 +807,8 @@ describe('usage and context', () => {
       ['Meter seventy-three', 190_000, 'warning', '73%'],
       ['Meter ninety-five', 250_000, 'error', '96%'],
     ];
-    for (const [name, contextTokens] of cases) sessions[name] = writeUsageSession({ agentDir: env.agentDir, cwd: env.project, name, contextTokens });
+    for (const [name, contextTokens] of cases)
+      sessions[name] = writeUsageSession({ agentDir: env.agentDir, cwd: env.project, name, contextTokens });
     await page.reload();
     await page.waitForSelector('pk-root .pk-shell');
     for (const [name, , level, percent] of cases) {
@@ -713,7 +820,10 @@ describe('usage and context', () => {
       // From 90 % the composer warns and the transcript gets a marker; pi's threshold (94 %) decides what they say pi will do.
       assert.equal(await page.getByTestId('context-warning').count(), level === 'error' ? 1 : 0, name);
       if (level === 'error') {
-        assert.match(await page.getByTestId('context-warning').innerText(), /Context nearly full, pi will compact on the next turn/);
+        assert.match(
+          await page.getByTestId('context-warning').innerText(),
+          /Context nearly full, pi will compact on the next turn/,
+        );
         assert.match(await page.getByTestId('context-marker').innerText(), /Context 96% full/);
       } else {
         assert.equal(await page.getByTestId('context-marker').count(), 0);
@@ -729,7 +839,16 @@ describe('usage and context', () => {
     const usage = await api(`/api/threads/${thread.id}/usage`);
     const stats = await api(`/api/threads/${thread.id}/stats`);
     // `/session` (pi's getSessionStats) and the aggregation of the file agree.
-    assert.deepEqual({ input: usage.totals.input, output: usage.totals.output, cacheRead: usage.totals.cacheRead, cacheWrite: usage.totals.cacheWrite, total: usage.totals.total }, stats.tokens);
+    assert.deepEqual(
+      {
+        input: usage.totals.input,
+        output: usage.totals.output,
+        cacheRead: usage.totals.cacheRead,
+        cacheWrite: usage.totals.cacheWrite,
+        total: usage.totals.total,
+      },
+      stats.tokens,
+    );
     assert.ok(Math.abs(usage.totals.cost - stats.cost) < 1e-9);
     assert.equal(usage.totals.turns, stats.userMessages);
     assert.equal(usage.totals.input, 1000 + 190_000);
@@ -740,7 +859,8 @@ describe('usage and context', () => {
     await dialog.waitFor();
     const rows = dialog.getByTestId('usage-turn-row');
     assert.equal(await rows.count(), 2);
-    const column = async (index) => (await rows.evaluateAll((els, i) => els.map((el) => el.children[i].textContent), index)).map(numbers);
+    const column = async (index) =>
+      (await rows.evaluateAll((els, i) => els.map((el) => el.children[i].textContent), index)).map(numbers);
     const sum = (list) => list.reduce((a, b) => a + b, 0);
     assert.equal(sum(await column(2)), numbers(await dialog.getByTestId('usage-sum-in').innerText()));
     assert.equal(sum(await column(2)), usage.totals.input);
@@ -758,9 +878,30 @@ describe('usage and context', () => {
     const before = (await api(`/api/threads/${thread.id}/usage`)).totals;
     // A turn written by something else (the CLI) while the app has the file: appended as pi would.
     const leaf = sessionEntries(file).at(-1);
-    const user = { type: 'message', id: 'cli00001', parentId: leaf.id, timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text: 'A question from the CLI.' }], timestamp: Date.now() } };
+    const user = {
+      type: 'message',
+      id: 'cli00001',
+      parentId: leaf.id,
+      timestamp: new Date().toISOString(),
+      message: { role: 'user', content: [{ type: 'text', text: 'A question from the CLI.' }], timestamp: Date.now() },
+    };
     const usage = { input: 7, output: 3, cacheRead: 0, cacheWrite: 0, totalTokens: 10, cost: { total: 0.5 } };
-    const answer = { type: 'message', id: 'cli00002', parentId: 'cli00001', timestamp: new Date(Date.now() + 1000).toISOString(), message: { role: 'assistant', content: [{ type: 'text', text: 'An answer.' }], api: 'openai-completions', provider: 'llama-swap', model: 'gemma-4-26b', usage, stopReason: 'stop', timestamp: Date.now() } };
+    const answer = {
+      type: 'message',
+      id: 'cli00002',
+      parentId: 'cli00001',
+      timestamp: new Date(Date.now() + 1000).toISOString(),
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'An answer.' }],
+        api: 'openai-completions',
+        provider: 'llama-swap',
+        model: 'gemma-4-26b',
+        usage,
+        stopReason: 'stop',
+        timestamp: Date.now(),
+      },
+    };
     appendFileSync(file, `${JSON.stringify(user)}\n${JSON.stringify(answer)}\n`);
     const after = (await api(`/api/threads/${thread.id}/usage`)).totals;
     assert.equal(after.input, before.input + 7);

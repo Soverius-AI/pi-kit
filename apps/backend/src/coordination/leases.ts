@@ -19,7 +19,12 @@ export function isLeaseActive(lease: Pick<Lease, 'at'>, now: number, ttl = LEASE
  * The lease after `threadId` touched `path` again at `now`: an active lease keeps its `since` and moves `at`, an expired or missing one starts over
  * (a lease that lapsed and is taken again is a new claim).
  */
-export function renewLease(previous: Lease | undefined, key: Pick<Lease, 'threadId' | 'cwd' | 'path'>, now: number, ttl = LEASE_TTL_MS): Lease {
+export function renewLease(
+  previous: Lease | undefined,
+  key: Pick<Lease, 'threadId' | 'cwd' | 'path'>,
+  now: number,
+  ttl = LEASE_TTL_MS,
+): Lease {
   const since = previous && isLeaseActive(previous, now, ttl) ? previous.since : now;
   return { ...key, since, at: now };
 }

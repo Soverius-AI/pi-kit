@@ -16,14 +16,27 @@ export function describeVerification(verification, name) {
     case 'done': {
       const summary = typeof v.summary === 'string' ? v.summary : '';
       const next = ' Read the report in the review dialog, then approve or discard the draft.';
-      if (v.result === 'pass') return { text: `${name}: pass. ${summary}${next}${extra}`.replace(/\s+/g, ' ').trim(), level: 'info' };
-      if (v.result === 'partial') return { text: `${name}: partial. ${summary}${next}${extra}`.replace(/\s+/g, ' ').trim(), level: 'warning' };
-      return { text: `${name}: failed. ${summary} Edit the skill and verify again, or discard it.${extra}`.replace(/\s+/g, ' ').trim(), level: 'warning' };
+      if (v.result === 'pass')
+        return { text: `${name}: pass. ${summary}${next}${extra}`.replace(/\s+/g, ' ').trim(), level: 'info' };
+      if (v.result === 'partial')
+        return { text: `${name}: partial. ${summary}${next}${extra}`.replace(/\s+/g, ' ').trim(), level: 'warning' };
+      return {
+        text: `${name}: failed. ${summary} Edit the skill and verify again, or discard it.${extra}`
+          .replace(/\s+/g, ' ')
+          .trim(),
+        level: 'warning',
+      };
     }
     case 'stopped':
-      return { text: `The verification of ${name} was stopped before it finished. Nothing was compared.`, level: 'info' };
+      return {
+        text: `The verification of ${name} was stopped before it finished. Nothing was compared.`,
+        level: 'info',
+      };
     case 'error':
-      return { text: `${name} could not be verified: ${typeof v.error === 'string' ? v.error : 'pi-kit reported an error.'}`, level: 'error' };
+      return {
+        text: `${name} could not be verified: ${typeof v.error === 'string' ? v.error : 'pi-kit reported an error.'}`,
+        level: 'error',
+      };
     case 'running':
       return { text: `${name} is being verified. Watch the thread “Verify: ${name}” in the sidebar.`, level: 'info' };
     default:

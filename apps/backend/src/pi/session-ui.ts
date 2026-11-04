@@ -1,5 +1,7 @@
 import { Logger } from '@nestjs/common';
-import type { AgentSession, ExtensionUIContext } from '@earendil-works/pi-coding-agent' with { 'resolution-mode': 'import' };
+import type { AgentSession, ExtensionUIContext } from '@earendil-works/pi-coding-agent' with {
+  'resolution-mode': 'import',
+};
 import type { PiUiEvent } from '@pi-kit/pi-adapter';
 import { COMPOSER_CHANNEL } from '@pi-kit/protocol';
 import type { PiModule } from './load-pi';
@@ -35,9 +37,14 @@ export function createSessionUi(pi: Pick<PiModule, 'createEventBus'>, threadId: 
   const bus = pi.createEventBus();
   bus.on(COMPOSER_CHANNEL, (payload) => {
     try {
-      if (!ui.registerComposer(payload)) logger.debug(`Dropped an invalid ${COMPOSER_CHANNEL} payload of thread ${threadId}: ${JSON.stringify(payload)?.slice(0, 200)}`);
+      if (!ui.registerComposer(payload))
+        logger.debug(
+          `Dropped an invalid ${COMPOSER_CHANNEL} payload of thread ${threadId}: ${JSON.stringify(payload)?.slice(0, 200)}`,
+        );
     } catch (error) {
-      logger.debug(`Could not relay a ${COMPOSER_CHANNEL} payload of thread ${threadId}: ${error instanceof Error ? error.message : String(error)}`);
+      logger.debug(
+        `Could not relay a ${COMPOSER_CHANNEL} payload of thread ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   });
   return {
@@ -75,8 +82,10 @@ export function createSessionUi(pi: Pick<PiModule, 'createEventBus'>, threadId: 
       ui.activeTool = () => activeTools.at(-1)?.name;
       ui.activeToolCallId = () => activeTools.at(-1)?.id;
       session.subscribe((event) => {
-        if (event.type === 'tool_execution_start') activeTools.push({ id: String(event['toolCallId']), name: String(event['toolName']) });
-        else if (event.type === 'tool_execution_end') activeTools = activeTools.filter((t) => t.id !== String(event['toolCallId']));
+        if (event.type === 'tool_execution_start')
+          activeTools.push({ id: String(event['toolCallId']), name: String(event['toolName']) });
+        else if (event.type === 'tool_execution_end')
+          activeTools = activeTools.filter((t) => t.id !== String(event['toolCallId']));
       });
     },
   };

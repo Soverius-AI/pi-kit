@@ -4,10 +4,7 @@
   "sourceRoot": "libs/threads/api/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:threads",
-    "type:api"
-  ],
+  "tags": ["scope:threads", "type:api"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"

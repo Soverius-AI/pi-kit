@@ -38,7 +38,8 @@ export interface McpConfigRead {
 
 const NAME = /^[A-Za-z0-9_-]+$/;
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export function userMcpConfigPath(agentDir: string): string {
   return join(agentDir, 'mcp.json');
@@ -68,7 +69,12 @@ function exposureOf(value: unknown, fallback: McpExposure = 'codemode'): McpExpo
   return (MCP_EXPOSURES as readonly unknown[]).includes(value) ? (value as McpExposure) : fallback;
 }
 
-function describeEntry(name: string, raw: Record<string, unknown>, scope: 'global' | 'project', source: string): McpConfigEntry | string {
+function describeEntry(
+  name: string,
+  raw: Record<string, unknown>,
+  scope: 'global' | 'project',
+  source: string,
+): McpConfigEntry | string {
   if (!NAME.test(name)) return `${source}: server name "${name}" may contain only letters, digits, "_" and "-".`;
   const url = typeof raw['url'] === 'string' ? raw['url'] : undefined;
   const command = typeof raw['command'] === 'string' ? raw['command'] : undefined;
@@ -90,7 +96,8 @@ function describeEntry(name: string, raw: Record<string, unknown>, scope: 'globa
 }
 
 /** A project entry with neither `command`, `url` nor `type` overrides only `enabled` and `exposure` of the global server. */
-const isOverrideOnly = (raw: Record<string, unknown>): boolean => raw['command'] === undefined && raw['url'] === undefined && raw['type'] === undefined;
+const isOverrideOnly = (raw: Record<string, unknown>): boolean =>
+  raw['command'] === undefined && raw['url'] === undefined && raw['type'] === undefined;
 
 export function readMcpConfig(options: { agentDir: string; cwd?: string; projectTrusted: boolean }): McpConfigRead {
   const errors: string[] = [];
@@ -130,11 +137,19 @@ export function readMcpConfig(options: { agentDir: string; cwd?: string; project
       else byName.set(name, entry);
     }
   }
-  return { servers: [...byName.values()].sort((a, b) => a.name.localeCompare(b.name)), errors, userConfig, ...(projectConfig ? { projectConfig } : {}) };
+  return {
+    servers: [...byName.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    errors,
+    userConfig,
+    ...(projectConfig ? { projectConfig } : {}),
+  };
 }
 
 /** `enabled` for one server in the file that defines it (or its project override), keeping the rest of the file as it is. */
-export function setMcpServerEnabled(entry: Pick<McpConfigEntry, 'name' | 'source' | 'override'>, enabled: boolean): string {
+export function setMcpServerEnabled(
+  entry: Pick<McpConfigEntry, 'name' | 'source' | 'override'>,
+  enabled: boolean,
+): string {
   const path = entry.override ?? entry.source;
   const text = readFileSync(path, 'utf8');
   const root: unknown = JSON.parse(text);
@@ -165,10 +180,14 @@ function loadForWrite(path: string): { root: Record<string, unknown>; indent: st
   try {
     parsed = JSON.parse(text);
   } catch (error) {
-    throw new Error(`${path} is not valid JSON (${error instanceof Error ? error.message : String(error)}, { cause: error }); fix it first, pi-kit will not overwrite it.`, { cause: error });
+    throw new Error(
+      `${path} is not valid JSON (${error instanceof Error ? error.message : String(error)}, { cause: error }); fix it first, pi-kit will not overwrite it.`,
+      { cause: error },
+    );
   }
   if (!isRecord(parsed)) throw new Error(`${path} is not a JSON object; fix it first, pi-kit will not overwrite it.`);
-  if (parsed['mcpServers'] !== undefined && !isRecord(parsed['mcpServers'])) throw new Error(`"mcpServers" in ${path} is not an object; fix it first, pi-kit will not overwrite it.`);
+  if (parsed['mcpServers'] !== undefined && !isRecord(parsed['mcpServers']))
+    throw new Error(`"mcpServers" in ${path} is not an object; fix it first, pi-kit will not overwrite it.`);
   return { root: parsed, indent: indentOf(text) };
 }
 
@@ -214,7 +233,10 @@ export function removeMcpServer(path: string, name: string): boolean {
 }
 
 /** `exposure` for one server in the file that defines it (or its project override). `codemode`, pi's default, removes the key as pi's own manager does. */
-export function setMcpServerExposure(entry: Pick<McpConfigEntry, 'name' | 'source' | 'override'>, exposure: McpExposure): string {
+export function setMcpServerExposure(
+  entry: Pick<McpConfigEntry, 'name' | 'source' | 'override'>,
+  exposure: McpExposure,
+): string {
   const path = entry.override ?? entry.source;
   const { root, indent } = loadForWrite(path);
   const servers = root['mcpServers'];

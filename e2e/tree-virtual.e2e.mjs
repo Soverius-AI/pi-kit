@@ -16,21 +16,49 @@ const scroller = () => app.page.locator('pk-session-graph');
 before(async () => {
   stopBackend = await ensureBackend();
   fixture = writeGraphSession({ agentDir: env.agentDir, cwd: env.project, name: title });
-  const entries = readFileSync(fixture.file, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  const entries = readFileSync(fixture.file, 'utf8')
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line));
   const info = entries.pop();
   let parentId = info.parentId;
   const timestamp = new Date().toISOString();
   for (let i = 0; i < count; i++) {
     if (i > 0 && i % 50 === 0) {
-      entries.push({ type: 'compaction', id: `compact-${i}`, parentId, timestamp,
-        summary: `Earlier graph turns through ${i - 1}.`, firstKeptEntryId: parentId, tokensBefore: 200000 });
+      entries.push({
+        type: 'compaction',
+        id: `compact-${i}`,
+        parentId,
+        timestamp,
+        summary: `Earlier graph turns through ${i - 1}.`,
+        firstKeptEntryId: parentId,
+        tokensBefore: 200000,
+      });
       parentId = `compact-${i}`;
     }
-    entries.push({ type: 'message', id: `graph-u-${i}`, parentId, timestamp,
-      message: { role: 'user', content: [{ type: 'text', text: `Graph viewport turn ${i}` }], timestamp: Date.now() } });
-    entries.push({ type: 'message', id: `graph-a-${i}`, parentId: `graph-u-${i}`, timestamp,
-      message: { role: 'assistant', content: [{ type: 'text', text: `Graph answer ${i}` }], api: 'openai-completions', provider: 'llama-swap', model: 'gemma-4-26b',
-        stopReason: 'stop', timestamp: Date.now(), usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { total: 0 } } } });
+    entries.push({
+      type: 'message',
+      id: `graph-u-${i}`,
+      parentId,
+      timestamp,
+      message: { role: 'user', content: [{ type: 'text', text: `Graph viewport turn ${i}` }], timestamp: Date.now() },
+    });
+    entries.push({
+      type: 'message',
+      id: `graph-a-${i}`,
+      parentId: `graph-u-${i}`,
+      timestamp,
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: `Graph answer ${i}` }],
+        api: 'openai-completions',
+        provider: 'llama-swap',
+        model: 'gemma-4-26b',
+        stopReason: 'stop',
+        timestamp: Date.now(),
+        usage: { input: 10, output: 10, cacheRead: 0, cacheWrite: 0, totalTokens: 20, cost: { total: 0 } },
+      },
+    });
     parentId = `graph-a-${i}`;
   }
   entries.push({ ...info, parentId });
@@ -42,13 +70,20 @@ before(async () => {
     if (!thread) await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.ok(thread, 'the scanner discovers the complete session fixture');
-  const saved = await fetch(`${env.api}/api/settings/thread`, { method: 'PUT', headers: {
-    'Content-Type': 'application/json', Authorization: `Bearer ${env.server.PI_KIT_TOKEN}`,
-  }, body: JSON.stringify({ value: thread.id }) });
+  const saved = await fetch(`${env.api}/api/settings/thread`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${env.server.PI_KIT_TOKEN}`,
+    },
+    body: JSON.stringify({ value: thread.id }),
+  });
   assert.ok(saved.ok);
   app = await openApp({ scrollbars: true });
   await app.h.openPanel('Tree');
-  await graph().getByText(`Graph viewport turn ${count - 1}`, { exact: true }).waitFor();
+  await graph()
+    .getByText(`Graph viewport turn ${count - 1}`, { exact: true })
+    .waitFor();
 });
 after(async () => {
   await app?.close();
@@ -69,11 +104,13 @@ async function coverage() {
 
 it('covers beginning, middle, end and large jumps with mixed turn and compaction heights', async () => {
   for (const fraction of [0, 0.5, 0.98, 1, 0.2, 0.75, 0]) {
-    await scroller().evaluate((host, part) => { host.scrollTop = part * (host.scrollHeight - host.clientHeight); }, fraction);
+    await scroller().evaluate((host, part) => {
+      host.scrollTop = part * (host.scrollHeight - host.clientHeight);
+    }, fraction);
     await coverage();
   }
   const bands = graph().locator('pk-graph-row.band');
-  assert.ok(await bands.count() > 0, 'a real compaction band is in the first window');
+  assert.ok((await bands.count()) > 0, 'a real compaction band is in the first window');
   assert.equal(await bands.first().evaluate((row) => row.getBoundingClientRect().height), 28);
   assert.equal(app.errors.length, 0, app.errors.join('\n'));
 });
@@ -81,13 +118,17 @@ it('covers beginning, middle, end and large jumps with mixed turn and compaction
 it('reveals keyboard selection and Jump to current outside the mounted window', async () => {
   await graph().focus();
   await app.page.keyboard.press('End');
-  await graph().getByText(`Graph viewport turn ${count - 1}`, { exact: true }).waitFor();
+  await graph()
+    .getByText(`Graph viewport turn ${count - 1}`, { exact: true })
+    .waitFor();
   await coverage();
   await app.page.keyboard.press('Home');
   await graph().getByText('Start', { exact: true }).waitFor();
   await coverage();
   await app.page.getByRole('button', { name: 'Jump to current', exact: true }).click();
-  await graph().getByText(`Graph viewport turn ${count - 1}`, { exact: true }).waitFor();
+  await graph()
+    .getByText(`Graph viewport turn ${count - 1}`, { exact: true })
+    .waitFor();
   await coverage();
 });
 
@@ -97,14 +138,18 @@ it('filters offscreen turns, expands side branches and covers a resized viewport
   await graph().getByText('Graph viewport turn 450', { exact: true }).waitFor();
   assert.equal(await graph().getByRole('option').count(), 1);
   await find.fill('');
-  await scroller().evaluate((host) => { host.scrollTop = 0; });
+  await scroller().evaluate((host) => {
+    host.scrollTop = 0;
+  });
   const branch = graph().locator('pk-graph-row[aria-expanded="false"]').first();
   await branch.click();
   await graph().getByText('Fix the generator typing', { exact: true }).waitFor();
   await coverage();
   await app.page.setViewportSize({ width: 1280, height: 600 });
   await coverage();
-  await scroller().evaluate((host) => { host.scrollTop = host.scrollHeight / 2; });
+  await scroller().evaluate((host) => {
+    host.scrollTop = host.scrollHeight / 2;
+  });
   await coverage();
   assert.equal(app.errors.length, 0, app.errors.join('\n'));
 });

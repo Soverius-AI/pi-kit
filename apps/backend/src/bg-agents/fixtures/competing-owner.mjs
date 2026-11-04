@@ -22,5 +22,8 @@ try {
   process.stdout.write(`${JSON.stringify({ owned: false })}\n`);
 }
 // Keep the owner handle reachable, as BgAgentsService does, until shutdown; otherwise GC may close its SQLite connection.
-process.once('SIGTERM', () => { lock?.release(); process.exit(0); });
+process.once('SIGTERM', () => {
+  lock?.release();
+  process.exit(0);
+});
 setInterval(() => undefined, 1000);

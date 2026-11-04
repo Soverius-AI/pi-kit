@@ -45,7 +45,9 @@ describe('parseUnifiedPatch', () => {
 
 describe('addedFileHunks', () => {
   it('shows a written file as one added hunk', () => {
-    expect(addedFileHunks('a\nb\n')).toEqual([{ oldStart: 0, oldLines: 0, newStart: 1, newLines: 2, lines: ['+a', '+b'] }]);
+    expect(addedFileHunks('a\nb\n')).toEqual([
+      { oldStart: 0, oldLines: 0, newStart: 1, newLines: 2, lines: ['+a', '+b'] },
+    ]);
     expect(addedFileHunks('')).toEqual([]);
   });
 });

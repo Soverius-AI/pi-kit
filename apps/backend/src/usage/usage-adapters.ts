@@ -4,7 +4,10 @@ import type { ProviderUsage } from '@pi-kit/protocol';
  * The usage sources, one small adapter each. An adapter turns one provider's answer into `ProviderUsage`; it never logs, and it never sees more of the credential than the
  * token it is handed. Everything that is not a source (no endpoint, a refused token, an answer of another shape) is `null`: the picker shows nothing for that provider.
  */
-export type Fetcher = (url: string, init: { headers: Record<string, string>; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+export type Fetcher = (
+  url: string,
+  init: { headers: Record<string, string>; signal: AbortSignal },
+) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 export interface UsageAdapter {
   /** Provider ids it serves. */
@@ -17,16 +20,20 @@ export interface UsageAdapter {
 /**
  * The endpoints, each overridable by an environment variable so that the end-to-end tests ask a fake server instead of the provider (the tests never touch a real account). Nothing else sets them.
  */
-const ANTHROPIC_URL = (): string => process.env['PI_KIT_USAGE_ANTHROPIC_URL'] || 'https://api.anthropic.com/api/oauth/usage';
-const OPENAI_CODEX_URL = (): string => process.env['PI_KIT_USAGE_OPENAI_CODEX_URL'] || 'https://chatgpt.com/backend-api/wham/usage';
+const ANTHROPIC_URL = (): string =>
+  process.env['PI_KIT_USAGE_ANTHROPIC_URL'] || 'https://api.anthropic.com/api/oauth/usage';
+const OPENAI_CODEX_URL = (): string =>
+  process.env['PI_KIT_USAGE_OPENAI_CODEX_URL'] || 'https://chatgpt.com/backend-api/wham/usage';
 const OPENROUTER_BASE = (): string => process.env['PI_KIT_USAGE_OPENROUTER_BASE'] || 'https://openrouter.ai/api/v1';
 const RADIUS_GATEWAY = (): string => {
   const gateway = process.env['PI_RADIUS_GATEWAY'] || 'https://radius.pi.dev';
   return /^https?:\/\//iu.test(gateway) ? gateway : `https://${gateway}`;
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
-const percent = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : undefined);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+const percent = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : undefined;
 const usd = (value: number): string => `$${(Math.round(value * 100) / 100).toFixed(2)}`;
 
 /** The windows of the answer of `GET https://api.anthropic.com/api/oauth/usage`, in the order a person reads them. */
@@ -46,7 +53,12 @@ export const anthropicUsage: UsageAdapter = {
   credential: 'oauth',
   async fetch(token, fetcher, signal) {
     const response = await fetcher(ANTHROPIC_URL(), {
-      headers: { authorization: `Bearer ${token}`, 'anthropic-beta': 'oauth-2025-04-20', accept: 'application/json', 'user-agent': 'pi-kit' },
+      headers: {
+        authorization: `Bearer ${token}`,
+        'anthropic-beta': 'oauth-2025-04-20',
+        accept: 'application/json',
+        'user-agent': 'pi-kit',
+      },
       signal,
     });
     if (!response.ok) return null;
@@ -111,7 +123,10 @@ export const radiusUsage: UsageAdapter = {
   credential: 'either',
   async fetch(token, fetcher, signal) {
     const gateway = RADIUS_GATEWAY();
-    const init = { headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'user-agent': 'pi-kit' }, signal };
+    const init = {
+      headers: { authorization: `Bearer ${token}`, accept: 'application/json', 'user-agent': 'pi-kit' },
+      signal,
+    };
     const context = await fetcher(new URL('/v1/context', gateway).href, init);
     if (!context.ok) return null;
     const body = await context.json();
@@ -146,7 +161,12 @@ export const openaiCodexUsage: UsageAdapter = {
     const accountId = codexAccountId(token);
     if (!accountId) return null;
     const response = await fetcher(OPENAI_CODEX_URL(), {
-      headers: { authorization: `Bearer ${token}`, 'ChatGPT-Account-Id': accountId, accept: 'application/json', 'user-agent': 'pi-kit' },
+      headers: {
+        authorization: `Bearer ${token}`,
+        'ChatGPT-Account-Id': accountId,
+        accept: 'application/json',
+        'user-agent': 'pi-kit',
+      },
       signal,
     });
     return response.ok ? parseOpenAICodexUsage(await response.json()) : null;
@@ -177,7 +197,14 @@ export function parseOpenAICodexUsage(body: unknown): ProviderUsage | null {
     const used = percent(window['used_percent']);
     const seconds = window['limit_window_seconds'];
     if (used === undefined || typeof seconds !== 'number' || !Number.isSafeInteger(seconds) || seconds <= 0) continue;
-    const name = seconds === 604800 ? 'week' : seconds % 3600 === 0 ? `${seconds / 3600} h` : seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds} s`;
+    const name =
+      seconds === 604800
+        ? 'week'
+        : seconds % 3600 === 0
+          ? `${seconds / 3600} h`
+          : seconds % 60 === 0
+            ? `${seconds / 60} min`
+            : `${seconds} s`;
     const reset = window['reset_at'];
     const resetMs = typeof reset === 'number' && Number.isFinite(reset) && reset > 0 ? reset * 1000 : NaN;
     const resets = Number.isFinite(resetMs) && resetMs <= 8.64e15 ? new Date(resetMs).toISOString() : undefined;

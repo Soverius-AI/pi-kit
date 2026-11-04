@@ -1,5 +1,11 @@
 import { type BaseEvent, EventType } from '@ag-ui/core';
-import { activityId, type ComposerRegistration, type PiCustomEvent, type PiDialogRequest, piInterruptReason } from '@pi-kit/protocol';
+import {
+  activityId,
+  type ComposerRegistration,
+  type PiCustomEvent,
+  type PiDialogRequest,
+  piInterruptReason,
+} from '@pi-kit/protocol';
 
 /**
  * What pi's `ExtensionUIContext` does besides asking questions, as the host sees it. The
@@ -20,7 +26,12 @@ export function mapUiEvent(event: PiUiEvent): BaseEvent[] {
   switch (event.kind) {
     case 'notify':
       // Stamped, so a replay of the log can tell a stale notification from a fresh one.
-      return [{ ...custom({ name: 'pi.notify', value: { level: event.level ?? 'info', text: event.message } }), timestamp: Date.now() } as BaseEvent];
+      return [
+        {
+          ...custom({ name: 'pi.notify', value: { level: event.level ?? 'info', text: event.message } }),
+          timestamp: Date.now(),
+        } as BaseEvent,
+      ];
     case 'status':
       return [custom({ name: 'pi.status', value: { key: event.key, text: event.text ?? '' } })];
     case 'title':
@@ -34,7 +45,11 @@ export function mapUiEvent(event: PiUiEvent): BaseEvent[] {
           messageId: activityId.widget(event.key),
           activityType: 'pi.widget',
           // Clearing a widget sends it empty; the renderer hides empty ones.
-          content: { key: event.key, lines: event.lines ?? [], ...(event.placement ? { placement: event.placement } : {}) },
+          content: {
+            key: event.key,
+            lines: event.lines ?? [],
+            ...(event.placement ? { placement: event.placement } : {}),
+          },
           replace: true,
         } as BaseEvent,
       ];
@@ -67,9 +82,10 @@ export function interruptFinished(threadId: string, runId: string, dialogs: read
         // A standard expiresAt makes the SDK discard that required resume.
         responseSchema: {
           type: 'object',
-          properties: request.method === 'confirm'
-            ? { confirmed: { type: 'boolean' } }
-            : { value: { type: 'string', ...(request.method === 'select' ? { enum: request.options ?? [] } : {}) } },
+          properties:
+            request.method === 'confirm'
+              ? { confirmed: { type: 'boolean' } }
+              : { value: { type: 'string', ...(request.method === 'select' ? { enum: request.options ?? [] } : {}) } },
           required: [request.method === 'confirm' ? 'confirmed' : 'value'],
           additionalProperties: false,
         },

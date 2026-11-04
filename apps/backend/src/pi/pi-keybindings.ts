@@ -47,14 +47,26 @@ function readUser(agentDir: string): Record<string, unknown> {
   }
 }
 
-const keysOf = (value: unknown): string[] | undefined => (typeof value === 'string' ? [value] : Array.isArray(value) ? value.filter((k): k is string => typeof k === 'string') : undefined);
-const sameKeys = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((k, i) => k === b[i]);
+const keysOf = (value: unknown): string[] | undefined =>
+  typeof value === 'string'
+    ? [value]
+    : Array.isArray(value)
+      ? value.filter((k): k is string => typeof k === 'string')
+      : undefined;
+const sameKeys = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((k, i) => k === b[i]);
 
 export function piKeybindings(agentDir: string): KeybindingInfo[] {
   const user = readUser(agentDir);
   return DEFAULTS.map(({ id, keys, description }) => {
     const override = keysOf(user[id]);
-    return { id, keys: override ?? keys, description, default: keys, custom: override !== undefined && !sameKeys(override, keys) };
+    return {
+      id,
+      keys: override ?? keys,
+      description,
+      default: keys,
+      custom: override !== undefined && !sameKeys(override, keys),
+    };
   });
 }
 

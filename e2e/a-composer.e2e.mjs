@@ -37,7 +37,10 @@ function sse(text) {
   return text
     .split('\n\n')
     .filter((block) => block.trim())
-    .map((block) => ({ event: /^event: (.*)$/m.exec(block)?.[1], data: JSON.parse(/^data: (.*)$/m.exec(block)?.[1] ?? 'null') }));
+    .map((block) => ({
+      event: /^event: (.*)$/m.exec(block)?.[1],
+      data: JSON.parse(/^data: (.*)$/m.exec(block)?.[1] ?? 'null'),
+    }));
 }
 
 /** A 16-bit mono WAV of a tone: `channels` copies of it, at `rate`. */
@@ -105,18 +108,34 @@ describe('the compact composer toolbar', () => {
       await h.settle(300);
       const welcome = await page.getByTestId('new-thread-page').locator('h2').boundingBox();
       const transcript = await page.locator('[cdkscrollable]').boundingBox();
-      assert.ok(welcome && transcript && welcome.y >= transcript.y, `${width}×${height}: the empty-thread heading is clipped`);
-      assert.equal(await page.getByRole('button', { name: 'Scroll to bottom', exact: true }).count(), 0, 'an empty thread has no latest message to jump to');
+      assert.ok(
+        welcome && transcript && welcome.y >= transcript.y,
+        `${width}×${height}: the empty-thread heading is clipped`,
+      );
+      assert.equal(
+        await page.getByRole('button', { name: 'Scroll to bottom', exact: true }).count(),
+        0,
+        'an empty thread has no latest message to jump to',
+      );
       const m = await measure(page);
       assert.equal(m.overflow, 0, `${width}: the toolbar scrolls`);
       const names = m.rows.map((r) => r.name).join(' | ');
       for (const wanted of ['Model', /^Thinking effort:/, 'Dictate', 'Send']) {
-        assert.ok(m.rows.some((r) => (wanted instanceof RegExp ? wanted.test(r.name) : r.name === wanted)), `${width}: no ${wanted} in ${names}`);
+        assert.ok(
+          m.rows.some((r) => (wanted instanceof RegExp ? wanted.test(r.name) : r.name === wanted)),
+          `${width}: no ${wanted} in ${names}`,
+        );
       }
-      assert.ok(m.rows.some((r) => r.name.startsWith('Context')), `${width}: no context ring`);
+      assert.ok(
+        m.rows.some((r) => r.name.startsWith('Context')),
+        `${width}: no context ring`,
+      );
       for (const r of m.rows) {
         assert.equal(r.height, r.inPill ? 28 : 32, `${width}: ${r.name} is ${r.height}px tall`);
-        assert.ok(r.left >= m.well.left - 0.5 && r.right <= m.well.right + 0.5, `${width}: ${r.name} (${r.left}-${r.right}) leaves the well (${m.well.left}-${m.well.right})`);
+        assert.ok(
+          r.left >= m.well.left - 0.5 && r.right <= m.well.right + 0.5,
+          `${width}: ${r.name} (${r.left}-${r.right}) leaves the well (${m.well.left}-${m.well.right})`,
+        );
       }
       const rowsOfControls = new Set(m.rows.filter((r) => !r.inPill).map((r) => r.top)).size;
       assert.equal(rowsOfControls, width < 768 ? 2 : 1, `${width}: ${rowsOfControls} rows of controls`);
@@ -137,10 +156,16 @@ describe('the compact composer toolbar', () => {
       await h.settle(250);
       const m = await measure(page);
       assert.equal(m.overflow, 0, `${width}: the toolbar scrolls while running`);
-      assert.ok(m.rows.some((r) => r.name === 'Stop'), `${width}: no Stop`);
+      assert.ok(
+        m.rows.some((r) => r.name === 'Stop'),
+        `${width}: no Stop`,
+      );
       for (const r of m.rows) {
         assert.equal(r.height, r.inPill ? 28 : 32, `${width} running: ${r.name} is ${r.height}px tall`);
-        assert.ok(r.left >= m.well.left - 0.5 && r.right <= m.well.right + 0.5, `${width} running: ${r.name} leaves the well`);
+        assert.ok(
+          r.left >= m.well.left - 0.5 && r.right <= m.well.right + 0.5,
+          `${width} running: ${r.name} leaves the well`,
+        );
       }
     }
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -198,7 +223,11 @@ describe('voice input: the model, the API', () => {
     assert.equal(status.engine, 'fake');
     assert.equal(status.model.state, 'missing');
     assert.equal(status.model.name, 'Whistle');
-    const refused = await raw('/api/transcribe/model', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const refused = await raw('/api/transcribe/model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
     assert.equal(refused.status, 400);
     assert.equal((await api('/api/transcribe/status')).model.state, 'missing');
     const tooEarly = await post('/api/transcribe', wav({ seconds: 1 }));
@@ -234,7 +263,10 @@ describe('voice input: the model, the API', () => {
     assert.ok(Math.abs(result.durationMs - 2809) <= 2, String(result.durationMs));
     assert.ok(result.tookMs >= 0);
     // 1.5 s of stereo at 48 kHz is converted down to 1.5 s of 16 kHz mono.
-    assert.match((await (await post('/api/transcribe', wav({ seconds: 1.5, rate: 48000, channels: 2 }))).json()).text, /^fixture heard 1\.5 seconds of sound\.$/);
+    assert.match(
+      (await (await post('/api/transcribe', wav({ seconds: 1.5, rate: 48000, channels: 2 }))).json()).text,
+      /^fixture heard 1\.5 seconds of sound\.$/,
+    );
     // Silence is not sent to the engine at all.
     assert.deepEqual((await (await post('/api/transcribe', wav({ seconds: 1, amplitude: 0 }))).json()).text, '');
     // What it cannot read is a 4xx that says why.
@@ -251,7 +283,10 @@ describe('voice input: the model, the API', () => {
     assert.ok(partials.length >= 3, `${partials.length} partial events`);
     assert.equal(events.at(-1).event, 'done');
     // The committed words and the final tail make the sentence the one-shot route gave.
-    const committed = partials.map((p) => p.data.text).filter(Boolean).join(' ');
+    const committed = partials
+      .map((p) => p.data.text)
+      .filter(Boolean)
+      .join(' ');
     assert.match(committed, /^fixture heard/);
     assert.match(events.at(-1).data.result.text, /^fixture heard 2\.8 seconds of sound in en\.$/);
     assert.match(partials[0].data.pending, /\S/);
@@ -262,7 +297,11 @@ describe('voice input: the model, the API', () => {
     const events = raw(`/api/transcribe/live/${id}/events`).then((r) => r.text());
     const pcm = readFileSync(SENTENCE).subarray(44);
     for (let at = 0; at < pcm.length; at += 32000) {
-      const sent = await raw(`/api/transcribe/live/${id}/chunk`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: pcm.subarray(at, at + 32000) });
+      const sent = await raw(`/api/transcribe/live/${id}/chunk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: pcm.subarray(at, at + 32000),
+      });
       assert.equal(sent.status, 204);
     }
     const result = await (await raw(`/api/transcribe/live/${id}/end`, { method: 'POST' })).json();
@@ -271,7 +310,10 @@ describe('voice input: the model, the API', () => {
     assert.ok(seen.filter((e) => e.event === 'partial').length >= 3);
     assert.equal(seen.at(-1).event, 'done');
     // A session that is over is a 409.
-    assert.equal((await raw(`/api/transcribe/live/${id}/chunk`, { method: 'POST', body: Buffer.alloc(4) })).status, 409);
+    assert.equal(
+      (await raw(`/api/transcribe/live/${id}/chunk`, { method: 'POST', body: Buffer.alloc(4) })).status,
+      409,
+    );
   });
 });
 
@@ -284,16 +326,31 @@ describe('voice input: dictating into the composer with a fake microphone', () =
     await box.focus();
     await page.keyboard.down('Alt');
     await page.keyboard.down('Space');
-    await page.getByTestId('voice-hint').filter({ hasText: /Listening|fixture/ }).waitFor();
-    assert.ok(await page.locator('.pk-well copilot-chat-audio-recorder canvas').isVisible(), 'CopilotKit’s waveform has taken the editor row');
+    await page
+      .getByTestId('voice-hint')
+      .filter({ hasText: /Listening|fixture/ })
+      .waitFor();
+    assert.ok(
+      await page.locator('.pk-well copilot-chat-audio-recorder canvas').isVisible(),
+      'CopilotKit’s waveform has taken the editor row',
+    );
     assert.equal(await page.getByLabel('Message to pi').count(), 0, 'the textarea is swapped out while listening');
     // Live: the first committed words arrive while the key is still down.
-    await page.getByTestId('voice-hint').filter({ hasText: /fixture/ }).waitFor();
+    await page
+      .getByTestId('voice-hint')
+      .filter({ hasText: /fixture/ })
+      .waitFor();
     assert.equal(await page.getByRole('button', { name: 'Finish dictating' }).getAttribute('aria-pressed'), 'true');
     const started = Date.now();
     await page.keyboard.up('Space');
     await page.keyboard.up('Alt');
-    await page.waitForFunction(() => /fixture heard \d+\.\d seconds of sound/.test(document.querySelector('[aria-label="Message to pi"]')?.value ?? ''), undefined);
+    await page.waitForFunction(
+      () =>
+        /fixture heard \d+\.\d seconds of sound/.test(
+          document.querySelector('[aria-label="Message to pi"]')?.value ?? '',
+        ),
+      undefined,
+    );
     const after = Date.now() - started;
     const value = await composerValue(page);
     assert.match(value, /^Please say: fixture heard \d+\.\d seconds of sound\.$/);
@@ -320,7 +377,13 @@ describe('voice input: dictating into the composer with a fake microphone', () =
     await page.getByRole('button', { name: 'Finish dictating' }).waitFor();
     await h.settle(1800);
     await page.getByRole('button', { name: 'Finish dictating' }).click();
-    await page.waitForFunction(() => /fixture heard \d+\.\d seconds of sound/.test(document.querySelector('[aria-label="Message to pi"]')?.value ?? ''), undefined);
+    await page.waitForFunction(
+      () =>
+        /fixture heard \d+\.\d seconds of sound/.test(
+          document.querySelector('[aria-label="Message to pi"]')?.value ?? '',
+        ),
+      undefined,
+    );
     await h.openSettings('Voice');
     await page.getByTestId('section-voice').getByRole('tab', { name: 'Dictation', exact: true }).click();
     await page.getByTestId('voice-live').check();
@@ -344,7 +407,10 @@ describe('voice input: dictating into the composer with a fake microphone', () =
     await h.settle(1800);
     await page.keyboard.up('Space');
     await page.keyboard.up('Alt');
-    await page.locator('.pk-user', { hasText: /fixture heard/ }).first().waitFor();
+    await page
+      .locator('.pk-user', { hasText: /fixture heard/ })
+      .first()
+      .waitFor();
     assert.equal(await composerValue(page), '');
     const stop = page.getByTestId('stop');
     if (await stop.count()) await stop.click();
@@ -363,7 +429,10 @@ describe('voice input: dictating into the composer with a fake microphone', () =
     await box.focus();
     await page.keyboard.down('Alt');
     await page.keyboard.down('Space');
-    await page.getByTestId('voice-hint').filter({ hasText: /Listening|fixture/ }).waitFor();
+    await page
+      .getByTestId('voice-hint')
+      .filter({ hasText: /Listening|fixture/ })
+      .waitFor();
     await page.keyboard.press('Escape');
     await page.keyboard.up('Space');
     await page.keyboard.up('Alt');
@@ -389,7 +458,10 @@ describe('Settings › Voice', () => {
     assert.equal(await dialog.getByTestId('voice-language').isVisible(), false);
     await voice.getByRole('tab', { name: 'Privacy', exact: true }).click();
     // The panel switches after the click: wait for its text instead of reading the old tab.
-    await voice.getByText(/never leaves|local only|nothing is sent/i).first().waitFor();
+    await voice
+      .getByText(/never leaves|local only|nothing is sent/i)
+      .first()
+      .waitFor();
     await voice.getByRole('tab', { name: 'Dictation', exact: true }).click();
     assert.equal(await dialog.getByTestId('voice-key').innerText(), '⌥Space');
     // The language is saved in pi-kit's database.

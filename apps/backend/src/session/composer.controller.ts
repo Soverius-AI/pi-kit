@@ -1,6 +1,12 @@
 import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { type CompleteResponse, CompleteRequestSchema, CompleteResponseSchema, type ComposerRegistration, ComposerRegistrationSchema } from '@pi-kit/protocol';
+import {
+  type CompleteResponse,
+  CompleteRequestSchema,
+  CompleteResponseSchema,
+  type ComposerRegistration,
+  ComposerRegistrationSchema,
+} from '@pi-kit/protocol';
 import type { z } from 'zod';
 import { Fails, Responds, ThreadIdParam } from '../contract';
 import { PiSessionService } from '../pi/pi-session.service';
@@ -22,10 +28,17 @@ export class ComposerController {
   /** `ctx.ui.addAutocompleteProvider`: the suggestions at the caret of a single-line text, each with the text and caret that applying it gives. */
   @Post('threads/:id/complete')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Complete a command argument', description: 'Asks the autocomplete providers that extensions added for the suggestions at the caret, each with the text and caret that applying it gives.' })
+  @ApiOperation({
+    summary: 'Complete a command argument',
+    description:
+      'Asks the autocomplete providers that extensions added for the suggestions at the caret, each with the text and caret that applying it gives.',
+  })
   @Responds(CompleteResponseSchema)
   @Fails({ 404: 'There is no such thread.' })
-  async complete(@Param('id') id: string, @Body({ schema: CompleteRequestSchema }) body: z.infer<typeof CompleteRequestSchema>): Promise<CompleteResponse> {
+  async complete(
+    @Param('id') id: string,
+    @Body({ schema: CompleteRequestSchema }) body: z.infer<typeof CompleteRequestSchema>,
+  ): Promise<CompleteResponse> {
     await this.threads.openSession(id);
     return this.sessions.complete(id, body.text, body.cursor);
   }
@@ -35,7 +48,10 @@ export class ComposerController {
    * client that is already connected when the session opens, which no replay reaches.
    */
   @Get('threads/:id/composer')
-  @ApiOperation({ summary: 'List composer registrations', description: 'Lists the toolbar actions and suggestion pills that extensions registered and that are in force now.' })
+  @ApiOperation({
+    summary: 'List composer registrations',
+    description: 'Lists the toolbar actions and suggestion pills that extensions registered and that are in force now.',
+  })
   @Responds(ComposerRegistrationSchema, { array: true })
   @Fails({ 404: 'There is no such thread.' })
   async composer(@Param('id') id: string): Promise<ComposerRegistration[]> {

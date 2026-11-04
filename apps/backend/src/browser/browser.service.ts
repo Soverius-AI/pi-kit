@@ -1,5 +1,19 @@
-import { Injectable, NotFoundException, OnModuleDestroy, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
-import { ScreenshotFormatSchema, ScreenshotQualitySchema, DEFAULT_SCREENSHOT_FORMAT, DEFAULT_SCREENSHOT_QUALITY, type BrowserAction, type BrowserResult, type BrowserState } from '@pi-kit/protocol';
+import {
+  Injectable,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import {
+  ScreenshotFormatSchema,
+  ScreenshotQualitySchema,
+  DEFAULT_SCREENSHOT_FORMAT,
+  DEFAULT_SCREENSHOT_QUALITY,
+  type BrowserAction,
+  type BrowserResult,
+  type BrowserState,
+} from '@pi-kit/protocol';
 import { MetaRepository } from '../db/meta.repository';
 import { ThreadsRepository } from '../db/threads.repository';
 import { DesktopBridge } from '../desktop/desktop-bridge';
@@ -13,12 +27,23 @@ import { PiSessionService } from '../pi/pi-session.service';
  */
 @Injectable()
 export class BrowserService implements OnModuleInit, OnModuleDestroy {
-  constructor(private readonly desktop: DesktopBridge, private readonly threads: ThreadsRepository, private readonly sessions: PiSessionService, private readonly meta: MetaRepository) {}
+  constructor(
+    private readonly desktop: DesktopBridge,
+    private readonly threads: ThreadsRepository,
+    private readonly sessions: PiSessionService,
+    private readonly meta: MetaRepository,
+  ) {}
 
-  get available(): boolean { return this.desktop.available; }
+  get available(): boolean {
+    return this.desktop.available;
+  }
 
-  onModuleInit(): void { this.sessions.setBrowser(this); }
-  onModuleDestroy(): void { this.sessions.setBrowser(undefined); }
+  onModuleInit(): void {
+    this.sessions.setBrowser(this);
+  }
+  onModuleDestroy(): void {
+    this.sessions.setBrowser(undefined);
+  }
 
   async state(threadId: string): Promise<BrowserState> {
     this.requireThread(threadId);
@@ -27,12 +52,19 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
   async run(threadId: string, action: BrowserAction, signal?: AbortSignal): Promise<BrowserResult> {
     this.requireThread(threadId);
-    if (!this.available) throw new ServiceUnavailableException('Browser artifacts are available in the pi-kit desktop app.');
+    if (!this.available)
+      throw new ServiceUnavailableException('Browser artifacts are available in the pi-kit desktop app.');
     if (action.action === 'screenshot') {
       action = {
         ...action,
-        format: action.format ?? (ScreenshotFormatSchema.safeParse(this.meta.getSetting('screenshotFormat')).data ?? DEFAULT_SCREENSHOT_FORMAT),
-        quality: action.quality ?? (ScreenshotQualitySchema.safeParse(this.meta.getSetting('screenshotQuality')).data ?? DEFAULT_SCREENSHOT_QUALITY),
+        format:
+          action.format ??
+          ScreenshotFormatSchema.safeParse(this.meta.getSetting('screenshotFormat')).data ??
+          DEFAULT_SCREENSHOT_FORMAT,
+        quality:
+          action.quality ??
+          ScreenshotQualitySchema.safeParse(this.meta.getSetting('screenshotQuality')).data ??
+          DEFAULT_SCREENSHOT_QUALITY,
       };
     }
     return this.desktop.browser(threadId, action, signal);

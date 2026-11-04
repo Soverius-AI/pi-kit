@@ -12,5 +12,16 @@ import { LocalRuntimeService } from './local-runtime.service';
  * Local models: hardware detection, the catalog, the model files, the llama-swap config and process, and the one
  * setup job at a time.
  */
-@Module({ imports: [DbModule], controllers: [LocalRuntimeController], providers: [LocalHardwareService, LocalModelCatalogService, LocalModelFilesService, LocalLlamaSwapService, LocalLlamaSwapProcessService, LocalRuntimeService] })
+@Module({
+  imports: [DbModule],
+  controllers: [LocalRuntimeController],
+  providers: [
+    LocalHardwareService,
+    LocalModelCatalogService,
+    LocalModelFilesService,
+    LocalLlamaSwapService,
+    LocalLlamaSwapProcessService,
+    LocalRuntimeService,
+  ],
+})
 export class LocalRuntimeModule {}

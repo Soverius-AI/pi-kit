@@ -35,7 +35,10 @@ export function serveRenderer(root: string, backendUrl: string): void {
   protocol.handle(APP_SCHEME, async (request) => {
     const { pathname } = new URL(request.url);
     // A one-time legacy preference migration runs in a separate hidden renderer, before the chat window exists.
-    if (pathname === '/__ui-storage') return new Response('<!doctype html><meta charset="utf-8"><title>UI storage migration</title>', { headers: { 'Content-Type': 'text/html', 'Content-Security-Policy': csp } });
+    if (pathname === '/__ui-storage')
+      return new Response('<!doctype html><meta charset="utf-8"><title>UI storage migration</title>', {
+        headers: { 'Content-Type': 'text/html', 'Content-Security-Policy': csp },
+      });
     let file = normalize(join(root, decodeURIComponent(pathname)));
     if (file !== root && !file.startsWith(root + sep)) {
       return new Response('Forbidden', { status: 403 });

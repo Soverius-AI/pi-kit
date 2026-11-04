@@ -15,7 +15,16 @@ describe('badgeOf', () => {
     expect(badgeOf('R', 'M')).toBe('R');
   });
   it('calls every unmerged state a conflict', () => {
-    for (const [x, y] of [['U', 'U'], ['A', 'A'], ['D', 'D'], ['A', 'U'], ['U', 'D'], ['D', 'U'], ['U', 'A']]) expect(badgeOf(x, y)).toBe('C');
+    for (const [x, y] of [
+      ['U', 'U'],
+      ['A', 'A'],
+      ['D', 'D'],
+      ['A', 'U'],
+      ['U', 'D'],
+      ['D', 'U'],
+      ['U', 'A'],
+    ])
+      expect(badgeOf(x, y)).toBe('C');
   });
   it('tints like the Changes panel: modified warning, added success, deleted error', () => {
     expect(GIT_BADGES.M.tone).toBe('warning');
@@ -29,7 +38,16 @@ describe('badgeOf', () => {
 
 describe('parseStatusZ', () => {
   it('reads the -z format, with the origin of a rename as its own item', () => {
-    const out = [' M src/a.ts', 'A  src/new.ts', ' D src/gone.ts', '?? notes.md', 'R  src/renamed.ts', 'src/before.ts', 'UU src/clash.ts', ''].join('\0');
+    const out = [
+      ' M src/a.ts',
+      'A  src/new.ts',
+      ' D src/gone.ts',
+      '?? notes.md',
+      'R  src/renamed.ts',
+      'src/before.ts',
+      'UU src/clash.ts',
+      '',
+    ].join('\0');
     expect(parseStatusZ(out)).toEqual([
       { path: 'src/a.ts', badge: 'M', staged: false },
       { path: 'src/new.ts', badge: 'A', staged: true },

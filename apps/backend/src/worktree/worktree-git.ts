@@ -16,7 +16,11 @@ export interface GitResult {
 }
 
 /** Runs git in `cwd` and says how it went instead of throwing: a merge that stops on conflicts is an answer, not an error. */
-export async function run(cwd: string, args: readonly string[], options: { identity?: boolean; timeoutMs?: number; env?: Record<string, string> } = {}): Promise<GitResult> {
+export async function run(
+  cwd: string,
+  args: readonly string[],
+  options: { identity?: boolean; timeoutMs?: number; env?: Record<string, string> } = {},
+): Promise<GitResult> {
   const prefix = options.identity ? ['-c', 'user.name=pi-kit', '-c', 'user.email=pi-kit@localhost'] : [];
   try {
     const { stdout, stderr } = await exec('git', ['-C', cwd, '-c', 'core.quotepath=off', ...prefix, ...args], {
@@ -28,12 +32,21 @@ export async function run(cwd: string, args: readonly string[], options: { ident
     return { ok: true, code: 0, stdout, stderr };
   } catch (error) {
     const e = error as { stdout?: string; stderr?: string; code?: number | string; message: string };
-    return { ok: false, code: typeof e.code === 'number' ? e.code : 1, stdout: e.stdout ?? '', stderr: (e.stderr || e.message || '').trim() };
+    return {
+      ok: false,
+      code: typeof e.code === 'number' ? e.code : 1,
+      stdout: e.stdout ?? '',
+      stderr: (e.stderr || e.message || '').trim(),
+    };
   }
 }
 
 /** stdout of a git command that must work; its own message otherwise. */
-export async function out(cwd: string, args: readonly string[], options?: { identity?: boolean; timeoutMs?: number; env?: Record<string, string> }): Promise<string> {
+export async function out(
+  cwd: string,
+  args: readonly string[],
+  options?: { identity?: boolean; timeoutMs?: number; env?: Record<string, string> },
+): Promise<string> {
   const result = await run(cwd, args, options);
   if (!result.ok) throw new Error(result.stderr || `git ${args[0]} failed`);
   return result.stdout;
@@ -68,7 +81,10 @@ export async function validBranchName(cwd: string, name: string): Promise<boolea
 
 /** The local branches and, per branch, the other work tree (not `cwd`'s own) that has it checked out. */
 export async function localBranches(cwd: string): Promise<{ name: string; heldBy: string | null }[]> {
-  const [names, trees] = await Promise.all([out(cwd, ['for-each-ref', '--format=%(refname:short)', '--sort=-committerdate', 'refs/heads']), listWorktrees(cwd).catch(() => [])]);
+  const [names, trees] = await Promise.all([
+    out(cwd, ['for-each-ref', '--format=%(refname:short)', '--sort=-committerdate', 'refs/heads']),
+    listWorktrees(cwd).catch(() => []),
+  ]);
   const top = await toplevel(cwd);
   const held = new Map<string, string>();
   for (const tree of trees) if (tree.branch && tree.path !== top) held.set(tree.branch, tree.path);
@@ -82,7 +98,12 @@ export async function localBranches(cwd: string): Promise<{ name: string; heldBy
 /** `origin/<branch>` and the other remotes' branches, without the `HEAD` pointer. */
 export async function remoteBranches(cwd: string): Promise<string[]> {
   const result = await run(cwd, ['for-each-ref', '--format=%(refname:short)', 'refs/remotes']);
-  return result.ok ? result.stdout.split('\n').map((n) => n.trim()).filter((n) => n && !n.endsWith('/HEAD') && n.includes('/')) : [];
+  return result.ok
+    ? result.stdout
+        .split('\n')
+        .map((n) => n.trim())
+        .filter((n) => n && !n.endsWith('/HEAD') && n.includes('/'))
+    : [];
 }
 
 /**
@@ -96,9 +117,14 @@ export async function workingTreePatch(cwd: string): Promise<{ patch: string; fi
     await out(cwd, ['read-tree', 'HEAD'], { env });
     await out(cwd, ['add', '-A', '--', ':/'], { env });
     const tree = (await out(cwd, ['write-tree'], { env })).trim();
-    const files = (await out(cwd, ['diff-tree', '-r', '--name-only', '--no-renames', 'HEAD', tree])).split('\n').filter(Boolean);
+    const files = (await out(cwd, ['diff-tree', '-r', '--name-only', '--no-renames', 'HEAD', tree]))
+      .split('\n')
+      .filter(Boolean);
     if (files.length === 0) return { patch: '', files };
-    return { patch: await out(cwd, ['diff-tree', '-p', '-r', '--binary', '--full-index', '--no-renames', 'HEAD', tree]), files };
+    return {
+      patch: await out(cwd, ['diff-tree', '-p', '-r', '--binary', '--full-index', '--no-renames', 'HEAD', tree]),
+      files,
+    };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -118,7 +144,11 @@ export async function applyPatch(cwd: string, patch: string): Promise<void> {
 }
 
 /** `git worktree remove`, without `force` only when the worktree is clean; the branch is deleted when `deleteBranch` names it (merged branches only: `-d`). */
-export async function removeWorktree(project: string, path: string, options: { force?: boolean; deleteBranch?: string } = {}): Promise<void> {
+export async function removeWorktree(
+  project: string,
+  path: string,
+  options: { force?: boolean; deleteBranch?: string } = {},
+): Promise<void> {
   await out(project, ['worktree', 'remove', ...(options.force ? ['--force'] : []), path]);
   if (options.deleteBranch) await run(project, ['branch', options.force ? '-D' : '-d', options.deleteBranch]);
 }
@@ -143,7 +173,11 @@ export async function listWorktrees(project: string): Promise<ListedWorktree[]> 
     list.push({
       path,
       head: lines.find((l) => l.startsWith('HEAD '))?.slice(5) ?? null,
-      branch: lines.find((l) => l.startsWith('branch '))?.slice(7).replace(/^refs\/heads\//, '') ?? null,
+      branch:
+        lines
+          .find((l) => l.startsWith('branch '))
+          ?.slice(7)
+          .replace(/^refs\/heads\//, '') ?? null,
       bare: lines.includes('bare'),
       locked: lines.some((l) => l.startsWith('locked')),
       prunable: lines.some((l) => l.startsWith('prunable')),
@@ -154,7 +188,10 @@ export async function listWorktrees(project: string): Promise<ListedWorktree[]> 
 
 /** Changed files of a work tree: staged, unstaged and untracked, with the badge the Files panel uses. */
 export async function changedFiles(cwd: string): Promise<FileStatusEntry[]> {
-  return parseStatusZ(await out(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--find-renames']), '');
+  return parseStatusZ(
+    await out(cwd, ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--find-renames']),
+    '',
+  );
 }
 
 /** Tracked files that differ from `HEAD` (untracked files do not block a merge in the main checkout). */

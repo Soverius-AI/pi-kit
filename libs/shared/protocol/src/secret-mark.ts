@@ -35,9 +35,27 @@ export function containsSecret(schema: unknown): boolean {
   if (cached !== undefined) return cached;
   containsSecretCache.set(schema, false); // a recursive schema ends here
   const def = (schema as z.core.$ZodType)._zod?.def as
-    | { shape?: Record<string, unknown>; element?: unknown; innerType?: unknown; options?: unknown[]; in?: unknown; out?: unknown; valueType?: unknown; items?: unknown[] }
+    | {
+        shape?: Record<string, unknown>;
+        element?: unknown;
+        innerType?: unknown;
+        options?: unknown[];
+        in?: unknown;
+        out?: unknown;
+        valueType?: unknown;
+        items?: unknown[];
+      }
     | undefined;
-  const parts = [def?.element, def?.innerType, def?.in, def?.out, def?.valueType, ...(def?.options ?? []), ...(def?.items ?? []), ...Object.values(def?.shape ?? {})];
+  const parts = [
+    def?.element,
+    def?.innerType,
+    def?.in,
+    def?.out,
+    def?.valueType,
+    ...(def?.options ?? []),
+    ...(def?.items ?? []),
+    ...Object.values(def?.shape ?? {}),
+  ];
   const found = isSecretSchema(schema) || parts.some((part) => containsSecret(part));
   containsSecretCache.set(schema, found);
   return found;
@@ -50,12 +68,18 @@ export function containsSecret(schema: unknown): boolean {
 export function redactSecrets(schema: unknown, value: unknown): unknown {
   if (isSecretSchema(schema)) return value === undefined ? undefined : SECRET_PLACEHOLDER;
   if (!containsSecret(schema)) return value;
-  const def = (schema as z.core.$ZodType)._zod?.def as { shape?: Record<string, unknown>; element?: unknown; innerType?: unknown; options?: unknown[] } | undefined;
+  const def = (schema as z.core.$ZodType)._zod?.def as
+    { shape?: Record<string, unknown>; element?: unknown; innerType?: unknown; options?: unknown[] } | undefined;
   if (def?.innerType) return redactSecrets(def.innerType, value);
   if (def?.element && Array.isArray(value)) return value.map((item) => redactSecrets(def.element, item));
   if (def?.shape && value && typeof value === 'object' && !Array.isArray(value)) {
     const shape = def.shape;
-    return Object.fromEntries(Object.entries(value).map(([key, field]) => [key, key in shape ? redactSecrets(shape[key], field) : SECRET_PLACEHOLDER]));
+    return Object.fromEntries(
+      Object.entries(value).map(([key, field]) => [
+        key,
+        key in shape ? redactSecrets(shape[key], field) : SECRET_PLACEHOLDER,
+      ]),
+    );
   }
   // A union, a pipe or anything else with a mark somewhere inside: the shape of the value is not known, so none of it is printed.
   return value === undefined ? undefined : SECRET_PLACEHOLDER;

@@ -2,7 +2,15 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { bundledPiDir, inRange, piMcpEntry, previousChoices, resolvePi, siblingPackageDir, withinMax } from './pi-resolution';
+import {
+  bundledPiDir,
+  inRange,
+  piMcpEntry,
+  previousChoices,
+  resolvePi,
+  siblingPackageDir,
+  withinMax,
+} from './pi-resolution';
 
 const RANGE = { min: '1.3.0', max: '1.x' };
 let base: string;
@@ -18,7 +26,11 @@ function packageIn(dir: string, version: string): void {
 function managedInstall(releases: { version: string; intact?: boolean }[], current?: string, marker = true): void {
   const root = join(agentDir, 'install');
   mkdirSync(join(root, 'releases'), { recursive: true });
-  if (marker) writeFileSync(join(root, 'managed-install.json'), JSON.stringify({ kind: 'pi-managed-install', schemaVersion: 1, layout: 'releases-v1' }));
+  if (marker)
+    writeFileSync(
+      join(root, 'managed-install.json'),
+      JSON.stringify({ kind: 'pi-managed-install', schemaVersion: 1, layout: 'releases-v1' }),
+    );
   if (current) writeFileSync(join(root, 'current-version'), `${current}\n`);
   for (const { version, intact = true } of releases) {
     const dir = join(root, 'releases', version);
@@ -29,7 +41,14 @@ function managedInstall(releases: { version: string; intact?: boolean }[], curre
   }
 }
 
-const resolve = (extra: { env?: NodeJS.ProcessEnv; pinned?: string } = {}) => resolvePi({ env: extra.env ?? {}, agentDir, bundledDir, range: RANGE, ...(extra.pinned ? { pinned: extra.pinned } : {}) });
+const resolve = (extra: { env?: NodeJS.ProcessEnv; pinned?: string } = {}) =>
+  resolvePi({
+    env: extra.env ?? {},
+    agentDir,
+    bundledDir,
+    range: RANGE,
+    ...(extra.pinned ? { pinned: extra.pinned } : {}),
+  });
 
 beforeEach(() => {
   base = mkdtempSync(join(tmpdir(), 'pk-resolve-'));
@@ -73,7 +92,9 @@ describe('resolvePi: PI_KIT_PI_DIR, then pi’s managed install, then the bundle
     managedInstall([{ version: '1.3.0' }, { version: '1.3.4' }], '1.3.4');
     const result = resolve();
     expect(result).toMatchObject({ source: 'managed', version: '1.3.4', notes: [] });
-    expect(result.packageDir).toBe(join(agentDir, 'install', 'releases', '1.3.4', 'node_modules', '@earendil-works', 'pi-coding-agent'));
+    expect(result.packageDir).toBe(
+      join(agentDir, 'install', 'releases', '1.3.4', 'node_modules', '@earendil-works', 'pi-coding-agent'),
+    );
     expect(result.managed?.releases.map((r) => r.version)).toEqual(['1.3.0', '1.3.4']);
   });
 
@@ -96,7 +117,9 @@ describe('resolvePi: PI_KIT_PI_DIR, then pi’s managed install, then the bundle
     const result = resolve();
     expect(result).toMatchObject({ source: 'bundled', version: '1.3.0' });
     expect(result.notes).toEqual(['pi 2.0.0 is installed, this pi-kit supports up to 1.x; using the bundled 1.3.0.']);
-    expect(result.managed?.releases).toEqual([expect.objectContaining({ version: '2.0.0', intact: true, inRange: false })]);
+    expect(result.managed?.releases).toEqual([
+      expect.objectContaining({ version: '2.0.0', intact: true, inRange: false }),
+    ]);
   });
 
   it('falls back to the newest eligible release when the current one is above the range', () => {
@@ -129,7 +152,11 @@ describe('resolvePi: PI_KIT_PI_DIR, then pi’s managed install, then the bundle
     managedInstall([{ version: '1.3.4' }], '1.3.4');
     const pkg = join(base, 'dev', 'pi');
     packageIn(pkg, '1.9.0');
-    expect(resolve({ env: { PI_KIT_PI_DIR: pkg } })).toMatchObject({ source: 'env', version: '1.9.0', packageDir: pkg });
+    expect(resolve({ env: { PI_KIT_PI_DIR: pkg } })).toMatchObject({
+      source: 'env',
+      version: '1.9.0',
+      packageDir: pkg,
+    });
     const release = join(base, 'dev', 'release');
     packageIn(join(release, 'node_modules', '@earendil-works', 'pi-coding-agent'), '1.8.0');
     expect(resolve({ env: { PI_KIT_PI_DIR: release } })).toMatchObject({ source: 'env', version: '1.8.0' });
@@ -157,7 +184,10 @@ describe('"Use previous release"', () => {
   });
 
   it('lists what can be switched to: other intact in-range releases, newest first, then the bundled copy', () => {
-    managedInstall([{ version: '1.3.1' }, { version: '1.3.4' }, { version: '1.3.2', intact: false }, { version: '2.0.0' }], '1.3.4');
+    managedInstall(
+      [{ version: '1.3.1' }, { version: '1.3.4' }, { version: '1.3.2', intact: false }, { version: '2.0.0' }],
+      '1.3.4',
+    );
     expect(previousChoices(resolve()).map((c) => c.release)).toEqual(['1.3.1', 'bundled']);
     expect(previousChoices(resolve({ pinned: 'bundled' })).map((c) => c.release)).toEqual(['1.3.4', '1.3.1']);
   });

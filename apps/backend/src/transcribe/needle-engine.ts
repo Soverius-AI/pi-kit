@@ -6,7 +6,10 @@ import type { EngineChunk, EngineOptions, EngineResult, SpeechEngine } from './s
 
 /** The parts of `cactus-needle` this engine uses (the package is ESM with its own types; it is loaded by path, see `loadNeedle`). */
 interface WhistleInstance {
-  transcribe(audio: Float32Array, options?: { language?: SpeechLanguage; wordTimestamps?: boolean; abortSignal?: AbortSignal }): Promise<{
+  transcribe(
+    audio: Float32Array,
+    options?: { language?: SpeechLanguage; wordTimestamps?: boolean; abortSignal?: AbortSignal },
+  ): Promise<{
     text: string;
     language: SpeechLanguage | '';
     words?: { word: string; start: number; end: number; probability: number }[];
@@ -79,8 +82,14 @@ export class NeedleEngine implements SpeechEngine {
     return { text: result.text.trim(), language: result.language, ...(result.words ? { words: result.words } : {}) };
   }
 
-  async *stream(chunks: AsyncIterable<Float32Array>, options: EngineOptions = {}): AsyncGenerator<EngineChunk, void, void> {
-    for await (const part of this.engine().stream(chunks, { ...(options.language ? { language: options.language } : {}), ...(options.signal ? { abortSignal: options.signal } : {}) })) {
+  async *stream(
+    chunks: AsyncIterable<Float32Array>,
+    options: EngineOptions = {},
+  ): AsyncGenerator<EngineChunk, void, void> {
+    for await (const part of this.engine().stream(chunks, {
+      ...(options.language ? { language: options.language } : {}),
+      ...(options.signal ? { abortSignal: options.signal } : {}),
+    })) {
       yield { text: part.text, pending: part.pending, language: part.language, receivedSeconds: part.received };
     }
   }

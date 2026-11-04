@@ -1,6 +1,8 @@
 import { existsSync } from 'node:fs';
 import { Logger } from '@nestjs/common';
-import type { AgentSession, EventBusController } from '@earendil-works/pi-coding-agent' with { 'resolution-mode': 'import' };
+import type { AgentSession, EventBusController } from '@earendil-works/pi-coding-agent' with {
+  'resolution-mode': 'import',
+};
 import { type AgentsHook, createAgentTools } from '../bg-agents/agent-tools';
 import { McpTap } from '../mcp/mcp-tap';
 import { createAskUserExtension } from './ask-user-extension';
@@ -68,7 +70,11 @@ export class SessionLifecycle {
   private readonly opening = new Map<string, Promise<OpenThread>>();
   private destroyed = false;
 
-  constructor(private readonly trust: TrustService, private readonly plugins: PiPluginService, private readonly hooks: LifecycleHooks) {}
+  constructor(
+    private readonly trust: TrustService,
+    private readonly plugins: PiPluginService,
+    private readonly hooks: LifecycleHooks,
+  ) {}
 
   get threads(): ReadonlyMap<string, OpenThread> {
     return this.opened;
@@ -128,7 +134,12 @@ export class SessionLifecycle {
       : pi.SessionManager.create(target.cwd, undefined, { id: threadId });
     if (!existing && target.title) sessionManager.appendSessionInfo(target.title);
     // The leaf the app moved to survives a restart only if the file has not changed since (the caller checks that).
-    if (existing && target.leafId && target.leafId !== sessionManager.getLeafId() && sessionManager.getEntry(target.leafId)) {
+    if (
+      existing &&
+      target.leafId &&
+      target.leafId !== sessionManager.getLeafId() &&
+      sessionManager.getEntry(target.leafId)
+    ) {
       sessionManager.branch(target.leafId);
     }
     const cwd = sessionManager.getCwd();
@@ -166,7 +177,9 @@ export class SessionLifecycle {
         createAskUserExtension(),
       ],
     });
-    await resourceLoader.reload({ resolveProjectTrust: ({ extensionsResult }) => this.trust.resolveForOpen(cwd, extensionsResult) });
+    await resourceLoader.reload({
+      resolveProjectTrust: ({ extensionsResult }) => this.trust.resolveForOpen(cwd, extensionsResult),
+    });
     const { session, modelFallbackMessage } = await pi.createAgentSession({
       modelRuntime: await createModelRuntime(pi),
       cwd,

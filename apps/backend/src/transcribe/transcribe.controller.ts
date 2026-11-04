@@ -1,4 +1,17 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpException, Param, PayloadTooLargeException, Post, Query, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpException,
+  Param,
+  PayloadTooLargeException,
+  Post,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
 import { ApiBody, ApiConsumes, ApiNoContentResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import {
   DownloadModelSchema,
@@ -26,7 +39,8 @@ async function readBody(req: Request, limit = TRANSCRIBE_MAX_BYTES): Promise<Uin
   let size = 0;
   for await (const chunk of req as AsyncIterable<Buffer>) {
     size += chunk.length;
-    if (size > limit) throw new PayloadTooLargeException(`The recording is larger than ${Math.round(limit / 1024 / 1024)} MB.`);
+    if (size > limit)
+      throw new PayloadTooLargeException(`The recording is larger than ${Math.round(limit / 1024 / 1024)} MB.`);
     chunks.push(chunk);
   }
   const all = Buffer.concat(chunks);
@@ -34,7 +48,12 @@ async function readBody(req: Request, limit = TRANSCRIBE_MAX_BYTES): Promise<Uin
 }
 
 function sseWriter(res: Response, req: Request): (event: TranscribeStreamEvent) => void {
-  res.status(200).set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.status(200).set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
   res.flushHeaders();
   req.on('close', () => res.end());
   return (event) => {
@@ -47,11 +66,22 @@ const failure = (error: unknown): never => {
   throw error;
 };
 
-const LIVE_ID = { name: 'id', description: 'The id `POST /api/transcribe/live` answered with.', schema: { type: 'string' } } as const;
+const LIVE_ID = {
+  name: 'id',
+  description: 'The id `POST /api/transcribe/live` answered with.',
+  schema: { type: 'string' },
+} as const;
 const NO_LIVE = 'That live transcription is over or never started.';
 const AUDIO = ['audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4', 'application/octet-stream'] as const;
-const AUDIO_BODY = { description: 'The recording itself as the request body (WAV, or WebM, Ogg or MP4 when ffmpeg is installed), not JSON or a form.', schema: { type: 'string', format: 'binary' } } as const;
-const PCM_BODY = { description: '16-bit 16 kHz mono PCM, a few seconds of it, as the request body.', schema: { type: 'string', format: 'binary' } } as const;
+const AUDIO_BODY = {
+  description:
+    'The recording itself as the request body (WAV, or WebM, Ogg or MP4 when ffmpeg is installed), not JSON or a form.',
+  schema: { type: 'string', format: 'binary' },
+} as const;
+const PCM_BODY = {
+  description: '16-bit 16 kHz mono PCM, a few seconds of it, as the request body.',
+  schema: { type: 'string', format: 'binary' },
+} as const;
 const NO_ENGINE = 'Whistle is not downloaded, or no speech engine could start.';
 const BAD_AUDIO = 'The recording could not be decoded.';
 
@@ -66,7 +96,11 @@ export class TranscribeController {
   constructor(private readonly transcribe: TranscribeService) {}
 
   @Get('status')
-  @ApiOperation({ summary: 'Get the voice status', description: 'Returns which engine runs the model, whether the model file is on disk, the decoders and the languages.' })
+  @ApiOperation({
+    summary: 'Get the voice status',
+    description:
+      'Returns which engine runs the model, whether the model file is on disk, the decoders and the languages.',
+  })
   @Responds(TranscribeStatusSchema)
   status(): TranscribeStatus {
     return this.transcribe.status();
@@ -74,29 +108,47 @@ export class TranscribeController {
 
   /** The user clicked "Download Whistle (17 MB)": `{ "accept": true }`. Without it nothing is fetched. Progress is in `status`. */
   @Post('model')
-  @ApiOperation({ summary: 'Download the voice model', description: 'Starts the download of the speech model after the person agreed, with `accept: true`. Progress is in the status.' })
+  @ApiOperation({
+    summary: 'Download the voice model',
+    description:
+      'Starts the download of the speech model after the person agreed, with `accept: true`. Progress is in the status.',
+  })
   @Responds(TranscribeStatusSchema, { status: 201 })
   download(@Body({ schema: DownloadModelSchema }) _body: z.infer<typeof DownloadModelSchema>): TranscribeStatus {
     return this.transcribe.startDownload();
   }
 
   @Delete('model')
-  @ApiOperation({ summary: 'Remove the voice model', description: 'Deletes the downloaded speech model, and answers with the status.' })
+  @ApiOperation({
+    summary: 'Remove the voice model',
+    description: 'Deletes the downloaded speech model, and answers with the status.',
+  })
   @Responds(TranscribeStatusSchema)
   remove(): Promise<TranscribeStatus> {
     return this.transcribe.removeModel();
   }
 
   @Post()
-  @ApiOperation({ summary: 'Transcribe a recording', description: 'Takes a recording as the request body and answers with its text. Nothing is stored. `words=1` adds the time and confidence of each word.' })
+  @ApiOperation({
+    summary: 'Transcribe a recording',
+    description:
+      'Takes a recording as the request body and answers with its text. Nothing is stored. `words=1` adds the time and confidence of each word.',
+  })
   @ApiConsumes(...AUDIO)
   @ApiBody(AUDIO_BODY)
   @Responds(TranscribeResultSchema, { status: 201 })
   @Fails({ 400: BAD_AUDIO, 409: NO_ENGINE, 413: 'The recording is larger than 100 MB.' })
-  async recording(@Req() req: Request, @Query({ schema: TranscribeQuerySchema }) query: z.infer<typeof TranscribeQuerySchema>): Promise<TranscribeResult> {
+  async recording(
+    @Req() req: Request,
+    @Query({ schema: TranscribeQuerySchema }) query: z.infer<typeof TranscribeQuerySchema>,
+  ): Promise<TranscribeResult> {
     const audio = await readBody(req);
     try {
-      return await this.transcribe.transcribe(audio, parseLanguage(query.language), query.words === '1' || query.words === 'true');
+      return await this.transcribe.transcribe(
+        audio,
+        parseLanguage(query.language),
+        query.words === '1' || query.words === 'true',
+      );
     } catch (error) {
       return failure(error);
     }
@@ -104,12 +156,20 @@ export class TranscribeController {
 
   @Post('stream')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Transcribe a recording as a stream', description: 'Takes a recording as the request body and streams server-sent events: `partial` with the newly committed words, then `done` with the whole result, or `error`.' })
+  @ApiOperation({
+    summary: 'Transcribe a recording as a stream',
+    description:
+      'Takes a recording as the request body and streams server-sent events: `partial` with the newly committed words, then `done` with the whole result, or `error`.',
+  })
   @ApiConsumes(...AUDIO)
   @ApiBody(AUDIO_BODY)
   @Streams(TranscribeStreamEventSchema, 'The stream ends with `done` or `error`.', 'text/event-stream')
   @Fails({ 413: 'The recording is larger than 100 MB.' })
-  async stream(@Req() req: Request, @Res() res: Response, @Query({ schema: TranscribeLanguageQuerySchema }) query: z.infer<typeof TranscribeLanguageQuerySchema>): Promise<void> {
+  async stream(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query({ schema: TranscribeLanguageQuerySchema }) query: z.infer<typeof TranscribeLanguageQuerySchema>,
+  ): Promise<void> {
     const audio = await readBody(req);
     const send = sseWriter(res, req);
     for await (const event of this.transcribe.streamRecording(audio, parseLanguage(query.language))) send(event);
@@ -117,15 +177,23 @@ export class TranscribeController {
   }
 
   @Post('live')
-  @ApiOperation({ summary: 'Start a live transcription', description: 'Starts a transcription that takes audio while the person is still speaking, and answers with its id.' })
+  @ApiOperation({
+    summary: 'Start a live transcription',
+    description: 'Starts a transcription that takes audio while the person is still speaking, and answers with its id.',
+  })
   @Responds(LiveTranscriptionSchema, { status: 201 })
-  async startLive(@Query({ schema: TranscribeLanguageQuerySchema }) query: z.infer<typeof TranscribeLanguageQuerySchema>): Promise<LiveTranscription> {
+  async startLive(
+    @Query({ schema: TranscribeLanguageQuerySchema }) query: z.infer<typeof TranscribeLanguageQuerySchema>,
+  ): Promise<LiveTranscription> {
     return this.transcribe.startLive(parseLanguage(query.language));
   }
 
   @Post('live/:id/chunk')
   @HttpCode(204)
-  @ApiOperation({ summary: 'Send audio to a live transcription', description: 'Appends a few seconds of 16-bit 16 kHz mono PCM to a live transcription.' })
+  @ApiOperation({
+    summary: 'Send audio to a live transcription',
+    description: 'Appends a few seconds of 16-bit 16 kHz mono PCM to a live transcription.',
+  })
   @ApiParam(LIVE_ID)
   @ApiConsumes('application/octet-stream')
   @ApiBody(PCM_BODY)
@@ -136,7 +204,11 @@ export class TranscribeController {
   }
 
   @Get('live/:id/events')
-  @ApiOperation({ summary: 'Stream a live transcription', description: 'Streams server-sent events while the audio is taken: `partial` with the words committed so far, then `done` or `error`.' })
+  @ApiOperation({
+    summary: 'Stream a live transcription',
+    description:
+      'Streams server-sent events while the audio is taken: `partial` with the words committed so far, then `done` or `error`.',
+  })
   @ApiParam(LIVE_ID)
   @Streams(TranscribeStreamEventSchema, 'The stream ends with `done` or `error`.', 'text/event-stream')
   events(@Param('id') id: string, @Req() req: Request, @Res() res: Response): void {
@@ -149,7 +221,10 @@ export class TranscribeController {
   }
 
   @Post('live/:id/end')
-  @ApiOperation({ summary: 'End a live transcription', description: 'Ends the audio of a live transcription and answers with the whole text.' })
+  @ApiOperation({
+    summary: 'End a live transcription',
+    description: 'Ends the audio of a live transcription and answers with the whole text.',
+  })
   @ApiParam(LIVE_ID)
   @Responds(TranscribeResultSchema, { status: 201 })
   @Fails({ 409: NO_LIVE })
@@ -159,7 +234,10 @@ export class TranscribeController {
 
   @Delete('live/:id')
   @HttpCode(204)
-  @ApiOperation({ summary: 'Abort a live transcription', description: 'Drops a live transcription and its audio without a result.' })
+  @ApiOperation({
+    summary: 'Abort a live transcription',
+    description: 'Drops a live transcription and its audio without a result.',
+  })
   @ApiParam(LIVE_ID)
   @ApiNoContentResponse({ description: 'The transcription is dropped.' })
   abort(@Param('id') id: string): void {

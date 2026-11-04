@@ -8,7 +8,10 @@ import { LOCK_FILE, openDurableStore, StoreOwnedError, takeOwnerLock } from './d
 
 const key = 'ab'.repeat(32);
 let dir: string;
-afterEach(() => { vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => {
+  vi.restoreAllMocks();
+  rmSync(dir, { recursive: true, force: true });
+});
 
 describe('openDurableStore', () => {
   it('runs SQL through the facade, rolls a failed transaction back, and the file is encrypted at rest', async () => {
@@ -26,7 +29,10 @@ describe('openDurableStore', () => {
         throw new Error('no');
       }),
     ).rejects.toThrow('no');
-    expect(await store.all<{ text: string }>('SELECT text FROM notes ORDER BY rowid')).toEqual([{ text: 'one' }, { text: 'two' }]);
+    expect(await store.all<{ text: string }>('SELECT text FROM notes ORDER BY rowid')).toEqual([
+      { text: 'one' },
+      { text: 'two' },
+    ]);
     expect(await store.get<{ n: number }>('SELECT count(*) AS n FROM notes')).toEqual({ n: 2 });
     await store.close();
     await expect(store.run('SELECT 1')).rejects.toThrow('closing');
@@ -84,7 +90,9 @@ describe('durable store protection follows the app database', () => {
   it('rolls back encryption if opening the verified replacement fails', async () => {
     const path = pathOf();
     await seed(path);
-    vi.spyOn(encryption, 'useKey').mockImplementationOnce(() => { throw new Error('replacement open failed'); });
+    vi.spyOn(encryption, 'useKey').mockImplementationOnce(() => {
+      throw new Error('replacement open failed');
+    });
     expect(() => openDurableStore(path, key)).toThrow('replacement open failed');
     expect(encryption.isPlainDatabase(path)).toBe(true);
     expect(existsSync(`${path}.plaintext`)).toBe(false);
@@ -92,14 +100,17 @@ describe('durable store protection follows the app database', () => {
     await check(path, key);
   });
 
-  it.each(['.plaintext', '.encrypted', '.encrypting', '.decrypting'])('retains recovery artifacts from an interrupted transition: %s', async (suffix) => {
-    const path = pathOf();
-    await seed(path);
-    writeFileSync(`${path}${suffix}`, 'recovery original');
-    expect(() => openDurableStore(path, key)).toThrow(/recovery/);
-    expect(readFileSync(`${path}${suffix}`, 'utf8')).toBe('recovery original');
-    expect(encryption.isPlainDatabase(path)).toBe(true);
-  });
+  it.each(['.plaintext', '.encrypted', '.encrypting', '.decrypting'])(
+    'retains recovery artifacts from an interrupted transition: %s',
+    async (suffix) => {
+      const path = pathOf();
+      await seed(path);
+      writeFileSync(`${path}${suffix}`, 'recovery original');
+      expect(() => openDurableStore(path, key)).toThrow(/recovery/);
+      expect(readFileSync(`${path}${suffix}`, 'utf8')).toBe('recovery original');
+      expect(encryption.isPlainDatabase(path)).toBe(true);
+    },
+  );
 });
 
 const owner = new URL('./fixtures/competing-owner.mjs', import.meta.url).pathname;
@@ -113,14 +124,23 @@ describe('takeOwnerLock (one process owns the store)', () => {
     const output = workers.map(() => '');
     const errors = workers.map(() => '');
     workers.forEach((worker, i) => {
-      worker.stdout.on('data', (chunk) => { output[i] += chunk; });
-      worker.stderr.on('data', (chunk) => { errors[i] += chunk; });
+      worker.stdout.on('data', (chunk) => {
+        output[i] += chunk;
+      });
+      worker.stderr.on('data', (chunk) => {
+        errors[i] += chunk;
+      });
     });
     try {
-      await expect.poll(() => workers.every((worker) => existsSync(join(dir, `ready-${worker.pid}`))), { timeout: 8000 }).toBe(true);
+      await expect
+        .poll(() => workers.every((worker) => existsSync(join(dir, `ready-${worker.pid}`))), { timeout: 8000 })
+        .toBe(true);
       writeFileSync(join(dir, 'acquire'), '');
       await expect.poll(() => output.filter((value) => value.includes('\n')).length, { timeout: 8000 }).toBe(2);
-      expect(output.map((value) => JSON.parse(value.trim())).filter((value) => value.owned), errors.join('\n')).toHaveLength(1);
+      expect(
+        output.map((value) => JSON.parse(value.trim())).filter((value) => value.owned),
+        errors.join('\n'),
+      ).toHaveLength(1);
     } finally {
       workers.forEach((worker) => worker.kill('SIGKILL'));
       await Promise.all(exited);
@@ -160,10 +180,15 @@ describe('takeOwnerLock (one process owns the store)', () => {
     try {
       expect(first.epoch).toBe(1);
       expect(() => takeOwnerLock(dir)).toThrow(StoreOwnedError);
-    } finally { first.release(); }
+    } finally {
+      first.release();
+    }
     const next = takeOwnerLock(dir);
-    try { expect(next.epoch).toBe(2); }
-    finally { next.release(); }
+    try {
+      expect(next.epoch).toBe(2);
+    } finally {
+      next.release();
+    }
     expect(existsSync(join(dir, LOCK_FILE))).toBe(true);
   });
 
@@ -194,7 +219,9 @@ describe('takeOwnerLock (one process owns the store)', () => {
     const holder = spawn(process.execPath, [owner, dir], { stdio: ['ignore', 'pipe', 'inherit'] });
     const exited = new Promise((resolve) => holder.once('exit', resolve));
     let output = '';
-    holder.stdout.on('data', (chunk) => { output += chunk; });
+    holder.stdout.on('data', (chunk) => {
+      output += chunk;
+    });
     try {
       await expect.poll(() => existsSync(join(dir, `ready-${holder.pid}`)), { timeout: 8000 }).toBe(true);
       writeFileSync(join(dir, 'acquire'), '');

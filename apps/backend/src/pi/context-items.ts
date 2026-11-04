@@ -53,13 +53,29 @@ const textOf = (content: string | Block[] | undefined): { text: string; chars: n
   }
   return { text: parts.join('\n'), chars };
 };
-const firstLine = (text: string): string => text.split('\n').find((line) => line.trim())?.trim().slice(0, 100) ?? '';
+const firstLine = (text: string): string =>
+  text
+    .split('\n')
+    .find((line) => line.trim())
+    ?.trim()
+    .slice(0, 100) ?? '';
 
-export function buildContextItems(messages: ContextMessage[], tools: ContextTool[], summaries: string[]): ContextItem[] {
+export function buildContextItems(
+  messages: ContextMessage[],
+  tools: ContextTool[],
+  summaries: string[],
+): ContextItem[] {
   const items: ContextItem[] = [];
   const calls = new Map<string, string>();
   let turn = 0;
-  const add = (kind: ContextKind, label: string, source: string | null, text: string, chars: number, extra: Partial<ContextItem> = {}): void => {
+  const add = (
+    kind: ContextKind,
+    label: string,
+    source: string | null,
+    text: string,
+    chars: number,
+    extra: Partial<ContextItem> = {},
+  ): void => {
     items.push({
       id: `${kind}:${items.length}`,
       kind,
@@ -83,7 +99,14 @@ export function buildContextItems(messages: ContextMessage[], tools: ContextTool
       if (base.chars) add('system', 'System prompt', 'pi', base.text, base.chars, { turn: null });
       for (const [name, section] of Object.entries(message.sections ?? {})) {
         if (!section) continue;
-        add('system', SECTION_LABELS[name] ?? name, SECTION_LABELS[name] ? 'pi' : `extension:${name}`, section, section.length, { turn: null });
+        add(
+          'system',
+          SECTION_LABELS[name] ?? name,
+          SECTION_LABELS[name] ? 'pi' : `extension:${name}`,
+          section,
+          section.length,
+          { turn: null },
+        );
       }
       continue;
     }
@@ -101,13 +124,16 @@ export function buildContextItems(messages: ContextMessage[], tools: ContextTool
         rest = rest.replace(match[0], '');
         restChars -= match[0].length;
       }
-      if (rest.trim() || restChars > 0) add('user', firstLine(rest) || '(images)', 'user', rest.trim(), Math.max(0, restChars));
+      if (rest.trim() || restChars > 0)
+        add('user', firstLine(rest) || '(images)', 'user', rest.trim(), Math.max(0, restChars));
       continue;
     }
     if (message.role === 'assistant') {
       for (const block of (message.content ?? []) as Block[]) {
-        if (block.type === 'text' && block.text) add('assistant', firstLine(block.text), 'model', block.text, block.text.length);
-        else if (block.type === 'thinking' && block.thinking) add('thinking', firstLine(block.thinking), 'model', block.thinking, block.thinking.length);
+        if (block.type === 'text' && block.text)
+          add('assistant', firstLine(block.text), 'model', block.text, block.text.length);
+        else if (block.type === 'thinking' && block.thinking)
+          add('thinking', firstLine(block.thinking), 'model', block.thinking, block.thinking.length);
         else if (block.type === 'toolCall' && block.name) {
           const args = JSON.stringify(block.arguments ?? {});
           if (block.id) calls.set(block.id, block.name);
@@ -123,7 +149,14 @@ export function buildContextItems(messages: ContextMessage[], tools: ContextTool
       continue;
     }
     const { text, chars } = textOf(message.content);
-    if (chars) add('extension', message.customType ?? message.role, `extension:${message.customType ?? message.role}`, text, chars);
+    if (chars)
+      add(
+        'extension',
+        message.customType ?? message.role,
+        `extension:${message.customType ?? message.role}`,
+        text,
+        chars,
+      );
   }
   return items;
 }

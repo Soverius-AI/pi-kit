@@ -4,15 +4,11 @@
   "projectType": "application",
   "prefix": "pk",
   "sourceRoot": "apps/renderer/src",
-  "tags": [
-    "scope:app"
-  ],
+  "tags": ["scope:app"],
   "targets": {
     "build": {
       "executor": "@angular/build:application",
-      "outputs": [
-        "{options.outputPath}"
-      ],
+      "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
       "options": {
         "outputPath": "dist/apps/renderer",
@@ -34,9 +30,7 @@
             "output": "i18n"
           }
         ],
-        "styles": [
-          "apps/renderer/src/styles.css"
-        ]
+        "styles": ["apps/renderer/src/styles.css"]
       },
       "configurations": {
         "production": {
@@ -107,12 +101,8 @@
         "tsConfig": "apps/renderer/tsconfig.spec.json",
         "buildTarget": "renderer:build:development",
         "runner": "vitest",
-        "include": [
-          "apps/renderer/src/**/*.spec.ts"
-        ],
-        "setupFiles": [
-          "apps/renderer/src/test-setup.ts"
-        ]
+        "include": ["apps/renderer/src/**/*.spec.ts"],
+        "setupFiles": ["apps/renderer/src/test-setup.ts"]
       }
     }
   }

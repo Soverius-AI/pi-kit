@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { PendingDialog, PiUiEvent } from '@pi-kit/pi-adapter';
-import { type CompleteResponse, type ComposerRegistration, ComposerRegistrationSchema, type PiDialogRequest } from '@pi-kit/protocol';
+import {
+  type CompleteResponse,
+  type ComposerRegistration,
+  ComposerRegistrationSchema,
+  type PiDialogRequest,
+} from '@pi-kit/protocol';
 import { type AutocompleteProviderFactory, type CompleteOptions, completeThroughChain } from './autocomplete';
 import { extensionNameFromStack } from './caller';
 
@@ -59,18 +64,43 @@ export class UiBridge {
   // ---- dialogs (promises pi awaits)
 
   select = (title: string, options: string[], opts?: DialogOptions): Promise<string | undefined> =>
-    this.ask({ method: 'select', title, options }, opts, (a) => (a.status === 'resolved' ? a.value : undefined), undefined);
+    this.ask(
+      { method: 'select', title, options },
+      opts,
+      (a) => (a.status === 'resolved' ? a.value : undefined),
+      undefined,
+    );
 
   confirm = (title: string, message: string, opts?: DialogOptions): Promise<boolean> =>
-    this.ask({ method: 'confirm', title, message }, opts, (a) => a.status === 'resolved' && a.confirmed === true, false);
+    this.ask(
+      { method: 'confirm', title, message },
+      opts,
+      (a) => a.status === 'resolved' && a.confirmed === true,
+      false,
+    );
 
   input = (title: string, placeholder?: string, opts?: DialogOptions): Promise<string | undefined> =>
-    this.ask({ method: 'input', title, ...(placeholder ? { placeholder } : {}) }, opts, (a) => (a.status === 'resolved' ? a.value : undefined), undefined);
+    this.ask(
+      { method: 'input', title, ...(placeholder ? { placeholder } : {}) },
+      opts,
+      (a) => (a.status === 'resolved' ? a.value : undefined),
+      undefined,
+    );
 
   editor = (title: string, prefill?: string): Promise<string | undefined> =>
-    this.ask({ method: 'editor', title, ...(prefill ? { prefill } : {}) }, undefined, (a) => (a.status === 'resolved' ? a.value : undefined), undefined);
+    this.ask(
+      { method: 'editor', title, ...(prefill ? { prefill } : {}) },
+      undefined,
+      (a) => (a.status === 'resolved' ? a.value : undefined),
+      undefined,
+    );
 
-  private ask<T>(request: PiDialogRequest, opts: DialogOptions | undefined, parse: (answer: DialogAnswer) => T, dismissed: T): Promise<T> {
+  private ask<T>(
+    request: PiDialogRequest,
+    opts: DialogOptions | undefined,
+    parse: (answer: DialogAnswer) => T,
+    dismissed: T,
+  ): Promise<T> {
     if (opts?.signal?.aborted) return Promise.resolve(dismissed);
     const id = randomUUID();
     request = { ...request, ...this.originOf(opts?.timeout) };
@@ -111,7 +141,9 @@ export class UiBridge {
 
   /** Dialogs pi is waiting on. With `onlyNew`, those no client has been told about yet. */
   list(onlyNew = false): PendingDialog[] {
-    return [...this.pending.values()].filter((p) => !onlyNew || !p.reported).map(({ id, request }) => ({ id, request }));
+    return [...this.pending.values()]
+      .filter((p) => !onlyNew || !p.reported)
+      .map(({ id, request }) => ({ id, request }));
   }
 
   get size(): number {
@@ -257,7 +289,8 @@ export class UiBridge {
 
   // ---- fire-and-forget methods
 
-  notify = (message: string, type?: 'info' | 'warning' | 'error'): void => this.emit({ kind: 'notify', message, level: type });
+  notify = (message: string, type?: 'info' | 'warning' | 'error'): void =>
+    this.emit({ kind: 'notify', message, level: type });
 
   setStatus = (key: string, text: string | undefined): void => {
     // Preserve extension colours for the renderer, including persisted status events.

@@ -86,7 +86,17 @@ export class FollowUpService implements OnModuleInit, OnModuleDestroy {
     const revision = this.revisions.get(id) ?? 0;
     const row = this.rows.get(id);
     const run = this.events.lastRun(id);
-    if (!this.enabled() || !row || row.archived || !row.messageCount || !this.attendant.allowedIn(row.cwd) || this.meta.isVerificationThread(id) || this.meta.learningSource(id) || run?.status !== 'finished') return undefined;
+    if (
+      !this.enabled() ||
+      !row ||
+      row.archived ||
+      !row.messageCount ||
+      !this.attendant.allowedIn(row.cwd) ||
+      this.meta.isVerificationThread(id) ||
+      this.meta.learningSource(id) ||
+      run?.status !== 'finished'
+    )
+      return undefined;
     if (this.sessions.pendingDialogs(id).length || this.agents.userQuestions(id).length) return undefined;
     if (this.sessions.has(id)) {
       const queue = this.sessions.queue(id);
@@ -95,10 +105,20 @@ export class FollowUpService implements OnModuleInit, OnModuleDestroy {
     const agents = this.agents.list(id);
     // Never turn a pending delegation into an invitation to repeat or supersede it.
     if (agents.some((agent) => agent.status === 'active' || agent.status === 'blocked')) return undefined;
-    const agentsAllowed = this.agents.state().enabled && !this.meta.listWorkspaces().find((w) => w.cwd === row.cwd)?.agentsOff && (await this.trust.state(row.cwd)).status === 'trusted';
+    const agentsAllowed =
+      this.agents.state().enabled &&
+      !this.meta.listWorkspaces().find((w) => w.cwd === row.cwd)?.agentsOff &&
+      (await this.trust.state(row.cwd)).status === 'trusted';
     const source = await this.threads.treeSource(id);
     if (revision !== (this.revisions.get(id) ?? 0)) return undefined;
-    return { row, source, agents, agentsAllowed, revision, target: followUpTarget(run.runId, source.entries, source.leafId, agents, agentsAllowed) };
+    return {
+      row,
+      source,
+      agents,
+      agentsAllowed,
+      revision,
+      target: followUpTarget(run.runId, source.entries, source.leafId, agents, agentsAllowed),
+    };
   }
 
   async valid(suggestion: ThreadSuggestion & { threadId: string }): Promise<boolean> {
@@ -108,12 +128,23 @@ export class FollowUpService implements OnModuleInit, OnModuleDestroy {
 
   async generate(id: string): Promise<void> {
     const before = await this.snapshot(id);
-    if (!before || this.attempted.get(id) === before.target || this.repo.hasSuggestion(id, 'prompt', before.target)) return;
+    if (!before || this.attempted.get(id) === before.target || this.repo.hasSuggestion(id, 'prompt', before.target))
+      return;
     this.attempted.set(id, before.target);
-    const result = await this.attendant.complete(before.row, followUpPrompt(before.source.entries, before.source.leafId, before.agents, before.agentsAllowed), {
-      kind: 'prompt', initiative: 'attendant',
-      describe: (text) => ({ status: cleanFollowUp(text) || /^\s*SKIP\s*$/i.test(text) ? 'done' : 'error', text: cleanFollowUp(text) ?? (/^\s*SKIP\s*$/i.test(text) ? 'No clear follow-up.' : 'The model’s follow-up was not usable.') }),
-    });
+    const result = await this.attendant.complete(
+      before.row,
+      followUpPrompt(before.source.entries, before.source.leafId, before.agents, before.agentsAllowed),
+      {
+        kind: 'prompt',
+        initiative: 'attendant',
+        describe: (text) => ({
+          status: cleanFollowUp(text) || /^\s*SKIP\s*$/i.test(text) ? 'done' : 'error',
+          text:
+            cleanFollowUp(text) ??
+            (/^\s*SKIP\s*$/i.test(text) ? 'No clear follow-up.' : 'The model’s follow-up was not usable.'),
+        }),
+      },
+    );
     const after = await this.snapshot(id);
     if (!after || before.target !== after.target || before.revision !== after.revision) {
       // A debounced agent update may have arrived while this task already held the queue slot.

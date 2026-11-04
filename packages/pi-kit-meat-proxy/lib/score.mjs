@@ -20,7 +20,13 @@ export function effectiveLabels(stored) {
   return stored.labels.map((entry) => {
     const fix = corrections[entry.id];
     if (!fix) return entry;
-    return { ...entry, label: fix.label, was: fix.was ?? entry.label, by: 'person', input: STEERED.includes(fix.label) ? (entry.input === 'none' ? 'person' : entry.input) : 'none' };
+    return {
+      ...entry,
+      label: fix.label,
+      was: fix.was ?? entry.label,
+      by: 'person',
+      input: STEERED.includes(fix.label) ? (entry.input === 'none' ? 'person' : entry.input) : 'none',
+    };
   });
 }
 

@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { type BaseEvent, EventType } from '@ag-ui/client';
 import type { Message } from '@ag-ui/core';
 import type { AssistantMessage, ToolResultMessage, UserMessage } from '@earendil-works/pi-ai';
-import type { AgentEvent, AgentEventStream, EntryRecord, MessageChange, SnapshotEvent } from '@earendil-works/pi-durable';
+import type {
+  AgentEvent,
+  AgentEventStream,
+  EntryRecord,
+  MessageChange,
+  SnapshotEvent,
+} from '@earendil-works/pi-durable';
 import { createMapContext, type MapContext, mapEvent, messagesSnapshot, type PiEvent } from '@pi-kit/pi-adapter';
 import { AGENT_MESSAGE } from './agent-extension';
 
@@ -24,7 +30,13 @@ export function contextOf(message: AssistantMessage | undefined): number | null 
 }
 
 const text = (content: unknown): string =>
-  typeof content === 'string' ? content : Array.isArray(content) ? content.map((part: { type?: string; text?: string }) => (part.type === 'text' ? (part.text ?? '') : '')).join('') : '';
+  typeof content === 'string'
+    ? content
+    : Array.isArray(content)
+      ? content
+          .map((part: { type?: string; text?: string }) => (part.type === 'text' ? (part.text ?? '') : ''))
+          .join('')
+      : '';
 
 /** The transcript of a background agent as AG-UI messages, from its durable entries (the `MESSAGES_SNAPSHOT` of a run). */
 export function entriesToMessages(entries: readonly EntryRecord[]): Message[] {
@@ -35,14 +47,39 @@ export function entriesToMessages(entries: readonly EntryRecord[]): Message[] {
     if (!model) continue;
     if (entry.kind === 'pi.user' || (model.role === 'user' && !entry.kind.startsWith('pi.'))) {
       const from = AGENT_MESSAGE.exec(text(model.content));
-      out.push({ id, role: 'user', content: text(model.content), ...(from ? { subagentRunId: `${from[2]}/${id}` } : {}) } as Message);
+      out.push({
+        id,
+        role: 'user',
+        content: text(model.content),
+        ...(from ? { subagentRunId: `${from[2]}/${id}` } : {}),
+      } as Message);
     } else if (entry.kind === 'pi.assistant' && model.role === 'assistant') {
-      const thinking = model.content.filter((block) => block.type === 'thinking').map((block) => block.thinking).join('\n');
+      const thinking = model.content
+        .filter((block) => block.type === 'thinking')
+        .map((block) => block.thinking)
+        .join('\n');
       if (thinking) out.push({ id: `${id}:think`, role: 'reasoning', content: thinking } as Message);
-      const calls = model.content.filter((block) => block.type === 'toolCall').map((block) => ({ id: block.id, type: 'function' as const, function: { name: block.name, arguments: JSON.stringify(block.arguments ?? {}) } }));
-      out.push({ id, role: 'assistant', content: text(model.content), ...(calls.length ? { toolCalls: calls } : {}) } as Message);
+      const calls = model.content
+        .filter((block) => block.type === 'toolCall')
+        .map((block) => ({
+          id: block.id,
+          type: 'function' as const,
+          function: { name: block.name, arguments: JSON.stringify(block.arguments ?? {}) },
+        }));
+      out.push({
+        id,
+        role: 'assistant',
+        content: text(model.content),
+        ...(calls.length ? { toolCalls: calls } : {}),
+      } as Message);
     } else if (entry.kind === 'pi.tool-result' && model.role === 'toolResult') {
-      out.push({ id, role: 'tool', toolCallId: model.toolCallId, content: text(model.content), ...(model.isError ? { error: 'error' } : {}) } as Message);
+      out.push({
+        id,
+        role: 'tool',
+        toolCallId: model.toolCallId,
+        content: text(model.content),
+        ...(model.isError ? { error: 'error' } : {}),
+      } as Message);
     }
   }
   return out;
@@ -102,22 +139,42 @@ export class AgentEventMapper {
         this.opened = new Set();
         this.streamed = false;
         // The placed input precedes `run_start` in the stream: it opens the run here.
-        return event.message.role === 'assistant' ? this.pi({ type: 'message_start', message: event.message }) : this.start();
+        return event.message.role === 'assistant'
+          ? this.pi({ type: 'message_start', message: event.message })
+          : this.start();
       case 'message_update':
         this.streamed = true;
-        return event.changes.flatMap((change) => changeEvents(change, this.opened).flatMap((assistantMessageEvent) => this.pi({ type: 'message_update', assistantMessageEvent })));
+        return event.changes.flatMap((change) =>
+          changeEvents(change, this.opened).flatMap((assistantMessageEvent) =>
+            this.pi({ type: 'message_update', assistantMessageEvent }),
+          ),
+        );
       case 'message_end':
       case 'entry_appended':
         return this.entry(event.entry);
       case 'tool_execution_start':
         Object.assign(this.live, { activity: 'tool', tool: event.toolName });
-        return this.pi({ type: 'tool_execution_start', toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
+        return this.pi({
+          type: 'tool_execution_start',
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          args: event.args,
+        });
       case 'tool_execution_update': {
         const output = event.output;
         const before = this.outputs.get(event.toolCallId) ?? '';
-        const next = !output ? before : 'set' in output ? output.set : before.slice(output.trimStart ?? 0) + (output.append ?? '');
+        const next = !output
+          ? before
+          : 'set' in output
+            ? output.set
+            : before.slice(output.trimStart ?? 0) + (output.append ?? '');
         this.outputs.set(event.toolCallId, next);
-        return this.pi({ type: 'tool_execution_update', toolCallId: event.toolCallId, toolName: event.toolName, partialResult: { content: [{ type: 'text', text: next }] } });
+        return this.pi({
+          type: 'tool_execution_update',
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          partialResult: { content: [{ type: 'text', text: next }] },
+        });
       }
       case 'tool_execution_end': {
         this.outputs.delete(event.toolCallId);
@@ -129,7 +186,10 @@ export class AgentEventMapper {
           toolCallId: event.toolCallId,
           toolName: event.toolName,
           isError: result ? result.isError === true : true,
-          result: { content: result?.content ?? [{ type: 'text', text: 'No result: the call was interrupted.' }], details: event.entry?.data },
+          result: {
+            content: result?.content ?? [{ type: 'text', text: 'No result: the call was interrupted.' }],
+            details: event.entry?.data,
+          },
         });
       }
       case 'compaction_start':
@@ -167,8 +227,15 @@ export class AgentEventMapper {
     if (model.role === 'assistant') {
       this.live.contextTokens = contextOf(model) ?? this.live.contextTokens;
       // A message that never streamed is delivered whole: its blocks open and close here, as a streamed one's did.
-      const whole = this.streamed ? [] : model.content.flatMap((block, contentIndex) => changeEvents({ type: 'block', contentIndex, block }, this.opened));
-      return [...whole.flatMap((assistantMessageEvent) => this.pi({ type: 'message_update', assistantMessageEvent })), ...this.pi({ type: 'message_end', message: model })];
+      const whole = this.streamed
+        ? []
+        : model.content.flatMap((block, contentIndex) =>
+            changeEvents({ type: 'block', contentIndex, block }, this.opened),
+          );
+      return [
+        ...whole.flatMap((assistantMessageEvent) => this.pi({ type: 'message_update', assistantMessageEvent })),
+        ...this.pi({ type: 'message_end', message: model }),
+      ];
     }
     if (model.role === 'user' && !entry.kind.startsWith('pi.c')) {
       // A message from another agent is attributed to it, as a report is in the main thread: an envelope of its own.
@@ -216,7 +283,14 @@ function changeEvents(change: MessageChange, opened: Set<number>): Record<string
       return [{ type: change.type, contentIndex: index }];
     case 'toolcall_start':
       opened.add(index);
-      return [{ type: 'toolcall_start', contentIndex: index, id: (change.block as { id?: string }).id, toolName: (change.block as { name?: string }).name }];
+      return [
+        {
+          type: 'toolcall_start',
+          contentIndex: index,
+          id: (change.block as { id?: string }).id,
+          toolName: (change.block as { name?: string }).name,
+        },
+      ];
     case 'text_delta':
     case 'thinking_delta':
       return [{ type: change.type, contentIndex: index, delta: change.delta }];
@@ -226,9 +300,30 @@ function changeEvents(change: MessageChange, opened: Set<number>): Record<string
       const block = change.block;
       const fresh = !opened.has(index);
       opened.add(index);
-      if (block.type === 'text') return [...(fresh ? [{ type: 'text_start', contentIndex: index }, { type: 'text_delta', contentIndex: index, delta: block.text }] : []), { type: 'text_end', contentIndex: index, content: block.text }];
-      if (block.type === 'thinking') return [...(fresh ? [{ type: 'thinking_start', contentIndex: index }, { type: 'thinking_delta', contentIndex: index, delta: block.thinking }] : []), { type: 'thinking_end', contentIndex: index, content: block.thinking }];
-      return [...(fresh ? [{ type: 'toolcall_start', contentIndex: index, id: block.id, toolName: block.name }] : []), { type: 'toolcall_end', contentIndex: index, toolCall: block }];
+      if (block.type === 'text')
+        return [
+          ...(fresh
+            ? [
+                { type: 'text_start', contentIndex: index },
+                { type: 'text_delta', contentIndex: index, delta: block.text },
+              ]
+            : []),
+          { type: 'text_end', contentIndex: index, content: block.text },
+        ];
+      if (block.type === 'thinking')
+        return [
+          ...(fresh
+            ? [
+                { type: 'thinking_start', contentIndex: index },
+                { type: 'thinking_delta', contentIndex: index, delta: block.thinking },
+              ]
+            : []),
+          { type: 'thinking_end', contentIndex: index, content: block.thinking },
+        ];
+      return [
+        ...(fresh ? [{ type: 'toolcall_start', contentIndex: index, id: block.id, toolName: block.name }] : []),
+        { type: 'toolcall_end', contentIndex: index, toolCall: block },
+      ];
     }
   }
 }

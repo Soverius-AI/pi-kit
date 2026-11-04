@@ -1,6 +1,16 @@
 import { DestroyRef, inject } from '@angular/core';
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
-import { ApiClient, bgAgentsAnswer, bgAgentsList, bgAgentsMessage, bgAgentsRemove, bgAgentsResume, bgAgentsStop, errorMessage, unwrap } from '@pi-kit/api';
+import {
+  ApiClient,
+  bgAgentsAnswer,
+  bgAgentsList,
+  bgAgentsMessage,
+  bgAgentsRemove,
+  bgAgentsResume,
+  bgAgentsStop,
+  errorMessage,
+  unwrap,
+} from '@pi-kit/api';
 import { withLatestRequest } from '@pi-kit/data-access';
 import type { BgAgent } from '@pi-kit/protocol';
 import { ThreadsStore } from '@pi-kit/threads/api';
@@ -50,11 +60,15 @@ export const AgentsStore = signalStore(
         unsubscribe = threads.onStatusEvent((event) => {
           if (event.type === 'agents' && event.id === threadId) patchState(store, { agents: event.agents });
         });
-        void store._request('agents', (signal) => unwrap(bgAgentsList({ client: api.client, path: { id: threadId }, signal })), {
-          valid: () => store.threadId() === threadId && !destroyRef.destroyed,
-          next: (agents) => patchState(store, { agents, error: undefined }),
-          error: (error) => patchState(store, { error: errorMessage(error) }),
-        });
+        void store._request(
+          'agents',
+          (signal) => unwrap(bgAgentsList({ client: api.client, path: { id: threadId }, signal })),
+          {
+            valid: () => store.threadId() === threadId && !destroyRef.destroyed,
+            next: (agents) => patchState(store, { agents, error: undefined }),
+            error: (error) => patchState(store, { error: errorMessage(error) }),
+          },
+        );
       },
       openTranscript(agentId: string | undefined): void {
         patchState(store, { open: agentId });
@@ -62,7 +76,9 @@ export const AgentsStore = signalStore(
       async message(agentId: string, text: string, mode: 'steer' | 'followUp'): Promise<void> {
         const threadId = store.threadId();
         if (!threadId) return;
-        await call(() => unwrap(bgAgentsMessage({ client: api.client, path: { id: threadId, agent: agentId }, body: { text, mode } })));
+        await call(() =>
+          unwrap(bgAgentsMessage({ client: api.client, path: { id: threadId, agent: agentId }, body: { text, mode } })),
+        );
       },
       /** The user's answer to the agent's open question, or its dismissal; the agent gets it verbatim. */
       async answer(agentId: string, questionId: string, text: string | 'cancelled'): Promise<void> {
@@ -85,7 +101,9 @@ export const AgentsStore = signalStore(
       async remove(agentId: string): Promise<void> {
         const threadId = store.threadId();
         if (!threadId) return;
-        const removed = await call(() => unwrap(bgAgentsRemove({ client: api.client, path: { id: threadId, agent: agentId } })));
+        const removed = await call(() =>
+          unwrap(bgAgentsRemove({ client: api.client, path: { id: threadId, agent: agentId } })),
+        );
         if (!removed) return;
         if (store.open() === agentId) patchState(store, { open: undefined });
         patchState(store, (s) => ({ agents: s.agents.filter((agent) => agent.id !== agentId) }));

@@ -3,7 +3,8 @@ import { z } from 'zod';
 
 export type SchemaConverter = NonNullable<SwaggerDocumentOptions['standardSchemaConverter']>;
 
-const isZod = (schema: unknown): schema is z.ZodType => typeof schema === 'object' && schema !== null && '_zod' in schema;
+const isZod = (schema: unknown): schema is z.ZodType =>
+  typeof schema === 'object' && schema !== null && '_zod' in schema;
 
 /**
  * Turns a zod schema into the JSON Schema an OpenAPI 3.1 document embeds. Swagger 12 asks for it whenever a route names a schema
@@ -22,7 +23,9 @@ export function createZodConverter(): SchemaConverter {
   const components = new Map<string, { text: string; loose: string; definition: unknown }>();
   return (schema, { schemaType }) => {
     if (!isZod(schema)) return undefined;
-    const json = z.toJSONSchema(schema, { io: schemaType }) as Record<string, unknown> & { $defs?: Record<string, unknown> };
+    const json = z.toJSONSchema(schema, { io: schemaType }) as Record<string, unknown> & {
+      $defs?: Record<string, unknown>;
+    };
     const { $defs } = json;
     const root = { ...json };
     delete root['$schema'];
@@ -30,13 +33,18 @@ export function createZodConverter(): SchemaConverter {
     const defs: Record<string, unknown> = {};
     for (const [name, definition] of Object.entries($defs ?? {})) {
       const text = JSON.stringify(definition);
-      const loose = JSON.stringify(definition, (key, value) => (key === 'additionalProperties' && value === false ? undefined : value));
+      const loose = JSON.stringify(definition, (key, value) =>
+        key === 'additionalProperties' && value === false ? undefined : value,
+      );
       const known = components.get(name);
       if (known !== undefined && known.loose !== loose) {
-        throw new Error(`Two different schemas share the id "${name}" (seen as ${schemaType}): each needs an id of its own. A default or a transform makes a request and its response differ, which counts.`);
+        throw new Error(
+          `Two different schemas share the id "${name}" (seen as ${schemaType}): each needs an id of its own. A default or a transform makes a request and its response differ, which counts.`,
+        );
       }
       // The closed form wins, whichever direction asked first.
-      const keep = known && (known.text.length >= text.length || schemaType === 'input') ? known : { text, loose, definition };
+      const keep =
+        known && (known.text.length >= text.length || schemaType === 'input') ? known : { text, loose, definition };
       components.set(name, keep);
       defs[name] = keep.definition;
     }

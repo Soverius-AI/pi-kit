@@ -1,4 +1,11 @@
-import type { AgentQuestionDialog, PiDialogRequest, ThreadDraftBadge, ThreadOutcomeBadge, ThreadState, ThreadSuggestion } from '@pi-kit/protocol';
+import type {
+  AgentQuestionDialog,
+  PiDialogRequest,
+  ThreadDraftBadge,
+  ThreadOutcomeBadge,
+  ThreadState,
+  ThreadSuggestion,
+} from '@pi-kit/protocol';
 
 /** What the state of a thread is computed. Pure, so it can be tested without a database or a pi session. */
 export interface StateFacts {
@@ -42,7 +49,10 @@ export function computeThreadState(f: StateFacts): ThreadState {
   // A file that changed after the user's last look and that the replay log does not account for was written by someone else; looking at the thread clears it.
   const changedOutside =
     (f.origin === 'cli' && f.seenAt === null) ||
-    (f.logMtime !== null && f.fileMtime !== null && f.fileMtime > f.logMtime + CLI_SLACK_MS && f.fileMtime > (f.seenAt ?? 0));
+    (f.logMtime !== null &&
+      f.fileMtime !== null &&
+      f.fileMtime > f.logMtime + CLI_SLACK_MS &&
+      f.fileMtime > (f.seenAt ?? 0));
   return {
     activity,
     question: dialogs.length > 0 ? questionHead(dialogs[0].request) : prose !== null ? textHead(prose) : null,

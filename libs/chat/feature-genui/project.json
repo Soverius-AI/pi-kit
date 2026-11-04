@@ -4,10 +4,7 @@
   "sourceRoot": "libs/chat/feature-genui/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:chat",
-    "type:feature"
-  ],
+  "tags": ["scope:chat", "type:feature"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"

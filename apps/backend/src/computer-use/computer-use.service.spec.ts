@@ -9,7 +9,14 @@ const PERMISSIONS = [
   { key: 'screenRecording', name: 'Screen & System Audio Recording', pane: 'pane:screen' },
 ] as const;
 
-function setup(options: { installed?: boolean; enabled?: boolean; granted?: { accessibility: boolean; screenRecording: boolean }; host?: ReturnType<ComputerUseHostModule['host']> } = {}) {
+function setup(
+  options: {
+    installed?: boolean;
+    enabled?: boolean;
+    granted?: { accessibility: boolean; screenRecording: boolean };
+    host?: ReturnType<ComputerUseHostModule['host']>;
+  } = {},
+) {
   let enabled = options.enabled ?? false;
   const granted = { ...(options.granted ?? { accessibility: false, screenRecording: false }) };
   const mod: ComputerUseHostModule = {
@@ -20,12 +27,16 @@ function setup(options: { installed?: boolean; enabled?: boolean; granted?: { ac
     permissions: vi.fn(async () => ({ ...granted })),
     requestPermissions: vi.fn(async () => ({ ...granted })),
   };
-  const pkg = { hostModule: async () => (options.installed === false ? undefined : mod) } as unknown as ComputerUsePackage;
+  const pkg = {
+    hostModule: async () => (options.installed === false ? undefined : mod),
+  } as unknown as ComputerUsePackage;
   const sessions = { reloadIdleSessions: vi.fn(async () => 2) } as unknown as PiSessionService;
   const service = new ComputerUseService(pkg, sessions);
   service.platform = 'darwin';
   service.openUrl = vi.fn(async () => undefined);
-  service.codesignInfo = vi.fn(async () => 'Executable=/Applications/pi-kit.app/Contents/MacOS/pi-kit\nSignature=adhoc\n');
+  service.codesignInfo = vi.fn(
+    async () => 'Executable=/Applications/pi-kit.app/Contents/MacOS/pi-kit\nSignature=adhoc\n',
+  );
   return { service, mod, sessions, granted };
 }
 
@@ -46,7 +57,11 @@ describe('Settings › Computer use', () => {
     const { service, sessions } = setup({ granted: { accessibility: true, screenRecording: false } });
     const state = await service.setEnabled(true);
     expect(sessions.reloadIdleSessions).toHaveBeenCalledOnce();
-    expect(state).toMatchObject({ enabled: true, permissions: { accessibility: true, screenRecording: false }, needsRelaunch: false });
+    expect(state).toMatchObject({
+      enabled: true,
+      permissions: { accessibility: true, screenRecording: false },
+      needsRelaunch: false,
+    });
   });
 
   it('names the app and notices an ad-hoc signature', async () => {

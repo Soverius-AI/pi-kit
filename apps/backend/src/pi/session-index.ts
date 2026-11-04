@@ -129,7 +129,8 @@ export async function summarize(path: string, mtime: Date): Promise<SessionSumma
       const message = entry['message'] as { role?: unknown; content?: unknown; timestamp?: unknown } | undefined;
       if (!message || typeof message.role !== 'string' || !('content' in message)) continue;
       if (message.role !== 'user' && message.role !== 'assistant') continue;
-      const stamp = typeof message.timestamp === 'number' ? message.timestamp : new Date(entry['timestamp'] as string).getTime();
+      const stamp =
+        typeof message.timestamp === 'number' ? message.timestamp : new Date(entry['timestamp'] as string).getTime();
       if (!Number.isNaN(stamp)) lastActivity = Math.max(lastActivity ?? 0, stamp);
       if (!firstMessage && message.role === 'user') {
         // A message that opens with skill instructions (a `/skill:` pi expanded, or chips) reads as the invocations the person made, not as the
@@ -143,7 +144,12 @@ export async function summarize(path: string, mtime: Date): Promise<SessionSumma
   }
   if (!header) return undefined;
   const headerTime = typeof header.timestamp === 'string' ? new Date(header.timestamp).getTime() : NaN;
-  const modified = typeof lastActivity === 'number' && lastActivity > 0 ? lastActivity : !Number.isNaN(headerTime) ? headerTime : mtime.getTime();
+  const modified =
+    typeof lastActivity === 'number' && lastActivity > 0
+      ? lastActivity
+      : !Number.isNaN(headerTime)
+        ? headerTime
+        : mtime.getTime();
   return {
     id: header.id,
     path,
@@ -176,7 +182,9 @@ function textOf(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
   return content
-    .filter((block): block is { type: string; text: string } => !!block && (block as { type?: unknown }).type === 'text')
+    .filter(
+      (block): block is { type: string; text: string } => !!block && (block as { type?: unknown }).type === 'text',
+    )
     .map((block) => block.text)
     .join(' ');
 }

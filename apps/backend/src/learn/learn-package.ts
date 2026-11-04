@@ -8,7 +8,9 @@ export const LEARN_PACKAGE = '@pi-kit/learn';
 /** What `packages/pi-kit-learn/lib/analysis.mjs` offers pi-kit's backend (the extension uses the same file). */
 export interface AnalysisModule {
   buildAnalysisPrompt(transcript: ThreadTranscript): { system: string; user: string };
-  parseDraftReply(reply: string): { ok: true; name: string; description: string; text: string } | { ok: false; skip?: boolean; reason: string };
+  parseDraftReply(
+    reply: string,
+  ): { ok: true; name: string; description: string; text: string } | { ok: false; skip?: boolean; reason: string };
 }
 
 /**
@@ -18,7 +20,14 @@ export interface AnalysisModule {
 @Injectable()
 export class LearnPackage extends PiKitPackage<AnalysisModule> {
   constructor(meta: MetaRepository) {
-    super(meta, { name: LEARN_PACKAGE, folder: 'pi-kit-learn', entry: 'lib/analysis.mjs', setting: 'learn', env: 'PI_KIT_LEARN_PACKAGE', label: 'learn' });
+    super(meta, {
+      name: LEARN_PACKAGE,
+      folder: 'pi-kit-learn',
+      entry: 'lib/analysis.mjs',
+      setting: 'learn',
+      env: 'PI_KIT_LEARN_PACKAGE',
+      label: 'learn',
+    });
   }
 
   /** The analysis module of the installed package, or `undefined` when pi has none (removed, or never installed): then nothing is drafted. */

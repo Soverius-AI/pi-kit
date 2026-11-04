@@ -1,7 +1,13 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MemorySecretStore, NoSecretStore, selectSecretStore, writeSecurityPreferences, type SecretStore } from '@pi-kit/secret-store';
+import {
+  MemorySecretStore,
+  NoSecretStore,
+  selectSecretStore,
+  writeSecurityPreferences,
+  type SecretStore,
+} from '@pi-kit/secret-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BG_DB_FILE, DB_FILE } from '../db/database.service';
 import { encryptionEnabled, hasEncryptedDatabase, startupSecretStore } from './security-config';
@@ -19,9 +25,15 @@ beforeEach(() => {
   Object.defineProperty(process, 'platform', { value: 'darwin' });
   dir = mkdtempSync(join(tmpdir(), 'pk-security-config-'));
   native = {
-    kind: 'keychain', label: 'Mock original macOS store', protected: true,
-    available: vi.fn(() => true), get: vi.fn(() => undefined), set: vi.fn(),
-    delete: vi.fn(() => false), list: vi.fn(() => []), accessStatus: vi.fn(() => ({ state: 'ready' as const })),
+    kind: 'keychain',
+    label: 'Mock original macOS store',
+    protected: true,
+    available: vi.fn(() => true),
+    get: vi.fn(() => undefined),
+    set: vi.fn(),
+    delete: vi.fn(() => false),
+    list: vi.fn(() => []),
+    accessStatus: vi.fn(() => ({ state: 'ready' as const })),
   };
   vi.mocked(selectSecretStore).mockImplementation((env = {}) => {
     const choice = env['PI_KIT_SECRET_STORE'];
@@ -60,42 +72,57 @@ describe('startup security choices', () => {
     expectNoNativeAccess();
   });
 
-  it.each(['memory', 'file:/unused-test-store', 'none', 'legacy'])('respects explicit %s overrides instead of choosing macOS storage', (choice) => {
-    const store = startupSecretStore(dir, { PI_KIT_SECRET_STORE: choice });
-    expect(selectSecretStore).toHaveBeenCalledWith({ PI_KIT_SECRET_STORE: choice });
-    expect(encryptionEnabled(dir, store)).toBe(choice !== 'none');
-    expectNoNativeAccess();
-  });
+  it.each(['memory', 'file:/unused-test-store', 'none', 'legacy'])(
+    'respects explicit %s overrides instead of choosing macOS storage',
+    (choice) => {
+      const store = startupSecretStore(dir, { PI_KIT_SECRET_STORE: choice });
+      expect(selectSecretStore).toHaveBeenCalledWith({ PI_KIT_SECRET_STORE: choice });
+      expect(encryptionEnabled(dir, store)).toBe(choice !== 'none');
+      expectNoNativeAccess();
+    },
+  );
 
   it('ignores the old database opt-out and follows the credential preference', () => {
-    writeFileSync(join(dir, 'security.json'), JSON.stringify({ credentialStoreEnabled: true, databaseEncryptionEnabled: false }));
+    writeFileSync(
+      join(dir, 'security.json'),
+      JSON.stringify({ credentialStoreEnabled: true, databaseEncryptionEnabled: false }),
+    );
     expect(encryptionEnabled(dir, startupSecretStore(dir, { PI_KIT_SECRET_STORE: 'memory' }))).toBe(true);
     expectNoNativeAccess();
   });
 
   it('ignores the old database opt-in when credentials are disabled', () => {
-    writeFileSync(join(dir, 'security.json'), JSON.stringify({ credentialStoreEnabled: false, databaseEncryptionEnabled: true }));
+    writeFileSync(
+      join(dir, 'security.json'),
+      JSON.stringify({ credentialStoreEnabled: false, databaseEncryptionEnabled: true }),
+    );
     expect(startupSecretStore(dir, {}).kind).toBe('none');
     expect(encryptionEnabled(dir, new MemorySecretStore())).toBe(false);
     expectNoNativeAccess();
   });
 
-  it.each([DB_FILE, BG_DB_FILE])('retains the original store and encryption for encrypted %s despite credential opt-out', (file) => {
-    writeFileSync(join(dir, file), Buffer.alloc(4096, 42));
-    writeSecurityPreferences(dir, { credentialStoreEnabled: false });
-    expect(hasEncryptedDatabase(dir)).toBe(true);
-    expect(startupSecretStore(dir, {})).toBe(native);
-    expect(encryptionEnabled(dir, native)).toBe(true);
-    expect(encryptionEnabled(dir, new NoSecretStore())).toBe(true);
-    expectNoNativeAccess();
-  });
+  it.each([DB_FILE, BG_DB_FILE])(
+    'retains the original store and encryption for encrypted %s despite credential opt-out',
+    (file) => {
+      writeFileSync(join(dir, file), Buffer.alloc(4096, 42));
+      writeSecurityPreferences(dir, { credentialStoreEnabled: false });
+      expect(hasEncryptedDatabase(dir)).toBe(true);
+      expect(startupSecretStore(dir, {})).toBe(native);
+      expect(encryptionEnabled(dir, native)).toBe(true);
+      expect(encryptionEnabled(dir, new NoSecretStore())).toBe(true);
+      expectNoNativeAccess();
+    },
+  );
 
-  it.each([DB_FILE, BG_DB_FILE])('existing encrypted %s without preferences remains encrypted and selects its original store', (file) => {
-    writeFileSync(join(dir, file), Buffer.alloc(4096, 42));
-    expect(startupSecretStore(dir, {})).toBe(native);
-    expect(encryptionEnabled(dir, native)).toBe(true);
-    expectNoNativeAccess();
-  });
+  it.each([DB_FILE, BG_DB_FILE])(
+    'existing encrypted %s without preferences remains encrypted and selects its original store',
+    (file) => {
+      writeFileSync(join(dir, file), Buffer.alloc(4096, 42));
+      expect(startupSecretStore(dir, {})).toBe(native);
+      expect(encryptionEnabled(dir, native)).toBe(true);
+      expectNoNativeAccess();
+    },
+  );
 
   it('a plaintext or empty file is not an encrypted existing profile', () => {
     const file = join(dir, 'pi-kit.sqlite');

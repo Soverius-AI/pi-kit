@@ -1,6 +1,11 @@
 import { CompleteResponseSchema } from '@pi-kit/protocol';
 import { describe, expect, it } from 'vitest';
-import { type AutocompleteProvider, type AutocompleteProviderFactory, baseProvider, completeThroughChain } from './autocomplete';
+import {
+  type AutocompleteProvider,
+  type AutocompleteProviderFactory,
+  baseProvider,
+  completeThroughChain,
+} from './autocomplete';
 
 const FRUITS = ['apple', 'apricot', 'banana', 'blueberry'];
 
@@ -11,7 +16,11 @@ const fruit: AutocompleteProviderFactory = (current) => ({
     const before = (lines[cursorLine] ?? '').slice(0, cursorCol);
     const match = /^\/pk-fruit (\S*)$/.exec(before);
     if (!match) return current.getSuggestions(lines, cursorLine, cursorCol, options);
-    const items = FRUITS.filter((f) => f.startsWith(match[1])).map((f) => ({ value: f, label: f, description: 'fruit' }));
+    const items = FRUITS.filter((f) => f.startsWith(match[1])).map((f) => ({
+      value: f,
+      label: f,
+      description: 'fruit',
+    }));
     return items.length > 0 ? { items, prefix: match[1] } : null;
   },
 });
@@ -29,7 +38,9 @@ const color: AutocompleteProviderFactory = (current) => ({
 
 describe('baseProvider', () => {
   it('suggests nothing', async () => {
-    await expect(baseProvider.getSuggestions(['/x '], 0, 3, { signal: new AbortController().signal })).resolves.toBeNull();
+    await expect(
+      baseProvider.getSuggestions(['/x '], 0, 3, { signal: new AbortController().signal }),
+    ).resolves.toBeNull();
   });
 
   it('replaces the prefix before the cursor with the item value and puts the caret after it', () => {
@@ -63,7 +74,10 @@ describe('completeThroughChain', () => {
   it('asks the factory added last first, and it delegates to the one below when it has nothing', async () => {
     const stacked = [fruit, color];
     expect((await completeThroughChain(stacked, '/pk-color ', 10)).items.map((i) => i.value)).toEqual(['red']);
-    expect((await completeThroughChain(stacked, '/pk-fruit b', 11)).items.map((i) => i.value)).toEqual(['banana', 'blueberry']);
+    expect((await completeThroughChain(stacked, '/pk-fruit b', 11)).items.map((i) => i.value)).toEqual([
+      'banana',
+      'blueberry',
+    ]);
     expect(await completeThroughChain(stacked, '/other ', 7)).toEqual({ prefix: '', items: [] });
   });
 
@@ -74,7 +88,11 @@ describe('completeThroughChain', () => {
   it('gives at most 20 items', async () => {
     const many: AutocompleteProviderFactory = () => ({
       ...baseProvider,
-      getSuggestions: () => Promise.resolve({ prefix: '', items: Array.from({ length: 50 }, (_, i) => ({ value: `v${i}`, label: `v${i}` })) }),
+      getSuggestions: () =>
+        Promise.resolve({
+          prefix: '',
+          items: Array.from({ length: 50 }, (_, i) => ({ value: `v${i}`, label: `v${i}` })),
+        }),
     });
     expect((await completeThroughChain([many], '', 0)).items).toHaveLength(20);
   });
@@ -84,9 +102,17 @@ describe('completeThroughChain', () => {
     const broken: AutocompleteProviderFactory = () => {
       throw new Error('factory');
     };
-    const rejecting: AutocompleteProviderFactory = (current) => ({ ...current, getSuggestions: () => Promise.reject(new Error('provider')) });
-    expect((await completeThroughChain([fruit, broken], '/pk-fruit a', 11, { onError: (e) => errors.push(e) })).items).toHaveLength(2);
-    expect(await completeThroughChain([rejecting], 'x', 1, { onError: (e) => errors.push(e) })).toEqual({ prefix: '', items: [] });
+    const rejecting: AutocompleteProviderFactory = (current) => ({
+      ...current,
+      getSuggestions: () => Promise.reject(new Error('provider')),
+    });
+    expect(
+      (await completeThroughChain([fruit, broken], '/pk-fruit a', 11, { onError: (e) => errors.push(e) })).items,
+    ).toHaveLength(2);
+    expect(await completeThroughChain([rejecting], 'x', 1, { onError: (e) => errors.push(e) })).toEqual({
+      prefix: '',
+      items: [],
+    });
     expect(errors).toHaveLength(2);
   });
 
@@ -125,7 +151,10 @@ describe('completeThroughChain', () => {
   });
 
   it('stops waiting for a provider that never answers, at the timeout', async () => {
-    const hanging: AutocompleteProviderFactory = (current) => ({ ...current, getSuggestions: () => new Promise(() => undefined) });
+    const hanging: AutocompleteProviderFactory = (current) => ({
+      ...current,
+      getSuggestions: () => new Promise(() => undefined),
+    });
     const started = Date.now();
     expect(await completeThroughChain([hanging], 'x', 1, { timeoutMs: 30 })).toEqual({ prefix: '', items: [] });
     expect(Date.now() - started).toBeLessThan(1000);

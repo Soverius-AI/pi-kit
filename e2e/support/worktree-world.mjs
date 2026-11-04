@@ -18,8 +18,14 @@ export function writeWorktreeProject({ base, name = 'reporting-adapter', branch 
   const folder = join(base, name);
   mkdirSync(join(folder, 'src'), { recursive: true });
   writeFileSync(join(folder, 'README.md'), `# ${name}\n\nMaps report rows to the shape the dashboard wants.\n`);
-  writeFileSync(join(folder, 'src', 'map.ts'), "export function mapRow(row: { id: number; total: number }): { key: string; value: number } {\n  return { key: String(row.id), value: row.total };\n}\n");
-  writeFileSync(join(folder, 'src', 'index.ts'), "import { mapRow } from './map';\n\nexport const rows = [{ id: 1, total: 10 }].map(mapRow);\n");
+  writeFileSync(
+    join(folder, 'src', 'map.ts'),
+    'export function mapRow(row: { id: number; total: number }): { key: string; value: number } {\n  return { key: String(row.id), value: row.total };\n}\n',
+  );
+  writeFileSync(
+    join(folder, 'src', 'index.ts'),
+    "import { mapRow } from './map';\n\nexport const rows = [{ id: 1, total: 10 }].map(mapRow);\n",
+  );
   gitIn(folder, 'init', '-q', '-b', branch);
   gitIn(folder, 'add', '-A');
   gitIn(folder, 'commit', '-q', '-m', 'init');

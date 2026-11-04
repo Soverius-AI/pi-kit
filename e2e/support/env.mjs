@@ -15,7 +15,11 @@ export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 export const RENDERER = `http://localhost:${process.env.PI_KIT_DEV_RENDERER_PORT ?? '4200'}`;
 export const BACKEND = `http://127.0.0.1:${process.env.PI_KIT_DEV_BACKEND_PORT ?? '4300'}`;
 /** The scratch worlds' models. `scripts/e2e.mjs` puts a proxy at E2E_MODEL_URL that answers every one of them with the one real local model. */
-export const MODEL = { provider: 'llama-swap', id: 'gemma-4-26b', baseUrl: process.env.E2E_MODEL_URL ?? 'http://127.0.0.1:8080/v1' };
+export const MODEL = {
+  provider: 'llama-swap',
+  id: 'gemma-4-26b',
+  baseUrl: process.env.E2E_MODEL_URL ?? 'http://127.0.0.1:8080/v1',
+};
 /** The second scoped model, the one ⌘⇧M switches to. */
 export const ALT_MODEL = { id: 'llama3.2' };
 /** The scoped model that thinks (effort levels apply). */
@@ -31,7 +35,16 @@ export const THINKING_MODEL = { id: 'qwen3.8-27b' };
  * (a key is "not checked" instead of asked about at the provider).
  * `setup({ base, agent, project, data })` runs once the folders exist (a scene set writes the files it needs: credentials, a models.json), and `extraEnv({ base, agent, project, data })` adds to the backend's environment.
  */
-export function createWorld({ demo = false, trusted = true, versionCheck = false, fresh = false, onboarding = false, offline = false, setup, extraEnv } = {}) {
+export function createWorld({
+  demo = false,
+  trusted = true,
+  versionCheck = false,
+  fresh = false,
+  onboarding = false,
+  offline = false,
+  setup,
+  extraEnv,
+} = {}) {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'pi-kit-e2e-')));
   const agent = join(base, 'agent');
   const project = join(base, 'project');
@@ -84,24 +97,62 @@ export function createWorld({ demo = false, trusted = true, versionCheck = false
   // Turns an extension starts in an idle thread: e2e/bg-agents.e2e.mjs checks that the open transcript shows them live.
   cpSync(join(root, 'e2e', 'support', 'pk-bg-turn.ts'), join(project, '.pi', 'extensions', 'pk-bg-turn.ts'));
   // The A2UI example: its tool answers with a surface, which e2e/a-genui.e2e.mjs looks at.
-  cpSync(join(root, 'examples', 'a2ui-failing-specs'), join(project, '.pi', 'extensions', 'a2ui-failing-specs'), { recursive: true });
+  cpSync(join(root, 'examples', 'a2ui-failing-specs'), join(project, '.pi', 'extensions', 'a2ui-failing-specs'), {
+    recursive: true,
+  });
   const git = (...args) => spawnSync('git', args, { cwd: project, stdio: 'ignore' });
   git('init', '-q');
   git('add', '-A');
   git('-c', 'user.name=e2e', '-c', 'user.email=e2e@example.com', 'commit', '-q', '-m', 'fixture');
   if (demo) {
     mkdirSync(join(project, '.pi', 'skills', 'pdf-tools'), { recursive: true });
-    writeFileSync(join(project, '.pi', 'skills', 'pdf-tools', 'SKILL.md'), '---\nname: pdf-tools\ndescription: Read, merge and split PDF files\n---\n\nUse the pdf CLI to work with PDF files.\n');
-    cpSync(join(root, 'examples', 'a2ui-failing-specs'), join(project, '.pi', 'extensions', 'a2ui-failing-specs'), { recursive: true });
+    writeFileSync(
+      join(project, '.pi', 'skills', 'pdf-tools', 'SKILL.md'),
+      '---\nname: pdf-tools\ndescription: Read, merge and split PDF files\n---\n\nUse the pdf CLI to work with PDF files.\n',
+    );
+    cpSync(join(root, 'examples', 'a2ui-failing-specs'), join(project, '.pi', 'extensions', 'a2ui-failing-specs'), {
+      recursive: true,
+    });
     writeFileSync(
       join(project, '.pi', 'mcp.json'),
-      JSON.stringify({ mcpServers: { issues: { command: 'node', args: [join(root, 'examples', 'mcp-app-server', 'server.mjs')], exposure: 'direct', description: 'A toy issue tracker with a create-issue form' } } }, null, 2),
+      JSON.stringify(
+        {
+          mcpServers: {
+            issues: {
+              command: 'node',
+              args: [join(root, 'examples', 'mcp-app-server', 'server.mjs')],
+              exposure: 'direct',
+              description: 'A toy issue tracker with a create-issue form',
+            },
+          },
+        },
+        null,
+        2,
+      ),
     );
     git('add', '-A');
     git('-c', 'user.name=e2e', '-c', 'user.email=e2e@example.com', 'commit', '-q', '-m', 'demo resources');
     writeReportingSession({ agentDir: agent, cwd: project });
     writeGraphSession({ agentDir: agent, cwd: project });
-    spawnSync('node', [join(root, 'scripts', 'gen-big-session.mjs'), '--agent-dir', agent, '--cwd', project, '--turns', '14', '--fork-every', '5', '--forks', '2', '--name', 'Tree demo'], { cwd: root, stdio: 'ignore' });
+    spawnSync(
+      'node',
+      [
+        join(root, 'scripts', 'gen-big-session.mjs'),
+        '--agent-dir',
+        agent,
+        '--cwd',
+        project,
+        '--turns',
+        '14',
+        '--fork-every',
+        '5',
+        '--forks',
+        '2',
+        '--name',
+        'Tree demo',
+      ],
+      { cwd: root, stdio: 'ignore' },
+    );
   }
   setup?.({ base, agent, project, data });
   const token = 'e2e-token-e2e-token-e2e-token-1234';
@@ -159,11 +210,19 @@ export const isUp = async (url, headers) => {
 
 /** Starts `pnpm run dev:web` (scripts/dev.mjs web) with the world's environment and waits until the backend and the renderer answer. */
 export async function startDevWeb(world, { log } = {}) {
-  if (!world.env.PI_KIT_SECRET_STORE) throw new Error('A world needs a scratch PI_KIT_SECRET_STORE: the backend would use the real keychain.');
+  if (!world.env.PI_KIT_SECRET_STORE)
+    throw new Error('A world needs a scratch PI_KIT_SECRET_STORE: the backend would use the real keychain.');
   if ((await isUp(`${BACKEND}/api/dev/token`, { Origin: RENDERER })) || (await isUp(RENDERER))) {
-    throw new Error(`The renderer or backend port (4200 / 4300 unless PI_KIT_DEV_RENDERER_PORT / PI_KIT_DEV_BACKEND_PORT say otherwise) is in use already. Stop the running dev:web first; the tests start their own with a scratch pi folder and project.`);
+    throw new Error(
+      `The renderer or backend port (4200 / 4300 unless PI_KIT_DEV_RENDERER_PORT / PI_KIT_DEV_BACKEND_PORT say otherwise) is in use already. Stop the running dev:web first; the tests start their own with a scratch pi folder and project.`,
+    );
   }
-  const child = spawn('node', ['scripts/dev.mjs', 'web'], { cwd: root, env: { ...process.env, ...world.env }, stdio: ['ignore', log ?? 'ignore', log ?? 'ignore'], detached: true });
+  const child = spawn('node', ['scripts/dev.mjs', 'web'], {
+    cwd: root,
+    env: { ...process.env, ...world.env },
+    stdio: ['ignore', log ?? 'ignore', log ?? 'ignore'],
+    detached: true,
+  });
   await until('the backend', () => isUp(`${BACKEND}/api/dev/token`, { Origin: RENDERER }));
   await until('the renderer', () => isUp(RENDERER));
   return {
@@ -183,8 +242,10 @@ export async function startDevWeb(world, { log } = {}) {
  * the environment `scripts/dev.mjs web` gives it, on BACKEND's port.
  */
 export async function startBackend(world, { log } = {}) {
-  if (!world.env.PI_KIT_SECRET_STORE) throw new Error('A world needs a scratch PI_KIT_SECRET_STORE: the backend would use the real keychain.');
-  if (await isUp(`${BACKEND}/api/dev/token`, { Origin: RENDERER })) throw new Error(`The backend port of ${BACKEND} is in use already.`);
+  if (!world.env.PI_KIT_SECRET_STORE)
+    throw new Error('A world needs a scratch PI_KIT_SECRET_STORE: the backend would use the real keychain.');
+  if (await isUp(`${BACKEND}/api/dev/token`, { Origin: RENDERER }))
+    throw new Error(`The backend port of ${BACKEND} is in use already.`);
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: root,
     env: {

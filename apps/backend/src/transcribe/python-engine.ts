@@ -33,7 +33,11 @@ export function findPythonWithNeedle(): string | undefined {
   if (probed) return probed.python;
   const cwd = mkdtempSync(join(tmpdir(), 'pi-kit-py-'));
   try {
-    const python = PYTHONS.find((candidate) => spawnSync(candidate, ['-c', 'import needle'], { cwd, stdio: 'ignore', timeout: 15_000, env: childEnv() }).status === 0);
+    const python = PYTHONS.find(
+      (candidate) =>
+        spawnSync(candidate, ['-c', 'import needle'], { cwd, stdio: 'ignore', timeout: 15_000, env: childEnv() })
+          .status === 0,
+    );
     probed = { python };
     return python;
   } finally {
@@ -89,7 +93,11 @@ export class PythonEngine implements SpeechEngine {
       const file = join(dir, 'in.wav');
       writeFileSync(file, wav(pcm));
       const out = await new Promise<string>((resolve, reject) => {
-        const child = spawn(this.python, ['-c', SCRIPT, file, options.language ?? ''], { cwd: dir, env: childEnv(this.modelPath), stdio: ['ignore', 'pipe', 'pipe'] });
+        const child = spawn(this.python, ['-c', SCRIPT, file, options.language ?? ''], {
+          cwd: dir,
+          env: childEnv(this.modelPath),
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
         const stdout: Buffer[] = [];
         const stderr: Buffer[] = [];
         const timer = setTimeout(() => child.kill('SIGKILL'), 120_000);
@@ -100,7 +108,12 @@ export class PythonEngine implements SpeechEngine {
         child.on('close', (code) => {
           clearTimeout(timer);
           if (code === 0) resolve(Buffer.concat(stdout).toString('utf8'));
-          else reject(new Error(`The Python needle package failed: ${Buffer.concat(stderr).toString('utf8').trim().split('\n').pop() ?? `exit ${code}`}`));
+          else
+            reject(
+              new Error(
+                `The Python needle package failed: ${Buffer.concat(stderr).toString('utf8').trim().split('\n').pop() ?? `exit ${code}`}`,
+              ),
+            );
         });
       });
       const parsed = JSON.parse(out.trim().split('\n').pop() ?? '{}') as { text?: string; language?: string };
@@ -111,7 +124,10 @@ export class PythonEngine implements SpeechEngine {
   }
 
   /** No live partials from this engine: the chunks are collected and transcribed at the end, as one final update. */
-  async *stream(chunks: AsyncIterable<Float32Array>, options: EngineOptions = {}): AsyncGenerator<EngineChunk, void, void> {
+  async *stream(
+    chunks: AsyncIterable<Float32Array>,
+    options: EngineOptions = {},
+  ): AsyncGenerator<EngineChunk, void, void> {
     const parts: Float32Array[] = [];
     for await (const chunk of chunks) parts.push(chunk);
     const all = new Float32Array(parts.reduce((n, p) => n + p.length, 0));

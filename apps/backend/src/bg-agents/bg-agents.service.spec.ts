@@ -49,7 +49,16 @@ const make = (): BgAgentsService => {
     { dataDir: dir },
     database,
     agents,
-    { cwdOf: () => project, deliver: async (threadId, message) => void delivered.push({ threadId, content: message.content, details: message.details }), allowed: async () => undefined, isolate: async () => { throw new Error('no worktrees here'); }, discard: async () => undefined },
+    {
+      cwdOf: () => project,
+      deliver: async (threadId, message) =>
+        void delivered.push({ threadId, content: message.content, details: message.details }),
+      allowed: async () => undefined,
+      isolate: async () => {
+        throw new Error('no worktrees here');
+      },
+      discard: async () => undefined,
+    },
     runner,
   );
 };
@@ -135,7 +144,13 @@ describe('BgAgentsService', () => {
     ]);
     await service.open(models);
     expect(service.state()).toEqual({ enabled: true });
-    const row = await service.spawn({ threadId: 't1', name: 'reviewer', role: 'reviewer', brief: 'Review the notes.', model });
+    const row = await service.spawn({
+      threadId: 't1',
+      name: 'reviewer',
+      role: 'reviewer',
+      brief: 'Review the notes.',
+      model,
+    });
     expect(row).toMatchObject({ name: 'reviewer', permission: 'read-only', status: 'active', threadId: 't1' });
     expect(service.list('t1').map((a) => a.id)).toEqual([row.id]);
     // The write is the user's call: denied here.
@@ -146,7 +161,9 @@ describe('BgAgentsService', () => {
     const view = await (await service.conversationOf(row.id))!.context(BACKGROUND_CONTEXT);
     const system = view.entries.find((entry) => entry.kind === 'pi.system');
     expect(JSON.stringify(system?.model ?? system?.data ?? '')).toContain('pikit-agent: reviewer');
-    const results = view.entries.filter((entry) => entry.kind === 'pi.tool-result').map((entry) => entry.model?.[0] as { isError?: boolean; content?: { text?: string }[] });
+    const results = view.entries
+      .filter((entry) => entry.kind === 'pi.tool-result')
+      .map((entry) => entry.model?.[0] as { isError?: boolean; content?: { text?: string }[] });
     expect(results).toHaveLength(2);
     expect(results[0].isError).toBe(true);
     expect(results[0].content?.[0]?.text).toContain('read-only');
@@ -167,14 +184,28 @@ describe('BgAgentsService', () => {
     const row = await service.spawn({ threadId: 't1', name: 'tester', role: 'tester', brief: 'Test.', model });
     expect(await service.wait(row.id)).toBe('done');
     expect(delivered).toHaveLength(1);
-    expect(delivered[0]).toMatchObject({ threadId: 't1', content: 'Report from agent "tester": Tests pass.', details: { agentId: row.id, name: 'tester' } });
+    expect(delivered[0]).toMatchObject({
+      threadId: 't1',
+      content: 'Report from agent "tester": Tests pass.',
+      details: { agentId: row.id, name: 'tester' },
+    });
     expect((delivered[0].details as { reportId: string }).reportId).toBeTruthy();
-    expect(service.toAgent(service.get(row.id) as BgAgentRow)).toMatchObject({ id: row.id, name: 'tester', status: 'done', report: 'Tests pass.', blocked: null });
+    expect(service.toAgent(service.get(row.id) as BgAgentRow)).toMatchObject({
+      id: row.id,
+      name: 'tester',
+      status: 'done',
+      report: 'Tests pass.',
+      blocked: null,
+    });
     expect(Object.keys(service.toAgent(service.get(row.id) as BgAgentRow))).not.toContain('cleanup');
     // A follow-up that ends without a report is told to the main agent all the same: the old report answered the old task.
     await service.send(row.id, 'One more thing.', 'followUp', 'send:c9');
     await until(() => delivered.length === 2 && service.get(row.id)?.status === 'done', 'the follow-up to finish');
-    expect(delivered[1]).toMatchObject({ threadId: 't1', content: 'Agent "tester" ended without a report.', details: { agentId: row.id, name: 'tester', ref: expect.stringMatching(/^end:/) } });
+    expect(delivered[1]).toMatchObject({
+      threadId: 't1',
+      content: 'Agent "tester" ended without a report.',
+      details: { agentId: row.id, name: 'tester', ref: expect.stringMatching(/^end:/) },
+    });
     const log = new EventLogRepository(database);
     expect(log.count(row.id)).toBeGreaterThan(0);
     await service.deleteThread('t1');
@@ -183,13 +214,19 @@ describe('BgAgentsService', () => {
   });
 
   it('tells the main agent when a run fails, once, and not when the agent was stopped', async () => {
-    const { models, model } = faux([fauxAssistantMessage([], { stopReason: 'error', errorMessage: '401 Unauthorized' })]);
+    const { models, model } = faux([
+      fauxAssistantMessage([], { stopReason: 'error', errorMessage: '401 Unauthorized' }),
+    ]);
     await service.open(models);
     delivered.length = 0;
     const row = await service.spawn({ threadId: 't1', name: 'broken', role: 'tester', brief: 'Test.', model });
     expect(await service.wait(row.id)).toBe('failed');
     await until(() => delivered.length === 1, 'the failure to reach the thread');
-    expect(delivered[0]).toMatchObject({ threadId: 't1', content: expect.stringMatching(/^Agent "broken" failed: /), details: { agentId: row.id, name: 'broken', ref: expect.stringMatching(/^end:/) } });
+    expect(delivered[0]).toMatchObject({
+      threadId: 't1',
+      content: expect.stringMatching(/^Agent "broken" failed: /),
+      details: { agentId: row.id, name: 'broken', ref: expect.stringMatching(/^end:/) },
+    });
     // A restart follows only unfinished agents: the failure is not said again.
     await service.close();
     await service.open(models);
@@ -201,9 +238,17 @@ describe('BgAgentsService', () => {
     const models = createModels();
     const provider = fauxProvider({ provider: 'router', models: [{ id: 'org/model-x' }] });
     models.setProvider(provider.provider);
-    provider.setResponses([fauxAssistantMessage([fauxToolCall('report', { text: 'Ran on org/model-x.' })], { stopReason: 'toolUse' })]);
+    provider.setResponses([
+      fauxAssistantMessage([fauxToolCall('report', { text: 'Ran on org/model-x.' })], { stopReason: 'toolUse' }),
+    ]);
     await service.open(models);
-    const row = await service.spawn({ threadId: 't1', name: 'routed', role: 'tester', brief: 'Test.', model: 'router/org/model-x' });
+    const row = await service.spawn({
+      threadId: 't1',
+      name: 'routed',
+      role: 'tester',
+      brief: 'Test.',
+      model: 'router/org/model-x',
+    });
     expect(await service.wait(row.id)).toBe('done');
     expect(service.get(row.id)).toMatchObject({ model: 'router/org/model-x', report: 'Ran on org/model-x.' });
   });
@@ -221,7 +266,14 @@ describe('BgAgentsService', () => {
         void told.push(`started ${threadId}, made.md ${existsSync(join(folder, 'made.md')) ? 'there' : 'not there'}`),
       ended: () => void told.push('ended'),
     });
-    const row = await service.spawn({ threadId: 't1', name: 'writer', role: 'writer', brief: 'Write.', permission: 'edit', model });
+    const row = await service.spawn({
+      threadId: 't1',
+      name: 'writer',
+      role: 'writer',
+      brief: 'Write.',
+      permission: 'edit',
+      model,
+    });
     await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
     await service.send(row.id, 'More.', 'followUp', 'more-1');
     await until(() => told.length === 4, 'the second stretch of work to end');
@@ -238,15 +290,32 @@ describe('BgAgentsService', () => {
       },
       ended: () => undefined,
     });
-    const row = await service.spawn({ threadId: 't1', name: 'gone', role: 'r', brief: 'Work.', permission: 'edit', model });
+    const row = await service.spawn({
+      threadId: 't1',
+      name: 'gone',
+      role: 'r',
+      brief: 'Work.',
+      permission: 'edit',
+      model,
+    });
     await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
     await expect(service.send(row.id, 'More.', 'followUp', 'more-1')).rejects.toThrow('stopped or deleted');
   });
 
   it('stop aborts a running command and leaves the agent in History as stopped', async () => {
-    const { models, model } = faux([fauxAssistantMessage([fauxToolCall('bash', { command: 'sleep 30' })], { stopReason: 'toolUse' }), fauxAssistantMessage('Never.')]);
+    const { models, model } = faux([
+      fauxAssistantMessage([fauxToolCall('bash', { command: 'sleep 30' })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage('Never.'),
+    ]);
     await service.open(models);
-    const row = await service.spawn({ threadId: 't1', name: 'sleeper', role: 'tester', brief: 'Sleep.', permission: 'edit', model });
+    const row = await service.spawn({
+      threadId: 't1',
+      name: 'sleeper',
+      role: 'tester',
+      brief: 'Sleep.',
+      permission: 'edit',
+      model,
+    });
     await until(() => !!service.get(row.id)?.cleanup, 'the command to start');
     const started = Date.now();
     await service.stop(row.id);
@@ -259,7 +328,10 @@ describe('BgAgentsService', () => {
 
   it('routes a main question to the thread once, settles it with agent_reply, and shows "answered by main agent"', async () => {
     const { models, model } = faux([
-      fauxAssistantMessage([fauxToolCall('ask', { question: 'Must mul accept bigint?', kind: 'main', choices: ['yes', 'no'] })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage(
+        [fauxToolCall('ask', { question: 'Must mul accept bigint?', kind: 'main', choices: ['yes', 'no'] })],
+        { stopReason: 'toolUse' },
+      ),
       fauxAssistantMessage('Numbers only, then.'),
     ]);
     await service.open(models);
@@ -267,14 +339,27 @@ describe('BgAgentsService', () => {
     const row = await service.spawn({ threadId: 't1', name: 'tester', role: 'tester', brief: 'Test.', model });
     // A transcript opened now follows the agent live, through the same observable the runtime streams to a client.
     const live: { type: string; content?: string }[] = [];
-    const following = runner.connect({ threadId: row.id, agentId: 'pi-bg' } as never).subscribe((event) => live.push(event as { type: string; content?: string }));
+    const following = runner
+      .connect({ threadId: row.id, agentId: 'pi-bg' } as never)
+      .subscribe((event) => live.push(event as { type: string; content?: string }));
     await until(() => delivered.length > 0, 'the question to reach the thread');
-    expect(delivered[0]).toMatchObject({ threadId: 't1', content: expect.stringContaining('Question from agent "tester"') });
+    expect(delivered[0]).toMatchObject({
+      threadId: 't1',
+      content: expect.stringContaining('Question from agent "tester"'),
+    });
     expect(delivered[0].content).toContain('Choices: yes | no');
     const { questionId } = delivered[0].details as { questionId: string; ref: string };
     expect((delivered[0].details as { ref: string }).ref).toBe(questionId);
-    await until(() => service.toAgent(service.get(row.id) as BgAgentRow).question?.id === questionId, 'the panel to show the question');
-    expect(service.toAgent(service.get(row.id) as BgAgentRow).question).toMatchObject({ kind: 'main', choices: ['yes', 'no'], forwarded: false, expiresAt: null });
+    await until(
+      () => service.toAgent(service.get(row.id) as BgAgentRow).question?.id === questionId,
+      'the panel to show the question',
+    );
+    expect(service.toAgent(service.get(row.id) as BgAgentRow).question).toMatchObject({
+      kind: 'main',
+      choices: ['yes', 'no'],
+      forwarded: false,
+      expiresAt: null,
+    });
     expect(service.userQuestions('t1')).toEqual([]);
     await expect(service.answerInterrupt('agent-question:nope:x', { value: 'y' })).rejects.toThrow('no question');
     expect(await service.answerInterrupt('not-an-agent-question', { value: 'y' })).toBe(false);
@@ -282,23 +367,41 @@ describe('BgAgentsService', () => {
     await expect(service.reply(row.id, questionId, 'Again?')).rejects.toThrow('already answered');
     await until(() => service.get(row.id)?.status === 'done' && delivered.length === 2, 'the agent to finish');
     expect(delivered[1].content).toBe('Agent "tester" ended without a report.'); // no receipt for the main agent's own answer
-    expect(service.toAgent(service.get(row.id) as BgAgentRow)).toMatchObject({ question: null, answered: { question: 'Must mul accept bigint?', text: 'No, numbers only.', by: 'main' } });
+    expect(service.toAgent(service.get(row.id) as BgAgentRow)).toMatchObject({
+      question: null,
+      answered: { question: 'Must mul accept bigint?', text: 'No, numbers only.', by: 'main' },
+    });
     const view = await (await service.conversationOf(row.id))!.context(BACKGROUND_CONTEXT);
-    const result = view.entries.find((entry) => entry.kind === 'pi.tool-result')?.model?.[0] as { content?: { text?: string }[] };
+    const result = view.entries.find((entry) => entry.kind === 'pi.tool-result')?.model?.[0] as {
+      content?: { text?: string }[];
+    };
     expect(result.content?.[0]?.text).toBe('Answered by main agent: No, numbers only.');
     // The agent's transcript (the `pi-bg` log the runner follows) carries the call and its result as they happened.
-    const logged = new EventLogRepository(database).read(row.id).map((stored) => stored.event as { type: string; toolCallName?: string; content?: string });
+    const logged = new EventLogRepository(database)
+      .read(row.id)
+      .map((stored) => stored.event as { type: string; toolCallName?: string; content?: string });
     expect(logged.some((event) => event.type === 'TOOL_CALL_START' && event.toolCallName === 'ask')).toBe(true);
     expect(logged.find((event) => event.type === 'TOOL_CALL_RESULT')?.content).toContain('Answered by main agent');
     // What a client replays passes the AG-UI verifier, so the transcript does not break on it.
-    await firstValueFrom(from(logged.filter((event) => event.type !== 'CUSTOM') as unknown as BaseEvent[]).pipe(verifyEvents(false), toArray()));
-    await until(() => live.some((event) => event.type === 'TOOL_CALL_RESULT' && !!event.content?.includes('Answered by main agent')), 'the live follower to get the answer');
+    await firstValueFrom(
+      from(logged.filter((event) => event.type !== 'CUSTOM') as unknown as BaseEvent[]).pipe(
+        verifyEvents(false),
+        toArray(),
+      ),
+    );
+    await until(
+      () =>
+        live.some((event) => event.type === 'TOOL_CALL_RESULT' && !!event.content?.includes('Answered by main agent')),
+      'the live follower to get the answer',
+    );
     following.unsubscribe();
   });
 
   it('settles a main question the main agent answers within the very turn that delivers it (the delivery waits for the turn)', async () => {
     const { models, model } = faux([
-      fauxAssistantMessage([fauxToolCall('ask', { question: 'Which runner?', kind: 'main' })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage([fauxToolCall('ask', { question: 'Which runner?', kind: 'main' })], {
+        stopReason: 'toolUse',
+      }),
       fauxAssistantMessage('node:test it is.'),
     ]);
     await service.open(models);
@@ -308,19 +411,39 @@ describe('BgAgentsService', () => {
       { dataDir: dir },
       database,
       agents,
-      { cwdOf: () => project, deliver: async (_threadId, message) => void (message.customType === 'pikit.agent-question' && (await service.reply(message.details.agentId, message.details.questionId as string, 'node:test'))), allowed: async () => undefined, isolate: async () => { throw new Error('no worktrees here'); }, discard: async () => undefined },
+      {
+        cwdOf: () => project,
+        deliver: async (_threadId, message) =>
+          void (
+            message.customType === 'pikit.agent-question' &&
+            (await service.reply(message.details.agentId, message.details.questionId as string, 'node:test'))
+          ),
+        allowed: async () => undefined,
+        isolate: async () => {
+          throw new Error('no worktrees here');
+        },
+        discard: async () => undefined,
+      },
       new BgAgentRunner(new EventLogRepository(database)),
     );
     await service.open(models);
     const row = await service.spawn({ threadId: 't1', name: 'tester', role: 'tester', brief: 'Test.', model });
     await until(() => service.get(row.id)?.status === 'done', 'the agent to finish', 20_000);
-    expect(service.toAgent(service.get(row.id) as BgAgentRow)).toMatchObject({ question: null, answered: { text: 'node:test', by: 'main' } });
+    expect(service.toAgent(service.get(row.id) as BgAgentRow)).toMatchObject({
+      question: null,
+      answered: { text: 'node:test', by: 'main' },
+    });
   });
 
-  it('a user question (and a forwarded one) is the thread\'s to answer: a dialog in the thread state, the answer verbatim to the agent, a receipt to the main agent', async () => {
+  it("a user question (and a forwarded one) is the thread's to answer: a dialog in the thread state, the answer verbatim to the agent, a receipt to the main agent", async () => {
     const { models, model } = faux([
-      fauxAssistantMessage([fauxToolCall('ask', { question: 'Cover negative numbers too?', kind: 'main' })], { stopReason: 'toolUse' }),
-      fauxAssistantMessage([fauxToolCall('ask', { question: 'Change greet?', kind: 'user', choices: ['Keep as is', 'Change it'] })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage([fauxToolCall('ask', { question: 'Cover negative numbers too?', kind: 'main' })], {
+        stopReason: 'toolUse',
+      }),
+      fauxAssistantMessage(
+        [fauxToolCall('ask', { question: 'Change greet?', kind: 'user', choices: ['Keep as is', 'Change it'] })],
+        { stopReason: 'toolUse' },
+      ),
       fauxAssistantMessage('Done.'),
     ]);
     await service.open(models);
@@ -330,11 +453,30 @@ describe('BgAgentsService', () => {
     const first = (delivered[0].details as { questionId: string }).questionId;
     await service.forward(row.id, first, 'Your call.');
     await expect(service.reply(row.id, first, 'Yes')).rejects.toThrow('forwarded');
-    expect(service.userQuestions('t1')).toEqual([{ id: `agent-question:${row.id}:${first}`, agentId: row.id, request: { method: 'input', title: 'Cover negative numbers too?', message: 'Your call.', agent: 'reviewer', toolCallId: expect.any(String) } }]);
-    expect(service.toAgent(service.get(row.id) as BgAgentRow).question).toMatchObject({ kind: 'user', forwarded: true, note: 'Your call.' });
+    expect(service.userQuestions('t1')).toEqual([
+      {
+        id: `agent-question:${row.id}:${first}`,
+        agentId: row.id,
+        request: {
+          method: 'input',
+          title: 'Cover negative numbers too?',
+          message: 'Your call.',
+          agent: 'reviewer',
+          toolCallId: expect.any(String),
+        },
+      },
+    ]);
+    expect(service.toAgent(service.get(row.id) as BgAgentRow).question).toMatchObject({
+      kind: 'user',
+      forwarded: true,
+      note: 'Your call.',
+    });
     expect(await service.answerInterrupt(`agent-question:${row.id}:${first}`, { value: 'Yes' })).toBe(true);
     await until(() => delivered.length === 2, 'the receipt');
-    expect(delivered[1]).toMatchObject({ content: 'The user answered agent "reviewer"\'s question "Cover negative numbers too?": Yes', details: { agentId: row.id, name: 'reviewer', ref: `${first}/answer` } });
+    expect(delivered[1]).toMatchObject({
+      content: 'The user answered agent "reviewer"\'s question "Cover negative numbers too?": Yes',
+      details: { agentId: row.id, name: 'reviewer', ref: `${first}/answer` },
+    });
     // The second question goes to the user directly: no message to the main agent, a select dialog in the thread.
     await until(() => service.userQuestions('t1').length === 1, 'the user question');
     expect(delivered).toHaveLength(2);
@@ -346,13 +488,21 @@ describe('BgAgentsService', () => {
     expect(service.userQuestions('t1')).toEqual([]);
     expect(delivered[2].content).toContain('dismissed');
     const view = await (await service.conversationOf(row.id))!.context(BACKGROUND_CONTEXT);
-    const results = view.entries.filter((entry) => entry.kind === 'pi.tool-result').map((entry) => (entry.model?.[0] as { content?: { text?: string }[] }).content?.[0]?.text);
-    expect(results).toEqual(['Answered by the user: Yes', 'The question was dismissed without an answer. Decide yourself and go on.']);
+    const results = view.entries
+      .filter((entry) => entry.kind === 'pi.tool-result')
+      .map((entry) => (entry.model?.[0] as { content?: { text?: string }[] }).content?.[0]?.text);
+    expect(results).toEqual([
+      'Answered by the user: Yes',
+      'The question was dismissed without an answer. Decide yourself and go on.',
+    ]);
   });
 
   it('keeps a question open until answered beyond a legacy deadline and across restart', async () => {
     const { models, model } = faux([
-      fauxAssistantMessage([fauxToolCall('ask', { question: 'Which style?', kind: 'user', default: 'fallback', timeoutMs: 1000 })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage(
+        [fauxToolCall('ask', { question: 'Which style?', kind: 'user', default: 'fallback', timeoutMs: 1000 })],
+        { stopReason: 'toolUse' },
+      ),
       fauxAssistantMessage('Accepted.'),
     ]);
     await service.open(models);
@@ -373,13 +523,24 @@ describe('BgAgentsService', () => {
   it('waits for completion without an expiry while the agent is still working', async () => {
     let release!: () => void;
     let generating = false;
-    const pending = new Promise<void>((resolve) => { release = resolve; });
-    const { models, model } = faux([async () => { generating = true; await pending; return fauxAssistantMessage('Finished.'); }]);
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { models, model } = faux([
+      async () => {
+        generating = true;
+        await pending;
+        return fauxAssistantMessage('Finished.');
+      },
+    ]);
     await service.open(models);
     const row = await service.spawn({ threadId: 't1', name: 'worker', role: 'work', brief: 'Work.', model });
     await until(() => generating, 'the held provider request');
     let returned = false;
-    const waiting = service.wait(row.id).then((status) => { returned = true; return status; });
+    const waiting = service.wait(row.id).then((status) => {
+      returned = true;
+      return status;
+    });
     try {
       // Let the SDK register the wait before simulating elapsed time.
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -399,15 +560,28 @@ describe('BgAgentsService', () => {
 
   it('cancels a caller status wait without stopping the agent', async () => {
     let release!: () => void;
-    const pending = new Promise<void>((resolve) => { release = resolve; });
-    const { models, model } = faux([async () => { await pending; return fauxAssistantMessage('Finished.'); }]);
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { models, model } = faux([
+      async () => {
+        await pending;
+        return fauxAssistantMessage('Finished.');
+      },
+    ]);
     await service.open(models);
     const row = await service.spawn({ threadId: 't1', name: 'worker', role: 'work', brief: 'Work.', model });
     const aborter = new AbortController();
-    const waiting = service.wait(row.id, aborter.signal).then((status) => ({ status }), (error: unknown) => ({ error }));
+    const waiting = service.wait(row.id, aborter.signal).then(
+      (status) => ({ status }),
+      (error: unknown) => ({ error }),
+    );
     try {
       aborter.abort(new Error('Caller stopped waiting.'));
-      const outcome = await Promise.race([waiting, new Promise((resolve) => setTimeout(() => resolve('still waiting'), 100))]);
+      const outcome = await Promise.race([
+        waiting,
+        new Promise((resolve) => setTimeout(() => resolve('still waiting'), 100)),
+      ]);
       expect(outcome).toMatchObject({ error: expect.objectContaining({ message: 'Caller stopped waiting.' }) });
       expect(service.get(row.id)?.status).toBe('active');
     } finally {
@@ -419,7 +593,9 @@ describe('BgAgentsService', () => {
 
   it('accepts one concurrent answer and delivers only that answer to the agent and main thread', async () => {
     const { models, model } = faux([
-      fauxAssistantMessage([fauxToolCall('ask', { question: 'Which implementation?', kind: 'user' })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage([fauxToolCall('ask', { question: 'Which implementation?', kind: 'user' })], {
+        stopReason: 'toolUse',
+      }),
       fauxAssistantMessage('Accepted.'),
     ]);
     await service.open(models);
@@ -439,7 +615,10 @@ describe('BgAgentsService', () => {
     expect(delivered[0].content).toContain(`: ${accepted}`);
     expect(delivered[1].content).toBe('Agent "worker" ended without a report.');
     const log = new EventLogRepository(database);
-    await until(() => log.read(row.id).some((stored) => stored.event.type === 'TOOL_CALL_RESULT'), 'the durable tool result');
+    await until(
+      () => log.read(row.id).some((stored) => stored.event.type === 'TOOL_CALL_RESULT'),
+      'the durable tool result',
+    );
     const result = log.read(row.id).find((stored) => stored.event.type === 'TOOL_CALL_RESULT')?.event;
     expect(result && 'content' in result ? result.content : undefined).toBe(`Answered by the user: ${accepted}`);
   });
@@ -448,25 +627,48 @@ describe('BgAgentsService', () => {
     const { models, model } = faux([fauxAssistantMessage('Never.')]);
     await service.open(models);
     await service.close();
-    service = new BgAgentsService({ dataDir: dir }, database, agents, { cwdOf: () => project, deliver: async () => undefined, allowed: async () => 'Background agents are off for this project: switch them on in Settings › Projects.', isolate: async () => { throw new Error('no'); }, discard: async () => undefined }, new BgAgentRunner(new EventLogRepository(database)));
+    service = new BgAgentsService(
+      { dataDir: dir },
+      database,
+      agents,
+      {
+        cwdOf: () => project,
+        deliver: async () => undefined,
+        allowed: async () => 'Background agents are off for this project: switch them on in Settings › Projects.',
+        isolate: async () => {
+          throw new Error('no');
+        },
+        discard: async () => undefined,
+      },
+      new BgAgentRunner(new EventLogRepository(database)),
+    );
     await service.open(models);
-    await expect(service.spawn({ threadId: 't1', name: 'a', role: 'r', brief: 'b', model })).rejects.toThrow('switch them on');
+    await expect(service.spawn({ threadId: 't1', name: 'a', role: 'r', brief: 'b', model })).rejects.toThrow(
+      'switch them on',
+    );
     expect(service.list('t1')).toEqual([]);
   });
 
   it('lets more than four agents generate concurrently and records every request', async () => {
     let generating = 0;
     let release!: () => void;
-    const pending = new Promise<void>((resolve) => { release = resolve; });
-    const { models, model } = faux(Array.from({ length: 5 }, () => async () => {
-      generating++;
-      await pending;
-      return fauxAssistantMessage('Done.');
-    }));
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { models, model } = faux(
+      Array.from({ length: 5 }, () => async () => {
+        generating++;
+        await pending;
+        return fauxAssistantMessage('Done.');
+      }),
+    );
     await service.open(models);
     const rows: BgAgentRow[] = [];
     try {
-      for (let i = 0; i < 5; i++) rows.push(await service.spawn({ threadId: 't1', name: `agent-${i}`, role: 'test', brief: 'Work concurrently.', model }));
+      for (let i = 0; i < 5; i++)
+        rows.push(
+          await service.spawn({ threadId: 't1', name: `agent-${i}`, role: 'test', brief: 'Work concurrently.', model }),
+        );
       await until(() => generating === 5, 'all five model requests to start before any finishes', 5000);
       expect(rows.map((row) => service.toAgent(service.get(row.id) as BgAgentRow).turns)).toEqual([1, 1, 1, 1, 1]);
     } finally {
@@ -503,13 +705,23 @@ describe('BgAgentsService', () => {
     const row = await service.spawn({ threadId: 't1', name: 'reviewer', role: 'reviewer', brief: 'Review.', model });
     await until(() => service.userQuestions('t1').length === 1, 'the block question');
     const first = service.userQuestions('t1')[0];
-    expect(first.request).toMatchObject({ method: 'select', options: ['Allow once', 'Allow all', 'Deny'], agent: 'reviewer' });
+    expect(first.request).toMatchObject({
+      method: 'select',
+      options: ['Allow once', 'Allow all', 'Deny'],
+      agent: 'reviewer',
+    });
     expect(first.request.title).toContain('wants to run write on notes.md');
     await service.answerInterrupt(first.id, { value: 'Deny' });
-    await until(() => service.userQuestions('t1').length === 1 && service.userQuestions('t1')[0].id !== first.id, 'the second block question');
+    await until(
+      () => service.userQuestions('t1').length === 1 && service.userQuestions('t1')[0].id !== first.id,
+      'the second block question',
+    );
     expect(existsSync(join(dir, 'notes.md'))).toBe(false);
     await service.answerInterrupt(service.userQuestions('t1')[0].id, { value: 'Allow once' });
-    await until(() => service.userQuestions('t1').length === 1 && readFileSync(join(dir, 'notes.md'), 'utf8') === 'second', 'the third block question');
+    await until(
+      () => service.userQuestions('t1').length === 1 && readFileSync(join(dir, 'notes.md'), 'utf8') === 'second',
+      'the third block question',
+    );
     // "Allow all": the third write goes through, the fourth is not asked about, and the agent is `edit` from here on.
     await service.answerInterrupt(service.userQuestions('t1')[0].id, { value: 'Allow all' });
     await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
@@ -517,7 +729,9 @@ describe('BgAgentsService', () => {
     expect(service.get(row.id)?.permission).toBe('edit');
     expect(starts).toEqual([`write notes.md in ${dir}`, `write notes.md in ${dir}`, `write notes.md in ${dir}`]);
     const view = await (await service.conversationOf(row.id))!.context(BACKGROUND_CONTEXT);
-    const results = view.entries.filter((entry) => entry.kind === 'pi.tool-result').map((entry) => entry.model?.[0] as { isError?: boolean; content?: { text?: string }[] });
+    const results = view.entries
+      .filter((entry) => entry.kind === 'pi.tool-result')
+      .map((entry) => entry.model?.[0] as { isError?: boolean; content?: { text?: string }[] });
     expect(results[0].isError).toBe(true);
     expect(results[0].content?.[0]?.text).toContain('did not allow');
     expect(results[1].isError).toBeFalsy();
@@ -525,29 +739,57 @@ describe('BgAgentsService', () => {
     expect(results[3].isError).toBeFalsy();
   });
 
-  it('lets agents of one thread message each other: a message from the sender in the recipient\'s transcript', async () => {
+  it("lets agents of one thread message each other: a message from the sender in the recipient's transcript", async () => {
     const { models, model } = faux([fauxAssistantMessage('Waiting.')]);
     await service.open(models);
     const recipient = await service.spawn({ threadId: 't1', name: 'tester', role: 'tests', brief: 'Wait.', model });
     expect(await service.wait(recipient.id)).toBe('done');
     const { provider } = faux([]);
-    provider.setResponses([fauxAssistantMessage([fauxToolCall('agent_send', { agent: recipient.id, text: 'Cover greet too.', mode: 'followUp' })], { stopReason: 'toolUse' }), fauxAssistantMessage('Sent.'), fauxAssistantMessage('Got it.')]);
+    provider.setResponses([
+      fauxAssistantMessage(
+        [fauxToolCall('agent_send', { agent: recipient.id, text: 'Cover greet too.', mode: 'followUp' })],
+        { stopReason: 'toolUse' },
+      ),
+      fauxAssistantMessage('Sent.'),
+      fauxAssistantMessage('Got it.'),
+    ]);
     models.setProvider(provider.provider);
-    const sender = await service.spawn({ threadId: 't1', name: 'reviewer', role: 'review', brief: 'Tell tester.', model });
-    await until(() => service.get(sender.id)?.status === 'done' && service.get(recipient.id)?.status === 'done', 'both to finish');
+    const sender = await service.spawn({
+      threadId: 't1',
+      name: 'reviewer',
+      role: 'review',
+      brief: 'Tell tester.',
+      model,
+    });
+    await until(
+      () => service.get(sender.id)?.status === 'done' && service.get(recipient.id)?.status === 'done',
+      'both to finish',
+    );
     const view = await (await service.conversationOf(recipient.id))!.context(BACKGROUND_CONTEXT);
-    const inputs = view.entries.filter((entry) => entry.kind === 'pi.user').map((entry) => (entry.model?.[0] as { content?: unknown }).content);
+    const inputs = view.entries
+      .filter((entry) => entry.kind === 'pi.user')
+      .map((entry) => (entry.model?.[0] as { content?: unknown }).content);
     expect(inputs).toContain(`Message from agent "reviewer" (agent ${sender.id}): Cover greet too.`);
-    const logged = new EventLogRepository(database).read(recipient.id).map((stored) => stored.event as { type: string; name?: string });
+    const logged = new EventLogRepository(database)
+      .read(recipient.id)
+      .map((stored) => stored.event as { type: string; name?: string });
     expect(logged.find((event) => event.type === 'SUBAGENT_STARTED')).toMatchObject({ name: 'reviewer' });
     expect(service.toAgent(service.get(sender.id) as BgAgentRow)).toMatchObject({ turns: 2 });
     // Another thread's agent is refused.
     const stranger = await service.spawn({ threadId: 't2', name: 'x', role: 'r', brief: 'b', model });
-    await expect((service as unknown as { sendFrom: (a: string, b: string, t: string, m: 'steer', r: string) => Promise<void> }).sendFrom(sender.id, stranger.id, 'hi', 'steer', 'send:1')).rejects.toThrow('no agent');
+    await expect(
+      (
+        service as unknown as { sendFrom: (a: string, b: string, t: string, m: 'steer', r: string) => Promise<void> }
+      ).sendFrom(sender.id, stranger.id, 'hi', 'steer', 'send:1'),
+    ).rejects.toThrow('no agent');
   });
 
   it('survives a backend kill: the next backend takes the store over, holds the agent for its running command, and goes on when the user discards it', async () => {
-    const worker = spawn(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'killed-backend.mjs'), dir, key, 'sleep 5'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const worker = spawn(
+      process.execPath,
+      [join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'killed-backend.mjs'), dir, key, 'sleep 5'],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
     let out = '';
     let err = '';
     worker.stdout.on('data', (data) => (out += data));

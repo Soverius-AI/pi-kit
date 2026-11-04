@@ -19,7 +19,11 @@ import { assertLinuxHost } from './release-targets.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { values, positionals } = parseArgs({
   allowPositionals: true,
-  options: { dir: { type: 'boolean', default: false }, arch: { type: 'string', multiple: true }, 'skip-build': { type: 'boolean', default: false } },
+  options: {
+    dir: { type: 'boolean', default: false },
+    arch: { type: 'string', multiple: true },
+    'skip-build': { type: 'boolean', default: false },
+  },
 });
 const platforms = {
   mac: { platform: 'darwin', flag: '--mac', archs: ['arm64'] },
@@ -41,13 +45,26 @@ const run = (command, args, env = {}) => {
 const seconds = (since) => `${((Date.now() - since) / 1000).toFixed(1)} s`;
 
 let started = Date.now();
-run(process.execPath, [join(root, 'scripts/package-stage.mjs'), ...archs.flatMap((arch) => ['--target', `${group.platform}-${arch}`]), ...(values['skip-build'] ? ['--skip-build'] : [])]);
+run(process.execPath, [
+  join(root, 'scripts/package-stage.mjs'),
+  ...archs.flatMap((arch) => ['--target', `${group.platform}-${arch}`]),
+  ...(values['skip-build'] ? ['--skip-build'] : []),
+]);
 console.log(`staged ${archs.map((a) => `${group.platform}-${a}`).join(', ')} in ${seconds(started)}`);
 
 started = Date.now();
 run(
   process.execPath,
-  [join(root, 'node_modules/electron-builder/cli.js'), group.flag, ...archs.map((arch) => `--${arch}`), ...(values.dir ? ['--dir'] : []), '--publish', 'never', '--config', 'electron-builder.config.cjs'],
+  [
+    join(root, 'node_modules/electron-builder/cli.js'),
+    group.flag,
+    ...archs.map((arch) => `--${arch}`),
+    ...(values.dir ? ['--dir'] : []),
+    '--publish',
+    'never',
+    '--config',
+    'electron-builder.config.cjs',
+  ],
   // The config reuses the workspace's own Electron when the one target is the machine's (no download); the other targets download theirs once into electron's cache.
   { PI_KIT_BUILD_PLATFORM: group.platform, PI_KIT_BUILD_ARCHS: archs.join(',') },
 );

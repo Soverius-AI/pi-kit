@@ -7,7 +7,17 @@
 // a project server cannot hold a secret.
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { env, openApp } from './support/app.mjs';
@@ -30,14 +40,27 @@ let launcherDir;
 
 async function call(path, init = {}) {
   const { token } = await (await fetch(`${API}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${API}${path}`, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}`, ...(init.body ? { 'Content-Type': 'application/json' } : {}) } });
+  const res = await fetch(`${API}${path}`, {
+    ...init,
+    headers: {
+      ...init.headers,
+      Authorization: `Bearer ${token}`,
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+  });
   const text = await res.text();
   return { status: res.status, body: text ? JSON.parse(text) : undefined };
 }
 
 const run = (command, args, options = {}) =>
   new Promise((resolve) => {
-    const child = execFile(command, args, { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, ...options }, (error, stdout, stderr) => resolve({ status: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr }));
+    const child = execFile(
+      command,
+      args,
+      { encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, ...options },
+      (error, stdout, stderr) =>
+        resolve({ status: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr }),
+    );
     child.stdin.end();
   });
 
@@ -64,7 +87,14 @@ function filesContaining(dir, needle, skip = []) {
 /** `pi mcp list --json` the way a terminal runs it: pi's own CLI against the scratch agent folder, with `pi-kit-secret` on PATH for the credential command. */
 async function piMcpList() {
   const piCli = join(root, 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'bundle', 'cli.js');
-  const terminal = { ...process.env, PI_CODING_AGENT_DIR: world.agent, PI_KIT_SECRET_STORE: `file:${secretsFile}`, PATH: `${launcherDir}:${process.env.PATH}`, PI_OFFLINE: '1', NO_COLOR: '1' };
+  const terminal = {
+    ...process.env,
+    PI_CODING_AGENT_DIR: world.agent,
+    PI_KIT_SECRET_STORE: `file:${secretsFile}`,
+    PATH: `${launcherDir}:${process.env.PATH}`,
+    PI_OFFLINE: '1',
+    NO_COLOR: '1',
+  };
   const listed = await run('node', [piCli, 'mcp', 'list', '--json'], { env: terminal, cwd: world.base });
   let json;
   try {
@@ -83,7 +113,14 @@ before(async () => {
   logFd = openSync(join(world.base, 'mcp-edit-backend.log'), 'w');
   backend = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: root,
-    env: { ...process.env, ...world.env, NODE_ENV: 'development', PI_KIT_PORT: String(PORT), PI_KIT_ORIGIN: env.base, PI_KIT_VERSION: '0.0.0-e2e' },
+    env: {
+      ...process.env,
+      ...world.env,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: String(PORT),
+      PI_KIT_ORIGIN: env.base,
+      PI_KIT_VERSION: '0.0.0-e2e',
+    },
     stdio: ['ignore', logFd, logFd],
     detached: true,
   });
@@ -109,14 +146,18 @@ after(async () => {
 
 const settings = () => app.page.getByRole('dialog', { name: 'Settings' });
 const row = (name) => settings().getByTestId(`mcp-row-${name}`);
-const inState = (name, state, timeout = 60_000) => settings().locator(`[data-testid="mcp-row-${name}"][data-state="${state}"]`).waitFor({ timeout });
-const gone = (name, timeout = 60_000) => settings().getByTestId(`mcp-row-${name}`).waitFor({ state: 'detached', timeout });
+const inState = (name, state, timeout = 60_000) =>
+  settings().locator(`[data-testid="mcp-row-${name}"][data-state="${state}"]`).waitFor({ timeout });
+const gone = (name, timeout = 60_000) =>
+  settings().getByTestId(`mcp-row-${name}`).waitFor({ state: 'detached', timeout });
 const wizard = () => app.page.getByTestId('add-server-wizard');
 const edit = (name) => app.page.getByRole('dialog', { name: `Edit ${name}` });
 const editor = () => app.page.getByTestId('file-editor');
 async function list() {
   if ((await settings().count()) === 0) await app.h.openSettings();
-  await settings().getByRole('tab', { name: /MCP servers/ }).click();
+  await settings()
+    .getByRole('tab', { name: /MCP servers/ })
+    .click();
   await settings().getByTestId('section-mcp').waitFor();
   await settings().getByTestId('section-mcp').getByRole('tab', { name: 'Servers', exact: true }).click();
 }
@@ -157,9 +198,18 @@ describe('add a server of your own through the form', () => {
     await wizard().waitFor({ state: 'detached' });
     await row('files').waitFor();
     await inState('files', 'connected');
-    assert.deepEqual(servers(userFile()).files, { command: 'node', args: [SERVER], env: { ROOT: '/srv/data', API_KEY: COMMAND }, description: 'A toy issue tracker' });
+    assert.deepEqual(servers(userFile()).files, {
+      command: 'node',
+      args: [SERVER],
+      env: { ROOT: '/srv/data', API_KEY: COMMAND },
+      description: 'A toy issue tracker',
+    });
     assert.equal(secrets()[ACCOUNT], SECRET);
-    assert.deepEqual(filesContaining(world.base, SECRET, [secretsFile]), [], 'the secret is in the credential store only');
+    assert.deepEqual(
+      filesContaining(world.base, SECRET, [secretsFile]),
+      [],
+      'the secret is in the credential store only',
+    );
     const { status, json } = await piMcpList();
     assert.equal(status, 0, 'pi lists the file without an error');
     assert.ok(JSON.stringify(json).includes('"files"'), 'and knows the server');
@@ -193,7 +243,13 @@ describe('edit it', () => {
     await dialog.getByTestId('server-save').click();
     await dialog.waitFor({ state: 'detached' });
     await inState('files', 'connected');
-    assert.deepEqual(servers(userFile()).files, { command: 'node', args: [SERVER], env: { ROOT: '/srv/other', API_KEY: COMMAND }, description: 'Files, edited', exposure: 'deferred' });
+    assert.deepEqual(servers(userFile()).files, {
+      command: 'node',
+      args: [SERVER],
+      env: { ROOT: '/srv/other', API_KEY: COMMAND },
+      description: 'Files, edited',
+      exposure: 'deferred',
+    });
     assert.equal(secrets()[ACCOUNT], SECRET, 'a row nobody touched keeps its stored value');
     assert.match(await row('files').innerText(), /Files, edited/);
   });
@@ -211,7 +267,10 @@ describe('edit it', () => {
   });
 
   it('a rename moves the entry; a name that is taken is refused and the dialog stays', async () => {
-    writeFileSync(userFile(), JSON.stringify({ mcpServers: { ...servers(userFile()), other: { command: 'node', args: [SERVER] } } }, null, 2));
+    writeFileSync(
+      userFile(),
+      JSON.stringify({ mcpServers: { ...servers(userFile()), other: { command: 'node', args: [SERVER] } } }, null, 2),
+    );
     await settings().getByTestId('mcp-reload').click();
     await row('other').waitFor();
     await row('files').getByTestId('edit-files').click();
@@ -250,7 +309,10 @@ describe('Edit here: the file in an editor', () => {
     await e.locator('textarea').fill(broken);
     const line = lineOf(broken, '"deferd"');
     await e.getByTestId('editor-problem').waitFor();
-    assert.equal((await e.getByTestId('editor-problem').innerText()).trim(), `Line ${line}: exposure must be one of codemode, deferred, direct, hidden.`);
+    assert.equal(
+      (await e.getByTestId('editor-problem').innerText()).trim(),
+      `Line ${line}: exposure must be one of codemode, deferred, direct, hidden.`,
+    );
     assert.equal(await e.locator('.ln span.err').innerText(), String(line), 'the gutter marks the line');
     assert.equal(await e.getByTestId('editor-save').isDisabled(), true);
     // a syntax error is on its line too
@@ -295,7 +357,9 @@ describe('Edit here: the file in an editor', () => {
     assert.equal(await e.getByTestId('editor-save').isDisabled(), true);
     assert.match(readFileSync(userFile(), 'utf8'), /Changed behind the editor/, 'the file was not overwritten');
     await e.getByTestId('editor-revert').click();
-    await app.page.waitForFunction(() => /Changed behind the editor/.test(document.querySelector('[data-testid="file-editor"] textarea')?.value ?? ''));
+    await app.page.waitForFunction(() =>
+      /Changed behind the editor/.test(document.querySelector('[data-testid="file-editor"] textarea')?.value ?? ''),
+    );
     assert.equal(await e.getByTestId('editor-error').count(), 0);
     await app.page.keyboard.press('Escape');
     await e.waitFor({ state: 'detached' });
@@ -311,7 +375,11 @@ describe('Edit here: the file in an editor', () => {
     assert.match(await e.innerText(), /Discard your changes\?/);
     await e.getByTestId('keep-editing').click();
     await e.getByTestId('discard').waitFor({ state: 'detached' });
-    assert.equal(await e.locator('textarea').evaluate((el) => document.activeElement === el), true, 'the caret is back in the text, so Escape still reaches the dialog');
+    assert.equal(
+      await e.locator('textarea').evaluate((el) => document.activeElement === el),
+      true,
+      'the caret is back in the text, so Escape still reaches the dialog',
+    );
     await app.page.keyboard.press('Escape');
     await e.getByTestId('discard').click();
     await e.waitFor({ state: 'detached' });

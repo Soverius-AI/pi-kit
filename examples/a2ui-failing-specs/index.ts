@@ -37,7 +37,14 @@ function failingSpecsSurface(specs: typeof SPECS): Record<string, unknown>[] {
         surfaceId: SURFACE_ID,
         components: [
           // The root card's title and badge become the bar above the surface in the transcript.
-          { id: 'root', component: 'Card', child: 'body', title: 'Failing specs', badge: String(specs.length), badgeTone: 'error' },
+          {
+            id: 'root',
+            component: 'Card',
+            child: 'body',
+            title: 'Failing specs',
+            badge: String(specs.length),
+            badgeTone: 'error',
+          },
           { id: 'body', component: 'Column', children: ['specs', 'rule', 'footer'] },
           {
             id: 'specs',

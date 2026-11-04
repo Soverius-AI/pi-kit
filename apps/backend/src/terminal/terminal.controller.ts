@@ -1,6 +1,13 @@
 import { Body, Controller, Delete, Get, HttpCode, NotFoundException, Param, Post, Res } from '@nestjs/common';
 import { ApiNoContentResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { TerminalEventSchema, TerminalInfoSchema, TerminalInputSchema, type TerminalInfo, TerminalResizeSchema, TerminalStartSchema } from '@pi-kit/protocol';
+import {
+  TerminalEventSchema,
+  TerminalInfoSchema,
+  TerminalInputSchema,
+  type TerminalInfo,
+  TerminalResizeSchema,
+  TerminalStartSchema,
+} from '@pi-kit/protocol';
 import type { Response } from 'express';
 import type { z } from 'zod';
 import { Fails, Responds, Streams, WorkspaceIdParam } from '../contract';
@@ -27,10 +34,17 @@ export class TerminalController {
 
   @Post()
   @HttpCode(200)
-  @ApiOperation({ summary: 'Start a terminal', description: "Starts the shell of the project's terminal panel at the given size, or attaches to the one already running, and answers with its details." })
+  @ApiOperation({
+    summary: 'Start a terminal',
+    description:
+      "Starts the shell of the project's terminal panel at the given size, or attaches to the one already running, and answers with its details.",
+  })
   @Responds(TerminalInfoSchema)
   @Fails({ 404: NO_FOLDER })
-  start(@Param('id') id: string, @Body({ schema: TerminalStartSchema }) body: z.infer<typeof TerminalStartSchema>): TerminalInfo {
+  start(
+    @Param('id') id: string,
+    @Body({ schema: TerminalStartSchema }) body: z.infer<typeof TerminalStartSchema>,
+  ): TerminalInfo {
     const cwd = this.meta.requireWorkspace(id);
     return this.terminals.start(cwd, body.cols, body.rows);
   }
@@ -38,7 +52,8 @@ export class TerminalController {
   @Get('stream')
   @ApiOperation({
     summary: 'Stream terminal output',
-    description: 'Keeps the connection open and sends newline-delimited JSON: the shell output as `data` lines and `exit` when the shell ends. A blank line every 20 seconds keeps the connection alive.',
+    description:
+      'Keeps the connection open and sends newline-delimited JSON: the shell output as `data` lines and `exit` when the shell ends. A blank line every 20 seconds keeps the connection alive.',
   })
   @Streams(TerminalEventSchema, 'The stream ends when the shell exits or the client closes it.')
   @Fails({ 404: NO_FOLDER })
@@ -69,7 +84,10 @@ export class TerminalController {
   @ApiOperation({ summary: 'Send keystrokes', description: "Writes keystrokes to the project's terminal." })
   @ApiNoContentResponse({ description: 'The input is written.' })
   @Fails({ 404: NO_TERMINAL })
-  input(@Param('id') id: string, @Body({ schema: TerminalInputSchema }) body: z.infer<typeof TerminalInputSchema>): void {
+  input(
+    @Param('id') id: string,
+    @Body({ schema: TerminalInputSchema }) body: z.infer<typeof TerminalInputSchema>,
+  ): void {
     if (!this.terminals.write(this.meta.requireWorkspace(id), body.data)) throw new NotFoundException(NO_TERMINAL);
   }
 
@@ -78,8 +96,12 @@ export class TerminalController {
   @ApiOperation({ summary: 'Resize the terminal', description: "Sets the columns and rows of the project's terminal." })
   @ApiNoContentResponse({ description: 'The terminal is resized.' })
   @Fails({ 404: NO_TERMINAL })
-  resize(@Param('id') id: string, @Body({ schema: TerminalResizeSchema }) body: z.infer<typeof TerminalResizeSchema>): void {
-    if (!this.terminals.resize(this.meta.requireWorkspace(id), body.cols, body.rows)) throw new NotFoundException(NO_TERMINAL);
+  resize(
+    @Param('id') id: string,
+    @Body({ schema: TerminalResizeSchema }) body: z.infer<typeof TerminalResizeSchema>,
+  ): void {
+    if (!this.terminals.resize(this.meta.requireWorkspace(id), body.cols, body.rows))
+      throw new NotFoundException(NO_TERMINAL);
   }
 
   @Delete()

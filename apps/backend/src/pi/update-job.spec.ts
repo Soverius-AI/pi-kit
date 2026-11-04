@@ -76,6 +76,12 @@ describe('the job state machine', () => {
 
   it('maps to the protocol job', () => {
     const job = run();
-    expect(toJob(job, '/logs/update.log')).toEqual({ id: 'j1', targets: ['pi', 'packages', 'models'], state: 'running', startedAt: 1000, logPath: '/logs/update.log' });
+    expect(toJob(job, '/logs/update.log')).toEqual({
+      id: 'j1',
+      targets: ['pi', 'packages', 'models'],
+      state: 'running',
+      startedAt: 1000,
+      logPath: '/logs/update.log',
+    });
   });
 });

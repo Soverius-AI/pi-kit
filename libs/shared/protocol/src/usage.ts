@@ -49,14 +49,16 @@ export const CompactionUsageSchema = z.object({
 });
 export type CompactionUsage = z.infer<typeof CompactionUsageSchema>;
 
-export const ThreadUsageSchema = z.object({
-  sessionId: z.string(),
-  sessionFile: z.string().nullable(),
-  totals: z.object({ ...counts, turns: z.number().int() }),
-  /** cacheRead / (input + cacheRead + cacheWrite); null when nothing was sent. */
-  cacheHitRatio: z.number().nullable(),
-  byModel: z.array(ModelUsageSchema),
-  byTurn: z.array(TurnUsageSchema),
-  compactions: z.array(CompactionUsageSchema),
-}).meta({ id: 'ThreadUsage' });
+export const ThreadUsageSchema = z
+  .object({
+    sessionId: z.string(),
+    sessionFile: z.string().nullable(),
+    totals: z.object({ ...counts, turns: z.number().int() }),
+    /** cacheRead / (input + cacheRead + cacheWrite); null when nothing was sent. */
+    cacheHitRatio: z.number().nullable(),
+    byModel: z.array(ModelUsageSchema),
+    byTurn: z.array(TurnUsageSchema),
+    compactions: z.array(CompactionUsageSchema),
+  })
+  .meta({ id: 'ThreadUsage' });
 export type ThreadUsage = z.infer<typeof ThreadUsageSchema>;

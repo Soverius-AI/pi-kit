@@ -12,7 +12,14 @@ export class FakeEngine implements SpeechEngine {
 
   private words(pcm: Float32Array, language: string | undefined): string[] {
     const seconds = (durationMs(pcm) / 1000).toFixed(1);
-    return ['fixture', 'heard', `${seconds}`, 'seconds', peak(pcm) < 0.001 ? 'of silence' : 'of sound', ...(language ? [`in ${language}`] : [])];
+    return [
+      'fixture',
+      'heard',
+      `${seconds}`,
+      'seconds',
+      peak(pcm) < 0.001 ? 'of silence' : 'of sound',
+      ...(language ? [`in ${language}`] : []),
+    ];
   }
 
   async transcribe(pcm: Float32Array, options: EngineOptions = {}): Promise<EngineResult> {
@@ -20,7 +27,10 @@ export class FakeEngine implements SpeechEngine {
     return { text: this.words(pcm, options.language).join(' ') + '.', language: options.language ?? 'en' };
   }
 
-  async *stream(chunks: AsyncIterable<Float32Array>, options: EngineOptions = {}): AsyncGenerator<EngineChunk, void, void> {
+  async *stream(
+    chunks: AsyncIterable<Float32Array>,
+    options: EngineOptions = {},
+  ): AsyncGenerator<EngineChunk, void, void> {
     const lead = ['fixture', 'heard'];
     const all: Float32Array[] = [];
     let received = 0;
@@ -31,7 +41,12 @@ export class FakeEngine implements SpeechEngine {
       // One of the first words is final with each chunk; the tail is only a guess.
       const text = lead[committed] ?? '';
       if (text) committed++;
-      yield { text, pending: committed < lead.length ? `${lead.slice(committed).join(' ')} ...` : '...', language: options.language ?? 'en', receivedSeconds: received / 16000 };
+      yield {
+        text,
+        pending: committed < lead.length ? `${lead.slice(committed).join(' ')} ...` : '...',
+        language: options.language ?? 'en',
+        receivedSeconds: received / 16000,
+      };
     }
     const pcm = new Float32Array(received);
     let at = 0;
@@ -40,7 +55,12 @@ export class FakeEngine implements SpeechEngine {
       at += part.length;
     }
     const rest = received ? this.words(pcm, options.language).slice(committed).join(' ') + '.' : '';
-    yield { text: rest, pending: '', language: received ? (options.language ?? 'en') : '', receivedSeconds: received / 16000 };
+    yield {
+      text: rest,
+      pending: '',
+      language: received ? (options.language ?? 'en') : '',
+      receivedSeconds: received / 16000,
+    };
   }
 
   async close(): Promise<void> {

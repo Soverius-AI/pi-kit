@@ -31,11 +31,17 @@ describe('closeRun', () => {
       EventType.RUN_ERROR,
     ]);
     expect(isAborted(closing.at(-1) as BaseEvent)).toBe(true);
-    await expect(firstValueFrom(from([...killed, ...closing]).pipe(verifyEvents(false), toArray()))).resolves.toBeTruthy();
+    await expect(
+      firstValueFrom(from([...killed, ...closing]).pipe(verifyEvents(false), toArray())),
+    ).resolves.toBeTruthy();
   });
 
   it('adds nothing but the terminal event to a clean run, and nothing to a finished one', () => {
-    const clean = [started, ev(EventType.TEXT_MESSAGE_START, { messageId: 'm', role: 'assistant' }), ev(EventType.TEXT_MESSAGE_END, { messageId: 'm' })];
+    const clean = [
+      started,
+      ev(EventType.TEXT_MESSAGE_START, { messageId: 'm', role: 'assistant' }),
+      ev(EventType.TEXT_MESSAGE_END, { messageId: 'm' }),
+    ];
     expect(types(closeRun(clean, { message: 'x', code: 'aborted' }))).toEqual([EventType.RUN_ERROR]);
     expect(closeRun([...clean, ev(EventType.RUN_FINISHED)], { message: 'x', code: 'aborted' })).toEqual([]);
   });
@@ -60,7 +66,15 @@ describe('compactableIndices', () => {
   });
 
   it('also drops snapshots that a later snapshot supersedes', () => {
-    const second = [...run1, ev(EventType.RUN_STARTED), ev(EventType.TEXT_MESSAGE_START, { messageId: 'm2', role: 'assistant' }), ev(EventType.TEXT_MESSAGE_CONTENT, { messageId: 'm2', delta: 'b' }), ev(EventType.TEXT_MESSAGE_END, { messageId: 'm2' }), messagesSnapshot([]), ev(EventType.RUN_FINISHED)];
+    const second = [
+      ...run1,
+      ev(EventType.RUN_STARTED),
+      ev(EventType.TEXT_MESSAGE_START, { messageId: 'm2', role: 'assistant' }),
+      ev(EventType.TEXT_MESSAGE_CONTENT, { messageId: 'm2', delta: 'b' }),
+      ev(EventType.TEXT_MESSAGE_END, { messageId: 'm2' }),
+      messagesSnapshot([]),
+      ev(EventType.RUN_FINISHED),
+    ];
     expect(compactableIndices(second)).toEqual([2, 5, 8, 12]);
   });
 
@@ -72,7 +86,12 @@ describe('compactableIndices', () => {
       ev(EventType.TEXT_MESSAGE_CONTENT, { messageId: 'm2', delta: 'tail' }),
     ];
     expect(compactableIndices(open)).toEqual([2, 5]);
-    const unended = [started, ev(EventType.TEXT_MESSAGE_START, { messageId: 'x', role: 'assistant' }), ev(EventType.TEXT_MESSAGE_CONTENT, { messageId: 'x', delta: '.' }), messagesSnapshot([])];
+    const unended = [
+      started,
+      ev(EventType.TEXT_MESSAGE_START, { messageId: 'x', role: 'assistant' }),
+      ev(EventType.TEXT_MESSAGE_CONTENT, { messageId: 'x', delta: '.' }),
+      messagesSnapshot([]),
+    ];
     expect(compactableIndices(unended)).toEqual([]);
   });
 
@@ -81,11 +100,14 @@ describe('compactableIndices', () => {
   });
 
   it('drops generated UI snapshots and patches superseded by persisted messages, preserving widgets', () => {
-    const events = [started,
+    const events = [
+      started,
       ev(EventType.ACTIVITY_SNAPSHOT, { messageId: 'c1-activity', activityType: 'open-generative-ui', content: {} }),
       ev(EventType.ACTIVITY_DELTA, { messageId: 'c1-activity', activityType: 'open-generative-ui', patch: [] }),
       ev(EventType.ACTIVITY_SNAPSHOT, { messageId: 'widget:w', activityType: 'pi.widget', content: {} }),
-      messagesSnapshot([]), ev(EventType.RUN_FINISHED)];
+      messagesSnapshot([]),
+      ev(EventType.RUN_FINISHED),
+    ];
     expect(compactableIndices(events)).toEqual([1, 2]);
   });
 });

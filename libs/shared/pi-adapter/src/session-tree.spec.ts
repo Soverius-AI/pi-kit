@@ -58,7 +58,14 @@ const label = (id: string, parentId: string, targetId: string, text?: string): P
   targetId,
   label: text,
 });
-const modelChange = (id: string, parentId: string): PiSessionEntry => ({ type: 'model_change', id, parentId, timestamp: stamp(), provider: 'p', modelId: 'm2' });
+const modelChange = (id: string, parentId: string): PiSessionEntry => ({
+  type: 'model_change',
+  id,
+  parentId,
+  timestamp: stamp(),
+  provider: 'p',
+  modelId: 'm2',
+});
 const branchSummary = (id: string, parentId: string, fromId: string): PiSessionEntry => ({
   type: 'branch_summary',
   id,
@@ -200,7 +207,14 @@ describe('buildSessionTree: lanes', () => {
     const fork = tree.rows[1];
     expect(fork).toMatchObject({ forks: [1], childCount: 2, up: true, down: true, through: [] });
     // The side branch's line is open from the fork row down to its first row.
-    expect(tree.rows[2]).toMatchObject({ lane: 1, parentLane: 0, up: true, down: true, through: [0], onActivePath: false });
+    expect(tree.rows[2]).toMatchObject({
+      lane: 1,
+      parentLane: 0,
+      up: true,
+      down: true,
+      through: [0],
+      onActivePath: false,
+    });
     expect(tree.rows[3]).toMatchObject({ lane: 1, up: true, down: false, through: [0] });
     // The branch ended, so lane 1 is free again for the rows after it.
     expect(tree.rows[4]).toMatchObject({ lane: 0, through: [], parentLane: 0, onActivePath: true });
@@ -283,7 +297,10 @@ describe('buildSessionTree: lanes', () => {
 
   it('treats several roots as children of the synthetic root row', () => {
     // A user message that became a second root (edit and branch on the first message of a session without a system prompt).
-    const tree = buildSessionTree([user('u1', null, 'old'), assistant('a1', 'u1'), user('u1b', null, 'new'), assistant('a1b', 'u1b')], 'a1b');
+    const tree = buildSessionTree(
+      [user('u1', null, 'old'), assistant('a1', 'u1'), user('u1b', null, 'new'), assistant('a1b', 'u1b')],
+      'a1b',
+    );
     expect(tree.rows.map((r) => [r.id, r.lane, r.parentId])).toEqual([
       ['root', 0, null],
       ['u1', 1, 'root'],
@@ -316,13 +333,17 @@ describe('buildSessionTree: lanes', () => {
       system('s', null),
       user('u1', 's', 'original request'),
       assistant('a1', 'u1'),
-      { ...system('s2', 's'), message: { role: 'system', content: '', sections: { other_agents: 'Another chat is active.' } } },
+      {
+        ...system('s2', 's'),
+        message: { role: 'system', content: '', sections: { other_agents: 'Another chat is active.' } },
+      },
       user('u1b', 's2', 'edited request'),
       assistant('a1b', 'u1b'),
     ];
     const tree = buildSessionTree(entries, 'a1b');
     expect(tree.rows.filter((row) => row.kind === 'turn').map((row) => [row.id, row.parentId])).toEqual([
-      ['u1', 'root'], ['u1b', 'root'],
+      ['u1', 'root'],
+      ['u1b', 'root'],
     ]);
     expect(tree.rows[0].childCount).toBe(2);
     expect(tree.rows.find((row) => row.id === 'u1b')?.onActivePath).toBe(true);
@@ -343,15 +364,28 @@ describe('buildSessionTree: lanes', () => {
 });
 
 describe('buildSessionTree: graph v2 facts', () => {
-  const call = (id: string, parentId: string, calls: { name: string; arguments: Record<string, unknown> }[], model = 'm1', usage = { input: 90, output: 10, cacheRead: 0, cacheWrite: 0 }): PiSessionEntry => ({
+  const call = (
+    id: string,
+    parentId: string,
+    calls: { name: string; arguments: Record<string, unknown> }[],
+    model = 'm1',
+    usage = { input: 90, output: 10, cacheRead: 0, cacheWrite: 0 },
+  ): PiSessionEntry => ({
     type: 'message',
     id,
     parentId,
     timestamp: stamp(),
-    message: { role: 'assistant', model, provider: 'p', thinkingLevel: 'high', usage, content: calls.map((c, i) => ({ type: 'toolCall', id: `${id}-${i}`, name: c.name, arguments: c.arguments })) },
+    message: {
+      role: 'assistant',
+      model,
+      provider: 'p',
+      thinkingLevel: 'high',
+      usage,
+      content: calls.map((c, i) => ({ type: 'toolCall', id: `${id}-${i}`, name: c.name, arguments: c.arguments })),
+    },
   });
 
-  it('lists a turn\'s tool calls with the file or program each was about, repeats folded', () => {
+  it("lists a turn's tool calls with the file or program each was about, repeats folded", () => {
     const tree = buildSessionTree(
       [
         user('u1', null, 'go'),
@@ -458,10 +492,22 @@ describe('buildSessionTree: graph v2 facts', () => {
     expect(tree.rows.find((r) => r.id === 'bs')?.group).toBeUndefined();
   });
 
-  it('shows what the leaf\'s later turns are as a group of their own', () => {
-    const entries = [user('u1', null, 'one'), assistant('a1', 'u1'), user('u2', 'a1', 'two'), assistant('a2', 'u2'), user('u3', 'a2', 'three')];
+  it("shows what the leaf's later turns are as a group of their own", () => {
+    const entries = [
+      user('u1', null, 'one'),
+      assistant('a1', 'u1'),
+      user('u2', 'a1', 'two'),
+      assistant('a2', 'u2'),
+      user('u3', 'a2', 'three'),
+    ];
     const tree = buildSessionTree(entries, 'a1');
-    expect(tree.rows.map((r) => [r.id, r.group ?? null])).toEqual([['root', null], ['u1', null], ['ghost', null], ['u2', 'u2'], ['u3', 'u2']]);
+    expect(tree.rows.map((r) => [r.id, r.group ?? null])).toEqual([
+      ['root', null],
+      ['u1', null],
+      ['ghost', null],
+      ['u2', 'u2'],
+      ['u3', 'u2'],
+    ]);
   });
 
   describe('context ring', () => {
@@ -481,16 +527,24 @@ describe('buildSessionTree: graph v2 facts', () => {
       // after a compaction the next turn starts from a short context again: the arc drops
       expect(tree.rows[2]).toMatchObject({ contextTokens: 70, contextPct: 7 });
     });
-    it('uses the message\'s own total when it has one, caps at 100 and leaves the ring off for an unknown window', () => {
+    it("uses the message's own total when it has one, caps at 100 and leaves the ring off for an unknown window", () => {
       const withTotal = call('a1', 'u1', [], 'm1', { input: 1, output: 1, cacheRead: 0, cacheWrite: 0 });
       (withTotal['message'] as { usage: Record<string, number> }).usage['totalTokens'] = 1500;
-      expect(buildSessionTree([user('u1', null, 'one'), withTotal], 'a1', { contextWindow: windows }).rows[1].contextPct).toBe(100);
-      const unknown = buildSessionTree([user('u1', null, 'one'), call('a1', 'u1', [], 'other')], 'a1', { contextWindow: windows });
+      expect(
+        buildSessionTree([user('u1', null, 'one'), withTotal], 'a1', { contextWindow: windows }).rows[1].contextPct,
+      ).toBe(100);
+      const unknown = buildSessionTree([user('u1', null, 'one'), call('a1', 'u1', [], 'other')], 'a1', {
+        contextWindow: windows,
+      });
       expect(unknown.rows[1].contextPct).toBeUndefined();
-      expect(buildSessionTree([user('u1', null, 'one'), call('a1', 'u1', [])], 'a1').rows[1].contextPct).toBeUndefined();
+      expect(
+        buildSessionTree([user('u1', null, 'one'), call('a1', 'u1', [])], 'a1').rows[1].contextPct,
+      ).toBeUndefined();
     });
     it('is only drawn for turns', () => {
-      const tree = buildSessionTree([user('u1', null, 'one'), call('a1', 'u1', [], 'm1'), compaction('c', 'a1')], 'c', { contextWindow: windows });
+      const tree = buildSessionTree([user('u1', null, 'one'), call('a1', 'u1', [], 'm1'), compaction('c', 'a1')], 'c', {
+        contextWindow: windows,
+      });
       expect(tree.rows.find((r) => r.kind === 'compaction')?.contextPct).toBeUndefined();
       expect(tree.rows[0].contextPct).toBeUndefined();
     });

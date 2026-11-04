@@ -48,7 +48,10 @@ export class AttendantRepository {
 
   /** Summaries of every thread that has one (the sidebar's meta line), by thread id. */
   summaries(): Map<string, string> {
-    const rows = this.db.prepare('SELECT thread_id, summary FROM thread_meta WHERE summary IS NOT NULL').all() as { thread_id: string; summary: string }[];
+    const rows = this.db.prepare('SELECT thread_id, summary FROM thread_meta WHERE summary IS NOT NULL').all() as {
+      thread_id: string;
+      summary: string;
+    }[];
     return new Map(rows.map((r) => [r.thread_id, r.summary]));
   }
 
@@ -78,7 +81,18 @@ export class AttendantRepository {
         `INSERT INTO attendant_actions (at, kind, status, thread_id, thread_title, text, model, input_tokens, output_tokens, cost)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(Date.now(), action.kind, action.status, action.threadId, action.threadTitle, action.text, action.model ?? null, action.inputTokens ?? 0, action.outputTokens ?? 0, action.cost ?? 0);
+      .run(
+        Date.now(),
+        action.kind,
+        action.status,
+        action.threadId,
+        action.threadTitle,
+        action.text,
+        action.model ?? null,
+        action.inputTokens ?? 0,
+        action.outputTokens ?? 0,
+        action.cost ?? 0,
+      );
     return Number(result.lastInsertRowid);
   }
 
@@ -124,28 +138,56 @@ export class AttendantRepository {
 
   // ---- suggestions
 
-  addSuggestion(suggestion: { threadId: string; kind: ThreadSuggestion['kind']; target: string; text: string; reason?: string }): number {
+  addSuggestion(suggestion: {
+    threadId: string;
+    kind: ThreadSuggestion['kind'];
+    target: string;
+    text: string;
+    reason?: string;
+  }): number {
     // One open suggestion per target: a newer proposal replaces the older one.
-    this.db.prepare("UPDATE thread_suggestions SET state = 'dismissed' WHERE thread_id = ? AND kind = ? AND target = ? AND state = 'open'").run(suggestion.threadId, suggestion.kind, suggestion.target);
+    this.db
+      .prepare(
+        "UPDATE thread_suggestions SET state = 'dismissed' WHERE thread_id = ? AND kind = ? AND target = ? AND state = 'open'",
+      )
+      .run(suggestion.threadId, suggestion.kind, suggestion.target);
     const result = this.db
-      .prepare('INSERT INTO thread_suggestions (thread_id, kind, target, text, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(suggestion.threadId, suggestion.kind, suggestion.target, suggestion.text, suggestion.reason ?? null, Date.now());
+      .prepare(
+        'INSERT INTO thread_suggestions (thread_id, kind, target, text, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        suggestion.threadId,
+        suggestion.kind,
+        suggestion.target,
+        suggestion.text,
+        suggestion.reason ?? null,
+        Date.now(),
+      );
     return Number(result.lastInsertRowid);
   }
 
   /** A suggestion for this target was made before (open, accepted or dismissed): the attendant does not propose it again. */
   hasSuggestion(threadId: string, kind: ThreadSuggestion['kind'], target: string): boolean {
-    return this.db.prepare('SELECT 1 FROM thread_suggestions WHERE thread_id = ? AND kind = ? AND target = ? LIMIT 1').get(threadId, kind, target) !== undefined;
+    return (
+      this.db
+        .prepare('SELECT 1 FROM thread_suggestions WHERE thread_id = ? AND kind = ? AND target = ? LIMIT 1')
+        .get(threadId, kind, target) !== undefined
+    );
   }
 
   /** Open suggestions of one thread, newest first. */
   openSuggestions(threadId: string): ThreadSuggestion[] {
-    return this.suggestionRows('SELECT * FROM thread_suggestions WHERE thread_id = ? AND state = \'open\' ORDER BY id DESC', threadId);
+    return this.suggestionRows(
+      "SELECT * FROM thread_suggestions WHERE thread_id = ? AND state = 'open' ORDER BY id DESC",
+      threadId,
+    );
   }
 
   /** Open suggestions of every thread, by thread id. */
   allOpenSuggestions(): Map<string, ThreadSuggestion[]> {
-    const rows = this.db.prepare("SELECT * FROM thread_suggestions WHERE state = 'open' ORDER BY id DESC").all() as RawSuggestion[];
+    const rows = this.db
+      .prepare("SELECT * FROM thread_suggestions WHERE state = 'open' ORDER BY id DESC")
+      .all() as RawSuggestion[];
     const out = new Map<string, ThreadSuggestion[]>();
     for (const r of rows) out.set(r.thread_id, [...(out.get(r.thread_id) ?? []), toSuggestion(r)]);
     return out;
@@ -162,7 +204,9 @@ export class AttendantRepository {
 
   /** The `learn` suggestion of a skill draft is settled with the draft: approved is accepted, discarded is dismissed. */
   closeLearn(draftId: string, state: 'accepted' | 'dismissed'): void {
-    this.db.prepare("UPDATE thread_suggestions SET state = ? WHERE kind = 'learn' AND target = ? AND state = 'open'").run(state, draftId);
+    this.db
+      .prepare("UPDATE thread_suggestions SET state = ? WHERE kind = 'learn' AND target = ? AND state = 'open'")
+      .run(state, draftId);
   }
 
   /** An answer suggestion goes stale when its dialog is gone: every open one of the thread that is not in `liveDialogIds` is dismissed. Returns how many. */
@@ -174,8 +218,16 @@ export class AttendantRepository {
 
   /** Prompt predictions belong to a particular conversation state, never to the next run or branch. */
   expirePrompts(threadId?: string): void {
-    if (threadId) this.db.prepare("UPDATE thread_suggestions SET state = 'dismissed' WHERE kind = 'prompt' AND state = 'open' AND thread_id = ?").run(threadId);
-    else this.db.prepare("UPDATE thread_suggestions SET state = 'dismissed' WHERE kind = 'prompt' AND state = 'open'").run();
+    if (threadId)
+      this.db
+        .prepare(
+          "UPDATE thread_suggestions SET state = 'dismissed' WHERE kind = 'prompt' AND state = 'open' AND thread_id = ?",
+        )
+        .run(threadId);
+    else
+      this.db
+        .prepare("UPDATE thread_suggestions SET state = 'dismissed' WHERE kind = 'prompt' AND state = 'open'")
+        .run();
   }
 
   private suggestionRows(sql: string, ...args: unknown[]): ThreadSuggestion[] {
@@ -193,7 +245,13 @@ interface RawSuggestion {
   state: string;
 }
 
-const toSuggestion = (r: RawSuggestion): ThreadSuggestion => ({ id: r.id, kind: r.kind, target: r.target, text: r.text, ...(r.reason ? { reason: r.reason } : {}) });
+const toSuggestion = (r: RawSuggestion): ThreadSuggestion => ({
+  id: r.id,
+  kind: r.kind,
+  target: r.target,
+  text: r.text,
+  ...(r.reason ? { reason: r.reason } : {}),
+});
 
 const toMeta = (r: RawMeta): ThreadMetaRow => ({
   threadId: r.thread_id,

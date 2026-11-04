@@ -2,7 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 /** The only surface the renderer gets from Electron. Keep it minimal. */
 contextBridge.exposeInMainWorld('piKit', {
-  setTrayThreads: (threads: unknown, labels: unknown): Promise<void> => ipcRenderer.invoke('pi-kit:tray-threads', threads, labels),
+  setTrayThreads: (threads: unknown, labels: unknown): Promise<void> =>
+    ipcRenderer.invoke('pi-kit:tray-threads', threads, labels),
   onTrayOpenThread: (callback: (threadId: string) => void): (() => void) => {
     const listener = (_event: unknown, threadId: unknown) => {
       if (typeof threadId === 'string') callback(threadId);
@@ -10,7 +11,8 @@ contextBridge.exposeInMainWorld('piKit', {
     ipcRenderer.on('pi-kit:tray-open-thread', listener);
     return () => ipcRenderer.removeListener('pi-kit:tray-open-thread', listener);
   },
-  setBrowserLocalCertificates: (enabled: boolean): Promise<void> => ipcRenderer.invoke('pi-kit:browser-local-certificates', enabled),
+  setBrowserLocalCertificates: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('pi-kit:browser-local-certificates', enabled),
   setBrowserViewport: (viewport: unknown): Promise<void> => ipcRenderer.invoke('pi-kit:browser-viewport', viewport),
   getBackendUrl: (): Promise<string> => ipcRenderer.invoke('pi-kit:backend-url'),
   getToken: (): Promise<string> => ipcRenderer.invoke('pi-kit:token'),
@@ -29,9 +31,11 @@ contextBridge.exposeInMainWorld('piKit', {
   /** The folder picker; `undefined` if cancelled. */
   showOpenDialog: (): Promise<string | undefined> => ipcRenderer.invoke('pi-kit:open-folder'),
   /** `system` follows the OS, `light` and `dark` pin the window's colour scheme. */
-  setThemeSource: (source: 'system' | 'light' | 'dark'): Promise<void> => ipcRenderer.invoke('pi-kit:theme-source', source),
+  setThemeSource: (source: 'system' | 'light' | 'dark'): Promise<void> =>
+    ipcRenderer.invoke('pi-kit:theme-source', source),
   /** The theme the OS asks for right now. */
   systemTheme: (): Promise<'pi-dark' | 'pi-light'> => ipcRenderer.invoke('pi-kit:system-theme'),
   /** Voice input: on macOS the system's microphone prompt the first time; `granted: false` carries what to do. */
-  requestMicrophone: (): Promise<{ granted: boolean; status: string; message?: string }> => ipcRenderer.invoke('pi-kit:microphone-access'),
+  requestMicrophone: (): Promise<{ granted: boolean; status: string; message?: string }> =>
+    ipcRenderer.invoke('pi-kit:microphone-access'),
 });

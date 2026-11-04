@@ -3,11 +3,21 @@ import { PiUpdateService } from './pi-update.service';
 
 // pi is ESM only and the backend loads it with a native import() that vitest's module runner does not allow; a stand-in with the two members used.
 vi.mock('./load-pi', () => ({
-  loadPi: () => Promise.resolve({ VERSION: '1.2.0', getPackageDir: () => '/app/node_modules/@earendil-works/pi-coding-agent' }),
-  piResolution: () => ({ source: 'bundled', version: '1.2.0', packageDir: '/app/node_modules/@earendil-works/pi-coding-agent', range: { min: '1.2.0', max: '1.x' }, notes: ['a note'] }),
+  loadPi: () =>
+    Promise.resolve({ VERSION: '1.2.0', getPackageDir: () => '/app/node_modules/@earendil-works/pi-coding-agent' }),
+  piResolution: () => ({
+    source: 'bundled',
+    version: '1.2.0',
+    packageDir: '/app/node_modules/@earendil-works/pi-coding-agent',
+    range: { min: '1.2.0', max: '1.x' },
+    notes: ['a note'],
+  }),
 }));
 
-const respond = (body: unknown, status = 200) => vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }));
+const respond = (body: unknown, status = 200) =>
+  vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }));
 
 describe('PiUpdateService (the check asks pi.dev, as pi does, and only reads)', () => {
   let installed: string;
@@ -19,10 +29,21 @@ describe('PiUpdateService (the check asks pi.dev, as pi does, and only reads)', 
   afterEach(() => vi.unstubAllGlobals());
 
   it('reports a newer release, with the note, and names the command to run', async () => {
-    const fetchMock = respond({ ok: true, version: '99.0.0', packageName: '@earendil-works/pi-coding-agent', note: 'Big release' });
+    const fetchMock = respond({
+      ok: true,
+      version: '99.0.0',
+      packageName: '@earendil-works/pi-coding-agent',
+      note: 'Big release',
+    });
     vi.stubGlobal('fetch', fetchMock);
     const result = await new PiUpdateService().check(true);
-    expect(result).toMatchObject({ current: installed, latest: '99.0.0', updateAvailable: true, note: 'Big release', command: 'pi update' });
+    expect(result).toMatchObject({
+      current: installed,
+      latest: '99.0.0',
+      updateAvailable: true,
+      note: 'Big release',
+      command: 'pi update',
+    });
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(fetchMock.mock.calls[0][0]).toBe('https://pi.dev/api/latest-version');
     expect((fetchMock.mock.calls[0][1] as RequestInit).method ?? 'GET').toBe('GET');

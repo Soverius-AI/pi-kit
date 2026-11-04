@@ -17,7 +17,8 @@ export const PACKAGES = [
     author: 'nicolo',
     repository: 'https://github.com/nicolo/pi-subagents',
     pi: { extensions: ['./extensions/subagents.ts', './extensions/budget.ts'], skills: ['./skills'] },
-    readme: '# pi-subagents\n\nSub-agents let a thread delegate a bounded task to a child session with its own tool set and token budget. Each child reports back as a tool result.\n\n## Install\n\n    pi install npm:pi-subagents\n',
+    readme:
+      '# pi-subagents\n\nSub-agents let a thread delegate a bounded task to a child session with its own tool set and token budget. Each child reports back as a tool result.\n\n## Install\n\n    pi install npm:pi-subagents\n',
   },
   {
     name: 'pi-swarm',
@@ -81,9 +82,22 @@ export async function startFakeRegistry({ port = 0 } = {}) {
     res.setHeader('content-type', 'application/json');
     const url = new URL(req.url, 'http://registry.local');
     if (url.pathname === '/-/v1/search') {
-      const words = (url.searchParams.get('text') ?? '').replace(/keywords:pi-package/, '').trim().toLowerCase().split(/\s+/).filter(Boolean);
-      const hits = PACKAGES.filter((p) => words.every((w) => `${p.name} ${p.description} ${p.keywords.join(' ')}`.toLowerCase().includes(w)));
-      return void res.end(JSON.stringify({ objects: hits.map(objectOf), total: hits.length + (words.length === 0 ? 4 : 0), time: new Date().toUTCString() }));
+      const words = (url.searchParams.get('text') ?? '')
+        .replace(/keywords:pi-package/, '')
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean);
+      const hits = PACKAGES.filter((p) =>
+        words.every((w) => `${p.name} ${p.description} ${p.keywords.join(' ')}`.toLowerCase().includes(w)),
+      );
+      return void res.end(
+        JSON.stringify({
+          objects: hits.map(objectOf),
+          total: hits.length + (words.length === 0 ? 4 : 0),
+          time: new Date().toUTCString(),
+        }),
+      );
     }
     const match = /^\/(@?[^/]+?(?:%2F[^/]+)?)(\/latest)?$/.exec(url.pathname);
     const p = match && PACKAGES.find((x) => x.name === decodeURIComponent(match[1]));
@@ -91,11 +105,31 @@ export async function startFakeRegistry({ port = 0 } = {}) {
       res.statusCode = 404;
       return void res.end('{"error":"Not found"}');
     }
-    const manifest = { name: p.name, version: p.version, description: p.description, license: p.license, author: { name: p.author }, repository: p.repository ? { type: 'git', url: `git+${p.repository}.git` } : undefined, ...(p.pi ? { pi: p.pi } : {}) };
+    const manifest = {
+      name: p.name,
+      version: p.version,
+      description: p.description,
+      license: p.license,
+      author: { name: p.author },
+      repository: p.repository ? { type: 'git', url: `git+${p.repository}.git` } : undefined,
+      ...(p.pi ? { pi: p.pi } : {}),
+    };
     if (match[2]) return void res.end(JSON.stringify(manifest));
-    res.end(JSON.stringify({ name: p.name, 'dist-tags': { latest: p.version }, time: { modified: p.date, [p.version]: p.date }, readme: p.readme, versions: { [p.version]: manifest } }));
+    res.end(
+      JSON.stringify({
+        name: p.name,
+        'dist-tags': { latest: p.version },
+        time: { modified: p.date, [p.version]: p.date },
+        readme: p.readme,
+        versions: { [p.version]: manifest },
+      }),
+    );
   });
   await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
   const { port: bound } = server.address();
-  return { url: `http://127.0.0.1:${bound}`, requests, close: () => new Promise((resolve) => server.close(() => resolve())) };
+  return {
+    url: `http://127.0.0.1:${bound}`,
+    requests,
+    close: () => new Promise((resolve) => server.close(() => resolve())),
+  };
 }

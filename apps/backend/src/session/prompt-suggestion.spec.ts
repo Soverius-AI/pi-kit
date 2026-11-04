@@ -7,7 +7,9 @@ import { parsePromptSuggestion, PromptSuggestionReader, readFrontmatter } from '
 
 describe('readFrontmatter', () => {
   it('reads flat pairs between the two --- lines and drops quotes', () => {
-    expect(readFrontmatter('---\ndescription: "Review it"\nsuggested: true\nsuggestion-title: \'My title\'\n---\nBody\n')).toEqual({
+    expect(
+      readFrontmatter('---\ndescription: "Review it"\nsuggested: true\nsuggestion-title: \'My title\'\n---\nBody\n'),
+    ).toEqual({
       description: 'Review it',
       suggested: 'true',
       'suggestion-title': 'My title',
@@ -79,17 +81,46 @@ describe('CommandsService.merge with suggestions', () => {
   const service = new CommandsService(undefined as never, undefined as never);
 
   it('adds suggested and suggestionTitle to prompt templates only, and nothing else changes', () => {
-    const read = (path: string) => (path === '/p/review.md' ? { suggested: true as const, suggestionTitle: 'Review my changes' } : undefined);
+    const read = (path: string) =>
+      path === '/p/review.md' ? { suggested: true as const, suggestionTitle: 'Review my changes' } : undefined;
     const commands = service.merge(
       [
-        { name: 'review', description: 'Review', source: 'prompt', scope: 'project', origin: 'project', path: '/p/review.md' },
-        { name: 'plain', description: 'Plain', source: 'prompt', scope: 'project', origin: 'project', path: '/p/plain.md' },
+        {
+          name: 'review',
+          description: 'Review',
+          source: 'prompt',
+          scope: 'project',
+          origin: 'project',
+          path: '/p/review.md',
+        },
+        {
+          name: 'plain',
+          description: 'Plain',
+          source: 'prompt',
+          scope: 'project',
+          origin: 'project',
+          path: '/p/plain.md',
+        },
         { name: 'skill:x', description: 'Skill', source: 'skill', scope: 'user', origin: 'user', path: '/p/review.md' },
       ],
       read,
     );
-    expect(commands[0]).toEqual({ name: 'review', description: 'Review', source: 'prompt', kind: 'prompt', origin: 'project', suggested: true, suggestionTitle: 'Review my changes' });
-    expect(commands[1]).toEqual({ name: 'plain', description: 'Plain', source: 'prompt', kind: 'prompt', origin: 'project' });
+    expect(commands[0]).toEqual({
+      name: 'review',
+      description: 'Review',
+      source: 'prompt',
+      kind: 'prompt',
+      origin: 'project',
+      suggested: true,
+      suggestionTitle: 'Review my changes',
+    });
+    expect(commands[1]).toEqual({
+      name: 'plain',
+      description: 'Plain',
+      source: 'prompt',
+      kind: 'prompt',
+      origin: 'project',
+    });
     expect(commands[2]).not.toHaveProperty('suggested');
   });
 });

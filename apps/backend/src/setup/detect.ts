@@ -20,7 +20,8 @@ export function readAuthEntries(agentDir: string): SetupAuthEntry[] {
     if (!value || typeof value !== 'object') continue;
     const credential = value as { type?: unknown; key?: unknown };
     if (credential.type === 'oauth') entries.push({ provider, type: 'oauth', store: 'auth.json' });
-    else if (credential.type === 'api_key' && typeof credential.key === 'string') entries.push({ provider, type: 'api_key', store: keyStorageOf(credential.key) });
+    else if (credential.type === 'api_key' && typeof credential.key === 'string')
+      entries.push({ provider, type: 'api_key', store: keyStorageOf(credential.key) });
   }
   return entries.sort((a, b) => a.provider.localeCompare(b.provider));
 }
@@ -40,7 +41,13 @@ export function readMovableKeys(agentDir: string): string[] {
   return Object.entries(parsed as Record<string, unknown>)
     .filter(([provider, value]) => {
       const credential = value as { type?: unknown; key?: unknown; env?: unknown } | null;
-      return isProviderAccount(provider) && credential?.type === 'api_key' && typeof credential.key === 'string' && keyStorageOf(credential.key) === 'auth.json' && !credential.env;
+      return (
+        isProviderAccount(provider) &&
+        credential?.type === 'api_key' &&
+        typeof credential.key === 'string' &&
+        keyStorageOf(credential.key) === 'auth.json' &&
+        !credential.env
+      );
     })
     .map(([provider]) => provider)
     .sort();
@@ -84,10 +91,15 @@ export const agentDirFacts = (agentDir: string) => ({
 
 // ---- local model servers
 
-export type Fetch = (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
+export type Fetch = (
+  url: string,
+  init?: { signal?: AbortSignal },
+) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
 /** The servers worth asking about without being told: llama-swap or llama.cpp's router on 8080, Ollama on 11434. `PI_KIT_LOCAL_PROBES` adds base URLs (comma separated). */
-export function defaultProbes(env: NodeJS.ProcessEnv = process.env): { kind: LocalServer['kind']; name: string; baseUrl: string }[] {
+export function defaultProbes(
+  env: NodeJS.ProcessEnv = process.env,
+): { kind: LocalServer['kind']; name: string; baseUrl: string }[] {
   const extra = (env['PI_KIT_LOCAL_PROBES'] ?? '')
     .split(',')
     .map((u) => u.trim())
@@ -105,7 +117,8 @@ export function normalizeBaseUrl(input: string): string {
   let text = input.trim();
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) text = `http://${text}`;
   const url = new URL(text);
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('The address must start with http:// or https://.');
+  if (url.protocol !== 'http:' && url.protocol !== 'https:')
+    throw new Error('The address must start with http:// or https://.');
   url.hash = '';
   url.search = '';
   const path = url.pathname.replace(/\/+$/, '');
@@ -117,7 +130,11 @@ export function normalizeBaseUrl(input: string): string {
  * Asks one base URL what it serves: the OpenAI-style `<base>/models` first, then Ollama's `/api/tags` on the same host. A server that answers neither, or
  * not within the timeout, is "not reachable" with a sentence for the reason. The request goes to the address the caller gave and nowhere else.
  */
-export async function testEndpoint(baseUrl: string, fetchFn: Fetch = fetch as unknown as Fetch, timeoutMs = 3000): Promise<LocalTestResult> {
+export async function testEndpoint(
+  baseUrl: string,
+  fetchFn: Fetch = fetch as unknown as Fetch,
+  timeoutMs = 3000,
+): Promise<LocalTestResult> {
   let base: string;
   try {
     base = normalizeBaseUrl(baseUrl);
@@ -132,7 +149,11 @@ export async function testEndpoint(baseUrl: string, fetchFn: Fetch = fetch as un
   try {
     const body = (await ask(`${base}/models`)) as { data?: { id?: unknown }[] };
     const models = (body.data ?? []).map((m) => m.id).filter((id): id is string => typeof id === 'string');
-    const kind: LocalServer['kind'] = /:11434(\/|$)/.test(base) ? 'ollama' : /:8080(\/|$)/.test(base) ? 'llama-swap' : 'openai';
+    const kind: LocalServer['kind'] = /:11434(\/|$)/.test(base)
+      ? 'ollama'
+      : /:8080(\/|$)/.test(base)
+        ? 'llama-swap'
+        : 'openai';
     return { ok: true, kind, baseUrl: base, models };
   } catch (first) {
     try {
@@ -142,13 +163,26 @@ export async function testEndpoint(baseUrl: string, fetchFn: Fetch = fetch as un
       return { ok: true, kind: 'ollama', baseUrl: base, models };
     } catch {
       const reason = first instanceof Error ? first.message : String(first);
-      return { ok: false, baseUrl: base, models: [], error: /abort|timeout/i.test(reason) ? 'Nothing answered within three seconds.' : /ECONNREFUSED|fetch failed/i.test(reason) ? 'Nothing is listening there.' : reason };
+      return {
+        ok: false,
+        baseUrl: base,
+        models: [],
+        error: /abort|timeout/i.test(reason)
+          ? 'Nothing answered within three seconds.'
+          : /ECONNREFUSED|fetch failed/i.test(reason)
+            ? 'Nothing is listening there.'
+            : reason,
+      };
     }
   }
 }
 
 /** Every default probe, at once; the ones that answer, with their models. */
-export async function probeLocalServers(probes = defaultProbes(), fetchFn: Fetch = fetch as unknown as Fetch, timeoutMs = 800): Promise<LocalServer[]> {
+export async function probeLocalServers(
+  probes = defaultProbes(),
+  fetchFn: Fetch = fetch as unknown as Fetch,
+  timeoutMs = 800,
+): Promise<LocalServer[]> {
   const keyOf = (url: string): string => {
     try {
       return normalizeBaseUrl(url);
@@ -156,9 +190,20 @@ export async function probeLocalServers(probes = defaultProbes(), fetchFn: Fetch
       return url;
     }
   };
-  const unique = probes.filter((probe, index) => probes.findIndex((p) => keyOf(p.baseUrl) === keyOf(probe.baseUrl)) === index);
-  const results = await Promise.all(unique.map(async (probe) => ({ probe, result: await testEndpoint(probe.baseUrl, fetchFn, timeoutMs) })));
-  return results.filter((r) => r.result.ok).map(({ probe, result }) => ({ kind: probe.kind === 'openai' ? (result.kind ?? 'openai') : probe.kind, name: probe.name, baseUrl: result.baseUrl, models: result.models }));
+  const unique = probes.filter(
+    (probe, index) => probes.findIndex((p) => keyOf(p.baseUrl) === keyOf(probe.baseUrl)) === index,
+  );
+  const results = await Promise.all(
+    unique.map(async (probe) => ({ probe, result: await testEndpoint(probe.baseUrl, fetchFn, timeoutMs) })),
+  );
+  return results
+    .filter((r) => r.result.ok)
+    .map(({ probe, result }) => ({
+      kind: probe.kind === 'openai' ? (result.kind ?? 'openai') : probe.kind,
+      name: probe.name,
+      baseUrl: result.baseUrl,
+      models: result.models,
+    }));
 }
 
 // ---- the pi command line
@@ -167,7 +212,10 @@ export async function probeLocalServers(probes = defaultProbes(), fetchFn: Fetch
 const own = (dir: string): boolean => /[\\/]node_modules[\\/]\.bin$/.test(dir);
 
 /** The first `pi` executable on PATH, and its version (`pi --version`, three seconds at most). */
-export async function findPathPi(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): Promise<{ found: boolean; path?: string; version?: string }> {
+export async function findPathPi(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Promise<{ found: boolean; path?: string; version?: string }> {
   const names = platform === 'win32' ? ['pi.cmd', 'pi.exe', 'pi.bat'] : ['pi'];
   for (const dir of (env['PATH'] ?? '').split(delimiter).filter(Boolean)) {
     if (own(dir)) continue;
@@ -179,10 +227,19 @@ export async function findPathPi(env: NodeJS.ProcessEnv = process.env, platform:
         continue;
       }
       const version = await new Promise<string | undefined>((resolve) => {
-        execFile(path, ['--version'], { timeout: 3000, env: { ...env, PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', NO_COLOR: '1' }, windowsHide: true }, (error, stdout, stderr) => {
-          const text = `${stdout}\n${stderr}`;
-          resolve(error && !text.trim() ? undefined : /(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/.exec(text)?.[1]);
-        });
+        execFile(
+          path,
+          ['--version'],
+          {
+            timeout: 3000,
+            env: { ...env, PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', NO_COLOR: '1' },
+            windowsHide: true,
+          },
+          (error, stdout, stderr) => {
+            const text = `${stdout}\n${stderr}`;
+            resolve(error && !text.trim() ? undefined : /(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/.exec(text)?.[1]);
+          },
+        );
       });
       return { found: true, path, ...(version ? { version } : {}) };
     }

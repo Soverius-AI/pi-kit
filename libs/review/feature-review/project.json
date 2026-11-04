@@ -4,10 +4,7 @@
   "sourceRoot": "libs/review/feature-review/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:review",
-    "type:feature"
-  ],
+  "tags": ["scope:review", "type:feature"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"
@@ -19,12 +16,8 @@
         "tsConfig": "libs/review/feature-review/tsconfig.spec.json",
         "buildTarget": "renderer:build:development",
         "runner": "vitest",
-        "include": [
-          "libs/review/feature-review/src/**/*.spec.ts"
-        ],
-        "setupFiles": [
-          "libs/review/feature-review/src/test-setup.ts"
-        ]
+        "include": ["libs/review/feature-review/src/**/*.spec.ts"],
+        "setupFiles": ["libs/review/feature-review/src/test-setup.ts"]
       }
     }
   }

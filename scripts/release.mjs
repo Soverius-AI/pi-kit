@@ -27,7 +27,11 @@ import { assertLinuxHost, releaseTargets, selectTargets } from './release-target
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const { values } = parseArgs({
-  options: { only: { type: 'string', multiple: true }, dir: { type: 'boolean', default: false }, 'skip-build': { type: 'boolean', default: false } },
+  options: {
+    only: { type: 'string', multiple: true },
+    dir: { type: 'boolean', default: false },
+    'skip-build': { type: 'boolean', default: false },
+  },
 });
 const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
 const release = join(root, 'dist', 'release');
@@ -37,7 +41,9 @@ const TARGETS = releaseTargets(version);
 const selected = selectTargets(values.only);
 for (const name of selected) {
   if (!TARGETS[name]) {
-    console.error(`Unknown target "${name}". Usage: node scripts/release.mjs [--only mac|win|win-x64|win-arm64|linux|linux-x64|linux-arm64 ...] [--dir] [--skip-build]`);
+    console.error(
+      `Unknown target "${name}". Usage: node scripts/release.mjs [--only mac|win|win-x64|win-arm64|linux|linux-x64|linux-arm64 ...] [--dir] [--skip-build]`,
+    );
     process.exit(2);
   }
 }
@@ -50,7 +56,8 @@ const run = (args) => execFileSync(process.execPath, args, { cwd: root, stdio: '
 mkdirSync(release, { recursive: true });
 for (const name of selected) {
   const t = TARGETS[name];
-  for (const file of [...t.artifacts, ...t.artifacts.map((a) => `${a}.blockmap`)]) rmSync(join(release, file), { force: true });
+  for (const file of [...t.artifacts, ...t.artifacts.map((a) => `${a}.blockmap`)])
+    rmSync(join(release, file), { force: true });
   rmSync(join(release, t.unpacked), { recursive: true, force: true });
   rmSync(join(root, 'dist', 'stage', t.triple), { recursive: true, force: true });
 }
@@ -72,7 +79,13 @@ for (const group of groups) {
   const t0 = Date.now();
   console.log(`\n=== ${group} (${archs.join(', ')}) ===`);
   try {
-    run([join(root, 'scripts/package.mjs'), group, '--skip-build', ...archs.flatMap((a) => ['--arch', a]), ...(values.dir ? ['--dir'] : [])]);
+    run([
+      join(root, 'scripts/package.mjs'),
+      group,
+      '--skip-build',
+      ...archs.flatMap((a) => ['--arch', a]),
+      ...(values.dir ? ['--dir'] : []),
+    ]);
     timings.push({ step: `${group} ${archs.join(' + ')}: stage, verify natives, pack`, seconds: seconds(t0) });
   } catch (error) {
     timings.push({ step: `${group} ${archs.join(' + ')}: FAILED`, seconds: seconds(t0) });
@@ -84,7 +97,10 @@ for (const group of groups) {
 for (const name of selected) {
   const t = TARGETS[name];
   if (failures.some((f) => f.startsWith(`${t.group}-${t.arch}`))) continue;
-  const backend = t.group === 'mac' ? join(release, t.unpacked, 'pi-kit.app', 'Contents', 'Resources', 'backend') : join(release, t.unpacked, 'resources', 'backend');
+  const backend =
+    t.group === 'mac'
+      ? join(release, t.unpacked, 'pi-kit.app', 'Contents', 'Resources', 'backend')
+      : join(release, t.unpacked, 'resources', 'backend');
   console.log(`\nnatives in the packed ${name} app:`);
   try {
     verifyStaged({ backend, triple: t.triple, electron: createRequire(import.meta.url)('electron') });
@@ -97,13 +113,17 @@ for (const name of selected) {
 console.log('\n=== dist/release ===');
 const missing = [];
 if (existsSync(release)) {
-  const rows = readdirSync(release, { withFileTypes: true }).filter((e) => e.isFile() && !e.name.startsWith('builder-')).sort((a, b) => a.name.localeCompare(b.name));
-  for (const row of rows) console.log(`  ${row.name.padEnd(48)} ${mb(statSync(join(release, row.name)).size).padStart(10)}`);
+  const rows = readdirSync(release, { withFileTypes: true })
+    .filter((e) => e.isFile() && !e.name.startsWith('builder-'))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  for (const row of rows)
+    console.log(`  ${row.name.padEnd(48)} ${mb(statSync(join(release, row.name)).size).padStart(10)}`);
 }
 if (!values.dir) {
   for (const name of selected) {
     if (failures.some((f) => f.startsWith(`${TARGETS[name].group}-${TARGETS[name].arch}`))) continue;
-    for (const file of [...TARGETS[name].artifacts, TARGETS[name].updateInfo]) if (!existsSync(join(release, file))) missing.push(`${name}: ${file}`);
+    for (const file of [...TARGETS[name].artifacts, TARGETS[name].updateInfo])
+      if (!existsSync(join(release, file))) missing.push(`${name}: ${file}`);
   }
 }
 console.log('\n=== time ===');

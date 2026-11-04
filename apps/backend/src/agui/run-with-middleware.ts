@@ -14,9 +14,15 @@ import type { Observable } from 'rxjs';
  * rendering; completed interfaces still come from pi's stored tool results. Tests pin the middleware chain.
  */
 export function runWithMiddleware(agent: AbstractAgent, input: RunAgentInput): Observable<BaseEvent> {
-  const middlewares = (agent as unknown as { middlewares?: { run(input: RunAgentInput, next: unknown): Observable<BaseEvent> }[] }).middlewares;
+  const middlewares = (
+    agent as unknown as { middlewares?: { run(input: RunAgentInput, next: unknown): Observable<BaseEvent> }[] }
+  ).middlewares;
   if (!Array.isArray(middlewares) || middlewares.length === 0) return agent.run(input);
-  const chain = middlewares.reduceRight<{ run(input: RunAgentInput): Observable<BaseEvent>; messages: unknown; state: unknown }>(
+  const chain = middlewares.reduceRight<{
+    run(input: RunAgentInput): Observable<BaseEvent>;
+    messages: unknown;
+    state: unknown;
+  }>(
     (next, middleware) => ({
       run: (i) => middleware.run(i, next),
       get messages() {

@@ -3,32 +3,21 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "apps/desktop/src",
-  "tags": [
-    "scope:app"
-  ],
+  "tags": ["scope:app"],
   "targets": {
     "build": {
       "executor": "@nx/esbuild:esbuild",
-      "outputs": [
-        "{options.outputPath}"
-      ],
+      "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/apps/desktop",
         "main": "apps/desktop/src/main.ts",
-        "additionalEntryPoints": [
-          "apps/desktop/src/preload.ts",
-          "apps/desktop/src/screenshot-encoder-preload.ts"
-        ],
+        "additionalEntryPoints": ["apps/desktop/src/preload.ts", "apps/desktop/src/screenshot-encoder-preload.ts"],
         "tsConfig": "apps/desktop/tsconfig.app.json",
         "platform": "node",
-        "format": [
-          "cjs"
-        ],
+        "format": ["cjs"],
         "bundle": true,
         "thirdParty": true,
-        "external": [
-          "electron"
-        ],
+        "external": ["electron"],
         "assets": [
           {
             "glob": "splash.html",
@@ -59,9 +48,7 @@
     },
     "start": {
       "executor": "nx:run-commands",
-      "dependsOn": [
-        "build"
-      ],
+      "dependsOn": ["build"],
       "continuous": true,
       "options": {
         "command": "electron dist/apps/desktop/main.cjs"
@@ -70,10 +57,7 @@
     "test": {
       "executor": "nx:run-commands",
       "cache": true,
-      "inputs": [
-        "default",
-        "^production"
-      ],
+      "inputs": ["default", "^production"],
       "options": {
         "command": "vitest run",
         "cwd": "apps/desktop"

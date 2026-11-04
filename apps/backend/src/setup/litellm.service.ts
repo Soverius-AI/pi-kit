@@ -24,26 +24,38 @@ export class LiteLlmService {
     const path = join(agentDirOf(process.env), 'models.json');
     if (!existsSync(path)) return undefined;
     let parsed: unknown;
-    try { parsed = JSON.parse(readFileSync(path, 'utf8')); }
-    catch { throw new Error('The models.json file could not be read. Fix its JSON before configuring LiteLLM.'); }
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('The models.json file must contain an object.');
+    try {
+      parsed = JSON.parse(readFileSync(path, 'utf8'));
+    } catch {
+      throw new Error('The models.json file could not be read. Fix its JSON before configuring LiteLLM.');
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+      throw new Error('The models.json file must contain an object.');
     const file = parsed as { providers?: Record<string, Record<string, unknown>> };
     return file.providers?.['litellm'];
   }
 
   status(): LiteLlmConnection {
     const entry = this.entry();
-    const models = Array.isArray(entry?.['models']) ? entry['models'] as Record<string, unknown>[] : [];
+    const models = Array.isArray(entry?.['models']) ? (entry['models'] as Record<string, unknown>[]) : [];
     return {
       baseUrl: typeof entry?.['baseUrl'] === 'string' ? entry['baseUrl'] : 'http://localhost:4000/v1',
       configured: !!entry,
       hasApiKey: !!entry?.['apiKey'] && entry['apiKey'] !== 'litellm-no-key',
-      models: models.flatMap((m) => typeof m['id'] === 'string' ? [{ id: m['id'], name: typeof m['name'] === 'string' ? m['name'] : m['id'],
-        ...(typeof m['contextWindow'] === 'number' ? { contextWindow: m['contextWindow'] } : {}),
-        ...(typeof m['maxTokens'] === 'number' ? { maxTokens: m['maxTokens'] } : {}),
-        ...(typeof m['reasoning'] === 'boolean' ? { reasoning: m['reasoning'] } : {}),
-        ...(Array.isArray(m['input']) ? { vision: m['input'].includes('image') } : {}),
-      }] : []),
+      models: models.flatMap((m) =>
+        typeof m['id'] === 'string'
+          ? [
+              {
+                id: m['id'],
+                name: typeof m['name'] === 'string' ? m['name'] : m['id'],
+                ...(typeof m['contextWindow'] === 'number' ? { contextWindow: m['contextWindow'] } : {}),
+                ...(typeof m['maxTokens'] === 'number' ? { maxTokens: m['maxTokens'] } : {}),
+                ...(typeof m['reasoning'] === 'boolean' ? { reasoning: m['reasoning'] } : {}),
+                ...(Array.isArray(m['input']) ? { vision: m['input'].includes('image') } : {}),
+              },
+            ]
+          : [],
+      ),
     };
   }
 
@@ -51,12 +63,16 @@ export class LiteLlmService {
     if (input.apiKey !== undefined) return input.apiKey.trim() || undefined;
     const status = this.status();
     if (!status.hasApiKey) return undefined;
-    if (liteLlmBaseUrl(status.baseUrl) !== liteLlmBaseUrl(input.baseUrl)) throw new Error('Enter the API key again when changing the proxy URL.');
+    if (liteLlmBaseUrl(status.baseUrl) !== liteLlmBaseUrl(input.baseUrl))
+      throw new Error('Enter the API key again when changing the proxy URL.');
     const pi = await loadPi();
     const runtime = await pi.ModelRuntime.create({ signal });
     let key: string | undefined;
-    try { key = (await runtime.getAuth('litellm', { signal }))?.auth.apiKey; }
-    catch { throw new Error('The saved LiteLLM API key could not be read. Enter it again.'); }
+    try {
+      key = (await runtime.getAuth('litellm', { signal }))?.auth.apiKey;
+    } catch {
+      throw new Error('The saved LiteLLM API key could not be read. Enter it again.');
+    }
     if (!key) throw new Error('The saved LiteLLM API key could not be read. Enter it again.');
     return key;
   }
@@ -97,26 +113,37 @@ export class LiteLlmService {
     // A settings save while discovery was running wins, including changed credentials or a removed connection.
     if (JSON.stringify(this.entry()) !== version) return false;
     const details = liteLlmModelDetails(catalog.models);
-    const known = Array.isArray(entry['models']) ? entry['models'] as { id?: string }[] : [];
+    const known = Array.isArray(entry['models']) ? (entry['models'] as { id?: string }[]) : [];
     const next = catalog.models.map((m) => ({ ...known.find((k) => k.id === m.id), ...details[m.id], id: m.id }));
     if (JSON.stringify(known) === JSON.stringify(next)) return false;
     saveLocalProvider(agentDirOf(process.env), {
-      provider: 'litellm', baseUrl: catalog.baseUrl, models: catalog.models.map((m) => m.id), modelDetails: details,
+      provider: 'litellm',
+      baseUrl: catalog.baseUrl,
+      models: catalog.models.map((m) => m.id),
+      modelDetails: details,
     });
     return true;
   }
 
   async save(input: LiteLlmConnect): Promise<LiteLlmConnection> {
     const catalog = await this.discover(input);
-    if (!catalog.models.length) throw new Error('LiteLLM lists no chat models for this key. Add or grant access to a model on the proxy, then refresh.');
+    if (!catalog.models.length)
+      throw new Error(
+        'LiteLLM lists no chat models for this key. Add or grant access to a model on the proxy, then refresh.',
+      );
     const previous = this.entry();
     const key = input.apiKey?.trim();
     // No secret leaves this service. The models file uses the same keychain resolver as other providers.
-    const apiKey = input.apiKey === undefined && previous?.['apiKey']
-      ? previous['apiKey']
-      : key ? (await this.secrets.keep('litellm', key)).value : 'litellm-no-key';
+    const apiKey =
+      input.apiKey === undefined && previous?.['apiKey']
+        ? previous['apiKey']
+        : key
+          ? (await this.secrets.keep('litellm', key)).value
+          : 'litellm-no-key';
     saveLocalProvider(agentDirOf(process.env), {
-      provider: 'litellm', baseUrl: catalog.baseUrl, models: catalog.models.map((m) => m.id),
+      provider: 'litellm',
+      baseUrl: catalog.baseUrl,
+      models: catalog.models.map((m) => m.id),
       modelDetails: liteLlmModelDetails(catalog.models),
       providerDetails: { name: 'LiteLLM', api: 'openai-completions', apiKey, authHeader: catalog.hasApiKey },
     });

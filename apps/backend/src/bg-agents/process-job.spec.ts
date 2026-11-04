@@ -35,14 +35,20 @@ describe('crashLoop (three starts in ten minutes)', () => {
     const now = 1_000_000_000;
     expect(crashLoop([], now)).toEqual({ failures: [now], looping: false });
     expect(crashLoop([now - 60_000], now).looping).toBe(false);
-    expect(crashLoop([now - 120_000, now - 60_000], now)).toEqual({ failures: [now - 120_000, now - 60_000, now], looping: true });
+    expect(crashLoop([now - 120_000, now - 60_000], now)).toEqual({
+      failures: [now - 120_000, now - 60_000, now],
+      looping: true,
+    });
     expect(crashLoop([now - CRASH_LOOP_WINDOW_MS - 1, now - 60_000], now).looping).toBe(false);
   });
 });
 
 describe('cleanupIntent', () => {
   it('keeps the command of the call', () => {
-    expect(cleanupIntent('c1', { command: 'node --test test' })).toMatchObject({ callId: 'c1', command: 'node --test test' });
+    expect(cleanupIntent('c1', { command: 'node --test test' })).toMatchObject({
+      callId: 'c1',
+      command: 'node --test test',
+    });
     expect(cleanupIntent('c2', {}).command).toBe('');
   });
 });

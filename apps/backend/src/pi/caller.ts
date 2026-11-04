@@ -21,7 +21,9 @@ export function extensionNameFromStack(stack: string | undefined): string | unde
 
 /** The file of one `at ...` line of a V8 stack trace (without line and column), or undefined for a line that names none. */
 function framePath(line: string): string | undefined {
-  const match = /\(?((?:file:\/\/)?(?:\/|[A-Za-z]:[\\/])[^():]*?(?:\.[cm]?[jt]s))(?::\d+){0,2}\)?\s*$/.exec(line.trim());
+  const match = /\(?((?:file:\/\/)?(?:\/|[A-Za-z]:[\\/])[^():]*?(?:\.[cm]?[jt]s))(?::\d+){0,2}\)?\s*$/.exec(
+    line.trim(),
+  );
   if (!match) return undefined;
   return match[1].replace(/^file:\/\//, '').replace(/\\/g, '/');
 }

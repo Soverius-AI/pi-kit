@@ -18,18 +18,22 @@ const notarize = notarizationEnabled();
 
 // electron-builder's classic NSIS and rcedit/signing tools are x86-64 only and do not start on Apple Silicon without Rosetta; its beta
 // "toolsets" ship arm64 builds. Other hosts keep the classic tools. PI_KIT_TOOLSETS=classic|beta forces either.
-const toolsetChoice = process.env.PI_KIT_TOOLSETS || (process.platform === 'darwin' && process.arch === 'arm64' ? 'beta' : 'classic');
+const toolsetChoice =
+  process.env.PI_KIT_TOOLSETS || (process.platform === 'darwin' && process.arch === 'arm64' ? 'beta' : 'classic');
 const [updateOwner, updateRepo] = (process.env.PI_KIT_UPDATE_REPO || 'Soverius-AI/pi-kit').split('/');
 
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId: 'dev.pi-kit.app',
-  forceCodeSigning: process.env.PI_KIT_BUILD_PLATFORM === 'darwin' && Boolean(process.env.CSC_NAME || process.env.CSC_LINK),
+  forceCodeSigning:
+    process.env.PI_KIT_BUILD_PLATFORM === 'darwin' && Boolean(process.env.CSC_NAME || process.env.CSC_LINK),
   productName: 'pi-kit',
   copyright: `Copyright © ${new Date().getFullYear()} Soverius.AI GmbH`,
   electronVersion: require('./node_modules/electron/package.json').version,
   // Reuse the workspace's Electron when the only target is this machine's platform and CPU; other builds download their own.
-  ...(process.env.PI_KIT_BUILD_PLATFORM === process.platform && process.env.PI_KIT_BUILD_ARCHS === process.arch ? { electronDist: 'node_modules/electron/dist' } : {}),
+  ...(process.env.PI_KIT_BUILD_PLATFORM === process.platform && process.env.PI_KIT_BUILD_ARCHS === process.arch
+    ? { electronDist: 'node_modules/electron/dist' }
+    : {}),
   directories: { app: 'dist/package', output: 'dist/release', buildResources: 'apps/desktop/build' },
   asar: true,
   electronLanguages: ['en', 'en-US', 'en-GB', 'de'],
@@ -57,7 +61,10 @@ module.exports = {
     // The dmg is what people download; electron-updater updates a mac app from the zip (and latest-mac.yml) next to it.
     target: ['dmg', 'zip'],
     hardenedRuntime: true,
-    extendInfo: { NSMicrophoneUsageDescription: 'pi-kit listens to your microphone only while you dictate a message. The audio is turned into text on this Mac and is not sent anywhere.' },
+    extendInfo: {
+      NSMicrophoneUsageDescription:
+        'pi-kit listens to your microphone only while you dictate a message. The audio is turned into text on this Mac and is not sent anywhere.',
+    },
     gatekeeperAssess: false,
     ...macSigningOptions(),
     // Signing: set CSC_NAME (a "Developer ID Application: ..." identity in the keychain) or CSC_LINK/CSC_KEY_PASSWORD (a .p12).

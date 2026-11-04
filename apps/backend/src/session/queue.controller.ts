@@ -20,7 +20,11 @@ export class QueueController {
   constructor(private readonly sessions: PiSessionService) {}
 
   @Get('threads/:id/queue')
-  @ApiOperation({ summary: 'Get the message queue', description: "Returns the messages that wait for the running turn: steering messages first, then follow-ups. A thread that is not running has an empty queue." })
+  @ApiOperation({
+    summary: 'Get the message queue',
+    description:
+      'Returns the messages that wait for the running turn: steering messages first, then follow-ups. A thread that is not running has an empty queue.',
+  })
   @Responds(QueueSnapshotSchema)
   queue(@Param('id') id: string): QueueSnapshot {
     return this.sessions.queue(id);
@@ -29,26 +33,42 @@ export class QueueController {
   /** Steer now: a follow-up moves to the steering queue (after the others waiting there). */
   @Post('threads/:id/queue/promote')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Steer with a queued message', description: 'Moves a follow-up to the steering queue, after the others waiting there, and answers with the queue.' })
+  @ApiOperation({
+    summary: 'Steer with a queued message',
+    description: 'Moves a follow-up to the steering queue, after the others waiting there, and answers with the queue.',
+  })
   @Responds(QueueSnapshotSchema)
   @Fails({ 409: STALE })
-  promote(@Param('id') id: string, @Body({ schema: QueueTargetSchema }) body: z.infer<typeof QueueTargetSchema>): Promise<QueueSnapshot> {
+  promote(
+    @Param('id') id: string,
+    @Body({ schema: QueueTargetSchema }) body: z.infer<typeof QueueTargetSchema>,
+  ): Promise<QueueSnapshot> {
     return this.guard(() => this.sessions.promoteQueued(id, body));
   }
 
   @Post('threads/:id/queue/remove')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Remove a queued message', description: 'Removes one message from the queue, and answers with the queue.' })
+  @ApiOperation({
+    summary: 'Remove a queued message',
+    description: 'Removes one message from the queue, and answers with the queue.',
+  })
   @Responds(QueueSnapshotSchema)
   @Fails({ 409: STALE })
-  remove(@Param('id') id: string, @Body({ schema: QueueTargetSchema }) body: z.infer<typeof QueueTargetSchema>): Promise<QueueSnapshot> {
+  remove(
+    @Param('id') id: string,
+    @Body({ schema: QueueTargetSchema }) body: z.infer<typeof QueueTargetSchema>,
+  ): Promise<QueueSnapshot> {
     return this.guard(() => this.sessions.removeQueued(id, body));
   }
 
   /** Every queued text in one message, joined by blank lines, in delivery order. */
   @Post('threads/:id/queue/merge')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Merge the queued messages', description: 'Joins every queued text into one message, separated by blank lines in delivery order, and answers with the queue.' })
+  @ApiOperation({
+    summary: 'Merge the queued messages',
+    description:
+      'Joins every queued text into one message, separated by blank lines in delivery order, and answers with the queue.',
+  })
   @Responds(QueueSnapshotSchema)
   merge(@Param('id') id: string): Promise<QueueSnapshot> {
     return this.guard(() => this.sessions.mergeQueued(id));
@@ -56,7 +76,10 @@ export class QueueController {
 
   @Post('threads/:id/queue/clear')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Clear the message queue', description: 'Drops every queued message, and answers with the empty queue.' })
+  @ApiOperation({
+    summary: 'Clear the message queue',
+    description: 'Drops every queued message, and answers with the empty queue.',
+  })
   @Responds(QueueSnapshotSchema)
   clear(@Param('id') id: string): Promise<QueueSnapshot> {
     return this.guard(() => this.sessions.clearQueued(id));

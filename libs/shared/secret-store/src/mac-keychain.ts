@@ -40,19 +40,30 @@ export class MacKeychainSecretStore implements SecretStore {
     private readonly legacy: SecretStore = new KeyringSecretStore(),
     private readonly load: () => MacKeychainModule = () => require('keychain-store') as MacKeychainModule,
   ) {
-    this.registry = join(env['PI_CODING_AGENT_DIR'] || join(homedir(), '.pi', 'agent'), 'pi-kit-keychain-accounts.jsonl');
+    this.registry = join(
+      env['PI_CODING_AGENT_DIR'] || join(homedir(), '.pi', 'agent'),
+      'pi-kit-keychain-accounts.jsonl',
+    );
     this.service = env['PI_KIT_KEYCHAIN_SERVICE'] || 'dev.pi-kit.app';
   }
 
   available(): boolean {
     if (this.native === undefined) {
-      try { this.native = this.load(); } catch { this.native = null; }
+      try {
+        this.native = this.load();
+      } catch {
+        this.native = null;
+      }
     }
     return this.native !== null;
   }
 
   accessStatus(): CredentialAccess {
-    if (!this.available()) return { state: 'unavailable', reason: 'Touch ID storage is unavailable. Reinstall a signed macOS build of pi-kit.' };
+    if (!this.available())
+      return {
+        state: 'unavailable',
+        reason: 'Touch ID storage is unavailable. Reinstall a signed macOS build of pi-kit.',
+      };
     return this.blocked.values().next().value?.access ?? { state: this.accessed ? 'ready' : 'unknown' };
   }
 
@@ -83,9 +94,18 @@ export class MacKeychainSecretStore implements SecretStore {
       } catch (error) {
         const nativeError = error as { code?: string; details?: { osStatus?: number } } | null;
         const code = nativeError?.code;
-        const access: CredentialAccess = code === 'host_identity_invalid' || nativeError?.details?.osStatus === -34018
-          ? { state: 'unavailable', reason: 'Touch ID needs an Apple-signed pi-kit app with its Keychain access group and provisioning profile.' }
-          : this.available() ? accessFailure(new Error(`${nativeError?.details?.osStatus ?? ''} ${error instanceof Error ? error.message : ''}`)) : this.accessStatus();
+        const access: CredentialAccess =
+          code === 'host_identity_invalid' || nativeError?.details?.osStatus === -34018
+            ? {
+                state: 'unavailable',
+                reason:
+                  'Touch ID needs an Apple-signed pi-kit app with its Keychain access group and provisioning profile.',
+              }
+            : this.available()
+              ? accessFailure(
+                  new Error(`${nativeError?.details?.osStatus ?? ''} ${error instanceof Error ? error.message : ''}`),
+                )
+              : this.accessStatus();
         const failure = new SecretStoreAccessError(access, error);
         this.blocked.set(account, failure);
         throw failure;
@@ -131,7 +151,7 @@ export class MacKeychainSecretStore implements SecretStore {
   private async copyVerified(entry: NativeEntry, account: string, original: string): Promise<void> {
     // Atomic creation adopts a concurrent winner, but never overwrites its value.
     const copied = await entry.getOrCreate(account, original);
-    if (copied !== original || await entry.get(account, 'string') !== original) {
+    if (copied !== original || (await entry.get(account, 'string')) !== original) {
       throw new Error('Credential migration could not be verified. The original entry was retained.');
     }
     this.record(account, true);
@@ -161,7 +181,7 @@ export class MacKeychainSecretStore implements SecretStore {
 
   list(): Promise<string[]> {
     return this.operate('pi-kit/list', async () => {
-      const accounts = new Set([...this.accounts(), ...await this.legacy.list()]);
+      const accounts = new Set([...this.accounts(), ...(await this.legacy.list())]);
       return [...accounts].filter(validAccount).sort();
     });
   }

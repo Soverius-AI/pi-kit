@@ -1,4 +1,11 @@
-import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { buildSessionTree } from '@pi-kit/pi-adapter';
 import {
   type AttendantKind,
@@ -123,7 +130,8 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     });
     this.sessions.onDialogsChanged((threadId) => {
       const settings = this.settings();
-      if (settings.enabled && settings.when.onInterrupt && this.sessions.pendingDialogs(threadId).length > 0) this.enqueue(threadId, 'interrupt');
+      if (settings.enabled && settings.when.onInterrupt && this.sessions.pendingDialogs(threadId).length > 0)
+        this.enqueue(threadId, 'interrupt');
     });
     this.schedule();
   }
@@ -139,7 +147,11 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
 
   settings(): AttendantSettings {
     const saved = this.meta.getSetting(SETTINGS_KEY) as Partial<AttendantSettings> | undefined;
-    const merged = { ...DEFAULT_ATTENDANT_SETTINGS, ...saved, when: { ...DEFAULT_ATTENDANT_SETTINGS.when, ...saved?.when } };
+    const merged = {
+      ...DEFAULT_ATTENDANT_SETTINGS,
+      ...saved,
+      when: { ...DEFAULT_ATTENDANT_SETTINGS.when, ...saved?.when },
+    };
     const parsed = AttendantSettingsSchema.safeParse(merged);
     return parsed.success ? parsed.data : DEFAULT_ATTENDANT_SETTINGS;
   }
@@ -160,7 +172,8 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     // A person's request (`complete` with initiative `person`) goes on: they asked for it, and the switch is about what the attendant does by itself.
     if (!next.enabled) {
       this.queue.length = 0;
-      for (const [controller, initiative] of this.inFlight) if (initiative === 'attendant') controller.abort('off' satisfies AbortReason);
+      for (const [controller, initiative] of this.inFlight)
+        if (initiative === 'attendant') controller.abort('off' satisfies AbortReason);
     }
     if (!next.enabled || !next.followUpSuggestions) {
       this.repo.expirePrompts();
@@ -210,7 +223,13 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     const rows = this.threadRows.all().sort((a, b) => b.updatedAt - a.updatedAt);
     for (const row of rows) {
       if (queued >= limit) break;
-      if (row.archived || row.messageCount === 0 || !this.projectAllowed(row.cwd) || this.meta.isVerificationThread(row.id)) continue;
+      if (
+        row.archived ||
+        row.messageCount === 0 ||
+        !this.projectAllowed(row.cwd) ||
+        this.meta.isVerificationThread(row.id)
+      )
+        continue;
       if (this.repo.meta(row.id)?.lookedFor === sessionMtime(row.sessionPath)) continue;
       this.enqueue(row.id, 'sweep');
       queued += 1;
@@ -235,7 +254,11 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
   enqueueTask(threadId: string, task: () => Promise<void>, key = 'learn'): boolean {
     const row = this.threadRows.get(threadId);
     if (this.stopped || !this.settings().enabled || !row || !this.projectAllowed(row.cwd)) return false;
-    if ((this.runningTask === threadId && this.runningKey === key) || this.queue.some((job) => job.task && job.threadId === threadId && (job.key ?? 'learn') === key)) return false;
+    if (
+      (this.runningTask === threadId && this.runningKey === key) ||
+      this.queue.some((job) => job.task && job.threadId === threadId && (job.key ?? 'learn') === key)
+    )
+      return false;
     this.insert({ threadId, reason: 'learn', task, key });
     void this.drain();
     return true;
@@ -258,10 +281,16 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
   async complete(
     row: ThreadRow,
     prompt: Prompt,
-    options: { kind: AttendantKind; initiative: Initiative; describe: (text: string) => { status: 'done' | 'error'; text: string }; signal?: AbortSignal },
+    options: {
+      kind: AttendantKind;
+      initiative: Initiative;
+      describe: (text: string) => { status: 'done' | 'error'; text: string };
+      signal?: AbortSignal;
+    },
   ): Promise<Completion> {
     const settings = this.settings();
-    if (options.initiative === 'attendant' && !settings.enabled) return { ok: false, code: 'off', error: 'The attendant is off.' };
+    if (options.initiative === 'attendant' && !settings.enabled)
+      return { ok: false, code: 'off', error: 'The attendant is off.' };
     if (this.stopped || options.signal?.aborted) return CANCELLED;
     const controller = new AbortController();
     const cancel = (): void => controller.abort('cancelled' satisfies AbortReason);
@@ -271,20 +300,40 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     try {
       if (this.capReached(settings)) {
         this.logCapReached(settings, row);
-        return { ok: false, code: 'cap', error: `The attendant’s daily cost cap of $${settings.dailyCostCap?.toFixed(2)} is reached; it rests until tomorrow.` };
+        return {
+          ok: false,
+          code: 'cap',
+          error: `The attendant’s daily cost cap of $${settings.dailyCostCap?.toFixed(2)} is reached; it rests until tomorrow.`,
+        };
       }
       choice = await this.model.resolve(settings).catch(() => undefined);
       if (!choice) {
         this.record(options.kind, 'skipped', row, 'No model is available for the attendant.');
-        return { ok: false, code: 'no-model', error: 'No model is available. Choose one in Settings › Attendant, or set up a provider.' };
+        return {
+          ok: false,
+          code: 'no-model',
+          error: 'No model is available. Choose one in Settings › Attendant, or set up a provider.',
+        };
       }
       // The caller went away, or the attendant was switched off, while the model was being chosen: no call.
       if (controller.signal.aborted) return abortedCompletion(controller.signal);
       const reply = await this.model.ask(prompt, choice, controller.signal);
       if (controller.signal.aborted) return abortedCompletion(controller.signal);
       const line = options.describe(reply.text);
-      this.record(options.kind, line.status, row, line.text, { model: reply.model, inputTokens: reply.inputTokens, outputTokens: reply.outputTokens, cost: reply.cost });
-      return { ok: true, text: reply.text, model: reply.model, inputTokens: reply.inputTokens, outputTokens: reply.outputTokens, cost: reply.cost };
+      this.record(options.kind, line.status, row, line.text, {
+        model: reply.model,
+        inputTokens: reply.inputTokens,
+        outputTokens: reply.outputTokens,
+        cost: reply.cost,
+      });
+      return {
+        ok: true,
+        text: reply.text,
+        model: reply.model,
+        inputTokens: reply.inputTokens,
+        outputTokens: reply.outputTokens,
+        cost: reply.cost,
+      };
     } catch (error) {
       if (controller.signal.aborted) return abortedCompletion(controller.signal);
       const message = error instanceof Error ? error.message : String(error);
@@ -297,7 +346,13 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** A line in the activity list for something another service decided not to do or did (no model call). */
-  note(kind: AttendantKind, row: ThreadRow, text: string, status: 'done' | 'skipped' | 'error' = 'skipped', usage: { model?: string; inputTokens?: number; outputTokens?: number; cost?: number } = {}): void {
+  note(
+    kind: AttendantKind,
+    row: ThreadRow,
+    text: string,
+    status: 'done' | 'skipped' | 'error' = 'skipped',
+    usage: { model?: string; inputTokens?: number; outputTokens?: number; cost?: number } = {},
+  ): void {
     this.record(kind, status, row, text, usage);
   }
 
@@ -329,7 +384,8 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
   private insert(job: Job): void {
     const firstSweep = this.queue.findIndex((queued) => queued.reason === 'sweep');
     // A question is waiting for its draft: first. The rest of the user-driven jobs keep their order, ahead of the sweep.
-    const at = job.reason === 'interrupt' ? 0 : job.reason === 'sweep' || firstSweep < 0 ? this.queue.length : firstSweep;
+    const at =
+      job.reason === 'interrupt' ? 0 : job.reason === 'sweep' || firstSweep < 0 ? this.queue.length : firstSweep;
     this.queue.splice(at, 0, job);
   }
 
@@ -373,7 +429,14 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     if (!settings.enabled) return;
     const row = this.threadRows.get(threadId);
     // A verification run is pi-kit's own scratch thread: it is neither named, summarised nor looked at.
-    if (!row || row.archived || !this.projectAllowed(row.cwd) || this.meta.isVerificationThread(threadId) || this.meta.learningSource(threadId)) return;
+    if (
+      !row ||
+      row.archived ||
+      !this.projectAllowed(row.cwd) ||
+      this.meta.isVerificationThread(threadId) ||
+      this.meta.learningSource(threadId)
+    )
+      return;
     if (row.messageCount === 0 && reason !== 'interrupt') return;
     // The title is written into the session file; a thread in the middle of a run is looked at when the run ends.
     if (reason !== 'interrupt' && this.events.lastRun(threadId)?.status === 'running') return;
@@ -397,7 +460,10 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     }
 
     // 2. the one-line status, the sidebar's meta line
-    if (digest.recent.length > 0 && (reason === 'interrupt' || reason === 'manual' || question || meta?.summaryFor !== startMtime)) {
+    if (
+      digest.recent.length > 0 &&
+      (reason === 'interrupt' || reason === 'manual' || question || meta?.summaryFor !== startMtime)
+    ) {
       const summary = await this.ask('summary', row, summaryPrompt(digest, question), choice, cleanSummary);
       if (summary) {
         this.repo.setSummary(threadId, summary, sessionMtime(row.sessionPath));
@@ -415,7 +481,12 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     this.status.touch(threadId);
   }
 
-  private async proposeLabels(row: ThreadRow, entries: Parameters<typeof buildSessionTree>[0], leafId: string | null, choice: ModelChoice): Promise<void> {
+  private async proposeLabels(
+    row: ThreadRow,
+    entries: Parameters<typeof buildSessionTree>[0],
+    leafId: string | null,
+    choice: ModelChoice,
+  ): Promise<void> {
     if (row.forkCount === 0) return;
     const tree = buildSessionTree(entries, leafId);
     let made = 0;
@@ -424,8 +495,20 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
       if (point.kind !== 'turn' || point.childCount < 2 || point.label || !point.onActivePath) continue;
       if (this.repo.hasSuggestion(row.id, 'label', point.id)) continue;
       const branches = tree.rows.filter((r) => r.parentId === point.id && r.kind === 'turn').map((r) => r.preview);
-      const label = await this.ask('label', row, labelPrompt({ preview: point.preview, branches }), choice, cleanLabel, (text) =>
-        this.repo.addSuggestion({ threadId: row.id, kind: 'label', target: point.id, text, reason: `Turn ${point.number} splits into ${branches.length} directions.` }),
+      const label = await this.ask(
+        'label',
+        row,
+        labelPrompt({ preview: point.preview, branches }),
+        choice,
+        cleanLabel,
+        (text) =>
+          this.repo.addSuggestion({
+            threadId: row.id,
+            kind: 'label',
+            target: point.id,
+            text,
+            reason: `Turn ${point.number} splits into ${branches.length} directions.`,
+          }),
       );
       if (label) made += 1;
     }
@@ -441,7 +524,13 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
       if (!reply) continue;
       const picked = parseChoice(reply.reply.text, options);
       if (picked) {
-        this.repo.addSuggestion({ threadId: row.id, kind: 'answer', target: dialog.id, text: picked, reason: `Suggested for “${dialog.request.title}”. Your choice.` });
+        this.repo.addSuggestion({
+          threadId: row.id,
+          kind: 'answer',
+          target: dialog.id,
+          text: picked,
+          reason: `Suggested for “${dialog.request.title}”. Your choice.`,
+        });
         this.finish(reply, 'draft', row, `Suggested “${picked}” for “${dialog.request.title}”`);
         this.status.touch(row.id);
       } else {
@@ -484,7 +573,14 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
   // ---- model calls
 
   /** One request whose answer is cleaned into text; records it as an action, `onResult` runs for a usable answer before it is recorded. */
-  private async ask(kind: AttendantKind, row: ThreadRow, prompt: Prompt, choice: ModelChoice, clean: (text: string) => string | undefined, onResult?: (text: string) => void): Promise<string | undefined> {
+  private async ask(
+    kind: AttendantKind,
+    row: ThreadRow,
+    prompt: Prompt,
+    choice: ModelChoice,
+    clean: (text: string) => string | undefined,
+    onResult?: (text: string) => void,
+  ): Promise<string | undefined> {
     const reply = await this.call(kind, row, prompt, choice);
     if (!reply) return undefined;
     const text = clean(reply.reply.text);
@@ -498,7 +594,12 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The request itself, refused when the day's cap is reached; a failed request is an action of status `error`. */
-  private async call(kind: AttendantKind, row: ThreadRow, prompt: Prompt, choice: ModelChoice): Promise<{ reply: ModelReply } | undefined> {
+  private async call(
+    kind: AttendantKind,
+    row: ThreadRow,
+    prompt: Prompt,
+    choice: ModelChoice,
+  ): Promise<{ reply: ModelReply } | undefined> {
     const settings = this.settings();
     if (this.stopped || !settings.enabled) return undefined;
     if (this.capReached(settings)) {
@@ -512,16 +613,29 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       // Aborted because it was switched off (or the backend is quitting): not an error worth listing.
       if (controller.signal.aborted) return undefined;
-      this.record(kind, 'error', row, error instanceof Error ? error.message : String(error), { model: labelOf(choice) });
+      this.record(kind, 'error', row, error instanceof Error ? error.message : String(error), {
+        model: labelOf(choice),
+      });
       return undefined;
     } finally {
       this.inFlight.delete(controller);
     }
   }
 
-  private finish(result: { reply: ModelReply }, kind: AttendantKind, row: ThreadRow, text: string, status: 'done' | 'error' = 'done'): void {
+  private finish(
+    result: { reply: ModelReply },
+    kind: AttendantKind,
+    row: ThreadRow,
+    text: string,
+    status: 'done' | 'error' = 'done',
+  ): void {
     const { reply } = result;
-    this.record(kind, status, row, text, { model: reply.model, inputTokens: reply.inputTokens, outputTokens: reply.outputTokens, cost: reply.cost });
+    this.record(kind, status, row, text, {
+      model: reply.model,
+      inputTokens: reply.inputTokens,
+      outputTokens: reply.outputTokens,
+      cost: reply.cost,
+    });
   }
 
   private record(
@@ -531,7 +645,14 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     text: string,
     usage: { model?: string; inputTokens?: number; outputTokens?: number; cost?: number } = {},
   ): void {
-    this.repo.addAction({ kind, status, threadId: row?.id ?? null, threadTitle: row ? (row.title ?? row.preview?.slice(0, 80) ?? null) : null, text, ...usage });
+    this.repo.addAction({
+      kind,
+      status,
+      threadId: row?.id ?? null,
+      threadTitle: row ? (row.title ?? row.preview?.slice(0, 80) ?? null) : null,
+      text,
+      ...usage,
+    });
   }
 
   // ---- limits
@@ -548,13 +669,20 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     const day = new Date().toDateString();
     if (this.capLoggedDay === day) return;
     this.capLoggedDay = day;
-    this.record('summary', 'skipped', row, `The daily cost cap of $${settings.dailyCostCap?.toFixed(2)} is reached; the attendant rests until tomorrow.`);
+    this.record(
+      'summary',
+      'skipped',
+      row,
+      `The daily cost cap of $${settings.dailyCostCap?.toFixed(2)} is reached; the attendant rests until tomorrow.`,
+    );
   }
 }
 
 /** What an aborted `complete` answers: the switch is named when it was the switch, otherwise the request was cancelled (by its caller, or because the backend quits). */
 function abortedCompletion(signal: AbortSignal): Completion {
-  return (signal.reason as AbortReason | undefined) === 'off' ? { ok: false, code: 'failed', error: 'The attendant was switched off.' } : CANCELLED;
+  return (signal.reason as AbortReason | undefined) === 'off'
+    ? { ok: false, code: 'failed', error: 'The attendant was switched off.' }
+    : CANCELLED;
 }
 
 /** Local midnight, in epoch milliseconds. */

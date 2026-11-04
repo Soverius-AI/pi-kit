@@ -4,10 +4,7 @@
   "sourceRoot": "libs/update/feature-update/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:update",
-    "type:feature"
-  ],
+  "tags": ["scope:update", "type:feature"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"

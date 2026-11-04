@@ -1,6 +1,7 @@
 import type { A2uiOperation } from '@pi-kit/protocol';
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** A JSON pointer's segments, unescaped (`~1` is `/`, `~0` is `~`); `undefined` for anything that is not an absolute pointer. */
 function segmentsOf(path: unknown): string[] | undefined {
@@ -12,7 +13,8 @@ function segmentsOf(path: unknown): string[] | undefined {
     .map((segment) => segment.replace(/~1/g, '/').replace(/~0/g, '~'));
 }
 
-const pointerOf = (segments: string[]): string => (segments.length === 0 ? '/' : `/${segments.map((s) => s.replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`);
+const pointerOf = (segments: string[]): string =>
+  segments.length === 0 ? '/' : `/${segments.map((s) => s.replace(/~/g, '~0').replace(/\//g, '~1')).join('/')}`;
 
 /**
  * The data-model convention: a surface's data lives in an object, so an
@@ -37,6 +39,9 @@ export function normalizeA2uiOperations(operations: readonly A2uiOperation[]): A
     const segments = segmentsOf(update['path']);
     if (!segments || segments.length === 0) return operation;
     const last = segments[segments.length - 1] as string;
-    return { ...operation, updateDataModel: { ...update, path: pointerOf(segments.slice(0, -1)), value: { [last]: value } } };
+    return {
+      ...operation,
+      updateDataModel: { ...update, path: pointerOf(segments.slice(0, -1)), value: { [last]: value } },
+    };
   });
 }

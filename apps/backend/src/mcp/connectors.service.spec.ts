@@ -34,7 +34,17 @@ function world(options: { store?: SecretStore } = {}): World {
   const cli = join(root, 'pi-kit-secret.cjs');
   writeFileSync(cli, '// helper');
   process.env['PI_KIT_SECRET_CLI'] = cli;
-  const w = { agentDir, cwd, user: join(agentDir, 'mcp.json'), project: join(cwd, '.pi', 'mcp.json'), calls: [] as string[], trusted: true, streaming: false, store, oauthEntry: true } as World;
+  const w = {
+    agentDir,
+    cwd,
+    user: join(agentDir, 'mcp.json'),
+    project: join(cwd, '.pi', 'mcp.json'),
+    calls: [] as string[],
+    trusted: true,
+    streaming: false,
+    store,
+    oauthEntry: true,
+  } as World;
   const sessions = {
     agentDir: async () => agentDir,
     isProjectTrusted: () => w.trusted,
@@ -49,13 +59,22 @@ function world(options: { store?: SecretStore } = {}): World {
   const mcp = {
     login: async (_thread: string, name: string) => {
       w.calls.push(`login ${name}`);
-      return { message: `Sign in to MCP server "${name}" in your browser.`, url: 'https://auth.example/authorize?x=1', overview: overview() };
+      return {
+        message: `Sign in to MCP server "${name}" in your browser.`,
+        url: 'https://auth.example/authorize?x=1',
+        overview: overview(),
+      };
     },
     overview: async () => overview(),
     forgetSignIn: (_thread: string, name: string) => void w.calls.push(`forget ${name}`),
   };
   // The real policy over the in-memory store: what goes into a file is decided there.
-  const secrets = new SecretsService(store, { dataDir: root } as never, {} as never, { getSetting: () => undefined } as never);
+  const secrets = new SecretsService(
+    store,
+    { dataDir: root } as never,
+    {} as never,
+    { getSetting: () => undefined } as never,
+  );
   w.secrets = secrets;
   const trust = { folderTrusted: async () => w.trusted };
   w.service = new ConnectorsService(sessions as never, threads as never, mcp as never, secrets, trust as never);
@@ -66,7 +85,8 @@ let w: World;
 beforeEach(() => {
   w = world();
 });
-const read = (path: string) => JSON.parse(readFileSync(path, 'utf8')) as { mcpServers: Record<string, Record<string, unknown>> };
+const read = (path: string) =>
+  JSON.parse(readFileSync(path, 'utf8')) as { mcpServers: Record<string, Record<string, unknown>> };
 const request = (extra: Record<string, unknown>) => ({ scope: 'user' as const, ...extra }) as never;
 
 describe('connect', () => {
@@ -81,11 +101,17 @@ describe('connect', () => {
 
   it('the exposure and the read-only variant the person chose are what is written', async () => {
     await w.service.connect('t1', request({ id: 'linear', variant: 'readonly', exposure: 'deferred' }));
-    expect(read(w.user).mcpServers['linear']).toMatchObject({ url: 'https://mcp.linear.app/mcp/readonly', exposure: 'deferred' });
+    expect(read(w.user).mcpServers['linear']).toMatchObject({
+      url: 'https://mcp.linear.app/mcp/readonly',
+      exposure: 'deferred',
+    });
   });
 
   it('does not clobber what the file already holds', async () => {
-    writeFileSync(w.user, JSON.stringify({ autoEnableCodemode: false, mcpServers: { files: { command: 'npx', args: ['x'] } } }, null, 2));
+    writeFileSync(
+      w.user,
+      JSON.stringify({ autoEnableCodemode: false, mcpServers: { files: { command: 'npx', args: ['x'] } } }, null, 2),
+    );
     await w.service.connect('t1', request({ id: 'notion' }));
     const file = read(w.user) as unknown as Record<string, unknown>;
     expect(file['autoEnableCodemode']).toBe(false);
@@ -106,8 +132,12 @@ describe('connect', () => {
   });
 
   it('project only needs a thread (which folder?), and never carries a credential', async () => {
-    await expect(w.service.connect(undefined, request({ id: 'linear', scope: 'project' }))).rejects.toThrow(/Open a thread/);
-    await expect(w.service.connect('t1', request({ id: 'github', scope: 'project', token: 'ghp_x' }))).rejects.toThrow(/stays in your user file/);
+    await expect(w.service.connect(undefined, request({ id: 'linear', scope: 'project' }))).rejects.toThrow(
+      /Open a thread/,
+    );
+    await expect(w.service.connect('t1', request({ id: 'github', scope: 'project', token: 'ghp_x' }))).rejects.toThrow(
+      /stays in your user file/,
+    );
     expect(existsSync(w.project)).toBe(false);
   });
 
@@ -116,7 +146,9 @@ describe('connect', () => {
     const result = await w.service.connect('t1', request({ id: 'github', token }));
     const text = readFileSync(w.user, 'utf8');
     expect(text).not.toContain(token);
-    expect(read(w.user).mcpServers['github']['headers']).toEqual({ Authorization: expect.stringMatching(/^!(echo Bearer \$\(|pi-kit-secret get connector-github)/) });
+    expect(read(w.user).mcpServers['github']['headers']).toEqual({
+      Authorization: expect.stringMatching(/^!(echo Bearer \$\(|pi-kit-secret get connector-github)/),
+    });
     expect(w.store.get('connector-github')).toBe(token);
     expect(JSON.stringify(result)).not.toContain(token);
     // no browser sign-in for a token
@@ -124,7 +156,17 @@ describe('connect', () => {
   });
 
   it('bearer without a credential store: the token is in the user file, with a message that says so', async () => {
-    const none = world({ store: { kind: 'none', label: 'none', available: () => false, get: () => undefined, set: () => undefined, delete: () => false, list: () => [] } });
+    const none = world({
+      store: {
+        kind: 'none',
+        label: 'none',
+        available: () => false,
+        get: () => undefined,
+        set: () => undefined,
+        delete: () => false,
+        list: () => [],
+      },
+    });
     const result = await none.service.connect('t1', request({ id: 'github', token: 'ghp_plain' }));
     expect(read(none.user).mcpServers['github']['headers']).toEqual({ Authorization: 'Bearer ghp_plain' });
     expect(result.message).toMatch(/credential storage is disabled or unavailable.*plain text/);
@@ -147,7 +189,10 @@ describe('connect', () => {
   });
 
   it('a custom server: a command needs no sign-in, a URL does', async () => {
-    await w.service.connect('t1', request({ id: 'custom', custom: { name: 'files', command: 'npx', args: ['-y', 'srv'] } }));
+    await w.service.connect(
+      't1',
+      request({ id: 'custom', custom: { name: 'files', command: 'npx', args: ['-y', 'srv'] } }),
+    );
     expect(read(w.user).mcpServers['files']).toEqual({ command: 'npx', args: ['-y', 'srv'] });
     expect(w.calls).toEqual(['reload']);
     w.calls.length = 0;
@@ -188,7 +233,15 @@ describe('disconnect', () => {
   it('forgets what a header or variable of the details form kept in the store, and only that', async () => {
     writeFileSync(
       w.user,
-      JSON.stringify({ mcpServers: { docs: { url: 'https://docs.example/mcp', headers: { 'X-Api-Key': '!pi-kit-secret get mcp-docs-header-X-Api-Key', 'X-Team': 'core' }, env: { A: '!pi-kit-secret get connector-github' } } } }),
+      JSON.stringify({
+        mcpServers: {
+          docs: {
+            url: 'https://docs.example/mcp',
+            headers: { 'X-Api-Key': '!pi-kit-secret get mcp-docs-header-X-Api-Key', 'X-Team': 'core' },
+            env: { A: '!pi-kit-secret get connector-github' },
+          },
+        },
+      }),
     );
     w.store.set('mcp-docs-header-X-Api-Key', 'secret');
     w.store.set('connector-github', 'not this one: it is not an mcp- account');

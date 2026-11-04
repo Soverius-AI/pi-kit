@@ -22,7 +22,13 @@ let sessions: PiSessionService;
 let id: string;
 /** Whether `promise` settles before the next macrotask: an answer the session can give from what it knows waits for nothing but microtasks. */
 const settlesNow = (promise: Promise<unknown>): Promise<boolean> =>
-  Promise.race([promise.then(() => true, () => true), new Promise<boolean>((resolve) => setImmediate(() => resolve(false)))]);
+  Promise.race([
+    promise.then(
+      () => true,
+      () => true,
+    ),
+    new Promise<boolean>((resolve) => setImmediate(() => resolve(false))),
+  ]);
 
 /**
  * A dependency-free stdio MCP server (newline-delimited JSON-RPC) with two modes, chosen by its first argument:
@@ -68,11 +74,23 @@ beforeEach(() => {
   writeFileSync(fixture, FIXTURE_SERVER);
   vi.stubEnv('PI_CODING_AGENT_DIR', agent);
   vi.stubEnv('PI_OFFLINE', '1');
-  writeFileSync(join(agent, 'models.json'), JSON.stringify({ providers: { fixture: {
-    baseUrl: 'http://127.0.0.1:1/v1', api: 'openai-completions', apiKey: 'fixture', models: [{ id: 'unused', contextWindow: 8192 }],
-  } } }));
+  writeFileSync(
+    join(agent, 'models.json'),
+    JSON.stringify({
+      providers: {
+        fixture: {
+          baseUrl: 'http://127.0.0.1:1/v1',
+          api: 'openai-completions',
+          apiKey: 'fixture',
+          models: [{ id: 'unused', contextWindow: 8192 }],
+        },
+      },
+    }),
+  );
   writeFileSync(join(agent, 'settings.json'), JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'unused' }));
-  sessions = new PiSessionService(new TrustService(), new PiPluginService(), { refreshCatalog: async () => undefined } as unknown as LiteLlmService);
+  sessions = new PiSessionService(new TrustService(), new PiPluginService(), {
+    refreshCatalog: async () => undefined,
+  } as unknown as LiteLlmService);
   id = randomUUID();
 });
 
@@ -83,11 +101,24 @@ afterEach(() => {
 });
 
 it('calls MCP tools and resources over the session connection, retaining app metadata and command notifications', async () => {
-  writeFileSync(join(agent, 'mcp.json'), JSON.stringify({ mcpServers: { fixture: {
-    command: process.execPath, args: [new URL('../../../../examples/mcp-app-server/server.mjs', import.meta.url).pathname], exposure: 'direct',
-  } } }));
+  writeFileSync(
+    join(agent, 'mcp.json'),
+    JSON.stringify({
+      mcpServers: {
+        fixture: {
+          command: process.execPath,
+          args: [new URL('../../../../examples/mcp-app-server/server.mjs', import.meta.url).pathname],
+          exposure: 'direct',
+        },
+      },
+    }),
+  );
   await sessions.open(id, { cwd: base });
-  const result = await sessions.callMcpTool(id, 'fixture', 'create_issue', { title: 'Session bridge', team: 'Platform', priority: 'High' });
+  const result = await sessions.callMcpTool(id, 'fixture', 'create_issue', {
+    title: 'Session bridge',
+    team: 'Platform',
+    priority: 'High',
+  });
   expect(result).toMatchObject({ structuredContent: { id: 'ISSUE-1', title: 'Session bridge' } });
   // The tool list the tap saw proves a tool the server never offered missing at once; no deadline is involved.
   const missing = sessions.callMcpTool(id, 'fixture', 'close_issue', {});
@@ -95,7 +126,11 @@ it('calls MCP tools and resources over the session connection, retaining app met
   await expect(missing).rejects.toThrow('The MCP server "fixture" does not offer a tool "close_issue".');
   expect(sessions.mcpAppResource(id, 'fixture', 'open_issue_form')).toBe('ui://issues/create');
   const resource = await sessions.readMcpResource(id, 'fixture', 'ui://issues/create');
-  expect(resource.contents[0]).toMatchObject({ uri: 'ui://issues/create', mimeType: 'text/html;profile=mcp-app', _meta: { ui: { csp: {} } } });
+  expect(resource.contents[0]).toMatchObject({
+    uri: 'ui://issues/create',
+    mimeType: 'text/html;profile=mcp-app',
+    _meta: { ui: { csp: {} } },
+  });
   expect(resource.contents[0]['text']).toContain('<form id="form">');
   const status = await sessions.mcpCommand(id, '', { timeoutMs: 5000 });
   await status.done;
@@ -106,9 +141,18 @@ it('calls MCP tools and resources over the session connection, retaining app met
 
 it('waits for a server that has not connected until the caller cancels or the thread closes', async () => {
   // A server that never answers `initialize`: pi keeps waiting for it, and so does a call that names one of its tools.
-  writeFileSync(join(agent, 'mcp.json'), JSON.stringify({ mcpServers: { silent: {
-    command: process.execPath, args: ['-e', 'process.stdin.resume(); process.stdin.on("end", () => process.exit(0))'], exposure: 'direct',
-  } } }));
+  writeFileSync(
+    join(agent, 'mcp.json'),
+    JSON.stringify({
+      mcpServers: {
+        silent: {
+          command: process.execPath,
+          args: ['-e', 'process.stdin.resume(); process.stdin.on("end", () => process.exit(0))'],
+          exposure: 'direct',
+        },
+      },
+    }),
+  );
   await sessions.open(id, { cwd: base });
   const cancel = new AbortController();
   const cancelled = sessions.callMcpTool(id, 'silent', 'anything', {}, cancel.signal);
@@ -125,13 +169,25 @@ it('waits for a server that has not connected until the caller cancels or the th
 
 it('waits for a tool that a later tools/list page offers instead of refusing it from the first page', async () => {
   const gate = join(base, 'page-2');
-  writeFileSync(join(agent, 'mcp.json'), JSON.stringify({ mcpServers: { paged: {
-    command: process.execPath, args: [fixture, 'paged', gate], exposure: 'direct',
-  } } }));
+  writeFileSync(
+    join(agent, 'mcp.json'),
+    JSON.stringify({
+      mcpServers: {
+        paged: {
+          command: process.execPath,
+          args: [fixture, 'paged', gate],
+          exposure: 'direct',
+        },
+      },
+    }),
+  );
   try {
     await sessions.open(id, { cwd: base });
     // Page one has reached pi-kit; pi registers nothing until the last page, which the fixture holds back.
-    await vi.waitFor(() => expect(sessions.mcpTools(id, 'paged')).toEqual([{ name: 'first', description: 'On page one.' }]), { timeout: 10000, interval: 50 });
+    await vi.waitFor(
+      () => expect(sessions.mcpTools(id, 'paged')).toEqual([{ name: 'first', description: 'On page one.' }]),
+      { timeout: 10000, interval: 50 },
+    );
     const second = sessions.callMcpTool(id, 'paged', 'second', {});
     // A tool not on the pages seen so far may still be coming: the call waits rather than refusing.
     expect(await settlesNow(second)).toBe(false);
@@ -149,12 +205,23 @@ it('waits for a tool that a later tools/list page offers instead of refusing it 
 }, 15000);
 
 it('refuses a resource read from a connected server that declared no resources instead of waiting for one', async () => {
-  writeFileSync(join(agent, 'mcp.json'), JSON.stringify({ mcpServers: { 'tools-only': {
-    command: process.execPath, args: [fixture, 'tools-only'], exposure: 'direct',
-  } } }));
+  writeFileSync(
+    join(agent, 'mcp.json'),
+    JSON.stringify({
+      mcpServers: {
+        'tools-only': {
+          command: process.execPath,
+          args: [fixture, 'tools-only'],
+          exposure: 'direct',
+        },
+      },
+    }),
+  );
   await sessions.open(id, { cwd: base });
   // The server initialized and listed its (empty) catalog: a tool it never offered is refused, so what it declared has reached pi-kit.
-  await expect(sessions.callMcpTool(id, 'tools-only', 'anything', {})).rejects.toThrow('The MCP server "tools-only" does not offer a tool "anything".');
+  await expect(sessions.callMcpTool(id, 'tools-only', 'anything', {})).rejects.toThrow(
+    'The MCP server "tools-only" does not offer a tool "anything".',
+  );
   const cancel = new AbortController();
   try {
     const read = sessions.readMcpResource(id, 'tools-only', 'ui://anything', cancel.signal);

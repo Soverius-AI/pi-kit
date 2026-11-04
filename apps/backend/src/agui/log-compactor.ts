@@ -50,7 +50,10 @@ export class LogCompactor {
     const window = this.log.readAfter(threadId, Math.max(0, previous - 1));
     const drop = compactableIndices(window.map((s) => s.event));
     if (drop.length > 0) {
-      this.log.deleteSeqs(threadId, drop.map((i) => window[i].seq));
+      this.log.deleteSeqs(
+        threadId,
+        drop.map((i) => window[i].seq),
+      );
       result.trimmed = drop.length;
     }
     if (this.log.count(threadId) > this.limits.maxRows) result.collapsed = this.collapse(threadId, last);

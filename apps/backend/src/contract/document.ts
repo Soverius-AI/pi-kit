@@ -1,5 +1,21 @@
-import { Controller, Get, type INestApplication, Inject, Injectable, ServiceUnavailableException, type Type } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiResponse, ApiTags, DocumentBuilder, type OpenAPIObject, SwaggerModule } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  type INestApplication,
+  Inject,
+  Injectable,
+  ServiceUnavailableException,
+  type Type,
+} from '@nestjs/common';
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  DocumentBuilder,
+  type OpenAPIObject,
+  SwaggerModule,
+} from '@nestjs/swagger';
 import { ProblemSchema } from '@pi-kit/protocol';
 import { stringify } from 'yaml';
 import { createZodConverter } from './converter';
@@ -37,7 +53,10 @@ export function createContractDocument(app: INestApplication, include?: Type<unk
   // The line schemas of the streams, and the body of an error, are components of their own, whatever route names them.
   for (const schema of [...streamSchemas, ProblemSchema]) {
     const converted = standardSchemaConverter(schema, { schemaType: 'output' });
-    document.components = { ...document.components, schemas: { ...document.components?.schemas, ...rewriteRefs(converted?.components ?? {}) } };
+    document.components = {
+      ...document.components,
+      schemas: { ...document.components?.schemas, ...rewriteRefs(converted?.components ?? {}) },
+    };
   }
   return sortSchemas(markSecrets(addCommonErrors(document)));
 }
@@ -49,7 +68,13 @@ const COMMON_ERRORS = {
   401: 'The bearer token is missing or wrong.',
 } as const;
 
-type Operation = { security?: unknown[]; requestBody?: unknown; parameters?: { in?: string }[]; responses: Record<string, unknown>; 'x-public'?: boolean };
+type Operation = {
+  security?: unknown[];
+  requestBody?: unknown;
+  parameters?: { in?: string }[];
+  responses: Record<string, unknown>;
+  'x-public'?: boolean;
+};
 
 /**
  * What every route shares and no handler repeats: a route that is not `@Public()` answers 401 without the token, and a route that reads a body or a query
@@ -62,15 +87,24 @@ function addCommonErrors(document: OpenAPIObject): OpenAPIObject {
       const open = operation['x-public'] === true;
       delete operation['x-public'];
       if (open) operation.security = [];
-      const reads = operation.requestBody !== undefined || (operation.parameters ?? []).some((parameter) => parameter.in === 'query');
-      const add = (status: 400 | 401) => (operation.responses[status] ??= { description: COMMON_ERRORS[status], ...PROBLEM_BODY });
+      const reads =
+        operation.requestBody !== undefined ||
+        (operation.parameters ?? []).some((parameter) => parameter.in === 'query');
+      const add = (status: 400 | 401) =>
+        (operation.responses[status] ??= { description: COMMON_ERRORS[status], ...PROBLEM_BODY });
       if (reads) add(400);
       if (!open) add(401);
       // An error is JSON whatever the route produces: a stream's `@ApiProduces` must not turn its 404 into a stream.
       for (const [status, response] of Object.entries(operation.responses)) {
-        if (Number(status) >= 400) operation.responses[status] = { description: (response as { description: string }).description, ...PROBLEM_BODY };
+        if (Number(status) >= 400)
+          operation.responses[status] = {
+            description: (response as { description: string }).description,
+            ...PROBLEM_BODY,
+          };
       }
-      operation.responses = Object.fromEntries(Object.entries(operation.responses).sort(([a], [b]) => a.localeCompare(b)));
+      operation.responses = Object.fromEntries(
+        Object.entries(operation.responses).sort(([a], [b]) => a.localeCompare(b)),
+      );
     }
   }
   return document;
@@ -81,7 +115,12 @@ function rewriteRefs<T>(node: T): T {
   if (Array.isArray(node)) return node.map(rewriteRefs) as T;
   if (node && typeof node === 'object') {
     return Object.fromEntries(
-      Object.entries(node).map(([key, value]) => [key, key === '$ref' && typeof value === 'string' ? value.replace('#/$defs/', '#/components/schemas/') : rewriteRefs(value)]),
+      Object.entries(node).map(([key, value]) => [
+        key,
+        key === '$ref' && typeof value === 'string'
+          ? value.replace('#/$defs/', '#/components/schemas/')
+          : rewriteRefs(value),
+      ]),
     ) as T;
   }
   return node;
@@ -106,7 +145,11 @@ function markSecrets<T>(node: T): T {
 /** The components in alphabetical order, so that a new route does not move what is already there. */
 function sortSchemas(document: OpenAPIObject): OpenAPIObject {
   const schemas = document.components?.schemas;
-  if (schemas) document.components = { ...document.components, schemas: Object.fromEntries(Object.entries(schemas).sort(([a], [b]) => a.localeCompare(b))) };
+  if (schemas)
+    document.components = {
+      ...document.components,
+      schemas: Object.fromEntries(Object.entries(schemas).sort(([a], [b]) => a.localeCompare(b))),
+    };
   return document;
 }
 
@@ -114,7 +157,9 @@ const TOP_LEVEL_ORDER = ['openapi', 'info', 'servers', 'security', 'tags', 'path
 
 /** The document as `doc/api/openapi.yaml` has it: the header first, no wrapping (a diff is a line per change) and no YAML anchors for objects that happen to be shared. */
 export function documentToYaml(document: OpenAPIObject): string {
-  const ordered = Object.fromEntries(Object.entries(document).sort(([a], [b]) => TOP_LEVEL_ORDER.indexOf(a) - TOP_LEVEL_ORDER.indexOf(b)));
+  const ordered = Object.fromEntries(
+    Object.entries(document).sort(([a], [b]) => TOP_LEVEL_ORDER.indexOf(a) - TOP_LEVEL_ORDER.indexOf(b)),
+  );
   return stringify(ordered, { lineWidth: 0, aliasDuplicateObjects: false });
 }
 
@@ -139,9 +184,16 @@ export class OpenApiController {
   constructor(@Inject(ContractDocument) private readonly contract: ContractDocument) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get the API document', description: 'Returns this OpenAPI document, as the backend built it at boot.' })
+  @ApiOperation({
+    summary: 'Get the API document',
+    description: 'Returns this OpenAPI document, as the backend built it at boot.',
+  })
   @ApiOkResponse({ description: 'The OpenAPI 3.1 document.', schema: { type: 'object', additionalProperties: true } })
-  @ApiResponse({ status: 503, description: 'The document is not built yet.', standardSchema: ProblemSchema } as Parameters<typeof ApiResponse>[0])
+  @ApiResponse({
+    status: 503,
+    description: 'The document is not built yet.',
+    standardSchema: ProblemSchema,
+  } as Parameters<typeof ApiResponse>[0])
   document(): OpenAPIObject {
     const document = this.contract.get();
     if (!document) throw new ServiceUnavailableException('The API document is not built yet.');

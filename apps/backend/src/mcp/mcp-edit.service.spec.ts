@@ -29,8 +29,19 @@ function world(): World {
   const cli = join(root, 'pi-kit-secret.cjs');
   writeFileSync(cli, '// helper');
   process.env['PI_KIT_SECRET_CLI'] = cli;
-  const w = { user: join(agentDir, 'mcp.json'), project: join(cwd, '.pi', 'mcp.json'), calls: [] as string[], trusted: true, streaming: false, store } as World;
-  const sessions = { agentDir: async () => agentDir, stats: () => ({ streaming: w.streaming }), reload: async () => void w.calls.push('reload') };
+  const w = {
+    user: join(agentDir, 'mcp.json'),
+    project: join(cwd, '.pi', 'mcp.json'),
+    calls: [] as string[],
+    trusted: true,
+    streaming: false,
+    store,
+  } as World;
+  const sessions = {
+    agentDir: async () => agentDir,
+    stats: () => ({ streaming: w.streaming }),
+    reload: async () => void w.calls.push('reload'),
+  };
   const threads = { openSession: async () => undefined, cwdOf: () => cwd };
   const mcp = {
     filePath: async (scope: string) => (scope === 'user' ? w.user : w.project),
@@ -41,7 +52,12 @@ function world(): World {
       return { message: `Sign in to ${name}.`, url: 'https://auth.example/x', overview: overview() };
     },
   };
-  const secrets = new SecretsService(store, { dataDir: root } as never, {} as never, { getSetting: () => undefined } as never);
+  const secrets = new SecretsService(
+    store,
+    { dataDir: root } as never,
+    {} as never,
+    { getSetting: () => undefined } as never,
+  );
   const trust = { folderTrusted: async () => w.trusted };
   w.service = new McpEditService(sessions as never, threads as never, mcp as never, secrets, trust as never);
   return w;
@@ -51,21 +67,48 @@ let w: World;
 beforeEach(() => {
   w = world();
 });
-const read = (path: string) => JSON.parse(readFileSync(path, 'utf8')) as { mcpServers: Record<string, Record<string, unknown>> };
+const read = (path: string) =>
+  JSON.parse(readFileSync(path, 'utf8')) as { mcpServers: Record<string, Record<string, unknown>> };
 
-const command = (over: Partial<McpServerBody> = {}): McpServerBody => ({ name: 'files', kind: 'command', command: 'npx', args: ['-y', 'server-files', '.'], env: [{ key: 'COLOR', value: 'blue' }], exposure: 'codemode', description: '', enabled: true, ...over });
-const url = (over: Partial<McpServerBody> = {}): McpServerBody => ({ name: 'docs', kind: 'url', url: 'https://docs.example/mcp', headers: [], exposure: 'codemode', description: '', enabled: true, ...over });
+const command = (over: Partial<McpServerBody> = {}): McpServerBody => ({
+  name: 'files',
+  kind: 'command',
+  command: 'npx',
+  args: ['-y', 'server-files', '.'],
+  env: [{ key: 'COLOR', value: 'blue' }],
+  exposure: 'codemode',
+  description: '',
+  enabled: true,
+  ...over,
+});
+const url = (over: Partial<McpServerBody> = {}): McpServerBody => ({
+  name: 'docs',
+  kind: 'url',
+  url: 'https://docs.example/mcp',
+  headers: [],
+  exposure: 'codemode',
+  description: '',
+  enabled: true,
+  ...over,
+});
 
 describe('create', () => {
   it('writes a command server with arguments and environment, and reloads the session', async () => {
     const result = await w.service.create('t1', { ...command(), scope: 'user' });
-    expect(read(w.user).mcpServers['files']).toEqual({ command: 'npx', args: ['-y', 'server-files', '.'], env: { COLOR: 'blue' } });
+    expect(read(w.user).mcpServers['files']).toEqual({
+      command: 'npx',
+      args: ['-y', 'server-files', '.'],
+      env: { COLOR: 'blue' },
+    });
     expect(w.calls).toEqual(['reload']);
     expect(result.message).toContain('Added files to');
   });
 
   it('puts an environment secret in the store and writes the command that prints it, never the value', async () => {
-    await w.service.create('t1', { ...command({ env: [{ key: 'API_KEY', value: 'sk-test-0123456789abcdef0123456789abcdef' }] }), scope: 'user' });
+    await w.service.create('t1', {
+      ...command({ env: [{ key: 'API_KEY', value: 'sk-test-0123456789abcdef0123456789abcdef' }] }),
+      scope: 'user',
+    });
     const env = read(w.user).mcpServers['files']['env'] as Record<string, string>;
     expect(env['API_KEY']).toMatch(/^!pi-kit-secret get mcp-files-env-API_KEY$/);
     expect(readFileSync(w.user, 'utf8')).not.toContain('sk-test-0123456789');
@@ -73,8 +116,13 @@ describe('create', () => {
   });
 
   it('a header marked as a secret is kept even when it does not look like one', async () => {
-    await w.service.create('t1', { ...url({ headers: [{ key: 'X-Team', value: 'core-team', secret: true }] }), scope: 'user' });
-    expect((read(w.user).mcpServers['docs']['headers'] as Record<string, string>)['X-Team']).toMatch(/^!pi-kit-secret get /);
+    await w.service.create('t1', {
+      ...url({ headers: [{ key: 'X-Team', value: 'core-team', secret: true }] }),
+      scope: 'user',
+    });
+    expect((read(w.user).mcpServers['docs']['headers'] as Record<string, string>)['X-Team']).toMatch(
+      /^!pi-kit-secret get /,
+    );
     expect(w.store.get('mcp-docs-header-X-Team')).toBe('core-team');
   });
 
@@ -83,7 +131,10 @@ describe('create', () => {
     expect(w.calls).toEqual(['reload', 'login docs']);
     expect(first.url).toBe('https://auth.example/x');
     w.calls.length = 0;
-    await w.service.create('t1', { ...url({ name: 'docs2', headers: [{ key: 'Authorization', value: 'Bearer ${DOCS_TOKEN}' }] }), scope: 'user' });
+    await w.service.create('t1', {
+      ...url({ name: 'docs2', headers: [{ key: 'Authorization', value: 'Bearer ${DOCS_TOKEN}' }] }),
+      scope: 'user',
+    });
     expect(w.calls).toEqual(['reload']);
   });
 
@@ -104,11 +155,20 @@ describe('create', () => {
     await w.service.create('t1', { ...command(), scope: 'project' });
     expect(read(w.project).mcpServers['files']).toBeDefined();
     expect(existsSync(w.user)).toBe(false);
-    await expect(w.service.create('t1', { ...command({ name: 'b', env: [{ key: 'API_KEY', value: 'plain-value' }] }), scope: 'project' })).rejects.toThrow(/stays in your user file/);
+    await expect(
+      w.service.create('t1', {
+        ...command({ name: 'b', env: [{ key: 'API_KEY', value: 'plain-value' }] }),
+        scope: 'project',
+      }),
+    ).rejects.toThrow(/stays in your user file/);
     expect(w.store.get('mcp-b-env-API_KEY')).toBeUndefined();
-    await expect(w.service.create(undefined, { ...command({ name: 'c' }), scope: 'project' })).rejects.toThrow(/Open a thread/);
+    await expect(w.service.create(undefined, { ...command({ name: 'c' }), scope: 'project' })).rejects.toThrow(
+      /Open a thread/,
+    );
     w.trusted = false;
-    await expect(w.service.create('t1', { ...command({ name: 'd' }), scope: 'project' })).rejects.toThrow(/not trusted/);
+    await expect(w.service.create('t1', { ...command({ name: 'd' }), scope: 'project' })).rejects.toThrow(
+      /not trusted/,
+    );
   });
 
   it('stops while a run holds the thread, before anything is written', async () => {
@@ -120,57 +180,105 @@ describe('create', () => {
 
 describe('detail and update', () => {
   it('reads the form back; a stored secret has no value', async () => {
-    await w.service.create(undefined, { ...url({ headers: [{ key: 'Authorization', value: 'Bearer abcdefghijklmnop1234' }], description: 'Docs' }), scope: 'user' });
+    await w.service.create(undefined, {
+      ...url({ headers: [{ key: 'Authorization', value: 'Bearer abcdefghijklmnop1234' }], description: 'Docs' }),
+      scope: 'user',
+    });
     const detail = await w.service.detail(undefined, 'docs', undefined);
-    expect(detail).toMatchObject({ name: 'docs', scope: 'user', kind: 'url', url: 'https://docs.example/mcp', description: 'Docs', headers: [{ key: 'Authorization', stored: true }] });
+    expect(detail).toMatchObject({
+      name: 'docs',
+      scope: 'user',
+      kind: 'url',
+      url: 'https://docs.example/mcp',
+      description: 'Docs',
+      headers: [{ key: 'Authorization', stored: true }],
+    });
     expect(JSON.stringify(detail)).not.toContain('abcdefghijklmnop1234');
     await expect(w.service.detail(undefined, 'nope', undefined)).rejects.toThrow(/No MCP server/);
   });
 
   it('a row without a value keeps the stored secret, a typed value replaces it in the store', async () => {
-    await w.service.create(undefined, { ...url({ headers: [{ key: 'X-Api-Key', value: 'first-secret-value' }] }), scope: 'user' });
+    await w.service.create(undefined, {
+      ...url({ headers: [{ key: 'X-Api-Key', value: 'first-secret-value' }] }),
+      scope: 'user',
+    });
     const stored = (read(w.user).mcpServers['docs']['headers'] as Record<string, string>)['X-Api-Key'];
     await w.service.update('t1', 'docs', 'user', url({ description: 'changed', headers: [{ key: 'X-Api-Key' }] }));
     expect((read(w.user).mcpServers['docs']['headers'] as Record<string, string>)['X-Api-Key']).toBe(stored);
     expect(read(w.user).mcpServers['docs']['description']).toBe('changed');
-    await w.service.update('t1', 'docs', 'user', url({ headers: [{ key: 'X-Api-Key', value: 'second-secret-value' }] }));
+    await w.service.update(
+      't1',
+      'docs',
+      'user',
+      url({ headers: [{ key: 'X-Api-Key', value: 'second-secret-value' }] }),
+    );
     expect(w.store.get('mcp-docs-header-X-Api-Key')).toBe('second-secret-value');
     expect(readFileSync(w.user, 'utf8')).not.toContain('second-secret-value');
   });
 
   it('keeps keys the form does not know and the other servers, and the file’s order', async () => {
-    writeFileSync(w.user, JSON.stringify({ autoEnableCodemode: false, mcpServers: { a: { url: 'https://a.example/mcp', oauth: { clientName: 'Claude Code' }, timeout: 90 }, b: { command: 'b' } } }, null, 2));
+    writeFileSync(
+      w.user,
+      JSON.stringify(
+        {
+          autoEnableCodemode: false,
+          mcpServers: {
+            a: { url: 'https://a.example/mcp', oauth: { clientName: 'Claude Code' }, timeout: 90 },
+            b: { command: 'b' },
+          },
+        },
+        null,
+        2,
+      ),
+    );
     await w.service.update('t1', 'a', 'user', url({ name: 'a', url: 'https://a2.example/mcp', exposure: 'direct' }));
     const file = read(w.user) as unknown as Record<string, unknown>;
     expect(file['autoEnableCodemode']).toBe(false);
     expect(Object.keys(read(w.user).mcpServers)).toEqual(['a', 'b']);
-    expect(read(w.user).mcpServers['a']).toEqual({ url: 'https://a2.example/mcp', oauth: { clientName: 'Claude Code' }, timeout: 90, exposure: 'direct' });
+    expect(read(w.user).mcpServers['a']).toEqual({
+      url: 'https://a2.example/mcp',
+      oauth: { clientName: 'Claude Code' },
+      timeout: 90,
+      exposure: 'direct',
+    });
   });
 
   it('a rename moves the entry; a taken name is refused', async () => {
     await w.service.create(undefined, { ...command(), scope: 'user' });
     await w.service.create(undefined, { ...command({ name: 'other' }), scope: 'user' });
-    await expect(w.service.update('t1', 'files', 'user', command({ name: 'other' }))).rejects.toThrow(/named “other” already/);
+    await expect(w.service.update('t1', 'files', 'user', command({ name: 'other' }))).rejects.toThrow(
+      /named “other” already/,
+    );
     await w.service.update('t1', 'files', 'user', command({ name: 'renamed' }));
     expect(Object.keys(read(w.user).mcpServers)).toEqual(['other', 'renamed']);
     expect(w.calls).toContain('forget files');
   });
 
   it('a secret that is not read from the store any more is forgotten', async () => {
-    await w.service.create(undefined, { ...command({ env: [{ key: 'API_KEY', value: 'a-secret-value-1' }] }), scope: 'user' });
+    await w.service.create(undefined, {
+      ...command({ env: [{ key: 'API_KEY', value: 'a-secret-value-1' }] }),
+      scope: 'user',
+    });
     expect(w.store.get('mcp-files-env-API_KEY')).toBe('a-secret-value-1');
     await w.service.update(undefined, 'files', 'user', command({ env: [] }));
     expect(w.store.get('mcp-files-env-API_KEY')).toBeUndefined();
   });
 
   it('a missing entry is a 404, not a new server', async () => {
-    await expect(w.service.update('t1', 'ghost', 'user', command({ name: 'ghost' }))).rejects.toThrow(/does not define/);
+    await expect(w.service.update('t1', 'ghost', 'user', command({ name: 'ghost' }))).rejects.toThrow(
+      /does not define/,
+    );
   });
 });
 
 describe('the file editor', () => {
   it('reads a file that is not there yet as empty, with mtime 0', async () => {
-    expect(await w.service.readFile(undefined, 'user')).toMatchObject({ scope: 'user', text: '', mtime: 0, exists: false });
+    expect(await w.service.readFile(undefined, 'user')).toMatchObject({
+      scope: 'user',
+      text: '',
+      mtime: 0,
+      exists: false,
+    });
   });
 
   it('saves valid text and reloads; refuses invalid text with the line of the first problem', async () => {
@@ -182,7 +290,9 @@ describe('the file editor', () => {
     expect(saved.message).toContain('connect again');
     expect(w.calls).toEqual(['reload']);
     const bad = text.replace('"url"', '"exposure": "codemod",\n    "url"');
-    await expect(w.service.writeFile('t1', 'user', { text: bad, mtime: saved.file.mtime })).rejects.toThrow(/Line 4: exposure must be one of/);
+    await expect(w.service.writeFile('t1', 'user', { text: bad, mtime: saved.file.mtime })).rejects.toThrow(
+      /Line 4: exposure must be one of/,
+    );
     expect(readFileSync(w.user, 'utf8')).toBe(text);
   });
 
@@ -191,7 +301,9 @@ describe('the file editor', () => {
     const opened = await w.service.readFile(undefined, 'user');
     writeFileSync(w.user, '{"mcpServers":{}}');
     utimesSync(w.user, new Date(Date.now() + 5000), new Date(Date.now() + 5000));
-    await expect(w.service.writeFile(undefined, 'user', { text: '{}', mtime: opened.mtime })).rejects.toThrow(/Reload and try again/);
+    await expect(w.service.writeFile(undefined, 'user', { text: '{}', mtime: opened.mtime })).rejects.toThrow(
+      /Reload and try again/,
+    );
   });
 
   it('keeps the mode of an existing file and makes a new one private', async () => {

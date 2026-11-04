@@ -86,7 +86,19 @@ export function splitDiff(diff) {
       const oldLines = header[2] === undefined ? 1 : Number(header[2]);
       const newStart = Number(header[3]);
       const newLines = header[4] === undefined ? 1 : Number(header[4]);
-      current = { id: hunkId(file, oldStart, newStart), file, header: `@@ -${header[1]}${header[2] === undefined ? '' : `,${header[2]}`} +${header[3]}${header[4] === undefined ? '' : `,${header[4]}`} @@`, section: header[5].trim(), oldStart, oldLines, newStart, newLines, added: 0, removed: 0, lines: [] };
+      current = {
+        id: hunkId(file, oldStart, newStart),
+        file,
+        header: `@@ -${header[1]}${header[2] === undefined ? '' : `,${header[2]}`} +${header[3]}${header[4] === undefined ? '' : `,${header[4]}`} @@`,
+        section: header[5].trim(),
+        oldStart,
+        oldLines,
+        newStart,
+        newLines,
+        added: 0,
+        removed: 0,
+        lines: [],
+      };
       oldLeft = oldLines;
       newLeft = newLines;
       hunks.push(current);

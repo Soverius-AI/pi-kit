@@ -27,7 +27,8 @@ const spawned = [];
 async function ensureBackend() {
   const up = async () => {
     try {
-      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })).ok;
+      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } }))
+        .ok;
     } catch {
       return false;
     }
@@ -35,7 +36,13 @@ async function ensureBackend() {
   if (await up()) return;
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: 'ignore',
     detached: true,
   });
@@ -54,7 +61,11 @@ before(async () => {
 });
 after(async () => {
   // Whatever happened, the attendant is off again, so the files after this one see the world they expect.
-  await api('/api/attendant/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false }) }).catch(() => undefined);
+  await api('/api/attendant/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: false }),
+  }).catch(() => undefined);
   releaseAnswer?.(numbers);
   await app?.close();
   await model?.stop();
@@ -68,14 +79,20 @@ after(async () => {
   }
 });
 
-const projectNames = () => app.page.locator('.pk-project').evaluateAll((els) => els.map((e) => e.getAttribute('data-project')));
+const projectNames = () =>
+  app.page.locator('.pk-project').evaluateAll((els) => els.map((e) => e.getAttribute('data-project')));
 const head = (name) => app.page.locator(`.pk-project[data-project="${name}"] .pk-project-head`);
 const group = (name) => app.page.locator(`.pk-project[data-project="${name}"]`);
 const row = (text) => app.page.locator('.pk-thread', { hasText: text }).first();
 const rowIn = (name, text) => group(name).locator('.pk-thread', { hasText: text }).first();
 const threadsOf = async () => await api('/api/threads');
 /** An extension command is not a message in pi's session, so a thread that only ran one has no preview: it is named through the API to find its row. */
-const rename = (id, title) => api(`/api/threads/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) });
+const rename = (id, title) =>
+  api(`/api/threads/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  });
 const ASKING = 'Asks for the unit tests';
 const DRAFTING = 'Asks about the project tests';
 /** Polls until `check` holds (the page answers at once, the backend a moment later). */
@@ -117,7 +134,10 @@ describe('projects in the sidebar', () => {
     assert.deepEqual(await projectNames(), [FIRST, SECOND]);
     // The branch is the repository's own, read from HEAD.
     assert.equal((await head(SECOND).getByTestId('project-branch').innerText()).trim(), 'feature/summary');
-    assert.equal((await head(FIRST).getByTestId('project-branch').innerText()).trim(), git('rev-parse', '--abbrev-ref', 'HEAD').trim());
+    assert.equal(
+      (await head(FIRST).getByTestId('project-branch').innerText()).trim(),
+      git('rev-parse', '--abbrev-ref', 'HEAD').trim(),
+    );
     // Folding is remembered by the backend: it survives a reload.
     await rowIn(SECOND, 'Quarter used').waitFor();
     await head(SECOND).click();
@@ -137,7 +157,10 @@ describe('projects in the sidebar', () => {
     await head(FIRST).click();
     await page.locator(`.pk-project[data-project="${FIRST}"][data-collapsed="true"]`).waitFor();
     await head(SECOND).dragTo(head(FIRST), { targetPosition: { x: 40, y: 2 } });
-    await page.waitForFunction(([a]) => document.querySelector('.pk-project')?.getAttribute('data-project') === a, [SECOND]);
+    await page.waitForFunction(
+      ([a]) => document.querySelector('.pk-project')?.getAttribute('data-project') === a,
+      [SECOND],
+    );
     await backendOrder([SECOND, FIRST]);
     await page.reload();
     await page.waitForSelector('pk-root .pk-shell');
@@ -147,7 +170,10 @@ describe('projects in the sidebar', () => {
     await head(SECOND).hover();
     await group(SECOND).getByTestId('project-menu').click();
     await page.getByRole('button', { name: 'Move down' }).first().click();
-    await page.waitForFunction(([a]) => document.querySelector('.pk-project')?.getAttribute('data-project') === a, [FIRST]);
+    await page.waitForFunction(
+      ([a]) => document.querySelector('.pk-project')?.getAttribute('data-project') === a,
+      [FIRST],
+    );
     await backendOrder([FIRST, SECOND]);
     // Hide, and show again from the filter menu.
     await head(SECOND).hover();
@@ -194,18 +220,27 @@ describe('projects in the sidebar', () => {
     await page.locator(`details[data-project-menu][open]`).waitFor();
     assert.equal(await page.locator('details[data-project-menu][open]').getAttribute('data-project-menu'), second);
     await page.keyboard.press('Escape');
-    await page.locator('details[data-project-menu][open]').evaluate((el) => el.removeAttribute('open')).catch(() => undefined);
+    await page
+      .locator('details[data-project-menu][open]')
+      .evaluate((el) => el.removeAttribute('open'))
+      .catch(() => undefined);
 
     // It takes an optional argument, so the menu completes the name and Enter sends it.
     await box.fill('/attendant');
     await page.getByRole('option', { name: /^\/attendant/ }).click();
     await box.press('Enter');
-    await page.getByText(/The attendant is turned off for reporting-api/).first().waitFor();
+    await page
+      .getByText(/The attendant is turned off for reporting-api/)
+      .first()
+      .waitFor();
     assert.equal((await api('/api/workspaces')).find((w) => w.name === SECOND).attendant, false);
     await box.fill('/attendant');
     await page.getByRole('option', { name: /^\/attendant/ }).click();
     await box.press('Enter');
-    await page.getByText(/The attendant is allowed for reporting-api/).first().waitFor();
+    await page
+      .getByText(/The attendant is allowed for reporting-api/)
+      .first()
+      .waitFor();
     assert.equal((await api('/api/workspaces')).find((w) => w.name === SECOND).attendant, true);
   });
 });
@@ -254,7 +289,10 @@ describe('thread state at a glance', () => {
     await badge.waitFor();
     assert.equal((await badge.innerText()).trim(), 'Proceed with the test?');
     const count = head(FIRST).getByTestId('count-waiting');
-    const others = (await threadsOf()).filter((t) => basename(t.cwd) === FIRST && t.state.activity === 'waiting' && t.state.question !== 'Proceed with the test?').length;
+    const others = (await threadsOf()).filter(
+      (t) =>
+        basename(t.cwd) === FIRST && t.state.activity === 'waiting' && t.state.question !== 'Proceed with the test?',
+    ).length;
     assert.equal((await count.innerText()).trim(), String(others + 1));
     const waiting = (await threadsOf()).find((t) => t.state.question === 'Proceed with the test?');
     await rename(waiting.id, ASKING);
@@ -276,7 +314,11 @@ describe('thread state at a glance', () => {
     await question.getByRole('button', { name: 'Allow' }).click();
     await page.getByText('Confirmed by the user').first().waitFor();
     if (others === 0) await head(FIRST).locator('[data-testid=count-waiting]').waitFor({ state: 'detached' });
-    else await eventually(async () => (await count.innerText().catch(() => '')).trim() === String(others), 'the waiting count to drop by one');
+    else
+      await eventually(
+        async () => (await count.innerText().catch(() => '')).trim() === String(others),
+        'the waiting count to drop by one',
+      );
     await row(ASKING).waitFor();
     assert.equal(await row(ASKING).getByTestId('waiting-badge').count(), 0);
   });
@@ -285,12 +327,17 @@ describe('thread state at a glance', () => {
     const { page } = app;
     const thread = (await threadsOf()).find((t) => t.title === ASKING);
     const original = await api(`/api/threads/${thread.id}/stats`);
-    const setModel = (provider, modelId) => api(`/api/threads/${thread.id}/model`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider, modelId }),
-    });
+    const setModel = (provider, modelId) =>
+      api(`/api/threads/${thread.id}/model`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, modelId }),
+      });
     // Hold the actual model HTTP response until the background running state has been observed.
     // Generation speed is unrelated to the sidebar's running → unread contract.
-    pendingAnswer = new Promise((resolve) => { releaseAnswer = resolve; });
+    pendingAnswer = new Promise((resolve) => {
+      releaseAnswer = resolve;
+    });
     const requestsBefore = model.requests.length;
     await setModel(FAKE_PROVIDER, FAKE_MODEL);
     try {
@@ -301,9 +348,19 @@ describe('thread state at a glance', () => {
       await box.press('Enter');
       await app.h.stopButton.waitFor();
       // The thread's own prompt, not another request to the fake model (the attendant's, say), and the run is still held there.
-      await eventually(() => model.requests.slice(requestsBefore).some((body) => userTextOf(body).startsWith('Write the numbers from 1 to 150')), 'the thread’s prompt to reach the controlled model');
+      await eventually(
+        () =>
+          model.requests
+            .slice(requestsBefore)
+            .some((body) => userTextOf(body).startsWith('Write the numbers from 1 to 150')),
+        'the thread’s prompt to reach the controlled model',
+      );
       const stats = await api(`/api/threads/${thread.id}/stats`);
-      assert.equal(stats.streaming, true, `the run waits for the held answer (model ${stats.model?.provider}/${stats.model?.id})`);
+      assert.equal(
+        stats.streaming,
+        true,
+        `the run waits for the held answer (model ${stats.model?.provider}/${stats.model?.id})`,
+      );
       await rowIn(SECOND, 'Quarter used').click();
       // The other thread is the open one before the run can end: an end that arrives while this thread is still open is seen, not unread.
       await group(SECOND).locator('.pk-thread[aria-current="true"]', { hasText: 'Quarter used' }).waitFor();
@@ -321,11 +378,18 @@ describe('thread state at a glance', () => {
       // Opening it is looking at it: the dot goes, in the sidebar and in the backend.
       await row(ASKING).click();
       await row(ASKING).getByTestId('thread-state').waitFor({ state: 'detached' });
-      await eventually(async () => (await threadsOf()).find((t) => t.id === before.id).state.unread === false, 'the backend to know the thread was seen');
+      await eventually(
+        async () => (await threadsOf()).find((t) => t.id === before.id).state.unread === false,
+        'the backend to know the thread was seen',
+      );
     } finally {
       releaseAnswer(numbers);
       pendingAnswer = undefined;
-      await eventually(async () => !(await api(`/api/threads/${thread.id}/stats`)).streaming, 'the held run to finish', 30_000);
+      await eventually(
+        async () => !(await api(`/api/threads/${thread.id}/stats`)).streaming,
+        'the held run to finish',
+        30_000,
+      );
       if (original.model) await setModel(original.model.provider, original.model.id);
     }
   });
@@ -343,7 +407,10 @@ describe('thread state at a glance', () => {
     const stopped = row('Write the numbers from 1 to 5000').getByTestId('thread-state');
     await stopped.waitFor();
     assert.equal(await stopped.getAttribute('data-kind'), 'aborted');
-    assert.equal((await row('Write the numbers from 1 to 5000').locator('[data-testid=thread-status] .lbl').innerText()).trim(), 'Aborted');
+    assert.equal(
+      (await row('Write the numbers from 1 to 5000').locator('[data-testid=thread-status] .lbl').innerText()).trim(),
+      'Aborted',
+    );
     const thread = (await threadsOf()).find((t) => t.preview?.startsWith('Write the numbers from 1 to 5000'));
     assert.equal(thread.state.lastRun, 'aborted');
   });
@@ -357,9 +424,38 @@ describe('thread state at a glance', () => {
     await page.locator('pk-transcript').getByText('Write the numbers from 1 to 150').first().waitFor();
     await h.settle(1500);
     const { sessionPath } = await api(`/api/threads/${thread.id}`);
-    const last = readFileSync(sessionPath, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).at(-1);
-    const user = { type: 'message', id: 'cli10001', parentId: last.id, timestamp: new Date().toISOString(), message: { role: 'user', content: [{ type: 'text', text: 'A question typed in the terminal.' }], timestamp: Date.now() } };
-    const answer = { type: 'message', id: 'cli10002', parentId: 'cli10001', timestamp: new Date(Date.now() + 500).toISOString(), message: { role: 'assistant', content: [{ type: 'text', text: 'An answer from the terminal.' }], api: 'openai-completions', provider: 'llama-swap', model: 'gemma-4-26b', usage: { input: 5, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 10, cost: { total: 0 } }, stopReason: 'stop', timestamp: Date.now() } };
+    const last = readFileSync(sessionPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l))
+      .at(-1);
+    const user = {
+      type: 'message',
+      id: 'cli10001',
+      parentId: last.id,
+      timestamp: new Date().toISOString(),
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: 'A question typed in the terminal.' }],
+        timestamp: Date.now(),
+      },
+    };
+    const answer = {
+      type: 'message',
+      id: 'cli10002',
+      parentId: 'cli10001',
+      timestamp: new Date(Date.now() + 500).toISOString(),
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'An answer from the terminal.' }],
+        api: 'openai-completions',
+        provider: 'llama-swap',
+        model: 'gemma-4-26b',
+        usage: { input: 5, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 10, cost: { total: 0 } },
+        stopReason: 'stop',
+        timestamp: Date.now(),
+      },
+    };
     await rowIn(SECOND, 'Quarter used').click();
     // The other thread is open (and this one no longer looked at) before the file changes.
     await group(SECOND).locator('.pk-thread[aria-current="true"]', { hasText: 'Quarter used' }).waitFor();
@@ -371,7 +467,10 @@ describe('thread state at a glance', () => {
     assert.equal((await threadsOf()).find((t) => t.id === thread.id).state.cli, true);
     await row(ASKING).click();
     await cli.waitFor({ state: 'detached' });
-    await eventually(async () => (await threadsOf()).find((t) => t.id === thread.id).state.cli === false, 'the backend to drop the cli state');
+    await eventually(
+      async () => (await threadsOf()).find((t) => t.id === thread.id).state.cli === false,
+      'the backend to drop the cli state',
+    );
   });
 });
 
@@ -397,7 +496,12 @@ describe('the thread sidebar', () => {
     await eventually(async () => {
       const waiting = (await threadsOf()).filter((t) => t.state.activity === 'waiting').length;
       if (waiting === 0) return (await needs().count()) === 0;
-      return (await needs().getByTestId('needs-count').innerText().catch(() => '')).startsWith(`${waiting} `);
+      return (
+        await needs()
+          .getByTestId('needs-count')
+          .innerText()
+          .catch(() => '')
+      ).startsWith(`${waiting} `);
     }, 'the Needs you strip to count just the waiting threads');
   }
 
@@ -408,12 +512,19 @@ describe('the thread sidebar', () => {
     const item = needsItem('Publish the release?');
     await item.waitFor();
     assert.equal((await item.locator('.p').innerText()).trim(), FIRST);
-    assert.deepEqual((await item.getByTestId('needs-answer').allInnerTexts()).map((t) => t.trim()), ['Allow', 'Deny']);
+    assert.deepEqual(
+      (await item.getByTestId('needs-answer').allInnerTexts()).map((t) => t.trim()),
+      ['Allow', 'Deny'],
+    );
     assert.match(await needs().getByTestId('needs-count').innerText(), /^\d+ threads?$/);
     await item.getByTestId('needs-answer').filter({ hasText: 'Deny' }).click();
     assert.equal(await nextHitl('confirm', before), false, 'pi was told no');
     await item.waitFor({ state: 'detached' });
-    assert.equal(await group(SECOND).locator('.pk-thread[aria-current="true"]', { hasText: 'Quarter used' }).count(), 1, 'the open thread did not change');
+    assert.equal(
+      await group(SECOND).locator('.pk-thread[aria-current="true"]', { hasText: 'Quarter used' }).count(),
+      1,
+      'the open thread did not change',
+    );
     assert.equal((await threadsOf()).filter((t) => t.state.question === 'Publish the release?').length, 0);
     await stripCountsWaiting();
   });
@@ -424,7 +535,10 @@ describe('the thread sidebar', () => {
     await ask('/hitl-select now', 'Pick a deploy target');
     const item = needsItem('Pick a deploy target');
     await item.waitFor();
-    assert.deepEqual((await item.getByTestId('needs-answer').allInnerTexts()).map((t) => t.trim()), ['staging', 'production', 'canary']);
+    assert.deepEqual(
+      (await item.getByTestId('needs-answer').allInnerTexts()).map((t) => t.trim()),
+      ['staging', 'production', 'canary'],
+    );
     // The title opens the thread (and its approval block is there too).
     await item.getByTestId('needs-open').click();
     await page.getByRole('group', { name: 'Pick a deploy target' }).waitFor();
@@ -439,7 +553,10 @@ describe('the thread sidebar', () => {
     await ask('/hitl-input now', 'Release name?');
     const item = needsItem('Release name?');
     await item.waitFor();
-    assert.deepEqual((await item.getByTestId('needs-answer').allInnerTexts()).map((t) => t.trim()), ['Open']);
+    assert.deepEqual(
+      (await item.getByTestId('needs-answer').allInnerTexts()).map((t) => t.trim()),
+      ['Open'],
+    );
     await item.getByTestId('needs-answer').click();
     const q = page.getByRole('group', { name: 'Release name?' });
     await q.waitFor();
@@ -457,7 +574,8 @@ describe('the thread sidebar', () => {
     const strip = page.getByTestId('quick-actions');
     await strip.and(page.locator(`[data-project="${SECOND}"]`)).waitFor();
     assert.equal((await strip.locator('.br').innerText()).trim(), 'feature/summary');
-    for (const id of ['worktree', 'terminal', 'editor', 'changes', 'settings']) assert.equal(await quick(id).isVisible(), true, id);
+    for (const id of ['worktree', 'terminal', 'editor', 'changes', 'settings'])
+      assert.equal(await quick(id).isVisible(), true, id);
     // A change shows as a count (git status, read again within seconds): two more files, two more on the badge (the project may hold changes from earlier tests).
     const badge = page.getByTestId('quick-changes-count');
     const shown = async () => ((await badge.count()) === 0 ? 0 : Number((await badge.innerText()).trim()));
@@ -472,13 +590,19 @@ describe('the thread sidebar', () => {
       await page.locator('.pk-term').waitFor();
       await quick('changes').click();
       await page.getByRole('button', { name: 'Working tree', exact: true }).waitFor();
-      assert.equal(await page.getByRole('button', { name: 'Working tree', exact: true }).getAttribute('aria-pressed'), 'true');
+      assert.equal(
+        await page.getByRole('button', { name: 'Working tree', exact: true }).getAttribute('aria-pressed'),
+        'true',
+      );
       const panelPocket = page.getByRole('button', { name: 'Side panels', exact: true });
       if (await panelPocket.isVisible()) {
         await panelPocket.click();
         await page.getByRole('menuitemcheckbox', { name: 'Changes', exact: true }).click();
       } else {
-        await page.getByRole('group', { name: 'Side panel' }).getByRole('button', { name: 'Changes', exact: true }).click();
+        await page
+          .getByRole('group', { name: 'Side panel' })
+          .getByRole('button', { name: 'Changes', exact: true })
+          .click();
       }
       // In a browser the editor is a desktop thing, and says so.
       assert.equal(await quick('editor').getAttribute('aria-disabled'), 'true');
@@ -503,11 +627,20 @@ describe('the thread sidebar', () => {
   it('the switcher lists the projects; the worktree button starts a worktree thread of the project, which waits for its first message', async () => {
     const { page } = app;
     await page.getByTestId('quick-switch').click();
-    await page.getByTestId('quick-switch-menu').getByRole('button', { name: new RegExp(FIRST) }).click();
-    await page.getByTestId('quick-actions').and(page.locator(`[data-project="${FIRST}"]`)).waitFor();
+    await page
+      .getByTestId('quick-switch-menu')
+      .getByRole('button', { name: new RegExp(FIRST) })
+      .click();
+    await page
+      .getByTestId('quick-actions')
+      .and(page.locator(`[data-project="${FIRST}"]`))
+      .waitFor();
     await quick('worktree').click();
     await page.getByTestId('where-row').waitFor();
-    await eventually(async () => (await page.getByTestId('where-worktree').getAttribute('aria-checked')) === 'true', 'the row to show Worktree');
+    await eventually(
+      async () => (await page.getByTestId('where-worktree').getAttribute('aria-checked')) === 'true',
+      'the row to show Worktree',
+    );
   });
 
   it('a row has three lines: the title, a summary line and a status line in words; pin and archive join ⋯ on hover', async () => {
@@ -550,7 +683,8 @@ describe('the thread sidebar', () => {
   async function stickyBands() {
     const { page } = app;
     const list = page.getByTestId('projects');
-    for (const name of [FIRST, SECOND]) if ((await group(name).getAttribute('data-collapsed')) === 'true') await head(name).click();
+    for (const name of [FIRST, SECOND])
+      if ((await group(name).getAttribute('data-collapsed')) === 'true') await head(name).click();
     assert.equal(await head(FIRST).evaluate((el) => getComputedStyle(el).position), 'sticky');
     assert.equal(Math.round((await head(FIRST).boundingBox()).height), 40, 'a band is 40px');
     const rect = (locator) => locator.evaluate((el) => el.getBoundingClientRect().toJSON());
@@ -562,7 +696,10 @@ describe('the thread sidebar', () => {
     const listTop = (await rect(list)).top;
     const stuckAt = (await rect(head(FIRST))).top;
     assert.ok((await rect(group(FIRST))).top < listTop, 'the list scrolled into the first project');
-    assert.ok(Math.abs(stuckAt - listTop) <= 1, `the band stays at the top while its threads scroll (band ${stuckAt}, list ${listTop})`);
+    assert.ok(
+      Math.abs(stuckAt - listTop) <= 1,
+      `the band stays at the top while its threads scroll (band ${stuckAt}, list ${listTop})`,
+    );
     // Scroll to the second project: its band takes the top, and the first is out of the way (not underneath).
     await group(SECOND).evaluate((el) => {
       const scroller = el.parentElement;
@@ -570,7 +707,8 @@ describe('the thread sidebar', () => {
     });
     // (The last project cannot always be scrolled to the top: the list ends.)
     const ended = await list.evaluate((el) => el.scrollTop >= el.scrollHeight - el.clientHeight - 1);
-    if (!ended) assert.ok(Math.abs((await rect(head(SECOND))).top - (await rect(list)).top) <= 1, 'the next band took the top');
+    if (!ended)
+      assert.ok(Math.abs((await rect(head(SECOND))).top - (await rect(list)).top) <= 1, 'the next band took the top');
     assert.ok((await rect(head(FIRST))).bottom <= (await rect(head(SECOND))).top + 1, 'the first band was pushed out');
     await list.evaluate((el) => (el.scrollTop = 0));
   }
@@ -585,7 +723,9 @@ describe('the thread sidebar', () => {
     assert.equal(Math.round((await page.locator('pk-thread-sidebar').boundingBox()).width), 48);
     assert.equal(await page.getByTestId('sidebar-resize').isVisible(), false);
     assert.equal(await rail.getByTestId('rail-new').isVisible(), true);
-    const tiles = await rail.getByTestId('rail-project').evaluateAll((els) => els.map((e) => e.getAttribute('data-project')));
+    const tiles = await rail
+      .getByTestId('rail-project')
+      .evaluateAll((els) => els.map((e) => e.getAttribute('data-project')));
     assert.ok(tiles.includes(FIRST) && tiles.includes(SECOND), `tiles: ${tiles}`);
     const mine = rail.locator(`[data-testid=rail-project][data-project="${FIRST}"]`);
     assert.equal(await mine.getByTestId('rail-dot').getAttribute('data-kind'), 'wait');
@@ -615,9 +755,15 @@ describe('the thread sidebar', () => {
     const search = page.getByLabel('Search threads');
     const box = await search.boundingBox();
     assert.ok(box.width > 100, `the field is ${box.width}px wide`);
-    await page.getByLabel('Message to pi').focus().catch(() => undefined);
+    await page
+      .getByLabel('Message to pi')
+      .focus()
+      .catch(() => undefined);
     await page.keyboard.press('Meta+Shift+k');
-    await eventually(async () => (await page.evaluate(() => document.activeElement?.getAttribute('aria-label'))) === 'Search threads', 'the search to take the focus');
+    await eventually(
+      async () => (await page.evaluate(() => document.activeElement?.getAttribute('aria-label'))) === 'Search threads',
+      'the search to take the focus',
+    );
     await page.getByTestId('filter-menu').click();
     await page.getByRole('menuitemcheckbox', { name: 'Show archived threads' }).waitFor();
     await page.getByRole('button', { name: 'Attendant activity…' }).waitFor();
@@ -644,11 +790,17 @@ describe('the attendant', () => {
     assert.equal(status.calls, 0, 'no model request since the backend started');
     assert.deepEqual(status.actions, []);
     // The sidebar shows no summaries and no suggestions: the meta line is a plain fact.
-    assert.equal((await threadsOf()).every((t) => t.state.summary === null && t.state.suggestions.length === 0), true);
+    assert.equal(
+      (await threadsOf()).every((t) => t.state.summary === null && t.state.suggestions.length === 0),
+      true,
+    );
     const dialog = await openAttendant();
     assert.equal(await dialog.getByTestId('attendant-toggle').isChecked(), false);
     const section = dialog.getByTestId('section-attendant');
-    assert.deepEqual((await section.getByRole('tab').allTextContents()).map((label) => label.trim()), ['General', 'Automation', 'Projects', 'Activity']);
+    assert.deepEqual(
+      (await section.getByRole('tab').allTextContents()).map((label) => label.trim()),
+      ['General', 'Automation', 'Projects', 'Activity'],
+    );
     assert.equal(await dialog.getByTestId('attendant-activity').isVisible(), false);
     await section.getByRole('tab', { name: 'Automation', exact: true }).click();
     await dialog.getByTestId('attendant-on-end').waitFor();
@@ -657,10 +809,17 @@ describe('the attendant', () => {
     assert.equal(await dialog.getByTestId('attendant-toggle').isVisible(), false);
     await section.getByRole('tab', { name: 'Activity', exact: true }).click();
     await dialog.getByTestId('attendant-activity').waitFor();
-    assert.match(await dialog.getByTestId('attendant-activity').innerText(), /While it is off it does nothing and calls no model/);
+    assert.match(
+      await dialog.getByTestId('attendant-activity').innerText(),
+      /While it is off it does nothing and calls no model/,
+    );
     assert.equal(await dialog.getByTestId('attendant-run').isDisabled(), true);
     // A manual run is refused too.
-    const refused = await fetch(`${env.api}/api/attendant/run`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` }, body: '{}' });
+    const refused = await fetch(`${env.api}/api/attendant/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` },
+      body: '{}',
+    });
     assert.equal(refused.status, 409);
     await closeSettings();
   });
@@ -682,7 +841,8 @@ describe('the attendant', () => {
     await box.press('Enter');
     await app.h.stopButton.waitFor();
     await app.h.stopButton.waitFor({ state: 'detached' });
-    const find = async () => (await threadsOf()).find((t) => t.preview?.startsWith('In one short sentence, what is a monad'));
+    const find = async () =>
+      (await threadsOf()).find((t) => t.preview?.startsWith('In one short sentence, what is a monad'));
     // "Within a minute", counted from the end of the run, plus the request the attendant may be busy with (the sweep that follows switching it on).
     const deadline = Date.now() + 75_000;
     let thread = await find();
@@ -696,7 +856,10 @@ describe('the attendant', () => {
     assert.ok(thread.state.summary, 'the attendant summarised the thread');
     // The title is in pi's session_info, so `pi --resume` shows it too; the sidebar shows the summary as the meta line.
     const { sessionPath } = await api(`/api/threads/${thread.id}`);
-    assert.match(readFileSync(sessionPath, 'utf8'), new RegExp(`"type":"session_info"[^\\n]*${thread.title.slice(0, 12).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+    assert.match(
+      readFileSync(sessionPath, 'utf8'),
+      new RegExp(`"type":"session_info"[^\\n]*${thread.title.slice(0, 12).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`),
+    );
     await row(thread.title).waitFor();
     assert.equal((await row(thread.title).getByTestId('thread-meta').innerText()).trim(), thread.state.summary);
 
@@ -751,8 +914,15 @@ describe('the attendant', () => {
     // Accepting is the user's click, and it answers the question without opening the thread; the suggestion is then closed.
     await chip.click();
     await item.waitFor({ state: 'detached' });
-    await eventually(async () => (await threadsOf()).find((t) => t.id === waiting.id).state.suggestions.length === 0, 'the suggestion to be closed');
-    assert.equal(await group(SECOND).locator('.pk-thread[aria-current="true"]', { hasText: 'Quarter used' }).count(), 1, 'the thread of the answer did not open');
+    await eventually(
+      async () => (await threadsOf()).find((t) => t.id === waiting.id).state.suggestions.length === 0,
+      'the suggestion to be closed',
+    );
+    assert.equal(
+      await group(SECOND).locator('.pk-thread[aria-current="true"]', { hasText: 'Quarter used' }).count(),
+      1,
+      'the thread of the answer did not open',
+    );
   });
 
   it('stays out of a project that opted out, and makes no further call once it is switched off', async () => {
@@ -764,7 +934,11 @@ describe('the attendant', () => {
     await closeSettings();
     assert.equal((await api('/api/workspaces')).find((w) => w.name === FIRST).attendant, false);
     // What the earlier tests left in its queue (the end of their runs) is done before the count is taken.
-    await eventually(async () => (await api('/api/attendant')).queued === 0, 'the attendant to finish what it was doing', 120_000);
+    await eventually(
+      async () => (await api('/api/attendant')).queued === 0,
+      'the attendant to finish what it was doing',
+      120_000,
+    );
     await app.h.settle(2500);
     await eventually(async () => (await api('/api/attendant')).queued === 0, 'the attendant to stay idle', 120_000);
     const before = (await api('/api/attendant')).calls;
@@ -785,7 +959,11 @@ describe('the attendant', () => {
     await dialog.getByTestId('attendant-toggle').uncheck();
     await dialog.getByTestId('attendant-state').filter({ hasText: 'off' }).waitFor();
     await closeSettings();
-    await eventually(async () => (await api('/api/attendant')).queued === 0, 'the attendant to be off and idle', 120_000);
+    await eventually(
+      async () => (await api('/api/attendant')).queued === 0,
+      'the attendant to be off and idle',
+      120_000,
+    );
     const calls = (await api('/api/attendant')).calls;
     await newThreadIn(FIRST);
     await box.fill('Say the word sigma and nothing else.');

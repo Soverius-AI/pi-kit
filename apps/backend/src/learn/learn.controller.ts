@@ -23,7 +23,11 @@ import { LearningThreadsService } from './learning-threads.service';
 import { LearnService } from './learn.service';
 import { VerifyService } from './verify.service';
 
-const DRAFT_ID = { name: 'id', description: 'The draft id, from `draft.id` of a thread state.', schema: { type: 'string' } } as const;
+const DRAFT_ID = {
+  name: 'id',
+  description: 'The draft id, from `draft.id` of a thread state.',
+  schema: { type: 'string' },
+} as const;
 
 /** Skills learned from finished threads: the draft of a thread, and the person's decision on it. Only `approve` writes a skills folder. */
 @ApiTags('learn')
@@ -38,14 +42,24 @@ export class LearnController {
   @Post('threads/:id/learning-thread')
   @HttpCode(200)
   @ApiParam({ name: 'id', description: 'The source chat to learn from.', schema: { type: 'string' } })
-  @ApiOperation({ summary: 'Open a learning chat', description: 'Creates or reopens the persistent learning workspace for a source chat. Drafting, consent and review stay attached to the source; the workspace can be left and reopened from the sidebar.' })
+  @ApiOperation({
+    summary: 'Open a learning chat',
+    description:
+      'Creates or reopens the persistent learning workspace for a source chat. Drafting, consent and review stay attached to the source; the workspace can be left and reopened from the sidebar.',
+  })
   @Responds(ThreadDetailSchema)
   @Fails({ 404: 'The source chat is gone.', 409: 'Choose an original chat, not a learning or verification workspace.' })
-  workspace(@Param('id') id: string): Promise<ThreadDetail> { return this.learningThreads.open(id); }
+  workspace(@Param('id') id: string): Promise<ThreadDetail> {
+    return this.learningThreads.open(id);
+  }
 
   @Get('threads/:id/skill-draft')
   @ApiParam({ name: 'id', description: 'The thread id (the pi session id).', schema: { type: 'string' } })
-  @ApiOperation({ summary: "Get a thread's skill draft", description: 'Returns the skill drafted from the thread, in whatever state it is in: pending, approved or discarded.' })
+  @ApiOperation({
+    summary: "Get a thread's skill draft",
+    description:
+      'Returns the skill drafted from the thread, in whatever state it is in: pending, approved or discarded.',
+  })
   @Responds(SkillDraftSchema)
   @Fails({ 404: 'There is no such thread, or no draft was made for it.' })
   forThread(@Param('id') id: string): SkillDraft {
@@ -62,13 +76,22 @@ export class LearnController {
       'While the attendant is off, the first request for a thread answers `consent` with the sentence to show and the model’s name; send it again with `consent: true` once the person agreed.',
   })
   @Responds(SkillDraftRequestResultSchema)
-  @Fails({ 404: 'There is no such thread.', 409: 'No draft could be made: the learn package is not installed, no model is available, the daily cap is reached, or the model’s answer was not a skill.' })
-  request(@Param('id') id: string, @Body({ schema: RequestSkillDraftSchema }) body: RequestSkillDraft): Promise<SkillDraftRequestResult> {
+  @Fails({
+    404: 'There is no such thread.',
+    409: 'No draft could be made: the learn package is not installed, no model is available, the daily cap is reached, or the model’s answer was not a skill.',
+  })
+  request(
+    @Param('id') id: string,
+    @Body({ schema: RequestSkillDraftSchema }) body: RequestSkillDraft,
+  ): Promise<SkillDraftRequestResult> {
     return this.learn.request(id, body);
   }
 
   @Get('skill-drafts')
-  @ApiOperation({ summary: 'List the pending skill drafts', description: 'Returns every draft that waits for the person to approve or discard it, newest first.' })
+  @ApiOperation({
+    summary: 'List the pending skill drafts',
+    description: 'Returns every draft that waits for the person to approve or discard it, newest first.',
+  })
   @Responds(SkillDraftSchema, { array: true })
   pending(): SkillDraft[] {
     return this.learn.pending();
@@ -84,8 +107,15 @@ export class LearnController {
       'This is the only route that writes a skills folder. It refuses a name that is not a skill name, a text pi would not load, and a name that is taken.',
   })
   @Responds(ApprovedSkillDraftSchema)
-  @Fails({ 400: 'The name is not a skill name, or the text is not a skill pi would load.', 404: 'There is no such draft.', 409: 'The draft is not pending, or the name is taken: choose another.' })
-  approve(@Param('id') id: string, @Body({ schema: ApproveSkillDraftSchema }) body: ApproveSkillDraft): Promise<ApprovedSkillDraft> {
+  @Fails({
+    400: 'The name is not a skill name, or the text is not a skill pi would load.',
+    404: 'There is no such draft.',
+    409: 'The draft is not pending, or the name is taken: choose another.',
+  })
+  approve(
+    @Param('id') id: string,
+    @Body({ schema: ApproveSkillDraftSchema }) body: ApproveSkillDraft,
+  ): Promise<ApprovedSkillDraft> {
     return this.learn.approve(id, body);
   }
 
@@ -114,7 +144,11 @@ export class LearnController {
       '`text` and `name` are the person’s edits in the dialog (a pending draft only); `prompt` replaces the first prompt. Nothing is pushed or merged, the main checkout is not touched, and the scratch worktree is removed afterwards.',
   })
   @Responds(SkillDraftSchema)
-  @Fails({ 400: 'The edited text is not a skill pi would load.', 404: 'There is no such draft.', 409: 'The draft cannot be verified now: no outcome, discarded, another verification is running, or the commits are gone.' })
+  @Fails({
+    400: 'The edited text is not a skill pi would load.',
+    404: 'There is no such draft.',
+    409: 'The draft cannot be verified now: no outcome, discarded, another verification is running, or the commits are gone.',
+  })
   start(@Param('id') id: string, @Body({ schema: StartVerifySchema }) body: StartVerify): Promise<SkillDraft> {
     return this.verify.start(id, body);
   }
@@ -122,7 +156,11 @@ export class LearnController {
   @Post('skill-drafts/:id/verify/stop')
   @HttpCode(200)
   @ApiParam(DRAFT_ID)
-  @ApiOperation({ summary: 'Stop a verification', description: 'Aborts the replay’s run; the verification ends as `stopped` and the scratch worktree is removed. The verification thread can also be stopped like any thread.' })
+  @ApiOperation({
+    summary: 'Stop a verification',
+    description:
+      'Aborts the replay’s run; the verification ends as `stopped` and the scratch worktree is removed. The verification thread can also be stopped like any thread.',
+  })
   @Responds(SkillDraftSchema)
   @Fails({ 404: 'There is no such draft.', 409: 'The draft is not being verified.' })
   stop(@Param('id') id: string): SkillDraft {
@@ -132,7 +170,10 @@ export class LearnController {
   @Post('skill-drafts/:id/discard')
   @HttpCode(200)
   @ApiParam(DRAFT_ID)
-  @ApiOperation({ summary: 'Discard a skill draft', description: 'Records the decision and writes nothing. The thread is not drafted again; the draft can be reopened.' })
+  @ApiOperation({
+    summary: 'Discard a skill draft',
+    description: 'Records the decision and writes nothing. The thread is not drafted again; the draft can be reopened.',
+  })
   @Responds(SkillDraftSchema)
   @Fails({ 404: 'There is no such draft.', 409: 'The draft is not pending.' })
   discard(@Param('id') id: string): SkillDraft {
@@ -142,7 +183,10 @@ export class LearnController {
   @Post('skill-drafts/:id/reopen')
   @HttpCode(200)
   @ApiParam(DRAFT_ID)
-  @ApiOperation({ summary: 'Reopen a discarded skill draft', description: 'Makes a discarded draft pending again, so it can be read and approved.' })
+  @ApiOperation({
+    summary: 'Reopen a discarded skill draft',
+    description: 'Makes a discarded draft pending again, so it can be read and approved.',
+  })
   @Responds(SkillDraftSchema)
   @Fails({ 404: 'There is no such draft.', 409: 'The draft is not discarded.' })
   reopen(@Param('id') id: string): SkillDraft {

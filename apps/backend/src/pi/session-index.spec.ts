@@ -10,20 +10,64 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-function writeSession(project: string, id: string, turns: number, options: { name?: string; parent?: string } = {}): string {
+function writeSession(
+  project: string,
+  id: string,
+  turns: number,
+  options: { name?: string; parent?: string } = {},
+): string {
   const dir = join(root, 'sessions', `--${project}--`);
   mkdirSync(dir, { recursive: true });
   const path = join(dir, `2026-10-15T09-00-00.000Z_${id}.jsonl`);
-  const lines: unknown[] = [{ type: 'session', version: 3, id, timestamp: '2026-10-15T09:00:00.000Z', cwd: `/work/${project}`, ...(options.parent ? { parentSession: options.parent } : {}) }];
+  const lines: unknown[] = [
+    {
+      type: 'session',
+      version: 3,
+      id,
+      timestamp: '2026-10-15T09:00:00.000Z',
+      cwd: `/work/${project}`,
+      ...(options.parent ? { parentSession: options.parent } : {}),
+    },
+  ];
   let parent: string | null = null;
   for (let i = 1; i <= turns; i++) {
     const u = `${id}-u${i}`;
     const a = `${id}-a${i}`;
-    lines.push({ type: 'message', id: u, parentId: parent, timestamp: `2026-10-15T09:${String(i % 60).padStart(2, '0')}:00.000Z`, message: { role: 'user', content: [{ type: 'text', text: `question ${i}` }], timestamp: 1_792_000_000_000 + i * 1000 } });
-    lines.push({ type: 'message', id: a, parentId: u, timestamp: `2026-10-15T09:${String(i % 60).padStart(2, '0')}:30.000Z`, message: { role: 'assistant', content: [{ type: 'text', text: `answer ${i}` }, { type: 'toolCall', id: 'c', name: 'read', arguments: {} }], timestamp: 1_792_000_000_500 + i * 1000 } });
+    lines.push({
+      type: 'message',
+      id: u,
+      parentId: parent,
+      timestamp: `2026-10-15T09:${String(i % 60).padStart(2, '0')}:00.000Z`,
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: `question ${i}` }],
+        timestamp: 1_792_000_000_000 + i * 1000,
+      },
+    });
+    lines.push({
+      type: 'message',
+      id: a,
+      parentId: u,
+      timestamp: `2026-10-15T09:${String(i % 60).padStart(2, '0')}:30.000Z`,
+      message: {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: `answer ${i}` },
+          { type: 'toolCall', id: 'c', name: 'read', arguments: {} },
+        ],
+        timestamp: 1_792_000_000_500 + i * 1000,
+      },
+    });
     parent = a;
   }
-  if (options.name) lines.push({ type: 'session_info', id: `${id}-n`, parentId: parent, timestamp: '2026-10-15T10:00:00.000Z', name: options.name });
+  if (options.name)
+    lines.push({
+      type: 'session_info',
+      id: `${id}-n`,
+      parentId: parent,
+      timestamp: '2026-10-15T10:00:00.000Z',
+      name: options.name,
+    });
   writeFileSync(path, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
   return path;
 }
@@ -35,13 +79,36 @@ describe('SessionIndex', () => {
     writeSession('b', 'bbbb0001', 5, { parent: '/somewhere/parent.jsonl' });
     writeFileSync(join(root, 'sessions', '--a--', 'broken.jsonl'), 'not json\n');
     const pi = await import('@earendil-works/pi-coding-agent');
-    const theirs = await pi.SessionManager.listAll(join(root, 'sessions', '--a--')).then(async (a) => [...a, ...(await pi.SessionManager.listAll(join(root, 'sessions', '--b--')))]);
+    const theirs = await pi.SessionManager.listAll(join(root, 'sessions', '--a--')).then(async (a) => [
+      ...a,
+      ...(await pi.SessionManager.listAll(join(root, 'sessions', '--b--'))),
+    ]);
     const ours = (await new SessionIndex(() => join(root, 'sessions')).scan()).all;
     const key = (id: string) => id;
-    const pick = (s: { id: string; path: string; cwd: string; name?: string; parentSessionPath?: string; messageCount: number; firstMessage: string; created: number | Date; modified: number | Date }) => ({
-      id: s.id, path: s.path, cwd: s.cwd, name: s.name, parent: s.parentSessionPath, count: s.messageCount, first: s.firstMessage, created: +s.created, modified: +s.modified,
+    const pick = (s: {
+      id: string;
+      path: string;
+      cwd: string;
+      name?: string;
+      parentSessionPath?: string;
+      messageCount: number;
+      firstMessage: string;
+      created: number | Date;
+      modified: number | Date;
+    }) => ({
+      id: s.id,
+      path: s.path,
+      cwd: s.cwd,
+      name: s.name,
+      parent: s.parentSessionPath,
+      count: s.messageCount,
+      first: s.firstMessage,
+      created: +s.created,
+      modified: +s.modified,
     });
-    expect(ours.map(pick).sort((x, y) => key(x.id).localeCompare(y.id))).toEqual(theirs.map(pick).sort((x, y) => key(x.id).localeCompare(y.id)));
+    expect(ours.map(pick).sort((x, y) => key(x.id).localeCompare(y.id))).toEqual(
+      theirs.map(pick).sort((x, y) => key(x.id).localeCompare(y.id)),
+    );
   });
 
   it('reads only new and changed files on the next pass, and forgets deleted ones', async () => {
@@ -50,7 +117,7 @@ describe('SessionIndex', () => {
     const index = new SessionIndex(() => join(root, 'sessions'));
     const first = await index.scan();
     expect(first).toMatchObject({ files: 2, read: 2 });
-    expect((await index.scan())).toMatchObject({ files: 2, read: 0, changed: [] });
+    expect(await index.scan()).toMatchObject({ files: 2, read: 0, changed: [] });
 
     writeSession('b', 'bbbb0001', 1);
     const third = await index.scan();
@@ -78,9 +145,23 @@ describe('SessionIndex', () => {
 
   it('names a session that opens with skill blocks by the sentence after them (the chips are drawn beside it), or by the invocations when there is no sentence', async () => {
     const path = writeSession('a', 'aaaa0003', 0);
-    const block = (name: string) => `<skill name="${name}" location="/s/${name}/SKILL.md">\nReferences are relative to /s/${name}.\n\nDo ${name}.\n</skill>`;
-    const user = { type: 'message', id: 'u1', parentId: null, timestamp: '2026-10-15T09:01:00.000Z', message: { role: 'user', content: `${block('alpha')}\n\n${block('beta')}\n\nsay hi`, timestamp: 1_792_000_001_000 } };
-    writeFileSync(path, `${JSON.stringify({ type: 'session', version: 3, id: 'aaaa0003', timestamp: '2026-10-15T09:00:00.000Z', cwd: '/work/a' })}\n${JSON.stringify(user)}\n`);
+    const block = (name: string) =>
+      `<skill name="${name}" location="/s/${name}/SKILL.md">\nReferences are relative to /s/${name}.\n\nDo ${name}.\n</skill>`;
+    const user = {
+      type: 'message',
+      id: 'u1',
+      parentId: null,
+      timestamp: '2026-10-15T09:01:00.000Z',
+      message: {
+        role: 'user',
+        content: `${block('alpha')}\n\n${block('beta')}\n\nsay hi`,
+        timestamp: 1_792_000_001_000,
+      },
+    };
+    writeFileSync(
+      path,
+      `${JSON.stringify({ type: 'session', version: 3, id: 'aaaa0003', timestamp: '2026-10-15T09:00:00.000Z', cwd: '/work/a' })}\n${JSON.stringify(user)}\n`,
+    );
     const [summary] = (await new SessionIndex(() => join(root, 'sessions')).scan()).all;
     expect(summary.firstMessage).toBe('say hi');
     expect(titleText('/skill:alpha /skill:beta')).toBe('/skill:alpha /skill:beta');
@@ -88,6 +169,11 @@ describe('SessionIndex', () => {
   });
 
   it('copes with a missing sessions folder', async () => {
-    expect(await new SessionIndex(() => join(root, 'nope')).scan()).toEqual({ all: [], changed: [], files: 0, read: 0 });
+    expect(await new SessionIndex(() => join(root, 'nope')).scan()).toEqual({
+      all: [],
+      changed: [],
+      files: 0,
+      read: 0,
+    });
   });
 });

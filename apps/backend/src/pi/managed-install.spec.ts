@@ -1,8 +1,26 @@
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { LAUNCHER, activate, installPiCommand, piCommandState, npmCiInvocation, piToolEnvironment, piToolPath } from './managed-install';
+import {
+  LAUNCHER,
+  activate,
+  installPiCommand,
+  piCommandState,
+  npmCiInvocation,
+  piToolEnvironment,
+  piToolPath,
+} from './managed-install';
 
 let home: string;
 let agentDir: string;
@@ -10,7 +28,15 @@ beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'pk-install-'));
   agentDir = join(home, '.pi', 'agent');
   mkdirSync(join(agentDir, 'install'), { recursive: true });
-  writeFileSync(join(agentDir, 'install', 'managed-install.json'), JSON.stringify({ kind: 'pi-managed-install', schemaVersion: 1, layout: 'releases-v1', entrypoint: { type: 'symlink', path: join(home, '.local', 'bin', 'pi') } }));
+  writeFileSync(
+    join(agentDir, 'install', 'managed-install.json'),
+    JSON.stringify({
+      kind: 'pi-managed-install',
+      schemaVersion: 1,
+      layout: 'releases-v1',
+      entrypoint: { type: 'symlink', path: join(home, '.local', 'bin', 'pi') },
+    }),
+  );
 });
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 
@@ -23,7 +49,10 @@ describe('npm bootstrap on Windows', () => {
     expect(windows.args[3]).toMatch(/^npm\.cmd ci --ignore-scripts /);
     expect(windows.args[3]).toContain('--include=optional');
     expect(npmCiInvocation({}, 'win32').command).toBe('cmd.exe');
-    expect(npmCiInvocation({}, 'darwin')).toMatchObject({ command: 'npm', args: expect.arrayContaining(['ci', '--ignore-scripts']) });
+    expect(npmCiInvocation({}, 'darwin')).toMatchObject({
+      command: 'npm',
+      args: expect.arrayContaining(['ci', '--ignore-scripts']),
+    });
   });
 
   it('preserves Windows mixed-case Path and forwards only one PATH entry', () => {
@@ -39,7 +68,11 @@ describe('npm bootstrap on Windows', () => {
 
 describe('the pi command', () => {
   it('is not on PATH until the launcher and the symlink exist, then is', () => {
-    expect(piCommandState(agentDir, home)).toMatchObject({ launcherInstalled: false, onPath: false, entrypoint: join(home, '.local', 'bin', 'pi') });
+    expect(piCommandState(agentDir, home)).toMatchObject({
+      launcherInstalled: false,
+      onPath: false,
+      entrypoint: join(home, '.local', 'bin', 'pi'),
+    });
     const state = installPiCommand(agentDir, home);
     expect(state).toMatchObject({ launcherInstalled: true, onPath: true });
     expect(statSync(join(agentDir, 'bin', 'pi')).mode & 0o111).not.toBe(0);

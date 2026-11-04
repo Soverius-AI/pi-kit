@@ -1,7 +1,26 @@
 /** Test helper: builds WAV files byte by byte, in every flavour the parser has to read. */
 /** A WAV file: `data` is the raw bytes of the sample frames. */
-export function wavFile(data: Uint8Array, opts: { rate?: number; channels?: number; bits?: number; tag?: number; extensible?: boolean; sizeUnknown?: boolean; extraChunk?: boolean } = {}): Uint8Array {
-  const { rate = 16000, channels = 1, bits = 16, tag = 1, extensible = false, sizeUnknown = false, extraChunk = false } = opts;
+export function wavFile(
+  data: Uint8Array,
+  opts: {
+    rate?: number;
+    channels?: number;
+    bits?: number;
+    tag?: number;
+    extensible?: boolean;
+    sizeUnknown?: boolean;
+    extraChunk?: boolean;
+  } = {},
+): Uint8Array {
+  const {
+    rate = 16000,
+    channels = 1,
+    bits = 16,
+    tag = 1,
+    extensible = false,
+    sizeUnknown = false,
+    extraChunk = false,
+  } = opts;
   const fmtSize = extensible ? 40 : 16;
   const extra = extraChunk ? 8 + 4 : 0;
   const out = new Uint8Array(12 + extra + 8 + fmtSize + 8 + data.length);

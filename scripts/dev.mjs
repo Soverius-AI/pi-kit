@@ -7,7 +7,9 @@ import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 // HTTPS_PROXY for the backend's own requests (the same rule as apps/desktop/src/proxy-env.ts): Node 24 honours the variables with NODE_USE_ENV_PROXY=1.
-const proxied = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'].some((name) => process.env[name]);
+const proxied = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'].some(
+  (name) => process.env[name],
+);
 if (proxied) {
   const noProxy = [process.env.NO_PROXY ?? process.env.no_proxy, 'localhost,127.0.0.1,::1'].filter(Boolean).join(',');
   Object.assign(process.env, { NODE_USE_ENV_PROXY: '1', NO_PROXY: noProxy, no_proxy: noProxy });
@@ -22,11 +24,15 @@ let child = null;
 const workers = new Set();
 let builderFailed = false;
 // The builder workers own their listening sockets and watchers; stop them with the rest of this launch.
-process.on('exit', () => { for (const worker of workers) worker.kill(); });
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => child ? child.kill(sig) : process.exit(0));
+process.on('exit', () => {
+  for (const worker of workers) worker.kill();
+});
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => (child ? child.kill(sig) : process.exit(0)));
 
 async function desktopBuilderReady(role) {
-  const worker = fork(fileURLToPath(new URL('./dev-builder.mjs', import.meta.url)), [role], { stdio: ['inherit', 'inherit', 'inherit', 'ipc'] });
+  const worker = fork(fileURLToPath(new URL('./dev-builder.mjs', import.meta.url)), [role], {
+    stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+  });
   workers.add(worker);
   worker.on('exit', () => {
     builderFailed = true;
@@ -47,9 +53,10 @@ const RENDERER_PORT = process.env.PI_KIT_DEV_RENDERER_PORT ?? '4200';
 const BACKEND_PORT = process.env.PI_KIT_DEV_BACKEND_PORT ?? '4300';
 let RENDERER_URL;
 try {
-  RENDERER_URL = mode === 'desktop'
-    ? (await Promise.all([desktopBuilderReady('renderer'), desktopBuilderReady('backend')]))[0]
-    : `http://localhost:${RENDERER_PORT}`;
+  RENDERER_URL =
+    mode === 'desktop'
+      ? (await Promise.all([desktopBuilderReady('renderer'), desktopBuilderReady('backend')]))[0]
+      : `http://localhost:${RENDERER_PORT}`;
 } catch (error) {
   console.error(error.message);
   process.exit(1);
@@ -60,9 +67,7 @@ const modes = {
   // so here the backend is only kept built (esbuild --watch) and Electron is restarted by hand.
   desktop: {
     env: { PI_KIT_DEV_URL: RENDERER_URL },
-    commands: [
-      ['desktop', 'nx start desktop'],
-    ],
+    commands: [['desktop', 'nx start desktop']],
   },
   // The browser has no preload, so the backend runs here on a fixed loopback port and hands the
   // token to the renderer through /api/dev/token (NODE_ENV=development only).
@@ -89,7 +94,13 @@ if (builderFailed) process.exit(1);
 child = spawn(
   'concurrently',
   ['--kill-others', '--names', config.commands.map(([n]) => n).join(','), ...config.commands.map(([, c]) => c)],
-  { stdio: 'inherit', env: { ...process.env, ...config.env, PATH: `${process.cwd()}/node_modules/.bin:${process.env.PATH}` } },
+  {
+    stdio: 'inherit',
+    env: { ...process.env, ...config.env, PATH: `${process.cwd()}/node_modules/.bin:${process.env.PATH}` },
+  },
 );
-child.on('error', (error) => { console.error(error.message); process.exit(1); });
-child.on('exit', (code) => process.exit(builderFailed ? 1 : code ?? 0));
+child.on('error', (error) => {
+  console.error(error.message);
+  process.exit(1);
+});
+child.on('exit', (code) => process.exit(builderFailed ? 1 : (code ?? 0)));

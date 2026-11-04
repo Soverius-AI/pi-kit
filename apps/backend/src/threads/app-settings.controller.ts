@@ -14,7 +14,10 @@ export class AppSettingsController {
   constructor(private readonly meta: MetaRepository) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get app settings', description: 'Returns every stored setting of the app as a JSON value per key.' })
+  @ApiOperation({
+    summary: 'Get app settings',
+    description: 'Returns every stored setting of the app as a JSON value per key.',
+  })
   @Responds(AppSettingsSchema)
   settings(): Record<string, unknown> {
     return this.meta.allSettings();
@@ -22,10 +25,20 @@ export class AppSettingsController {
 
   @Put(':key')
   @HttpCode(204)
-  @ApiOperation({ summary: 'Store an app setting', description: 'Stores a JSON value under the key; a missing `value` stores `null`.' })
-  @ApiParam({ name: 'key', description: 'Starts with a letter; letters, digits, `.`, `_` and `-`, at most 64 characters.', schema: { type: 'string', pattern: KEY.source } })
+  @ApiOperation({
+    summary: 'Store an app setting',
+    description: 'Stores a JSON value under the key; a missing `value` stores `null`.',
+  })
+  @ApiParam({
+    name: 'key',
+    description: 'Starts with a letter; letters, digits, `.`, `_` and `-`, at most 64 characters.',
+    schema: { type: 'string', pattern: KEY.source },
+  })
   @ApiNoContentResponse({ description: 'The setting is stored.' })
-  setSetting(@Param('key') key: string, @Body({ schema: PutAppSettingSchema }) body: z.infer<typeof PutAppSettingSchema>): void {
+  setSetting(
+    @Param('key') key: string,
+    @Body({ schema: PutAppSettingSchema }) body: z.infer<typeof PutAppSettingSchema>,
+  ): void {
     if (!KEY.test(key)) throw new BadRequestException('Invalid settings key.');
     this.meta.setSetting(key, body.value ?? null);
   }

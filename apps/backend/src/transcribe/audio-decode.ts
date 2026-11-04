@@ -15,7 +15,9 @@ let cachedFfmpeg: { path: string | undefined } | undefined;
 export function findFfmpeg(env: NodeJS.ProcessEnv = process.env): string | undefined {
   if (cachedFfmpeg && env === process.env) return cachedFfmpeg.path;
   const wanted = env['PI_KIT_FFMPEG'];
-  const found = (wanted ? [wanted] : CANDIDATES).find((candidate) => spawnSync(candidate, ['-version'], { stdio: 'ignore', timeout: 5000 }).status === 0);
+  const found = (wanted ? [wanted] : CANDIDATES).find(
+    (candidate) => spawnSync(candidate, ['-version'], { stdio: 'ignore', timeout: 5000 }).status === 0,
+  );
   if (env === process.env) cachedFfmpeg = { path: found };
   return found;
 }
@@ -27,9 +29,29 @@ export function forgetFfmpeg(): void {
 
 function viaFfmpeg(bytes: Uint8Array, ffmpeg: string): Promise<Float32Array> {
   return new Promise((resolve, reject) => {
-    const child = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-vn', '-f', 's16le', '-acodec', 'pcm_s16le', '-ac', '1', '-ar', String(WHISTLE_RATE), 'pipe:1'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    const child = spawn(
+      ffmpeg,
+      [
+        '-hide_banner',
+        '-loglevel',
+        'error',
+        '-i',
+        'pipe:0',
+        '-vn',
+        '-f',
+        's16le',
+        '-acodec',
+        'pcm_s16le',
+        '-ac',
+        '1',
+        '-ar',
+        String(WHISTLE_RATE),
+        'pipe:1',
+      ],
+      {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    );
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     const timer = setTimeout(() => child.kill('SIGKILL'), FFMPEG_TIMEOUT_MS);
@@ -42,7 +64,13 @@ function viaFfmpeg(bytes: Uint8Array, ffmpeg: string): Promise<Float32Array> {
     });
     child.on('close', (code) => {
       clearTimeout(timer);
-      if (code !== 0) return reject(new AudioError(`ffmpeg could not read the recording: ${Buffer.concat(err).toString('utf8').trim().split('\n').pop() ?? `exit ${code}`}`, 415));
+      if (code !== 0)
+        return reject(
+          new AudioError(
+            `ffmpeg could not read the recording: ${Buffer.concat(err).toString('utf8').trim().split('\n').pop() ?? `exit ${code}`}`,
+            415,
+          ),
+        );
       const all = Buffer.concat(out);
       resolve(pcm16ToFloat(new Uint8Array(all.buffer, all.byteOffset, all.byteLength)));
     });
@@ -57,7 +85,9 @@ export async function decodeAudio(bytes: Uint8Array, ffmpeg: string | undefined 
   if (format === 'wav') return toWhistleRate(parseWav(bytes));
   if (!ffmpeg) {
     throw new AudioError(
-      format === 'unknown' ? 'Unknown audio format; send a WAV file.' : `A ${format.toUpperCase()} recording needs ffmpeg, which is not installed. Send 16 kHz WAV (pi-kit's composer does) or install ffmpeg.`,
+      format === 'unknown'
+        ? 'Unknown audio format; send a WAV file.'
+        : `A ${format.toUpperCase()} recording needs ffmpeg, which is not installed. Send 16 kHz WAV (pi-kit's composer does) or install ffmpeg.`,
       415,
     );
   }

@@ -26,10 +26,15 @@ export type ResolverVia = 'security' | 'secret-tool' | 'pi-kit-secret';
  *  - Linux: `secret-tool` when libsecret's tool is installed, else `pi-kit-secret`.
  *  - Windows: `pi-kit-secret` (Credential Manager through the helper).
  */
-export function resolverCommand(platform: ResolverPlatform, provider: string, options: { secretTool?: boolean } = {}): string {
+export function resolverCommand(
+  platform: ResolverPlatform,
+  provider: string,
+  options: { secretTool?: boolean } = {},
+): string {
   if (!isProviderAccount(provider)) throw new Error(`"${provider}" is not a name the keychain entry can carry.`);
   if (platform === 'darwin') return `!security find-generic-password -s ${SECRET_SERVICE} -a ${provider} -w`;
-  if (platform === 'linux' && options.secretTool) return `!secret-tool lookup service ${SECRET_SERVICE} username ${provider}`;
+  if (platform === 'linux' && options.secretTool)
+    return `!secret-tool lookup service ${SECRET_SERVICE} username ${provider}`;
   return `!pi-kit-secret get ${provider}`;
 }
 
@@ -87,60 +92,72 @@ export const CredentialAccessSchema = z.object({
 export type CredentialAccess = z.infer<typeof CredentialAccessSchema>;
 
 /** What Settings › Providers and › Advanced say about where secrets can be kept. */
-export const SecretsStatusSchema = z.object({
-  /** The OS credential store (`keychain`), a scratch store for tests (`file`, `memory`), or none. */
-  store: SecretStoreKindSchema,
-  /** The store's name in words: "macOS Keychain", "Windows Credential Manager", "Secret Service (libsecret)". */
-  label: z.string(),
-  available: z.boolean(),
-  /** User preference for API keys and connector secrets; database encryption is independent. */
-  credentialsEnabled: z.boolean().optional(),
-  /** Native capability and actual credential access are separate: status never probes the store. */
-  access: CredentialAccessSchema.optional(),
-  /** `auth.json` entries that hold a literal key and could be moved into the store (provider ids). */
-  movable: z.array(z.string()),
-  /** The resolver the next key will be written as, or undefined without a store. */
-  resolver: z.string().optional(),
-  /** `pi-kit-secret` is on PATH (needed by the Windows resolver, and by Linux without `secret-tool`). */
-  cliOnPath: z.boolean(),
-  /** Where `pi-kit-secret` would be installed on PATH by the "Install" button. */
-  cliInstallDir: z.string().optional(),
-  /** The command the pi CLI needs on PATH, when the resolver uses it and it is missing. */
-  cliNeeded: z.boolean(),
-}).meta({ id: 'SecretsStatus' });
+export const SecretsStatusSchema = z
+  .object({
+    /** The OS credential store (`keychain`), a scratch store for tests (`file`, `memory`), or none. */
+    store: SecretStoreKindSchema,
+    /** The store's name in words: "macOS Keychain", "Windows Credential Manager", "Secret Service (libsecret)". */
+    label: z.string(),
+    available: z.boolean(),
+    /** User preference for API keys and connector secrets; database encryption is independent. */
+    credentialsEnabled: z.boolean().optional(),
+    /** Native capability and actual credential access are separate: status never probes the store. */
+    access: CredentialAccessSchema.optional(),
+    /** `auth.json` entries that hold a literal key and could be moved into the store (provider ids). */
+    movable: z.array(z.string()),
+    /** The resolver the next key will be written as, or undefined without a store. */
+    resolver: z.string().optional(),
+    /** `pi-kit-secret` is on PATH (needed by the Windows resolver, and by Linux without `secret-tool`). */
+    cliOnPath: z.boolean(),
+    /** Where `pi-kit-secret` would be installed on PATH by the "Install" button. */
+    cliInstallDir: z.string().optional(),
+    /** The command the pi CLI needs on PATH, when the resolver uses it and it is missing. */
+    cliNeeded: z.boolean(),
+  })
+  .meta({ id: 'SecretsStatus' });
 export type SecretsStatus = z.infer<typeof SecretsStatusSchema>;
 
 export const CredentialStorageSchema = z.object({ enabled: z.boolean() }).strict().meta({ id: 'CredentialStorage' });
 
 /** What the Advanced section shows about the database file. */
-export const DatabaseProtectionSchema = z.object({
-  /** `encrypted`: SQLCipher with the key in the credential store; `plain`: no store, or the native module is not the encrypting build. */
-  state: z.enum(['encrypted', 'plain']),
-  path: z.string(),
-  reason: z.string().optional(),
-  /** The recovery key was shown once already (Settings never shows it again). */
-  recoveryKeyShown: z.boolean(),
-}).meta({ id: 'DatabaseProtection' });
+export const DatabaseProtectionSchema = z
+  .object({
+    /** `encrypted`: SQLCipher with the key in the credential store; `plain`: no store, or the native module is not the encrypting build. */
+    state: z.enum(['encrypted', 'plain']),
+    path: z.string(),
+    reason: z.string().optional(),
+    /** The recovery key was shown once already (Settings never shows it again). */
+    recoveryKeyShown: z.boolean(),
+  })
+  .meta({ id: 'DatabaseProtection' });
 export type DatabaseProtection = z.infer<typeof DatabaseProtectionSchema>;
 
-export const DiskEncryptionSchema = z.object({
-  /** `on`, `off`, or `unknown` when the check could not run. */
-  state: z.enum(['on', 'off', 'unknown']),
-  /** FileVault, BitLocker or LUKS. */
-  mechanism: z.string(),
-  detail: z.string(),
-}).meta({ id: 'DiskEncryption' });
+export const DiskEncryptionSchema = z
+  .object({
+    /** `on`, `off`, or `unknown` when the check could not run. */
+    state: z.enum(['on', 'off', 'unknown']),
+    /** FileVault, BitLocker or LUKS. */
+    mechanism: z.string(),
+    detail: z.string(),
+  })
+  .meta({ id: 'DiskEncryption' });
 export type DiskEncryption = z.infer<typeof DiskEncryptionSchema>;
 
-export const MoveKeysResultSchema = z.object({ moved: z.array(z.string()), failed: z.array(z.object({ provider: z.string(), reason: z.string() })) }).meta({ id: 'MoveKeysResult' });
+export const MoveKeysResultSchema = z
+  .object({ moved: z.array(z.string()), failed: z.array(z.object({ provider: z.string(), reason: z.string() })) })
+  .meta({ id: 'MoveKeysResult' });
 export type MoveKeysResult = z.infer<typeof MoveKeysResultSchema>;
 
 /** `GET /api/secrets/protection`. */
-export const SecretsProtectionSchema = z.object({ database: DatabaseProtectionSchema, disk: DiskEncryptionSchema }).meta({ id: 'SecretsProtection' });
+export const SecretsProtectionSchema = z
+  .object({ database: DatabaseProtectionSchema, disk: DiskEncryptionSchema })
+  .meta({ id: 'SecretsProtection' });
 export type SecretsProtection = z.infer<typeof SecretsProtectionSchema>;
 
 /** `POST /api/secrets/cli/install`: where `pi-kit-secret` went and whether that folder is on PATH. */
-export const CliInstallResultSchema = z.object({ path: z.string(), dir: z.string(), onPath: z.boolean() }).meta({ id: 'CliInstallResult' });
+export const CliInstallResultSchema = z
+  .object({ path: z.string(), dir: z.string(), onPath: z.boolean() })
+  .meta({ id: 'CliInstallResult' });
 export type CliInstallResult = z.infer<typeof CliInstallResultSchema>;
 
 /** `POST /api/secrets/recovery-key`: the database's recovery key. It is the one secret an answer carries, once, because the person has to write it down; a second call is a 409. */

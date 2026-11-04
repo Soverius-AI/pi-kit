@@ -29,14 +29,29 @@ export interface BgAgentRow {
 }
 
 /** The columns a later write may change. */
-export type BgAgentPatch = Partial<Pick<BgAgentRow, 'submissionId' | 'status' | 'finishedAt' | 'cost' | 'report' | 'cleanup' | 'failures' | 'permission'>>;
+export type BgAgentPatch = Partial<
+  Pick<BgAgentRow, 'submissionId' | 'status' | 'finishedAt' | 'cost' | 'report' | 'cleanup' | 'failures' | 'permission'>
+>;
 type NewRow = Omit<BgAgentRow, 'ownerEpoch' | 'failures' | 'cleanup' | 'cost' | 'finishedAt' | 'report'>;
 
 /** Row fields to their columns; the two JSON columns are parsed on the way out. */
 const COLUMNS: Record<keyof BgAgentRow, string> = {
-  id: 'id', threadId: 'thread_id', name: 'name', role: 'role', model: 'model', permission: 'permission', brief: 'brief',
-  submissionId: 'submission_id', status: 'status', createdAt: 'created_at', finishedAt: 'finished_at', cost: 'cost', report: 'report',
-  cleanup: 'cleanup_json', failures: 'failures_json', ownerEpoch: 'owner_epoch',
+  id: 'id',
+  threadId: 'thread_id',
+  name: 'name',
+  role: 'role',
+  model: 'model',
+  permission: 'permission',
+  brief: 'brief',
+  submissionId: 'submission_id',
+  status: 'status',
+  createdAt: 'created_at',
+  finishedAt: 'finished_at',
+  cost: 'cost',
+  report: 'report',
+  cleanup: 'cleanup_json',
+  failures: 'failures_json',
+  ownerEpoch: 'owner_epoch',
 };
 const JSON_COLUMNS = new Set<keyof BgAgentRow>(['cleanup', 'failures']);
 
@@ -49,7 +64,10 @@ const parse = <T>(json: unknown, fallback: T): T => {
 };
 const toRow = (raw: Record<string, unknown>): BgAgentRow =>
   Object.fromEntries(
-    (Object.entries(COLUMNS) as [keyof BgAgentRow, string][]).map(([key, column]) => [key, JSON_COLUMNS.has(key) ? parse(raw[column], key === 'failures' ? [] : null) : raw[column]]),
+    (Object.entries(COLUMNS) as [keyof BgAgentRow, string][]).map(([key, column]) => [
+      key,
+      JSON_COLUMNS.has(key) ? parse(raw[column], key === 'failures' ? [] : null) : raw[column],
+    ]),
   ) as unknown as BgAgentRow;
 
 /** `bg_agents`: the index and history of the background agents, fenced by the store owner's epoch. */
@@ -64,7 +82,9 @@ export class BgAgentsRepository {
   insert(row: NewRow, epoch: number): void {
     const keys = Object.keys(row) as (keyof NewRow)[];
     this.db
-      .prepare(`INSERT INTO bg_agents (${keys.map((key) => COLUMNS[key]).join(', ')}, owner_epoch) VALUES (${keys.map(() => '?').join(', ')}, ?)`)
+      .prepare(
+        `INSERT INTO bg_agents (${keys.map((key) => COLUMNS[key]).join(', ')}, owner_epoch) VALUES (${keys.map(() => '?').join(', ')}, ?)`,
+      )
       .run(...keys.map((key) => row[key] ?? null), epoch);
   }
 
@@ -74,12 +94,21 @@ export class BgAgentsRepository {
   }
 
   byThread(threadId: string): BgAgentRow[] {
-    return (this.db.prepare('SELECT * FROM bg_agents WHERE thread_id = ? ORDER BY created_at, rowid').all(threadId) as Record<string, unknown>[]).map(toRow);
+    return (
+      this.db.prepare('SELECT * FROM bg_agents WHERE thread_id = ? ORDER BY created_at, rowid').all(threadId) as Record<
+        string,
+        unknown
+      >[]
+    ).map(toRow);
   }
 
   /** The agents a start has to resume or hold: everything that is not finished. */
   unfinished(): BgAgentRow[] {
-    return (this.db.prepare("SELECT * FROM bg_agents WHERE status IN ('active', 'blocked') ORDER BY created_at, rowid").all() as Record<string, unknown>[]).map(toRow);
+    return (
+      this.db
+        .prepare("SELECT * FROM bg_agents WHERE status IN ('active', 'blocked') ORDER BY created_at, rowid")
+        .all() as Record<string, unknown>[]
+    ).map(toRow);
   }
 
   /** Writes the patch with this owner's epoch; false when a newer owner wrote the row already (the write is dropped). */
@@ -87,7 +116,11 @@ export class BgAgentsRepository {
     const keys = Object.keys(patch) as (keyof BgAgentPatch)[];
     const values = keys.map((key) => (JSON_COLUMNS.has(key) ? JSON.stringify(patch[key]) : (patch[key] ?? null)));
     const sets = keys.map((key) => `${COLUMNS[key]} = ?`);
-    return this.db.prepare(`UPDATE bg_agents SET ${[...sets, 'owner_epoch = ?'].join(', ')} WHERE id = ? AND owner_epoch <= ?`).run(...values, epoch, id, epoch).changes > 0;
+    return (
+      this.db
+        .prepare(`UPDATE bg_agents SET ${[...sets, 'owner_epoch = ?'].join(', ')} WHERE id = ? AND owner_epoch <= ?`)
+        .run(...values, epoch, id, epoch).changes > 0
+    );
   }
 
   remove(id: string): void {

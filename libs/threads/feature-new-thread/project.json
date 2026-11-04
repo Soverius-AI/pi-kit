@@ -4,10 +4,7 @@
   "sourceRoot": "libs/threads/feature-new-thread/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:threads",
-    "type:feature"
-  ],
+  "tags": ["scope:threads", "type:feature"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"
@@ -19,12 +16,8 @@
         "tsConfig": "libs/threads/feature-new-thread/tsconfig.spec.json",
         "buildTarget": "renderer:build:development",
         "runner": "vitest",
-        "include": [
-          "libs/threads/feature-new-thread/src/**/*.spec.ts"
-        ],
-        "setupFiles": [
-          "libs/threads/feature-new-thread/src/test-setup.ts"
-        ]
+        "include": ["libs/threads/feature-new-thread/src/**/*.spec.ts"],
+        "setupFiles": ["libs/threads/feature-new-thread/src/test-setup.ts"]
       }
     }
   }

@@ -58,13 +58,22 @@ export class AttendantModel extends AttendantModelPort {
     const available = await runtime.getAvailable();
     const choices: ModelChoice[] = available
       .filter((m) => m.api !== 'pi-virtual')
-      .map((m) => ({ provider: m.provider, id: m.id, price: (m.cost?.input ?? 0) + (m.cost?.output ?? 0), reasoning: m.reasoning }));
+      .map((m) => ({
+        provider: m.provider,
+        id: m.id,
+        price: (m.cost?.input ?? 0) + (m.cost?.output ?? 0),
+        reasoning: m.reasoning,
+      }));
     if (settings.model) {
       const wanted = choices.find((c) => c.provider === settings.model?.provider && c.id === settings.model?.modelId);
       if (wanted) return wanted;
-      this.logger.warn(`The attendant's model ${settings.model.provider}/${settings.model.modelId} is not available; using the cheapest one.`);
+      this.logger.warn(
+        `The attendant's model ${settings.model.provider}/${settings.model.modelId} is not available; using the cheapest one.`,
+      );
     }
-    return choices.sort((a, b) => a.price - b.price || Number(a.reasoning) - Number(b.reasoning) || a.id.localeCompare(b.id))[0];
+    return choices.sort(
+      (a, b) => a.price - b.price || Number(a.reasoning) - Number(b.reasoning) || a.id.localeCompare(b.id),
+    )[0];
   }
 
   async ask(prompt: Prompt, choice: ModelChoice, signal?: AbortSignal): Promise<ModelReply> {
@@ -110,7 +119,13 @@ export class AttendantModel extends AttendantModelPort {
       const text = session.getLastAssistantText();
       if (!text?.trim()) throw new Error('The model sent no answer.');
       const stats = session.getSessionStats();
-      return { text, model: `${choice.provider}/${choice.id}`, inputTokens: stats.tokens.input + stats.tokens.cacheRead, outputTokens: stats.tokens.output, cost: stats.cost };
+      return {
+        text,
+        model: `${choice.provider}/${choice.id}`,
+        inputTokens: stats.tokens.input + stats.tokens.cacheRead,
+        outputTokens: stats.tokens.output,
+        cost: stats.cost,
+      };
     } finally {
       signal?.removeEventListener('abort', stop);
       session.dispose();

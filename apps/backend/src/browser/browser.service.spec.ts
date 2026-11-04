@@ -17,7 +17,11 @@ describe('browser screenshot preferences', () => {
   it('applies saved encoding preferences to agent screenshots without changing the requested area', async () => {
     const { service, browser } = setup({ screenshotFormat: 'png', screenshotQuality: 45 });
     await service.run('thread', { action: 'screenshot', scope: 'fullpage' });
-    expect(browser).toHaveBeenCalledWith('thread', { action: 'screenshot', scope: 'fullpage', format: 'png', quality: 45 }, undefined);
+    expect(browser).toHaveBeenCalledWith(
+      'thread',
+      { action: 'screenshot', scope: 'fullpage', format: 'png', quality: 45 },
+      undefined,
+    );
   });
 
   it('honors per-capture overrides including zero JPEG quality', async () => {
@@ -28,11 +32,14 @@ describe('browser screenshot preferences', () => {
     expect(browser).toHaveBeenCalledWith('thread', action, signal);
   });
 
-  it.each([{}, { screenshotFormat: 'gif', screenshotQuality: 101 }])('uses JPEG quality 80 when saved settings are missing or invalid: %j', async (saved) => {
-    const { service, browser } = setup(saved);
-    await service.run('thread', { action: 'screenshot' });
-    expect(browser).toHaveBeenCalledWith('thread', { action: 'screenshot', format: 'jpeg', quality: 80 }, undefined);
-  });
+  it.each([{}, { screenshotFormat: 'gif', screenshotQuality: 101 }])(
+    'uses JPEG quality 80 when saved settings are missing or invalid: %j',
+    async (saved) => {
+      const { service, browser } = setup(saved);
+      await service.run('thread', { action: 'screenshot' });
+      expect(browser).toHaveBeenCalledWith('thread', { action: 'screenshot', format: 'jpeg', quality: 80 }, undefined);
+    },
+  );
 
   it('leaves other browser actions alone', async () => {
     const { service, browser } = setup({ screenshotFormat: 'png' });

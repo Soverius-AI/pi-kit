@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
 /** The two macOS permissions computer use needs (`@pi-kit/computer-use`). */
-export const ComputerUsePermissionSchema = z.enum(['accessibility', 'screenRecording']).meta({ id: 'ComputerUsePermission' });
+export const ComputerUsePermissionSchema = z
+  .enum(['accessibility', 'screenRecording'])
+  .meta({ id: 'ComputerUsePermission' });
 export type ComputerUsePermission = z.infer<typeof ComputerUsePermissionSchema>;
 
 /** Settings › Computer use: whether it is on, which app macOS asks, (macOS, while it is on) what macOS has granted, and (Linux) whether this is Hyprland. */

@@ -26,15 +26,28 @@ let registry: Server;
 let registryUrl: string;
 let searches: string[];
 const saved: Record<string, string | undefined> = {};
-const KEYS = ['PI_CODING_AGENT_DIR', 'PI_KIT_NPM_REGISTRY', 'PI_KIT_PACKAGE_LATEST', 'PI_OFFLINE', 'PI_KIT_LEARN_PACKAGE_DIR', 'PI_KIT_MEAT_PROXY_PACKAGE_DIR'];
+const KEYS = [
+  'PI_CODING_AGENT_DIR',
+  'PI_KIT_NPM_REGISTRY',
+  'PI_KIT_PACKAGE_LATEST',
+  'PI_OFFLINE',
+  'PI_KIT_LEARN_PACKAGE_DIR',
+  'PI_KIT_MEAT_PROXY_PACKAGE_DIR',
+];
 
 function writePackage(dir: string, version: string): void {
   mkdirSync(join(dir, 'extensions'), { recursive: true });
   mkdirSync(join(dir, 'skills', 'split-task'), { recursive: true });
   mkdirSync(join(dir, 'prompts'), { recursive: true });
-  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'demo-pkg', version, description: 'A demo package', keywords: ['pi-package'] }, null, 2));
+  writeFileSync(
+    join(dir, 'package.json'),
+    JSON.stringify({ name: 'demo-pkg', version, description: 'A demo package', keywords: ['pi-package'] }, null, 2),
+  );
   writeFileSync(join(dir, 'extensions', 'hello.ts'), 'export default function () {}\n');
-  writeFileSync(join(dir, 'skills', 'split-task', 'SKILL.md'), '---\nname: split-task\ndescription: Split a task\n---\n\nDo it.\n');
+  writeFileSync(
+    join(dir, 'skills', 'split-task', 'SKILL.md'),
+    '---\nname: split-task\ndescription: Split a task\n---\n\nDo it.\n',
+  );
   writeFileSync(join(dir, 'prompts', 'review.md'), '---\ndescription: Review\n---\n\nReview $@\n');
   writeFileSync(join(dir, 'README.md'), '# Demo package\n\nIt says hello.\n');
 }
@@ -44,7 +57,23 @@ beforeAll(async () => {
     searches.push(req.url ?? '');
     res.setHeader('content-type', 'application/json');
     if ((req.url ?? '').startsWith('/-/v1/search')) res.end(FIXTURE);
-    else if (req.url === '/pi-subagents') res.end(JSON.stringify({ name: 'pi-subagents', 'dist-tags': { latest: '0.5.0' }, readme: 'The sub-agents README.', versions: { '0.5.0': { name: 'pi-subagents', version: '0.5.0', description: 'Sub-threads', license: 'MIT', pi: { extensions: ['./a.ts'], skills: ['./skills'] } } } }));
+    else if (req.url === '/pi-subagents')
+      res.end(
+        JSON.stringify({
+          name: 'pi-subagents',
+          'dist-tags': { latest: '0.5.0' },
+          readme: 'The sub-agents README.',
+          versions: {
+            '0.5.0': {
+              name: 'pi-subagents',
+              version: '0.5.0',
+              description: 'Sub-threads',
+              license: 'MIT',
+              pi: { extensions: ['./a.ts'], skills: ['./skills'] },
+            },
+          },
+        }),
+      );
     else {
       res.statusCode = 404;
       res.end('{}');
@@ -70,12 +99,23 @@ beforeEach(() => {
   delete process.env['PI_OFFLINE'];
   // The packages that ship with the app, found where this checkout keeps them.
   process.env['PI_KIT_LEARN_PACKAGE_DIR'] = resolve(__dirname, '..', '..', '..', '..', 'packages', 'pi-kit-learn');
-  process.env['PI_KIT_MEAT_PROXY_PACKAGE_DIR'] = resolve(__dirname, '..', '..', '..', '..', 'packages', 'pi-kit-meat-proxy');
+  process.env['PI_KIT_MEAT_PROXY_PACKAGE_DIR'] = resolve(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    '..',
+    'packages',
+    'pi-kit-meat-proxy',
+  );
   reloads = 0;
   trusted = true;
   searches = [];
   const sessions = { reloadIdleSessions: async () => ++reloads && 1 };
-  const trust = { state: async () => ({ status: trusted ? 'trusted' : 'untrusted' }), folderTrusted: async () => trusted };
+  const trust = {
+    state: async () => ({ status: trusted ? 'trusted' : 'untrusted' }),
+    folderTrusted: async () => trusted,
+  };
   const updates = { packageUpdates: async () => [] };
   service = new PackagesService(sessions as never, trust as never, updates as never, { defaultCwd: project } as never);
 });
@@ -97,8 +137,23 @@ describe('install and list', () => {
     expect(reloads).toBe(1);
     const [item] = result.overview.packages;
     expect(item.id).toBe(`user:${item.source}`);
-    expect(item).toMatchObject({ name: 'demo-pkg', version: '0.1.0', description: 'A demo package', scope: 'user', origin: 'folder', enabled: true, installed: true, path: pkg });
-    expect(item.brings).toMatchObject({ extensions: 1, skills: 1, prompts: 1, themes: 0, names: { extensions: ['hello'], skills: ['split-task'], prompts: ['review'] } });
+    expect(item).toMatchObject({
+      name: 'demo-pkg',
+      version: '0.1.0',
+      description: 'A demo package',
+      scope: 'user',
+      origin: 'folder',
+      enabled: true,
+      installed: true,
+      path: pkg,
+    });
+    expect(item.brings).toMatchObject({
+      extensions: 1,
+      skills: 1,
+      prompts: 1,
+      themes: 0,
+      names: { extensions: ['hello'], skills: ['split-task'], prompts: ['review'] },
+    });
     expect(item.installedAt).toBeUndefined();
   });
 
@@ -185,7 +240,15 @@ describe('search', () => {
   it('lists the registry’s packages and pi-kit’s own, marks what is installed, and caches', async () => {
     const first = await service.search('', undefined, project);
     expect(first.error).toBeUndefined();
-    expect(first.results.map((r) => r.name)).toEqual(['@pi-kit/learn', '@pi-kit/meat-proxy', '@pi-kit/computer-use', 'pi-subagents', 'pi-swarm', '@devops/skills-devops', 'pi-review-bot']);
+    expect(first.results.map((r) => r.name)).toEqual([
+      '@pi-kit/learn',
+      '@pi-kit/meat-proxy',
+      '@pi-kit/computer-use',
+      'pi-subagents',
+      'pi-swarm',
+      '@devops/skills-devops',
+      'pi-review-bot',
+    ]);
     expect(first.results[0]).toMatchObject({ bundled: true, version: '0.1.0', exact: true, contains: ['extensions'] });
     expect(first.total).toBe(9);
     await service.search('', undefined, project);
@@ -204,7 +267,10 @@ describe('search', () => {
   });
 
   it('filters by what a package contains', async () => {
-    expect((await service.search('', 'skills', project)).results.map((r) => r.name)).toEqual(['pi-subagents', '@devops/skills-devops']);
+    expect((await service.search('', 'skills', project)).results.map((r) => r.name)).toEqual([
+      'pi-subagents',
+      '@devops/skills-devops',
+    ]);
     expect((await service.search('', 'themes', project)).results).toEqual([]);
   });
 
@@ -221,14 +287,28 @@ describe('search', () => {
 describe('detail', () => {
   it('a folder: name, version, what it adds, the README and the command', async () => {
     const detail = await service.detail(pkg, project);
-    expect(detail).toMatchObject({ origin: 'folder', name: 'demo-pkg', version: '0.1.0', description: 'A demo package', installed: false, command: `pi install ${pkg}` });
+    expect(detail).toMatchObject({
+      origin: 'folder',
+      name: 'demo-pkg',
+      version: '0.1.0',
+      description: 'A demo package',
+      installed: false,
+      command: `pi install ${pkg}`,
+    });
     expect(detail.brings).toMatchObject({ extensions: 1, skills: 1, prompts: 1 });
     expect(detail.readme).toContain('It says hello.');
   });
 
   it('an npm package: the document of the registry with its README and its pi key', async () => {
     const detail = await service.detail('npm:pi-subagents', project);
-    expect(detail).toMatchObject({ origin: 'npm', name: 'pi-subagents', version: '0.5.0', license: 'MIT', readme: 'The sub-agents README.', command: 'pi install npm:pi-subagents' });
+    expect(detail).toMatchObject({
+      origin: 'npm',
+      name: 'pi-subagents',
+      version: '0.5.0',
+      license: 'MIT',
+      readme: 'The sub-agents README.',
+      command: 'pi install npm:pi-subagents',
+    });
     expect(detail.brings).toMatchObject({ extensions: 1, skills: 1 });
     expect(detail.notes).toEqual([]);
   });

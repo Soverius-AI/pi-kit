@@ -17,15 +17,24 @@ function world() {
   mkdirSync(join(agent, 'extensions'), { recursive: true });
   writeFileSync(join(agent, 'extensions', 'user-ext.ts'), 'export default function () {}\n');
   mkdirSync(join(agent, 'skills', 'user-skill'), { recursive: true });
-  writeFileSync(join(agent, 'skills', 'user-skill', 'SKILL.md'), '---\nname: user-skill\ndescription: A skill from the agent folder\n---\n\nDo it.\n');
+  writeFileSync(
+    join(agent, 'skills', 'user-skill', 'SKILL.md'),
+    '---\nname: user-skill\ndescription: A skill from the agent folder\n---\n\nDo it.\n',
+  );
   mkdirSync(join(project, '.pi', 'extensions'), { recursive: true });
   writeFileSync(join(project, '.pi', 'extensions', 'project-ext.ts'), 'export default function () {}\n');
   mkdirSync(join(project, '.pi', 'prompts'), { recursive: true });
-  writeFileSync(join(project, '.pi', 'prompts', 'review.md'), '---\ndescription: Review the change\n---\n\nReview $@\n');
+  writeFileSync(
+    join(project, '.pi', 'prompts', 'review.md'),
+    '---\ndescription: Review the change\n---\n\nReview $@\n',
+  );
   return { base, agent, project };
 }
 
-const trusting = (status: 'trusted' | 'untrusted'): TrustService => ({ state: async () => ({ cwd: '', hasResources: true, status, source: 'saved', resources: [] }) }) as unknown as TrustService;
+const trusting = (status: 'trusted' | 'untrusted'): TrustService =>
+  ({
+    state: async () => ({ cwd: '', hasResources: true, status, source: 'saved', resources: [] }),
+  }) as unknown as TrustService;
 
 describe('the extension, skill and prompt inventory', () => {
   const w = world();
@@ -43,7 +52,10 @@ describe('the extension, skill and prompt inventory', () => {
     const byName = (type: string, name: string) => overview.items.find((i) => i.type === type && i.name === name);
     expect(byName('extensions', 'user-ext')).toMatchObject({ scope: 'user', enabled: true, origin: 'top-level' });
     expect(byName('extensions', 'project-ext')).toMatchObject({ scope: 'project', enabled: true });
-    expect(byName('skills', 'user-skill')).toMatchObject({ scope: 'user', description: 'A skill from the agent folder' });
+    expect(byName('skills', 'user-skill')).toMatchObject({
+      scope: 'user',
+      description: 'A skill from the agent folder',
+    });
     expect(byName('prompts', 'review')).toMatchObject({ scope: 'project', description: 'Review the change' });
     expect(byName('extensions', 'project-ext')?.label).toMatch(/^Project/);
     expect(overview.projectCwd).toBe(w.project);
@@ -55,17 +67,23 @@ describe('the extension, skill and prompt inventory', () => {
     const key = (await service.overview(w.project)).items.find((i) => i.name === 'user-ext')!.key;
     const off = await service.toggle(w.project, key, false);
     expect(off.items.find((i) => i.name === 'user-ext')?.enabled).toBe(false);
-    expect(JSON.parse(readFileSync(join(w.agent, 'settings.json'), 'utf8')).extensions).toEqual(['-extensions/user-ext.ts']);
+    expect(JSON.parse(readFileSync(join(w.agent, 'settings.json'), 'utf8')).extensions).toEqual([
+      '-extensions/user-ext.ts',
+    ]);
     const on = await service.toggle(w.project, key, true);
     expect(on.items.find((i) => i.name === 'user-ext')?.enabled).toBe(true);
-    expect(JSON.parse(readFileSync(join(w.agent, 'settings.json'), 'utf8')).extensions).toEqual(['+extensions/user-ext.ts']);
+    expect(JSON.parse(readFileSync(join(w.agent, 'settings.json'), 'utf8')).extensions).toEqual([
+      '+extensions/user-ext.ts',
+    ]);
   });
 
   it('writes a project item into the folder’s own settings', async () => {
     const service = new ResourcesService(trusting('trusted'));
     const key = (await service.overview(w.project)).items.find((i) => i.name === 'project-ext')!.key;
     await service.toggle(w.project, key, false);
-    expect(JSON.parse(readFileSync(join(w.project, '.pi', 'settings.json'), 'utf8')).extensions).toEqual(['-extensions/project-ext.ts']);
+    expect(JSON.parse(readFileSync(join(w.project, '.pi', 'settings.json'), 'utf8')).extensions).toEqual([
+      '-extensions/project-ext.ts',
+    ]);
   });
 
   it('does not list project resources of a folder that is not trusted', async () => {
@@ -76,7 +94,9 @@ describe('the extension, skill and prompt inventory', () => {
   });
 
   it('refuses a resource pi no longer lists', async () => {
-    await expect(new ResourcesService(trusting('trusted')).toggle(w.project, 'extensions:user:top-level:local:/gone.ts', true)).rejects.toThrow(/no longer lists/);
+    await expect(
+      new ResourcesService(trusting('trusted')).toggle(w.project, 'extensions:user:top-level:local:/gone.ts', true),
+    ).rejects.toThrow(/no longer lists/);
   });
 
   it('lists the shipped browser skill only with desktop capability', async () => {
@@ -85,7 +105,11 @@ describe('the extension, skill and prompt inventory', () => {
     expect(skill).toMatchObject({ type: 'skills', enabled: true, origin: 'builtin', label: 'Bundled with pi-kit' });
     expect(readFileSync(skill!.path, 'utf8')).toContain('pi_browser');
     await expect(service.toggle(w.project, skill!.key, false)).rejects.toThrow(/desktop browser availability/);
-    expect((await new ResourcesService(trusting('trusted')).overview(w.project)).items.some((item) => item.name === 'pi-browser')).toBe(false);
+    expect(
+      (await new ResourcesService(trusting('trusted')).overview(w.project)).items.some(
+        (item) => item.name === 'pi-browser',
+      ),
+    ).toBe(false);
   });
 
   it('lists the built-in UI skill for web and desktop sessions', async () => {

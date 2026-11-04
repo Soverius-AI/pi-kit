@@ -44,11 +44,18 @@ const specShape = {
   enabled: z.boolean(),
 };
 
-const needsTarget = (value: { kind: 'url' | 'command'; url?: string | undefined; command?: string | undefined }): boolean =>
-  value.kind === 'url' ? !!value.url?.trim() : !!value.command?.trim();
+const needsTarget = (value: {
+  kind: 'url' | 'command';
+  url?: string | undefined;
+  command?: string | undefined;
+}): boolean => (value.kind === 'url' ? !!value.url?.trim() : !!value.command?.trim());
 
 /** What the form sends to change a server (`PATCH /api/mcp/servers/:name?scope=`); a different `name` renames it. */
-export const McpServerBodySchema = z.object(specShape).strict().refine(needsTarget, 'a server needs a URL or a command').meta({ id: 'McpServerBody' });
+export const McpServerBodySchema = z
+  .object(specShape)
+  .strict()
+  .refine(needsTarget, 'a server needs a URL or a command')
+  .meta({ id: 'McpServerBody' });
 export type McpServerBody = z.infer<typeof McpServerBodySchema>;
 
 /** `POST /api/mcp/servers`: the same, and the file it goes to. A `project` entry needs a thread in a trusted folder (`?thread=`). */
@@ -60,7 +67,9 @@ export const McpServerCreateSchema = z
 export type McpServerCreate = z.infer<typeof McpServerCreateSchema>;
 
 /** One row of the answer for the form: a stored secret has no `value`, only `stored`. */
-export const McpKvDetailSchema = z.object({ key: z.string(), value: z.string().optional(), stored: z.boolean().optional() }).meta({ id: 'McpKvDetail' });
+export const McpKvDetailSchema = z
+  .object({ key: z.string(), value: z.string().optional(), stored: z.boolean().optional() })
+  .meta({ id: 'McpKvDetail' });
 export type McpKvDetail = z.infer<typeof McpKvDetailSchema>;
 
 /** The form of a server that is in a file, prefilled (`GET /api/mcp/servers/:name`). Keys the form does not know (`oauth`, `timeout`, `cwd`, `toolExposure`) stay in the file and are listed in `kept`. */
@@ -89,7 +98,20 @@ export type McpServerDetail = z.infer<typeof McpServerDetailSchema>;
 
 // ---- what looks like a secret
 
-const SECRET_WORDS = new Set(['token', 'secret', 'password', 'passwd', 'pwd', 'credential', 'credentials', 'authorization', 'bearer', 'apikey', 'cookie', 'passphrase']);
+const SECRET_WORDS = new Set([
+  'token',
+  'secret',
+  'password',
+  'passwd',
+  'pwd',
+  'credential',
+  'credentials',
+  'authorization',
+  'bearer',
+  'apikey',
+  'cookie',
+  'passphrase',
+]);
 const SECRET_PAIRS: readonly (readonly [string, string])[] = [
   ['api', 'key'],
   ['access', 'key'],
@@ -115,7 +137,10 @@ export function isReference(value: string): boolean {
 }
 
 /** A value already stored by pi-kit: the command that prints it from the credential store. */
-export const isStoredSecret = (value: string): boolean => parseResolver(value) !== undefined || /^!echo Bearer \$\((?:security|secret-tool) /.test(value) || /^!pi-kit-secret get \S+ --bearer$/.test(value);
+export const isStoredSecret = (value: string): boolean =>
+  parseResolver(value) !== undefined ||
+  /^!echo Bearer \$\((?:security|secret-tool) /.test(value) ||
+  /^!pi-kit-secret get \S+ --bearer$/.test(value);
 
 /**
  * Whether a header or environment value should go to the credential store: the name says it carries a credential (`Authorization`, `X-Api-Key`, `GITHUB_TOKEN`, `DB_PASSWORD`) or the value
@@ -163,7 +188,13 @@ export interface BuiltEntry {
   plain: string[];
 }
 
-function rows(rowsIn: readonly McpKv[] | undefined, existing: unknown, kind: 'header' | 'env', server: string, keep: KeepSecret): { out: Record<string, string>; stored: string[]; plain: string[] } {
+function rows(
+  rowsIn: readonly McpKv[] | undefined,
+  existing: unknown,
+  kind: 'header' | 'env',
+  server: string,
+  keep: KeepSecret,
+): { out: Record<string, string>; stored: string[]; plain: string[] } {
   const kept = isRecord(existing) ? existing : {};
   const out: Record<string, string> = {};
   const stored: string[] = [];
@@ -248,7 +279,9 @@ export function splitArgs(text: string): string[] {
 
 /** Arguments back to one line: an argument with a space or a quote is quoted, so `splitArgs(joinArgs(a))` is `a`. */
 export function joinArgs(args: readonly string[]): string {
-  return args.map((a) => (a === '' || /[\s"']/.test(a) ? (a.includes('"') && !a.includes("'") ? `'${a}'` : `"${a}"`) : a)).join(' ');
+  return args
+    .map((a) => (a === '' || /[\s"']/.test(a) ? (a.includes('"') && !a.includes("'") ? `'${a}'` : `"${a}"`) : a))
+    .join(' ');
 }
 
 /** An entry of a file as the form shows it. Stored secrets (our own resolver commands) carry no value; `stored: true` says one is there. */
@@ -297,11 +330,14 @@ export function storedAccountsOf(entry: Raw): string[] {
 
 /** The form a detail fills: rows that hold a stored secret send no value (the file keeps it). */
 export function bodyOfDetail(detail: McpServerDetail): McpServerBody {
-  const kv = (rows: readonly McpKvDetail[]): McpKv[] => rows.map((r) => (r.stored ? { key: r.key } : { key: r.key, value: r.value ?? '' }));
+  const kv = (rows: readonly McpKvDetail[]): McpKv[] =>
+    rows.map((r) => (r.stored ? { key: r.key } : { key: r.key, value: r.value ?? '' }));
   return {
     name: detail.name,
     kind: detail.kind,
-    ...(detail.kind === 'url' ? { url: detail.url, headers: kv(detail.headers) } : { command: detail.command, args: detail.args, env: kv(detail.env) }),
+    ...(detail.kind === 'url'
+      ? { url: detail.url, headers: kv(detail.headers) }
+      : { command: detail.command, args: detail.args, env: kv(detail.env) }),
     exposure: detail.exposure,
     description: detail.description,
     enabled: detail.enabled,

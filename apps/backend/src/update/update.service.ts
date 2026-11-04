@@ -34,7 +34,9 @@ export interface PackageUpdateInfo {
   scope: 'user' | 'project' | 'temporary';
 }
 
-export type UpdateListener = (event: { type: 'status'; status: UpdateStatus } | { type: 'line'; target?: UpdateTarget; text: string; at: number }) => void;
+export type UpdateListener = (
+  event: { type: 'status'; status: UpdateStatus } | { type: 'line'; target?: UpdateTarget; text: string; at: number },
+) => void;
 
 /**
  * Updates from inside the app: what is outdated (pi, the installed packages, the model catalogs, pi-kit) and one
@@ -116,7 +118,8 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
     const resolution = piResolution();
     const fresh = this.freshResolution();
     const restart: UpdateStatus['restart'] = [];
-    if (fresh.version !== resolution.version || fresh.packageDir !== resolution.packageDir) restart.push({ kind: 'pi', version: fresh.version });
+    if (fresh.version !== resolution.version || fresh.packageDir !== resolution.packageDir)
+      restart.push({ kind: 'pi', version: fresh.version });
     const appRestart = this.restarts.get('app');
     if (appRestart) restart.push({ kind: 'app', version: appRestart });
 
@@ -141,7 +144,11 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
       return row;
     });
     const outdated = rows.some((row) => row.state === 'outdated');
-    const skipped = process.env['PI_OFFLINE'] ? 'offline' : process.env['PI_SKIP_VERSION_CHECK'] ? 'disabled' : undefined;
+    const skipped = process.env['PI_OFFLINE']
+      ? 'offline'
+      : process.env['PI_SKIP_VERSION_CHECK']
+        ? 'disabled'
+        : undefined;
     const command = piCommandState(agentDirOf(process.env));
     return {
       rows,
@@ -163,7 +170,13 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
   private freshResolution(): PiResolution {
     const loaded = piResolution();
     const pinned = readPin();
-    return resolvePi({ env: process.env, agentDir: agentDirOf(process.env), bundledDir: loaded.bundled.packageDir, range: PI_SDK_RANGE, ...(pinned ? { pinned } : {}) });
+    return resolvePi({
+      env: process.env,
+      agentDir: agentDirOf(process.env),
+      bundledDir: loaded.bundled.packageDir,
+      range: PI_SDK_RANGE,
+      ...(pinned ? { pinned } : {}),
+    });
   }
 
   /** The choices for "Use previous release" and whether the next start would use a pin. */
@@ -198,14 +211,25 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
     const fresh = this.freshResolution();
     // What counts as installed is what the `pi` command runs (the managed install's current release); with no managed install, the copy pi-kit runs.
     const command = fresh.managed?.current;
-    const installed = command ?? (compareVersions(fresh.version, loaded.version) === 1 ? fresh.version : loaded.version);
-    const base: UpdateRow = { target: 'pi', state: 'unknown', current: loaded.version, updatedAt: this.readState().piUpdatedAt };
+    const installed =
+      command ?? (compareVersions(fresh.version, loaded.version) === 1 ? fresh.version : loaded.version);
+    const base: UpdateRow = {
+      target: 'pi',
+      state: 'unknown',
+      current: loaded.version,
+      updatedAt: this.readState().piUpdatedAt,
+    };
     if (skipped) return void this.checked.set('pi', base);
     const check = await this.piUpdate.check(force);
-    if (check.error || !check.latest) return void this.checked.set('pi', { ...base, ...(check.error ? { error: check.error } : {}) });
+    if (check.error || !check.latest)
+      return void this.checked.set('pi', { ...base, ...(check.error ? { error: check.error } : {}) });
     const outdated = isNewerVersion(check.latest, installed);
-    const gate = outdated && !inRange(check.latest, PI_SDK_RANGE) ? ` This pi-kit supports pi up to ${PI_SDK_RANGE.max}; it keeps using ${loaded.version} until pi-kit is updated.` : '';
-    const apart = command && command !== loaded.version ? ` The pi command runs ${command}; pi-kit runs ${loaded.version}.` : '';
+    const gate =
+      outdated && !inRange(check.latest, PI_SDK_RANGE)
+        ? ` This pi-kit supports pi up to ${PI_SDK_RANGE.max}; it keeps using ${loaded.version} until pi-kit is updated.`
+        : '';
+    const apart =
+      command && command !== loaded.version ? ` The pi command runs ${command}; pi-kit runs ${loaded.version}.` : '';
     this.checked.set('pi', {
       ...base,
       state: outdated ? 'outdated' : 'current',
@@ -215,7 +239,11 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   private async checkPackages(skipped: boolean, state: StateFile): Promise<void> {
-    const base: UpdateRow = { target: 'packages', state: 'unknown', ...(state.packagesUpdatedAt ? { updatedAt: state.packagesUpdatedAt } : {}) };
+    const base: UpdateRow = {
+      target: 'packages',
+      state: 'unknown',
+      ...(state.packagesUpdatedAt ? { updatedAt: state.packagesUpdatedAt } : {}),
+    };
     if (skipped) return void this.checked.set('packages', base);
     try {
       const names = await withTimeout(this.outdatedPackages(), PACKAGES_TIMEOUT_MS);
@@ -243,7 +271,9 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
     const pi = await loadPi();
     const agentDir = pi.getAgentDir();
     const cwd = options.cwd ?? this.config.defaultCwd;
-    const settingsManager = pi.SettingsManager.create(cwd, agentDir, { projectTrusted: options.projectTrusted ?? false });
+    const settingsManager = pi.SettingsManager.create(cwd, agentDir, {
+      projectTrusted: options.projectTrusted ?? false,
+    });
     const manager = new pi.DefaultPackageManager({ cwd, agentDir, settingsManager });
     return manager.checkForAvailableUpdates();
   }
@@ -251,14 +281,29 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
   private async checkApp(skipped: boolean): Promise<void> {
     const current = appVersion();
     const base: UpdateRow = { target: 'app', state: 'unknown', current };
-    if (!this.desktop.available) return void this.checked.set('app', { ...base, state: 'unavailable', detail: 'pi-kit updates itself in the desktop app.' });
+    if (!this.desktop.available)
+      return void this.checked.set('app', {
+        ...base,
+        state: 'unavailable',
+        detail: 'pi-kit updates itself in the desktop app.',
+      });
     if (skipped) return void this.checked.set('app', this.checked.get('app') ?? base);
     try {
       const result = await this.desktop.appUpdate('check');
-      if (result.unavailable) return void this.checked.set('app', { ...base, state: 'unavailable', detail: result.unavailable });
-      this.checked.set('app', result.available
-        ? { ...base, state: 'outdated', latest: result.version, detail: `pi-kit ${result.version} is out.`, ...(result.notes?.length ? { notes: result.notes } : {}) }
-        : { ...base, state: 'current' });
+      if (result.unavailable)
+        return void this.checked.set('app', { ...base, state: 'unavailable', detail: result.unavailable });
+      this.checked.set(
+        'app',
+        result.available
+          ? {
+              ...base,
+              state: 'outdated',
+              latest: result.version,
+              detail: `pi-kit ${result.version} is out.`,
+              ...(result.notes?.length ? { notes: result.notes } : {}),
+            }
+          : { ...base, state: 'current' },
+      );
     } catch (error) {
       this.checked.set('app', { ...base, error: messageOf(error) });
     }
@@ -268,13 +313,24 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
   private autoDownloadApp(): void {
     const app = this.checked.get('app');
     const latest = app?.state === 'outdated' ? app.latest : undefined;
-    if (!this.autoDownload || !latest || latest === this.autoTried || this.restarts.has('app') || this.job?.state === 'running') return;
+    if (
+      !this.autoDownload ||
+      !latest ||
+      latest === this.autoTried ||
+      this.restarts.has('app') ||
+      this.job?.state === 'running'
+    )
+      return;
     this.autoTried = latest;
     this.start(['app']);
   }
 
   private checkModels(state: StateFile): void {
-    this.checked.set('models', { target: 'models', state: 'current', ...(state.modelsRefreshedAt ? { updatedAt: state.modelsRefreshedAt } : {}) });
+    this.checked.set('models', {
+      target: 'models',
+      state: 'current',
+      ...(state.modelsRefreshedAt ? { updatedAt: state.modelsRefreshedAt } : {}),
+    });
   }
 
   // ---- the job
@@ -322,7 +378,9 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
         const detail = await this.runStep(step.kind, signal);
         result = { ok: true, ...(detail ? { detail } : {}) };
       } catch (error) {
-        result = signal.aborted ? { ok: false, error: 'Cancelled.', cancelled: true } : { ok: false, error: messageOf(error) };
+        result = signal.aborted
+          ? { ok: false, error: 'Cancelled.', cancelled: true }
+          : { ok: false, error: messageOf(error) };
         if (!signal.aborted) this.log(`${step.kind} failed: ${messageOf(error)}`, targets[0]);
       }
       if (this.job?.id !== id || this.job.state !== 'running') break;
@@ -339,7 +397,12 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
       case 'bootstrap-pi': {
         const version = await this.bootstrapVersion();
         this.log(`Installing pi ${version} as pi's managed install…`, 'pi');
-        await installManagedRelease({ root: join(agentDirOf(process.env), 'install'), version, signal, log: (line) => this.log(line, 'pi') });
+        await installManagedRelease({
+          root: join(agentDirOf(process.env), 'install'),
+          version,
+          signal,
+          log: (line) => this.log(line, 'pi'),
+        });
         return `pi ${version} installed`;
       }
       case 'pi-all':
@@ -357,7 +420,12 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
       case 'app': {
         const result = await this.desktop.appUpdate('check');
         if (result.unavailable) {
-          this.checked.set('app', { target: 'app', state: 'unavailable', current: appVersion(), detail: result.unavailable });
+          this.checked.set('app', {
+            target: 'app',
+            state: 'unavailable',
+            current: appVersion(),
+            detail: result.unavailable,
+          });
           this.log(`Skipping pi-kit: ${result.unavailable}`, 'app');
           return result.unavailable;
         }
@@ -375,21 +443,33 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
     const bundled = piResolution().bundled.version;
     if (process.env['PI_OFFLINE']) return bundled;
     const check = await this.piUpdate.check(true);
-    return check.latest && inRange(check.latest, PI_SDK_RANGE) && isNewerVersion(check.latest, bundled) ? check.latest : bundled;
+    return check.latest && inRange(check.latest, PI_SDK_RANGE) && isNewerVersion(check.latest, bundled)
+      ? check.latest
+      : bundled;
   }
 
   /** The active managed release's package folder, when there is an install whose current release is intact. */
   private managedCurrentDir(): { root: string; packageDir: string } | undefined {
     const managed = this.freshResolution().managed;
     const current = managed?.releases.find((release) => release.version === managed.current && release.intact);
-    return managed && current ? { root: managed.root, packageDir: join(current.dir, 'node_modules', '@earendil-works', 'pi-coding-agent') } : undefined;
+    return managed && current
+      ? { root: managed.root, packageDir: join(current.dir, 'node_modules', '@earendil-works', 'pi-coding-agent') }
+      : undefined;
   }
 
   private async runPi(args: string[], target: UpdateTarget, signal: AbortSignal): Promise<void> {
     const managed = this.managedCurrentDir();
     const packageDir = managed?.packageDir ?? piResolution().bundled.packageDir;
-    const bin = (JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as { bin?: Record<string, string> }).bin?.['pi'] ?? 'dist/bundle/cli.js';
-    const env: NodeJS.ProcessEnv = { ...piToolEnvironment(process.env), ELECTRON_RUN_AS_NODE: '1', FORCE_COLOR: '0', NO_COLOR: '1' };
+    const bin =
+      (JSON.parse(readFileSync(join(packageDir, 'package.json'), 'utf8')) as { bin?: Record<string, string> }).bin?.[
+        'pi'
+      ] ?? 'dist/bundle/cli.js';
+    const env: NodeJS.ProcessEnv = {
+      ...piToolEnvironment(process.env),
+      ELECTRON_RUN_AS_NODE: '1',
+      FORCE_COLOR: '0',
+      NO_COLOR: '1',
+    };
     // These switches suppress background checks. An explicit Update action must
     // still do the requested work; otherwise Pi silently skips package updates.
     delete env['PI_OFFLINE'];
@@ -397,7 +477,10 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
     // pi's updater updates itself only when it runs from inside a managed install and is told so, as the launcher does.
     if (managed) env['PI_MANAGED_INSTALL_ROOT'] = managed.root;
     else delete env['PI_MANAGED_INSTALL_ROOT'];
-    this.log(`$ pi ${args.join(' ')}${managed ? ` (managed release ${piPackageVersion(packageDir)})` : ' (bundled copy)'}`, target);
+    this.log(
+      `$ pi ${args.join(' ')}${managed ? ` (managed release ${piPackageVersion(packageDir)})` : ' (bundled copy)'}`,
+      target,
+    );
     const result = await runProcess({
       command: process.execPath,
       args: [join(packageDir, bin), ...args],
@@ -406,7 +489,8 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
       onLine: (line) => this.log(line, target),
     });
     if (result.cancelled) throw new Error('Cancelled.');
-    if (result.code !== 0) throw new Error(this.lastError(target) ?? `pi ${args.join(' ')} exited with code ${result.code ?? 'unknown'}`);
+    if (result.code !== 0)
+      throw new Error(this.lastError(target) ?? `pi ${args.join(' ')} exited with code ${result.code ?? 'unknown'}`);
   }
 
   private errors = new Map<UpdateTarget, string>();
@@ -433,7 +517,8 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
   // ---- the pi command, the pin, the restart
 
   installCommand(): UpdateStatus {
-    if (!this.managedCurrentDir()) throw new ConflictException('There is no managed pi install yet; run Update pi first.');
+    if (!this.managedCurrentDir())
+      throw new ConflictException('There is no managed pi install yet; run Update pi first.');
     const state = installPiCommand(agentDirOf(process.env));
     this.log(`The pi command is set up: ${state.entrypoint}`);
     this.publish();
@@ -442,7 +527,8 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
 
   pin(release: string | null): UpdateStatus {
     const offered = this.releases();
-    if (release !== null && release !== offered.pinned && !offered.choices.some((choice) => choice.release === release)) throw new ConflictException(`${release} is not a release this pi-kit can switch to.`);
+    if (release !== null && release !== offered.pinned && !offered.choices.some((choice) => choice.release === release))
+      throw new ConflictException(`${release} is not a release this pi-kit can switch to.`);
     writePin(release);
     this.log(release ? `Pinned to ${release}.` : 'Pin removed; following the newest compatible pi.');
     this.publish();
@@ -465,7 +551,8 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
 
   /** "Restart to use …": the process ends, the watchdog starts it again on the same port and token, and the threads replay. */
   restart(): void {
-    if (!this.canRestart) throw new ConflictException('Restart the backend yourself to use the new pi (pnpm run dev:web).');
+    if (!this.canRestart)
+      throw new ConflictException('Restart the backend yourself to use the new pi (pnpm run dev:web).');
     this.log('Restarting the backend.');
     setTimeout(() => process.exit(0), 300);
   }

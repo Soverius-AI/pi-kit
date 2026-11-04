@@ -11,15 +11,18 @@ import { _electron } from 'playwright';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-test('loopback streams cannot starve health and ordinary API requests across desktop windows', { timeout: 30_000 }, async () => {
-  const scratch = mkdtempSync(join(tmpdir(), 'pi-kit-network-'));
-  const entry = join(scratch, 'main.cjs');
-  let app;
-  try {
-    await build({
-      stdin: {
-        resolveDir: root,
-        contents: `
+test(
+  'loopback streams cannot starve health and ordinary API requests across desktop windows',
+  { timeout: 30_000 },
+  async () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'pi-kit-network-'));
+    const entry = join(scratch, 'main.cjs');
+    let app;
+    try {
+      await build({
+        stdin: {
+          resolveDir: root,
+          contents: `
           import { app, BrowserWindow } from 'electron';
           import { createServer } from 'node:http';
           import { configureLoopbackConnections } from './apps/desktop/src/loopback-network';
@@ -41,52 +44,60 @@ test('loopback streams cannot starve health and ordinary API requests across des
             });
           });
         `,
-      },
-      outfile: entry,
-      bundle: true,
-      platform: 'node',
-      format: 'cjs',
-      external: ['electron'],
-    });
-    const env = { ...process.env };
-    delete env.ELECTRON_RUN_AS_NODE;
-    app = await _electron.launch({ args: [entry], env });
-    // Each window keeps four responses open. With the default six-slot pool,
-    // the second window's remaining streams and its health request never send.
-    const first = await app.firstWindow();
-    await first.waitForLoadState();
-    const second = await app.waitForEvent('window', {
-      predicate: (page) => page !== first,
-      timeout: 5000,
-    }).catch(() => app.windows().find((page) => page !== first));
-    assert.ok(second, 'the second renderer exists');
-    await second.waitForLoadState();
-    for (const page of [first, second]) {
-      const result = await page.evaluate(async () => {
-        window.streamAbort = new AbortController();
-        window.openStreams = [];
-        try {
-          await Promise.all(Array.from({ length: 4 }, async (_, i) => {
-            const response = await fetch('/stream/' + i, {
-              signal: AbortSignal.any([window.streamAbort.signal, AbortSignal.timeout(5000)]),
-            });
-            // Keep bodies referenced and unread, just like long-lived event feeds.
-            window.openStreams.push(response);
-          }));
-          const health = await fetch('/api/health', { signal: AbortSignal.timeout(1500) });
-          return { streams: window.openStreams.length, health: await health.text() };
-        } catch (error) {
-          return { streams: window.openStreams.length, error: error.name };
-        }
+        },
+        outfile: entry,
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        external: ['electron'],
       });
-      assert.deepEqual(result, { streams: 4, health: 'ok' });
+      const env = { ...process.env };
+      delete env.ELECTRON_RUN_AS_NODE;
+      app = await _electron.launch({ args: [entry], env });
+      // Each window keeps four responses open. With the default six-slot pool,
+      // the second window's remaining streams and its health request never send.
+      const first = await app.firstWindow();
+      await first.waitForLoadState();
+      const second = await app
+        .waitForEvent('window', {
+          predicate: (page) => page !== first,
+          timeout: 5000,
+        })
+        .catch(() => app.windows().find((page) => page !== first));
+      assert.ok(second, 'the second renderer exists');
+      await second.waitForLoadState();
+      for (const page of [first, second]) {
+        const result = await page.evaluate(async () => {
+          window.streamAbort = new AbortController();
+          window.openStreams = [];
+          try {
+            await Promise.all(
+              Array.from({ length: 4 }, async (_, i) => {
+                const response = await fetch('/stream/' + i, {
+                  signal: AbortSignal.any([window.streamAbort.signal, AbortSignal.timeout(5000)]),
+                });
+                // Keep bodies referenced and unread, just like long-lived event feeds.
+                window.openStreams.push(response);
+              }),
+            );
+            const health = await fetch('/api/health', { signal: AbortSignal.timeout(1500) });
+            return { streams: window.openStreams.length, health: await health.text() };
+          } catch (error) {
+            return { streams: window.openStreams.length, error: error.name };
+          }
+        });
+        assert.deepEqual(result, { streams: 4, health: 'ok' });
+      }
+      // Close one window's streams; the other window must remain usable.
+      await first.evaluate(() => window.streamAbort.abort());
+      assert.equal(
+        await second.evaluate(async () => (await fetch('/api/health', { signal: AbortSignal.timeout(1500) })).text()),
+        'ok',
+      );
+      await second.evaluate(() => window.streamAbort.abort());
+    } finally {
+      await app?.close();
+      rmSync(scratch, { recursive: true, force: true });
     }
-    // Close one window's streams; the other window must remain usable.
-    await first.evaluate(() => window.streamAbort.abort());
-    assert.equal(await second.evaluate(async () => (await fetch('/api/health', { signal: AbortSignal.timeout(1500) })).text()), 'ok');
-    await second.evaluate(() => window.streamAbort.abort());
-  } finally {
-    await app?.close();
-    rmSync(scratch, { recursive: true, force: true });
-  }
-});
+  },
+);

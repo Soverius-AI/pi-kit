@@ -18,10 +18,17 @@ export class BgAgent extends AbstractAgent {
     return new BgAgent();
   }
   override async getCapabilities(): Promise<AgentCapabilities> {
-    return { identity: { name: BG_AGENT_ID, type: 'coding-agent' }, transport: { streaming: true, resumable: true }, tools: { supported: true, clientProvided: false }, humanInTheLoop: { supported: false, interrupts: false, approvals: false } };
+    return {
+      identity: { name: BG_AGENT_ID, type: 'coding-agent' },
+      transport: { streaming: true, resumable: true },
+      tools: { supported: true, clientProvided: false },
+      humanInTheLoop: { supported: false, interrupts: false, approvals: false },
+    };
   }
   run(): Observable<BaseEvent> {
-    return new Observable((subscriber) => subscriber.error(new Error('A background agent is driven through the runner, not run.')));
+    return new Observable((subscriber) =>
+      subscriber.error(new Error('A background agent is driven through the runner, not run.')),
+    );
   }
 }
 
@@ -74,8 +81,16 @@ export class BgAgentRunner {
     this.store(entry, mapper.snapshot(stream.snapshot));
     stream.start(async (events) => {
       const before = { ...mapper.live };
-      this.store(entry, events.flatMap((event) => mapper.map(event)));
-      if (before.activity !== mapper.live.activity || before.tool !== mapper.live.tool || before.contextTokens !== mapper.live.contextTokens) this.onLive?.(agentId);
+      this.store(
+        entry,
+        events.flatMap((event) => mapper.map(event)),
+      );
+      if (
+        before.activity !== mapper.live.activity ||
+        before.tool !== mapper.live.tool ||
+        before.contextTokens !== mapper.live.contextTokens
+      )
+        this.onLive?.(agentId);
     });
   }
 
@@ -84,7 +99,13 @@ export class BgAgentRunner {
     if (!entry) return;
     this.followed.delete(agentId);
     entry.live.complete();
-    await entry.stream.stop().catch((error: unknown) => this.logger.debug(`Stopping the events of ${agentId}: ${error instanceof Error ? error.message : String(error)}`));
+    await entry.stream
+      .stop()
+      .catch((error: unknown) =>
+        this.logger.debug(
+          `Stopping the events of ${agentId}: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
   }
 
   /** A deleted agent: no longer followed, and its transcript gone from the log. */
@@ -99,7 +120,7 @@ export class BgAgentRunner {
 
   /** Whether the id is a followed agent's (a thread id never is: threads are UUIDs, agents numbers). */
   owns(id: string): boolean {
-    return this.followed.has(id) || this.log.count(id) > 0 && /^\d+$/.test(id);
+    return this.followed.has(id) || (this.log.count(id) > 0 && /^\d+$/.test(id));
   }
 
   /** A run of `pi-bg` is a message to the agent (the panel's message box); the answer streams through `connect`. */
@@ -107,16 +128,28 @@ export class BgAgentRunner {
     const { threadId: agentId, input } = request;
     const last = input.messages.at(-1);
     const text = last?.role === 'user' ? (typeof last.content === 'string' ? last.content : '') : '';
-    const mode = (input.forwardedProps as { streamingBehavior?: unknown } | undefined)?.streamingBehavior === 'steer' ? 'steer' : 'followUp';
+    const mode =
+      (input.forwardedProps as { streamingBehavior?: unknown } | undefined)?.streamingBehavior === 'steer'
+        ? 'steer'
+        : 'followUp';
     return new Observable((subscriber) => {
       subscriber.next({ type: EventType.RUN_STARTED, threadId: agentId, runId: input.runId } as BaseEvent);
       const done = (): void => {
-        subscriber.next({ type: EventType.RUN_FINISHED, threadId: agentId, runId: input.runId, outcome: { type: 'success' } } as BaseEvent);
+        subscriber.next({
+          type: EventType.RUN_FINISHED,
+          threadId: agentId,
+          runId: input.runId,
+          outcome: { type: 'success' },
+        } as BaseEvent);
         subscriber.complete();
       };
       if (!text.trim() || !this.actions) return done();
       this.actions.send(agentId, text, mode, `message:${input.runId}`).then(done, (error: unknown) => {
-        subscriber.next({ type: EventType.RUN_ERROR, message: error instanceof Error ? error.message : String(error), code: 'error' } as BaseEvent);
+        subscriber.next({
+          type: EventType.RUN_ERROR,
+          message: error instanceof Error ? error.message : String(error),
+          code: 'error',
+        } as BaseEvent);
         subscriber.complete();
       });
     });
@@ -129,7 +162,11 @@ export class BgAgentRunner {
       if (this.log.count(agentId) > COMPACTION.maxRows) this.compactor.compact(agentId, { full: true });
       const after = this.log.resolveCursor(agentId, request.headers?.[REPLAY_CURSOR_HEADER]);
       // `running` says the stored part is followed by a live feed, so the client stops waiting for a snapshot that never comes.
-      subscriber.next({ type: EventType.CUSTOM, name: REPLAY_RESET_EVENT, value: { reset: after === undefined, running: this.followed.has(agentId) } } as BaseEvent);
+      subscriber.next({
+        type: EventType.CUSTOM,
+        name: REPLAY_RESET_EVENT,
+        value: { reset: after === undefined, running: this.followed.has(agentId) },
+      } as BaseEvent);
       const stored = after === undefined ? this.log.read(agentId) : this.log.readAfter(agentId, after);
       for (const { seq, event } of stored) subscriber.next(this.withCursor(agentId, seq, event));
       const entry = this.followed.get(agentId);
@@ -138,7 +175,10 @@ export class BgAgentRunner {
         return;
       }
       const last = stored.at(-1)?.seq ?? after ?? 0;
-      const follow: Subscription = entry.live.subscribe({ next: ({ seq, event }) => seq > last && subscriber.next(event), complete: () => subscriber.complete() });
+      const follow: Subscription = entry.live.subscribe({
+        next: ({ seq, event }) => seq > last && subscriber.next(event),
+        complete: () => subscriber.complete(),
+      });
       return () => follow.unsubscribe();
     });
   }
@@ -162,7 +202,9 @@ export class BgAgentRunner {
         try {
           this.compactor.compact(entry.agentId);
         } catch (error) {
-          this.logger.warn(`Compacting an agent's log failed: ${error instanceof Error ? error.message : String(error)}`);
+          this.logger.warn(
+            `Compacting an agent's log failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       }
     }

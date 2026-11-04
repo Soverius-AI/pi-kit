@@ -1,7 +1,24 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { FileSecretStore, MemorySecretStore, NoSecretStore, selectSecretStore, readSecurityPreferences, writeSecurityPreferences, type SecretStore } from '@pi-kit/secret-store';
+import {
+  FileSecretStore,
+  MemorySecretStore,
+  NoSecretStore,
+  selectSecretStore,
+  readSecurityPreferences,
+  writeSecurityPreferences,
+  type SecretStore,
+} from '@pi-kit/secret-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SecretsService } from './secrets.service';
 
@@ -21,15 +38,28 @@ const setEnv = (name: string, value: string | undefined): void => {
   else process.env[name] = value;
 };
 const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor;
-const asPlatform = (platform: NodeJS.Platform): void => void Object.defineProperty(process, 'platform', { value: platform });
+const asPlatform = (platform: NodeJS.Platform): void =>
+  void Object.defineProperty(process, 'platform', { value: platform });
 
 function make(store: SecretStore, dataDir = scratch()) {
   const shown = false;
   const settings = new Map<string, unknown>();
-  const database = { protection: { state: 'encrypted', path: join(dataDir, 'pi-kit.sqlite') }, recoveryKey: () => 'a'.repeat(64) };
-  const meta = { getSetting: (k: string) => settings.get(k), setSetting: (k: string, v: unknown) => void settings.set(k, v) };
+  const database = {
+    protection: { state: 'encrypted', path: join(dataDir, 'pi-kit.sqlite') },
+    recoveryKey: () => 'a'.repeat(64),
+  };
+  const meta = {
+    getSetting: (k: string) => settings.get(k),
+    setSetting: (k: string, v: unknown) => void settings.set(k, v),
+  };
   void shown;
-  return { service: new SecretsService(store, { dataDir }, database as never, meta as never), dataDir, settings, database, meta };
+  return {
+    service: new SecretsService(store, { dataDir }, database as never, meta as never),
+    dataDir,
+    settings,
+    database,
+    meta,
+  };
 }
 
 /** A built CLI bundle for `PI_KIT_SECRET_CLI`. */
@@ -41,7 +71,11 @@ function fakeBundle(): string {
 
 describe('SecretsService', () => {
   beforeEach(() => {
-    vi.mocked(selectSecretStore).mockReset().mockImplementation(() => { throw new Error('Unexpected native store selection in test'); });
+    vi.mocked(selectSecretStore)
+      .mockReset()
+      .mockImplementation(() => {
+        throw new Error('Unexpected native store selection in test');
+      });
     // Installed helpers on the developer's machine must not affect discovery assertions.
     setEnv('PI_KIT_SECRET_STORE', undefined);
     setEnv('PATH', scratch());
@@ -66,45 +100,64 @@ describe('SecretsService', () => {
     Object.assign(store, { accessStatus });
     const { service, database } = make(store);
     database.protection.state = 'plain';
-    expect(service.status()).toMatchObject({ store: 'none', credentialsEnabled: false, available: false, access: { state: 'unavailable' }, movable: [] });
+    expect(service.status()).toMatchObject({
+      store: 'none',
+      credentialsEnabled: false,
+      available: false,
+      access: { state: 'unavailable' },
+      movable: [],
+    });
     const launcher = vi.spyOn(service, 'ensureLauncher');
     await service.onModuleInit();
     expect(launcher).not.toHaveBeenCalled();
     await service.forget('openrouter');
     expect(await service.keep('openrouter', 'new-api-key')).toEqual({ value: 'new-api-key', storage: 'auth.json' });
-    expect(await service.keepBearer('connector-github', 'new-token')).toEqual({ value: 'Bearer new-token', storage: 'mcp.json' });
+    expect(await service.keepBearer('connector-github', 'new-token')).toEqual({
+      value: 'Bearer new-token',
+      storage: 'mcp.json',
+    });
     expect(service.databaseProtection()).toMatchObject({ state: 'plain' });
     for (const call of calls) expect(call).not.toHaveBeenCalled();
     expect(accessStatus).not.toHaveBeenCalled();
   });
 
-  it.each(['auth.json', 'models.json', 'mcp.json'])('prepares a pinned macOS launcher for retained helper references in %s without probing a store', async (name) => {
-    asPlatform('darwin');
-    const store = new NoSecretStore();
-    const calls = ['available', 'get', 'set', 'delete'].map((method) => vi.spyOn(store, method as 'get'));
-    const accessStatus = vi.fn(() => ({ state: 'ready' as const }));
-    Object.assign(store, { accessStatus });
-    const { service, dataDir } = make(store);
-    const file = join(process.env['PI_CODING_AGENT_DIR']!, name);
-    const original = JSON.stringify(name === 'auth.json'
-      ? { openrouter: { type: 'api_key', key: '!pi-kit-secret get openrouter' } }
-      : name === 'models.json'
-        ? { providers: { litellm: { apiKey: '!pi-kit-secret get litellm' } } }
-        : { mcpServers: { github: { headers: { Authorization: '!pi-kit-secret get connector-github --bearer' } } } });
-    writeFileSync(file, original);
-    expect(service.credentialsEnabled()).toBe(false);
-    await service.onModuleInit();
-    const launcher = join(dataDir, 'bin', 'pi-kit-secret');
-    expect(readFileSync(launcher, 'utf8')).toContain("PI_KIT_SECRET_STORE='macos'");
-    expect(process.env['PATH']!.split(delimiter)[0]).toBe(join(dataDir, 'bin'));
-    expect(readFileSync(file, 'utf8')).toBe(original);
-    expect(service.status()).toMatchObject({ credentialsEnabled: false, available: false });
-    expect(await service.keep('openrouter', 'new-direct-key')).toEqual({ value: 'new-direct-key', storage: 'auth.json' });
-    await service.forget('openrouter');
-    for (const call of calls) expect(call).not.toHaveBeenCalled();
-    expect(accessStatus).not.toHaveBeenCalled();
-    expect(selectSecretStore).not.toHaveBeenCalled();
-  });
+  it.each(['auth.json', 'models.json', 'mcp.json'])(
+    'prepares a pinned macOS launcher for retained helper references in %s without probing a store',
+    async (name) => {
+      asPlatform('darwin');
+      const store = new NoSecretStore();
+      const calls = ['available', 'get', 'set', 'delete'].map((method) => vi.spyOn(store, method as 'get'));
+      const accessStatus = vi.fn(() => ({ state: 'ready' as const }));
+      Object.assign(store, { accessStatus });
+      const { service, dataDir } = make(store);
+      const file = join(process.env['PI_CODING_AGENT_DIR']!, name);
+      const original = JSON.stringify(
+        name === 'auth.json'
+          ? { openrouter: { type: 'api_key', key: '!pi-kit-secret get openrouter' } }
+          : name === 'models.json'
+            ? { providers: { litellm: { apiKey: '!pi-kit-secret get litellm' } } }
+            : {
+                mcpServers: { github: { headers: { Authorization: '!pi-kit-secret get connector-github --bearer' } } },
+              },
+      );
+      writeFileSync(file, original);
+      expect(service.credentialsEnabled()).toBe(false);
+      await service.onModuleInit();
+      const launcher = join(dataDir, 'bin', 'pi-kit-secret');
+      expect(readFileSync(launcher, 'utf8')).toContain("PI_KIT_SECRET_STORE='macos'");
+      expect(process.env['PATH']!.split(delimiter)[0]).toBe(join(dataDir, 'bin'));
+      expect(readFileSync(file, 'utf8')).toBe(original);
+      expect(service.status()).toMatchObject({ credentialsEnabled: false, available: false });
+      expect(await service.keep('openrouter', 'new-direct-key')).toEqual({
+        value: 'new-direct-key',
+        storage: 'auth.json',
+      });
+      await service.forget('openrouter');
+      for (const call of calls) expect(call).not.toHaveBeenCalled();
+      expect(accessStatus).not.toHaveBeenCalled();
+      expect(selectSecretStore).not.toHaveBeenCalled();
+    },
+  );
 
   it('explicit opt-out may select the original store only to export known references while new credentials remain disabled', async () => {
     asPlatform('darwin');
@@ -179,7 +232,10 @@ describe('SecretsService', () => {
     store.set('litellm', 'saved-api-key');
     const { service, dataDir, database, meta } = make(store);
     const agent = process.env['PI_CODING_AGENT_DIR']!;
-    writeFileSync(join(agent, 'models.json'), JSON.stringify({ providers: { litellm: { apiKey: '!pi-kit-secret get litellm' } } }));
+    writeFileSync(
+      join(agent, 'models.json'),
+      JSON.stringify({ providers: { litellm: { apiKey: '!pi-kit-secret get litellm' } } }),
+    );
     const result = await service.setCredentialStorage(false);
     expect(result).toEqual({ moved: ['litellm'], failed: [] });
     expect(JSON.parse(readFileSync(join(agent, 'models.json'), 'utf8')).providers.litellm.apiKey).toBe('saved-api-key');
@@ -187,11 +243,18 @@ describe('SecretsService', () => {
     expect(store.get('pi-kit/db')).toBe('database-key');
     expect(store.get('litellm')).toBe('saved-api-key');
     expect(service.databaseProtection().state).toBe('encrypted');
-    expect(service.status()).toMatchObject({ credentialsEnabled: false, available: false, movable: [], cliNeeded: false });
+    expect(service.status()).toMatchObject({
+      credentialsEnabled: false,
+      available: false,
+      movable: [],
+      cliNeeded: false,
+    });
     expect(service.resolver('litellm')).toBeUndefined();
     const next = new SecretsService(store, { dataDir }, database as never, meta as never);
     Object.defineProperty(store, 'protected', { value: true });
-    const set = vi.spyOn(store, 'set').mockImplementation(() => { throw new Error('must not write'); });
+    const set = vi.spyOn(store, 'set').mockImplementation(() => {
+      throw new Error('must not write');
+    });
     expect(await next.keep('litellm', 'direct-api-key')).toEqual({ value: 'direct-api-key', storage: 'auth.json' });
     expect(await next.keepBearer('connector-github', 'token')).toEqual({ value: 'Bearer token', storage: 'mcp.json' });
     expect(set).not.toHaveBeenCalled();
@@ -207,8 +270,13 @@ describe('SecretsService', () => {
     const store = new MemorySecretStore();
     const { service } = make(store);
     const agent = process.env['PI_CODING_AGENT_DIR']!;
-    writeFileSync(join(agent, 'auth.json'), JSON.stringify({ openrouter: { type: 'api_key', key: '!pi-kit-secret get openrouter' } }));
-    vi.spyOn(store, 'get').mockImplementation(() => { throw new Error('sensitive-native-error'); });
+    writeFileSync(
+      join(agent, 'auth.json'),
+      JSON.stringify({ openrouter: { type: 'api_key', key: '!pi-kit-secret get openrouter' } }),
+    );
+    vi.spyOn(store, 'get').mockImplementation(() => {
+      throw new Error('sensitive-native-error');
+    });
     const result = await service.setCredentialStorage(false);
     expect(result.failed[0].provider).toBe('openrouter');
     expect(JSON.stringify(result)).not.toContain('sensitive-native-error');
@@ -222,7 +290,9 @@ describe('SecretsService', () => {
       Object.defineProperty(keychain, 'kind', { value: 'keychain' });
       asPlatform('darwin');
       setEnv('PI_KIT_SECRET_STORE', 'legacy');
-      expect(make(keychain).service.resolver('openrouter')).toBe('!security find-generic-password -s pi-kit -a openrouter -w');
+      expect(make(keychain).service.resolver('openrouter')).toBe(
+        '!security find-generic-password -s pi-kit -a openrouter -w',
+      );
       asPlatform('win32');
       expect(make(keychain).service.resolver('openrouter')).toBe('!pi-kit-secret get openrouter');
       asPlatform('linux');
@@ -231,7 +301,9 @@ describe('SecretsService', () => {
       writeFileSync(join(bin, 'secret-tool'), '#!/bin/sh\n');
       chmodSync(join(bin, 'secret-tool'), 0o755);
       setEnv('PATH', `${bin}${delimiter}${process.env['PATH']}`);
-      expect(make(keychain).service.resolver('openrouter')).toBe('!secret-tool lookup service pi-kit username openrouter');
+      expect(make(keychain).service.resolver('openrouter')).toBe(
+        '!secret-tool lookup service pi-kit username openrouter',
+      );
     });
 
     it('is the helper for a scratch store, because `security` cannot read a file, and nothing without a store or a helper on a platform that needs it', async () => {
@@ -258,16 +330,26 @@ describe('SecretsService', () => {
     it('never falls back to plaintext when protected biometric storage refuses access', async () => {
       setEnv('PI_KIT_SECRET_STORE', 'macos');
       const store: SecretStore = {
-        kind: 'keychain', label: 'Touch ID', protected: true, helperResolver: true,
-        available: () => true, get: async () => undefined,
-        set: async () => { throw new Error('Authentication cancelled'); },
-        delete: async () => false, list: async () => [],
+        kind: 'keychain',
+        label: 'Touch ID',
+        protected: true,
+        helperResolver: true,
+        available: () => true,
+        get: async () => undefined,
+        set: async () => {
+          throw new Error('Authentication cancelled');
+        },
+        delete: async () => false,
+        list: async () => [],
       };
       await expect(make(store).service.keep('openrouter', 'fixture-secret')).rejects.toThrow(/cancelled/);
     });
 
     it('falls back to the key itself (pi’s own 0600 file) when there is no store, no helper, or the store refuses', async () => {
-      expect(await make(new NoSecretStore()).service.keep('openrouter', 'sk-1')).toEqual({ value: 'sk-1', storage: 'auth.json' });
+      expect(await make(new NoSecretStore()).service.keep('openrouter', 'sk-1')).toEqual({
+        value: 'sk-1',
+        storage: 'auth.json',
+      });
       const refusing = new MemorySecretStore();
       refusing.set = () => {
         throw new Error('The keychain is locked');
@@ -327,10 +409,19 @@ describe('SecretsService', () => {
         }),
       );
       const status = make(new MemorySecretStore()).service.status();
-      expect(status).toMatchObject({ store: 'memory', available: true, movable: ['groq', 'openrouter'], resolver: '!pi-kit-secret get <provider>' });
+      expect(status).toMatchObject({
+        store: 'memory',
+        available: true,
+        movable: ['groq', 'openrouter'],
+        resolver: '!pi-kit-secret get <provider>',
+      });
       expect(status.cliInstallDir).toBe(process.env['PI_KIT_BIN_DIR']);
       expect(status.cliNeeded).toBe(true);
-      expect(make(new NoSecretStore()).service.status()).toMatchObject({ store: 'none', available: false, movable: [] });
+      expect(make(new NoSecretStore()).service.status()).toMatchObject({
+        store: 'none',
+        available: false,
+        movable: [],
+      });
       expect(make(new NoSecretStore()).service.status().resolver).toBeUndefined();
     });
 

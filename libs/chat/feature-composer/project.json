@@ -4,10 +4,7 @@
   "sourceRoot": "libs/chat/feature-composer/src",
   "projectType": "library",
   "prefix": "pk",
-  "tags": [
-    "scope:chat",
-    "type:feature"
-  ],
+  "tags": ["scope:chat", "type:feature"],
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"
@@ -19,12 +16,8 @@
         "tsConfig": "libs/chat/feature-composer/tsconfig.spec.json",
         "buildTarget": "renderer:build:development",
         "runner": "vitest",
-        "include": [
-          "libs/chat/feature-composer/src/**/*.spec.ts"
-        ],
-        "setupFiles": [
-          "libs/chat/feature-composer/src/test-setup.ts"
-        ]
+        "include": ["libs/chat/feature-composer/src/**/*.spec.ts"],
+        "setupFiles": ["libs/chat/feature-composer/src/test-setup.ts"]
       }
     }
   }

@@ -23,7 +23,8 @@ export function endsWithQuestion(text: string): boolean {
 }
 
 const BULLET = /^\s*(?:[-*•]|\d{1,2}[.)]|\(?[a-zA-Z][.)])\s+(.*\S)\s*$/;
-const STEM = /^(?:should|shall|would|could|can|do|does|did|will|want|like|prefer|is|are|i|we|you|me|us|use|using|go|going|with|choose|pick|take|try|keep|for|on|to|have|run|build|make|and)$/i;
+const STEM =
+  /^(?:should|shall|would|could|can|do|does|did|will|want|like|prefer|is|are|i|we|you|me|us|use|using|go|going|with|choose|pick|take|try|keep|for|on|to|have|run|build|make|and)$/i;
 const MAX_OPTIONS = 5;
 const MAX_WORDS = 5;
 

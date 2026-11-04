@@ -2,16 +2,34 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { copyScriptFiles, detectSetupScript, detectSetupScriptIn, effectiveScripts, pickScript, safeCopyPath } from './setup-scripts';
+import {
+  copyScriptFiles,
+  detectSetupScript,
+  detectSetupScriptIn,
+  effectiveScripts,
+  pickScript,
+  safeCopyPath,
+} from './setup-scripts';
 
-const has = (...files: string[]) => (file: string) => files.includes(file);
+const has =
+  (...files: string[]) =>
+  (file: string) =>
+    files.includes(file);
 
 describe('the script a lockfile suggests', () => {
   it('maps each lockfile to its install command', () => {
-    expect(detectSetupScript(has('pnpm-lock.yaml'))).toEqual({ id: 'pnpm', name: 'pnpm', command: 'pnpm install --frozen-lockfile' });
+    expect(detectSetupScript(has('pnpm-lock.yaml'))).toEqual({
+      id: 'pnpm',
+      name: 'pnpm',
+      command: 'pnpm install --frozen-lockfile',
+    });
     expect(detectSetupScript(has('bun.lock'))).toEqual({ id: 'bun', name: 'bun', command: 'bun install' });
     expect(detectSetupScript(has('bun.lockb'))).toMatchObject({ name: 'bun', command: 'bun install' });
-    expect(detectSetupScript(has('yarn.lock'))).toEqual({ id: 'yarn', name: 'yarn', command: 'yarn install --immutable' });
+    expect(detectSetupScript(has('yarn.lock'))).toEqual({
+      id: 'yarn',
+      name: 'yarn',
+      command: 'yarn install --immutable',
+    });
     expect(detectSetupScript(has('package-lock.json'))).toEqual({ id: 'npm', name: 'npm', command: 'npm ci' });
   });
 
@@ -78,7 +96,11 @@ describe('the files a script copies', () => {
   });
 
   it('copies the files that exist, with their folders, and skips the rest', () => {
-    const copied = copyScriptFiles({ id: 'x', name: 'X', command: '', copy: ['.env.local', 'config/dev.json', 'missing.txt', '../escape'] }, from, to);
+    const copied = copyScriptFiles(
+      { id: 'x', name: 'X', command: '', copy: ['.env.local', 'config/dev.json', 'missing.txt', '../escape'] },
+      from,
+      to,
+    );
     expect(copied).toEqual(['.env.local', 'config/dev.json']);
     expect(readFileSync(join(to, '.env.local'), 'utf8')).toBe('KEY=1\n');
     expect(existsSync(join(to, 'config', 'dev.json'))).toBe(true);

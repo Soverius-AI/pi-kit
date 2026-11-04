@@ -18,7 +18,12 @@ interface McpToolOutcome {
 /** An MCP `CallToolResult` from a pi tool result: pi keeps the server's whole result (minus `_meta`) as `structuredContent`. */
 export function mcpCallToolResult(outcome: McpToolOutcome): Record<string, unknown> {
   const structured = outcome.structuredContent;
-  if (structured && typeof structured === 'object' && !Array.isArray(structured) && Array.isArray((structured as { content?: unknown }).content)) {
+  if (
+    structured &&
+    typeof structured === 'object' &&
+    !Array.isArray(structured) &&
+    Array.isArray((structured as { content?: unknown }).content)
+  ) {
     return structured as Record<string, unknown>;
   }
   return { content: outcome.content ?? [], ...(outcome.isError ? { isError: true } : {}) };
@@ -75,7 +80,9 @@ export class SessionMcp {
     // A sign-in that cannot reach this machine's browser would ask the user to paste the redirect URL. There is no
     // run to show that question in (the thread is idle), so these wait for pi to give up on them instead.
     const unanswered = (_title: string, _a?: unknown, _b?: unknown, opts?: { signal?: AbortSignal }) =>
-      new Promise<undefined>((resolve) => opts?.signal?.addEventListener('abort', () => resolve(undefined), { once: true }));
+      new Promise<undefined>((resolve) =>
+        opts?.signal?.addEventListener('abort', () => resolve(undefined), { once: true }),
+      );
     const ui = Object.create(base.ui, {
       notify: {
         value: (text: string, level?: string) => {
@@ -83,7 +90,10 @@ export class SessionMcp {
           if (options.until?.(messages)) wake();
         },
       },
-      input: { value: (title: string, placeholder?: string, opts?: { signal?: AbortSignal }) => (options.input ? options.input(opts?.signal) : unanswered(title, placeholder, undefined, opts)) },
+      input: {
+        value: (title: string, placeholder?: string, opts?: { signal?: AbortSignal }) =>
+          options.input ? options.input(opts?.signal) : unanswered(title, placeholder, undefined, opts),
+      },
     }) as typeof base.ui;
     const ctx = Object.create(base, { ui: { value: ui } }) as typeof base;
     let finished = false;
@@ -109,19 +119,37 @@ export class SessionMcp {
    * `mcp__<server>__<tool>` on the connection pi already holds. The model is not involved, so pi's `tool_call`
    * hooks (permission extensions) do not run; the click in the app is the user's own act.
    */
-  async callTool(server: string, tool: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<Record<string, unknown>> {
+  async callTool(
+    server: string,
+    tool: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<Record<string, unknown>> {
     const stop = this.lifetime(signal);
     const label = `${server}/${tool}`;
-    const definition = await this.untilRegistered(server, () => {
-      const found = this.session.getAllTools().map((info) => this.session.getToolDefinition(info.name)).find((candidate) => candidate?.label === label);
-      // A tool missing from the complete catalog (every `tools/list` page seen) is one the server does not offer;
-      // while the listing still pages, or has not started, the tool may yet come, so wait.
-      if (!found && this.tap.knows(server) && !this.tap.toolList(server).some((listed) => listed.name === tool))
-        throw new Error(`The MCP server "${server}" does not offer a tool "${tool}".`);
-      return found;
-    }, stop);
+    const definition = await this.untilRegistered(
+      server,
+      () => {
+        const found = this.session
+          .getAllTools()
+          .map((info) => this.session.getToolDefinition(info.name))
+          .find((candidate) => candidate?.label === label);
+        // A tool missing from the complete catalog (every `tools/list` page seen) is one the server does not offer;
+        // while the listing still pages, or has not started, the tool may yet come, so wait.
+        if (!found && this.tap.knows(server) && !this.tap.toolList(server).some((listed) => listed.name === tool))
+          throw new Error(`The MCP server "${server}" does not offer a tool "${tool}".`);
+        return found;
+      },
+      stop,
+    );
     stop.throwIfAborted();
-    const result = (await definition.execute(`app-${randomUUID()}`, args as never, stop, undefined, undefined as never)) as McpToolOutcome;
+    const result = (await definition.execute(
+      `app-${randomUUID()}`,
+      args as never,
+      stop,
+      undefined,
+      undefined as never,
+    )) as McpToolOutcome;
     return mcpCallToolResult(result);
   }
 
@@ -130,19 +158,35 @@ export class SessionMcp {
    * pi registers that tool only once a connected server declares resources, so a server whose `initialize` result
    * (seen by the tap) declares none is refused at once instead of waiting for a registration that never comes.
    */
-  async readResource(server: string, uri: string, signal?: AbortSignal): Promise<{ contents: Record<string, unknown>[] }> {
+  async readResource(
+    server: string,
+    uri: string,
+    signal?: AbortSignal,
+  ): Promise<{ contents: Record<string, unknown>[] }> {
     const { session, tap } = this;
     const stop = this.lifetime(signal);
-    const definition = await this.untilRegistered(server, () => {
-      if (tap.hasResources(server) === false) throw new Error(`The MCP server "${server}" has no resources.`);
-      return session.getToolDefinition('read_mcp_resource');
-    }, stop);
+    const definition = await this.untilRegistered(
+      server,
+      () => {
+        if (tap.hasResources(server) === false) throw new Error(`The MCP server "${server}" has no resources.`);
+        return session.getToolDefinition('read_mcp_resource');
+      },
+      stop,
+    );
     stop.throwIfAborted();
-    const outcome = (await definition.execute(`app-${randomUUID()}`, { server, uri } as never, stop, undefined, undefined as never)) as McpToolOutcome;
+    const outcome = (await definition.execute(
+      `app-${randomUUID()}`,
+      { server, uri } as never,
+      stop,
+      undefined,
+      undefined as never,
+    )) as McpToolOutcome;
     const structured = outcome.structuredContent as { contents?: Record<string, unknown>[] } | undefined;
     // pi's tool drops `_meta` (the CSP an app asks for); the tap saw it on the way.
     const meta = tap.resourceMeta(server, uri);
-    return { contents: (structured?.contents ?? []).map((c) => (meta && c['uri'] === uri ? { ...c, _meta: meta } : c)) };
+    return {
+      contents: (structured?.contents ?? []).map((c) => (meta && c['uri'] === uri ? { ...c, _meta: meta } : c)),
+    };
   }
 
   /** Wait for the requested definition; `find` throws when what the tap saw of the server proves the wait pointless (a missing tool, no resources). */

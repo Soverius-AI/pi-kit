@@ -8,7 +8,11 @@ test('Linux defaults to the native architecture and preserves the macOS/Windows 
   assert.deepEqual(selectTargets(undefined, 'linux', 'arm64'), ['linux-arm64']);
   assert.deepEqual(selectTargets(['linux'], 'linux', 'x64'), ['linux-x64']);
   assert.deepEqual(selectTargets(undefined, 'darwin', 'arm64'), ['mac', 'win-x64', 'win-arm64']);
-  assert.deepEqual(selectTargets(['win,linux-arm64', 'win-x64'], 'linux', 'arm64'), ['win-x64', 'win-arm64', 'linux-arm64']);
+  assert.deepEqual(selectTargets(['win,linux-arm64', 'win-x64'], 'linux', 'arm64'), [
+    'win-x64',
+    'win-arm64',
+    'linux-arm64',
+  ]);
 });
 
 test('Linux source builds fail before packaging on a different OS or CPU', () => {
@@ -29,7 +33,9 @@ test('Linux feeds match electron-updater channel names for each CPU', () => {
       const provider = new Provider({ platform: 'linux' });
       const target = targets[`linux-${arch}`];
       assert.equal(target.updateInfo, `${provider.getCustomChannelName('latest')}.yml`);
-      assert.deepEqual(target.artifacts, [`pi-kit-1.2.3-linux-${getArtifactArchName(Arch[arch], 'AppImage')}.AppImage`]);
+      assert.deepEqual(target.artifacts, [
+        `pi-kit-1.2.3-linux-${getArtifactArchName(Arch[arch], 'AppImage')}.AppImage`,
+      ]);
       assert.notEqual(targets['linux-x64'].unpacked, targets['linux-arm64'].unpacked);
     }
   } finally {

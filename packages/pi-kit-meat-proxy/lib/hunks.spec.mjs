@@ -8,12 +8,24 @@ describe('splitDiff', () => {
   const hunks = splitDiff(diff);
 
   it('finds every hunk of every text file, in order, and none for a binary file', () => {
-    expect(hunks.map((h) => h.id)).toEqual(['notes/alpha.md@0:1', 'notes/beta.md@0:1', 'notes/gamma.md@1:1', 'notes/gamma.md@20:21', 'src/map.ts@1:1']);
+    expect(hunks.map((h) => h.id)).toEqual([
+      'notes/alpha.md@0:1',
+      'notes/beta.md@0:1',
+      'notes/gamma.md@1:1',
+      'notes/gamma.md@20:21',
+      'src/map.ts@1:1',
+    ]);
     expect(hunks.some((h) => h.file === 'image.png')).toBe(false);
   });
 
   it('counts the lines each hunk adds and removes', () => {
-    expect(hunks.map((h) => [h.added, h.removed])).toEqual([[3, 0], [4, 0], [2, 1], [1, 0], [2, 1]]);
+    expect(hunks.map((h) => [h.added, h.removed])).toEqual([
+      [3, 0],
+      [4, 0],
+      [2, 1],
+      [1, 0],
+      [2, 1],
+    ]);
     expect(hunks.map(weightOf)).toEqual([3, 4, 3, 1, 3]);
   });
 
@@ -42,9 +54,13 @@ describe('splitDiff', () => {
   });
 
   it('reads a path with spaces and a quoted path', () => {
-    const spaced = splitDiff('diff --git a/my notes/a b.md b/my notes/a b.md\n--- a/my notes/a b.md\n+++ b/my notes/a b.md\n@@ -1 +1 @@\n-x\n+y\n');
+    const spaced = splitDiff(
+      'diff --git a/my notes/a b.md b/my notes/a b.md\n--- a/my notes/a b.md\n+++ b/my notes/a b.md\n@@ -1 +1 @@\n-x\n+y\n',
+    );
     expect(spaced[0].file).toBe('my notes/a b.md');
-    const quoted = splitDiff('diff --git "a/caf\\303\\251.txt" "b/caf\\303\\251.txt"\n--- "a/caf\\303\\251.txt"\n+++ "b/caf\\303\\251.txt"\n@@ -1 +1 @@\n-x\n+y\n');
+    const quoted = splitDiff(
+      'diff --git "a/caf\\303\\251.txt" "b/caf\\303\\251.txt"\n--- "a/caf\\303\\251.txt"\n+++ "b/caf\\303\\251.txt"\n@@ -1 +1 @@\n-x\n+y\n',
+    );
     expect(quoted[0].file).toBe('café.txt');
   });
 

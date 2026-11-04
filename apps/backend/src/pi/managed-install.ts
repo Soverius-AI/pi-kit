@@ -1,4 +1,21 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, symlinkSync, unlinkSync, utimesSync, writeFileSync, lstatSync, readlinkSync, statSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  rmdirSync,
+  symlinkSync,
+  unlinkSync,
+  utimesSync,
+  writeFileSync,
+  lstatSync,
+  readlinkSync,
+  statSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { PI_PACKAGE, piPackageVersion, readManagedInstall } from './pi-resolution';
@@ -22,7 +39,9 @@ export function piToolPath(env: NodeJS.ProcessEnv = process.env): string {
   const own = join(data, 'pi-node', 'current', 'bin');
   // Windows commonly supplies `Path`, not `PATH`; spreading process.env loses its case-insensitive lookup.
   const inherited = env['PATH'] ?? Object.entries(env).find(([key]) => key.toLowerCase() === 'path')?.[1];
-  return [existsSync(join(own, process.platform === 'win32' ? 'node.exe' : 'node')) ? own : undefined, inherited].filter(Boolean).join(delimiter);
+  return [existsSync(join(own, process.platform === 'win32' ? 'node.exe' : 'node')) ? own : undefined, inherited]
+    .filter(Boolean)
+    .join(delimiter);
 }
 
 /** Keep exactly one PATH key: Node sorts duplicate environment keys case-insensitively on Windows. */
@@ -31,11 +50,28 @@ export function piToolEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return { ...next, PATH: piToolPath(env) };
 }
 
-const NPM_CI_ARGS = ['ci', '--ignore-scripts', '--min-release-age=0', '--omit=dev', '--include=optional', '--no-fund', '--no-audit', '--loglevel=error', '--progress=false'];
+const NPM_CI_ARGS = [
+  'ci',
+  '--ignore-scripts',
+  '--min-release-age=0',
+  '--omit=dev',
+  '--include=optional',
+  '--no-fund',
+  '--no-audit',
+  '--loglevel=error',
+  '--progress=false',
+];
 
 /** Windows npm is a batch launcher. Only these fixed arguments enter cmd.exe; no user input is interpolated. */
-export function npmCiInvocation(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): { command: string; args: string[] } {
-  if (platform === 'win32') return { command: env['ComSpec'] || env['COMSPEC'] || 'cmd.exe', args: ['/d', '/s', '/c', `npm.cmd ${NPM_CI_ARGS.join(' ')}`] };
+export function npmCiInvocation(
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform = process.platform,
+): { command: string; args: string[] } {
+  if (platform === 'win32')
+    return {
+      command: env['ComSpec'] || env['COMSPEC'] || 'cmd.exe',
+      args: ['/d', '/s', '/c', `npm.cmd ${NPM_CI_ARGS.join(' ')}`],
+    };
   return { command: 'npm', args: [...NPM_CI_ARGS] };
 }
 
@@ -101,7 +137,8 @@ export interface InstallOptions {
 /** Installs `version` as a managed release and makes it current: pi's `runManagedSelfUpdate`, which the package does not export. */
 export async function installManagedRelease(options: InstallOptions): Promise<void> {
   const { root, version, log } = options;
-  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) throw new Error(`Invalid release version: ${version}`);
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version))
+    throw new Error(`Invalid release version: ${version}`);
   const env = { ...(options.env ?? process.env) };
   const api = (options.apiBase ?? env['PI_INSTALLER_API_BASE']?.trim() ?? DEFAULT_INSTALLER_API).replace(/\/+$/, '');
   mkdirSync(join(root, 'releases'), { recursive: true });
@@ -118,7 +155,10 @@ export async function installManagedRelease(options: InstallOptions): Promise<vo
     mkdirSync(join(root, 'staging'), { recursive: true });
     stage = mkdtempSync(join(root, 'staging', 'update-'));
     log(`Downloading the pi ${version} release files…`);
-    const [manifest, lock] = await Promise.all([fetchText(`${api}/${encodeURIComponent(version)}/package.json`, options.signal), fetchText(`${api}/${encodeURIComponent(version)}/package-lock.json`, options.signal)]);
+    const [manifest, lock] = await Promise.all([
+      fetchText(`${api}/${encodeURIComponent(version)}/package.json`, options.signal),
+      fetchText(`${api}/${encodeURIComponent(version)}/package-lock.json`, options.signal),
+    ]);
     writeFileSync(join(stage, 'package.json'), manifest);
     writeFileSync(join(stage, 'package-lock.json'), lock);
     await fetchText(`${api}/${encodeURIComponent(version)}/metadata.json`, options.signal)
@@ -134,10 +174,14 @@ export async function installManagedRelease(options: InstallOptions): Promise<vo
       onLine: (line) => log(line),
     });
     if (result.cancelled) throw new Error('Cancelled.');
-    if (result.code === 9009) throw new Error('npm.cmd was not found. Install Node.js LTS with npm, ensure its folder is on your Windows PATH, then fully quit and reopen pi-kit.');
+    if (result.code === 9009)
+      throw new Error(
+        'npm.cmd was not found. Install Node.js LTS with npm, ensure its folder is on your Windows PATH, then fully quit and reopen pi-kit.',
+      );
     if (result.code !== 0) throw new Error(`npm ci exited with code ${result.code ?? 'unknown'}`);
     const installed = piPackageVersion(join(stage, 'node_modules', PI_PACKAGE));
-    if (installed !== version) throw new Error(`The installed pi reports ${installed ?? 'no version'}; expected ${version}.`);
+    if (installed !== version)
+      throw new Error(`The installed pi reports ${installed ?? 'no version'}; expected ${version}.`);
     log(`Verified pi ${version}.`);
     renameSync(stage, target);
     stage = undefined;
@@ -153,7 +197,10 @@ function ensureMarker(root: string): void {
   const marker = join(root, 'managed-install.json');
   if (existsSync(marker)) return;
   const agentDir = dirname(root);
-  writeFileSync(marker, `${JSON.stringify({ kind: 'pi-managed-install', schemaVersion: 1, layout: 'releases-v1', entrypoint: { type: 'symlink', path: join(homedir(), '.local', 'bin', 'pi') } }, null, 2)}\n`);
+  writeFileSync(
+    marker,
+    `${JSON.stringify({ kind: 'pi-managed-install', schemaVersion: 1, layout: 'releases-v1', entrypoint: { type: 'symlink', path: join(homedir(), '.local', 'bin', 'pi') } }, null, 2)}\n`,
+  );
   mkdirSync(join(agentDir, 'bin'), { recursive: true });
 }
 
@@ -234,7 +281,9 @@ export function piCommandState(agentDir: string, home: string = homedir()): PiCo
   const launcher = join(agentDir, 'bin', 'pi');
   let entrypoint = join(home, '.local', 'bin', 'pi');
   try {
-    const marker = JSON.parse(readFileSync(join(agentDir, 'install', 'managed-install.json'), 'utf8')) as { entrypoint?: { path?: string } };
+    const marker = JSON.parse(readFileSync(join(agentDir, 'install', 'managed-install.json'), 'utf8')) as {
+      entrypoint?: { path?: string };
+    };
     if (marker.entrypoint?.path) entrypoint = marker.entrypoint.path;
   } catch {
     // no marker yet: the default entry point
@@ -261,7 +310,10 @@ export function installPiCommand(agentDir: string, home: string = homedir()): Pi
     if (existsSync(state.entrypoint) || isLink(state.entrypoint)) {
       // Only a link that leads nowhere is ours to replace; a working link or a real file is somebody's pi and stays.
       if (isLink(state.entrypoint) && !existsSync(state.entrypoint)) unlinkSync(state.entrypoint);
-      else throw new Error(`${state.entrypoint} already exists${isLink(state.entrypoint) ? ` (it points to ${readlinkSync(state.entrypoint)})` : ' and is not a link'}; remove it to use pi-kit's launcher.`);
+      else
+        throw new Error(
+          `${state.entrypoint} already exists${isLink(state.entrypoint) ? ` (it points to ${readlinkSync(state.entrypoint)})` : ' and is not a link'}; remove it to use pi-kit's launcher.`,
+        );
     }
     symlinkSync(launcher, state.entrypoint);
   }

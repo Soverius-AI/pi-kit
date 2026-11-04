@@ -1,10 +1,20 @@
-import { type ArgumentMetadata, BadRequestException, Injectable, Logger, StandardSchemaValidationPipe } from '@nestjs/common';
+import {
+  type ArgumentMetadata,
+  BadRequestException,
+  Injectable,
+  Logger,
+  StandardSchemaValidationPipe,
+} from '@nestjs/common';
 import { redactSecrets } from '@pi-kit/protocol';
 
 /** One `path: reason` per problem, the message `parse()` always answered a bad body with (the renderer shows it as it is). */
-export function issueMessages(issues: readonly { path?: readonly (PropertyKey | { key: PropertyKey })[]; message: string }[]): string[] {
+export function issueMessages(
+  issues: readonly { path?: readonly (PropertyKey | { key: PropertyKey })[]; message: string }[],
+): string[] {
   return issues.map((issue) => {
-    const path = (issue.path ?? []).map((segment) => String(typeof segment === 'object' ? segment.key : segment)).join('.');
+    const path = (issue.path ?? [])
+      .map((segment) => String(typeof segment === 'object' ? segment.key : segment))
+      .join('.');
     return `${path || 'body'}: ${issue.message}`;
   });
 }
@@ -28,7 +38,9 @@ export class ContractValidationPipe extends StandardSchemaValidationPipe {
   }
 
   override async transform<T = unknown>(value: T, metadata: ArgumentMetadata): Promise<T> {
-    const input = (metadata.schema && metadata.type === 'body' && (value === undefined || value === null) ? {} : value) as T;
+    const input = (
+      metadata.schema && metadata.type === 'body' && (value === undefined || value === null) ? {} : value
+    ) as T;
     try {
       return await super.transform(input, metadata);
     } catch (error) {

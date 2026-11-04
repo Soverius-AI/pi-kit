@@ -1,8 +1,28 @@
-import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, Menu, type MenuItemConstructorOptions, nativeImage, nativeTheme, shell, systemPreferences, Tray } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  type IpcMainInvokeEvent,
+  Menu,
+  type MenuItemConstructorOptions,
+  nativeImage,
+  nativeTheme,
+  shell,
+  systemPreferences,
+  Tray,
+} from 'electron';
 import { join } from 'node:path';
 import { APP_ORIGIN, registerAppScheme, serveRenderer } from './app-protocol';
 import { AppUpdater, type AppUpdateAction } from './app-updater';
-import { allocateEndpoint, type BackendEndpoint, launchForWatchdog, pingHealth, type RunningBackend, spawnBackend } from './backend';
+import {
+  allocateEndpoint,
+  type BackendEndpoint,
+  launchForWatchdog,
+  pingHealth,
+  type RunningBackend,
+  spawnBackend,
+} from './backend';
 import { removeDatabases } from './database-reset';
 import { FileLog } from './log';
 import { configureLoopbackConnections } from './loopback-network';
@@ -19,7 +39,9 @@ const DEV_URL = process.env['PI_KIT_DEV_URL'];
 const RENDERER_ORIGIN = DEV_URL ? new URL(DEV_URL).origin : APP_ORIGIN;
 // Development: dist/apps/desktop/main.cjs -> dist/apps/{backend,renderer/browser}.
 // Packaged: Resources/app.asar/desktop/main.cjs holds the shell and renderer; the backend is a real folder, Resources/backend.
-const BACKEND_ENTRY = app.isPackaged ? join(process.resourcesPath, 'backend', 'main.js') : join(__dirname, '..', 'backend', 'main.js');
+const BACKEND_ENTRY = app.isPackaged
+  ? join(process.resourcesPath, 'backend', 'main.js')
+  : join(__dirname, '..', 'backend', 'main.js');
 // The app waits for the backend as long as it runs: a migration, a Keychain prompt or a busy machine takes what it takes; only a backend
 // that exits ends the wait. (Until 0.8 the wait gave up after 30 s, or 5 minutes with Touch ID, and killed a backend that was still starting.)
 const HEALTH_TIMEOUT_MS = Infinity;
@@ -34,11 +56,19 @@ let mainLog: FileLog | undefined;
 let backendLog: FileLog | undefined;
 let appUpdater: AppUpdater | undefined;
 /** Sent by the backend over IPC before it exits on a failed start. */
-interface StartupFailure { reason: string; message: string }
+interface StartupFailure {
+  reason: string;
+  message: string;
+}
 let startupFailure: StartupFailure | undefined;
 let tray: Tray | undefined;
 let uiStorage: UiStorage | undefined;
-interface TrayThread { id: string; title: string; project: string; state: 'running' | 'waiting' }
+interface TrayThread {
+  id: string;
+  title: string;
+  project: string;
+  state: 'running' | 'waiting';
+}
 let trayThreads: TrayThread[] = [];
 let trayLabels: ReturnType<typeof trayLabelsInput> | undefined;
 const browserArtifacts = new BrowserArtifacts(() => [RENDERER_ORIGIN, ...(endpoint ? [endpoint.url] : [])]);
@@ -58,7 +88,10 @@ if (SMOKE_DIR) {
 // A development launch (`pnpm dev`, `nx start desktop`) is not the signed app: Touch ID and its keychain group are out of reach, and the
 // installed app's database is keyed to them. So a development build keeps a profile of its own (`PI_KIT_DATA_DIR`, else `.pi-kit-data-desktop`
 // in the working directory), and never opens the installed app's data. Like production, a fresh profile does not enable Keychain.
-const DEV_DIR = !app.isPackaged && !SMOKE_DIR ? process.env['PI_KIT_DATA_DIR'] || join(process.cwd(), '.pi-kit-data-desktop') : undefined;
+const DEV_DIR =
+  !app.isPackaged && !SMOKE_DIR
+    ? process.env['PI_KIT_DATA_DIR'] || join(process.cwd(), '.pi-kit-data-desktop')
+    : undefined;
 if (DEV_DIR) app.setPath('userData', DEV_DIR);
 if (SMOKE) process.on('SIGTERM', () => app.quit());
 
@@ -67,7 +100,9 @@ registerAppScheme();
 /** Only our own renderer may ask for the backend address and token. */
 function isRendererUrl(url: string | undefined): boolean {
   // URL.origin is "null" for the custom app:// scheme, so compare the prefix.
-  return !!url && url !== `${APP_ORIGIN}/__ui-storage` && (url === RENDERER_ORIGIN || url.startsWith(`${RENDERER_ORIGIN}/`));
+  return (
+    !!url && url !== `${APP_ORIGIN}/__ui-storage` && (url === RENDERER_ORIGIN || url.startsWith(`${RENDERER_ORIGIN}/`))
+  );
 }
 
 function fromRenderer(event: IpcMainInvokeEvent): boolean {
@@ -88,16 +123,46 @@ function trayInput(value: unknown): TrayThread[] {
   return value.slice(0, 100).flatMap((item): TrayThread[] => {
     if (!item || typeof item !== 'object') return [];
     const row = item as Record<string, unknown>;
-    if (typeof row['id'] !== 'string' || typeof row['title'] !== 'string' || typeof row['project'] !== 'string' || (row['state'] !== 'running' && row['state'] !== 'waiting')) return [];
-    return [{ id: row['id'].slice(0, 200), title: row['title'].slice(0, 200), project: row['project'].slice(0, 200), state: row['state'] }];
+    if (
+      typeof row['id'] !== 'string' ||
+      typeof row['title'] !== 'string' ||
+      typeof row['project'] !== 'string' ||
+      (row['state'] !== 'running' && row['state'] !== 'waiting')
+    )
+      return [];
+    return [
+      {
+        id: row['id'].slice(0, 200),
+        title: row['title'].slice(0, 200),
+        project: row['project'].slice(0, 200),
+        state: row['state'],
+      },
+    ];
   });
 }
 
 /** Only translated text crosses this boundary; native menu actions stay owned by the main process. */
 function trayLabelsInput(copy: unknown) {
-  const keys = ['needsYou', 'runningThreads', 'noActiveThreads', 'showApp', 'quit', 'tooltip', 'waitingMore', 'runningMore'] as const;
-  if (!copy || typeof copy !== 'object' || !keys.every((key) => typeof (copy as Record<string, unknown>)[key] === 'string')) throw new Error('Invalid tray labels.');
-  return Object.fromEntries(keys.map((key) => [key, (copy as Record<string, string>)[key].slice(0, 500)])) as Record<(typeof keys)[number], string>;
+  const keys = [
+    'needsYou',
+    'runningThreads',
+    'noActiveThreads',
+    'showApp',
+    'quit',
+    'tooltip',
+    'waitingMore',
+    'runningMore',
+  ] as const;
+  if (
+    !copy ||
+    typeof copy !== 'object' ||
+    !keys.every((key) => typeof (copy as Record<string, unknown>)[key] === 'string')
+  )
+    throw new Error('Invalid tray labels.');
+  return Object.fromEntries(keys.map((key) => [key, (copy as Record<string, string>)[key].slice(0, 500)])) as Record<
+    (typeof keys)[number],
+    string
+  >;
 }
 
 function rendererWindow(): BrowserWindow | undefined {
@@ -137,13 +202,15 @@ function updateTray(): void {
   };
   const active = waiting.length + running.length;
   tray.setToolTip(labels.tooltip);
-  tray.setContextMenu(Menu.buildFromTemplate([
-    ...entries(labels.needsYou, waiting, labels.waitingMore),
-    ...entries(labels.runningThreads, running, labels.runningMore),
-    ...(active === 0 ? [{ label: labels.noActiveThreads, enabled: false }, { type: 'separator' as const }] : []),
-    { label: labels.showApp, click: () => showRenderer() },
-    { label: labels.quit, click: () => app.quit() },
-  ]));
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      ...entries(labels.needsYou, waiting, labels.waitingMore),
+      ...entries(labels.runningThreads, running, labels.runningMore),
+      ...(active === 0 ? [{ label: labels.noActiveThreads, enabled: false }, { type: 'separator' as const }] : []),
+      { label: labels.showApp, click: () => showRenderer() },
+      { label: labels.quit, click: () => app.quit() },
+    ]),
+  );
 }
 
 function createTray(): void {
@@ -183,9 +250,12 @@ function createSplash(): BrowserWindow {
     splash.show();
     splashState.shown = true;
   });
-  void splash.loadFile(join(__dirname, 'splash.html')).then(() => {
-    splashState.loaded = true;
-  }).catch((error: Error) => mainLog?.line(`splash could not load: ${error.message}`));
+  void splash
+    .loadFile(join(__dirname, 'splash.html'))
+    .then(() => {
+      splashState.loaded = true;
+    })
+    .catch((error: Error) => mainLog?.line(`splash could not load: ${error.message}`));
   return splash;
 }
 
@@ -213,7 +283,8 @@ function createWindow(): BrowserWindow {
   });
   // A link that wants a new window (an OAuth sign-in page, an MCP server's login) opens in the user's browser, never in the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https:\/\//.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url)) void shell.openExternal(url);
+    if (/^https:\/\//.test(url) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//.test(url))
+      void shell.openExternal(url);
     return { action: 'deny' };
   });
   win.webContents.on('will-navigate', (event, url) => {
@@ -232,8 +303,11 @@ function defaultCwd(): string {
 
 function broadcast(status: WatchdogStatus): void {
   latestStatus = status;
-  mainLog?.line(`backend ${status.state}${status.reason ? `: ${status.reason}` : ''}${status.delayMs ? `, next attempt in ${status.delayMs} ms` : ''} (restarts: ${status.restarts})`);
-  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed()) win.webContents.send('pi-kit:backend-status', status);
+  mainLog?.line(
+    `backend ${status.state}${status.reason ? `: ${status.reason}` : ''}${status.delayMs ? `, next attempt in ${status.delayMs} ms` : ''} (restarts: ${status.restarts})`,
+  );
+  for (const win of BrowserWindow.getAllWindows())
+    if (!win.isDestroyed()) win.webContents.send('pi-kit:backend-status', status);
   if (status.state === 'failed') void offerRetry(status);
 }
 
@@ -271,58 +345,85 @@ function launch(path: string | undefined) {
     backend = running;
     mainLog?.line(`backend started, pid ${running.child.pid}, ${running.url}`);
     // "Open in editor": the backend validated the path, the OS opens it with the default application (shell.openPath).
-    running.child.on('message', (message: { type?: string; id?: string; path?: string; reason?: string; message?: string; action?: AppUpdateAction; threadId?: string; request?: unknown }) => {
-      if (message?.type === 'browser-cancel' && typeof message.id === 'string') {
-        browserRequests.get(message.id)?.abort();
-        return;
-      }
-      if (message?.type === 'browser' && typeof message.id === 'string' && typeof message.threadId === 'string') {
+    running.child.on(
+      'message',
+      (message: {
+        type?: string;
+        id?: string;
+        path?: string;
+        reason?: string;
+        message?: string;
+        action?: AppUpdateAction;
+        threadId?: string;
+        request?: unknown;
+      }) => {
+        if (message?.type === 'browser-cancel' && typeof message.id === 'string') {
+          browserRequests.get(message.id)?.abort();
+          return;
+        }
+        if (message?.type === 'browser' && typeof message.id === 'string' && typeof message.threadId === 'string') {
+          const id = message.id;
+          const threadId = message.threadId;
+          const controller = new AbortController();
+          browserRequests.set(id, controller);
+          const reply = (body: Record<string, unknown>): void => {
+            if (running.child.connected) running.child.send({ type: 'desktop-answer', id, ...body });
+          };
+          const action = message.request === undefined ? undefined : BrowserActionSchema.safeParse(message.request);
+          const result = !action
+            ? Promise.resolve({ state: browserArtifacts.state(threadId) })
+            : action.success
+              ? browserArtifacts.run(threadId, action.data, controller.signal)
+              : Promise.reject(new BrowserOperationError('invalid', 'Invalid browser action.'));
+          void result
+            .then(
+              (value) => reply({ result: value }),
+              (error: unknown) =>
+                reply({
+                  error: error instanceof Error ? error.message : 'The browser action failed.',
+                  errorCode: error instanceof BrowserOperationError ? error.code : 'failed',
+                }),
+            )
+            .finally(() => browserRequests.delete(id));
+          return;
+        }
+        // pi-kit's own update: the backend decides when, this process does it with electron-updater.
+        if (message?.type === 'app-update' && typeof message.id === 'string') {
+          const id = message.id;
+          const reply = (body: Record<string, unknown>): void => {
+            if (running.child.connected) running.child.send({ type: 'desktop-answer', id, ...body });
+          };
+          appUpdater ??= new AppUpdater((event) => {
+            mainLog?.line(`app update: ${JSON.stringify(event)}`);
+            if (backend?.child.connected) backend.child.send({ type: 'app-update-event', event });
+          });
+          void appUpdater.run(message.action ?? 'check').then(
+            (result) => reply({ result }),
+            (error: Error) => reply({ error: error.message }),
+          );
+          return;
+        }
+        if (
+          message?.type === 'startup-failure' &&
+          typeof message.reason === 'string' &&
+          typeof message.message === 'string'
+        ) {
+          startupFailure = { reason: message.reason, message: message.message };
+          return;
+        }
+        if (typeof message?.id !== 'string' || typeof message.path !== 'string') return;
         const id = message.id;
-        const threadId = message.threadId;
-        const controller = new AbortController();
-        browserRequests.set(id, controller);
-        const reply = (body: Record<string, unknown>): void => {
-          if (running.child.connected) running.child.send({ type: 'desktop-answer', id, ...body });
+        const answer = (error?: string): void => {
+          if (running.child.connected) running.child.send({ type: 'desktop-answer', id, ...(error ? { error } : {}) });
         };
-        const action = message.request === undefined ? undefined : BrowserActionSchema.safeParse(message.request);
-        const result = !action ? Promise.resolve({ state: browserArtifacts.state(threadId) }) : action.success
-          ? browserArtifacts.run(threadId, action.data, controller.signal)
-          : Promise.reject(new BrowserOperationError('invalid', 'Invalid browser action.'));
-        void result.then((value) => reply({ result: value }), (error: unknown) => reply({ error: error instanceof Error ? error.message : 'The browser action failed.', errorCode: error instanceof BrowserOperationError ? error.code : 'failed' })).finally(() => browserRequests.delete(id));
-        return;
-      }
-      // pi-kit's own update: the backend decides when, this process does it with electron-updater.
-      if (message?.type === 'app-update' && typeof message.id === 'string') {
-        const id = message.id;
-        const reply = (body: Record<string, unknown>): void => {
-          if (running.child.connected) running.child.send({ type: 'desktop-answer', id, ...body });
-        };
-        appUpdater ??= new AppUpdater((event) => {
-          mainLog?.line(`app update: ${JSON.stringify(event)}`);
-          if (backend?.child.connected) backend.child.send({ type: 'app-update-event', event });
-        });
-        void appUpdater.run(message.action ?? 'check').then(
-          (result) => reply({ result }),
-          (error: Error) => reply({ error: error.message }),
-        );
-        return;
-      }
-      if (message?.type === 'startup-failure' && typeof message.reason === 'string' && typeof message.message === 'string') {
-        startupFailure = { reason: message.reason, message: message.message };
-        return;
-      }
-      if (typeof message?.id !== 'string' || typeof message.path !== 'string') return;
-      const id = message.id;
-      const answer = (error?: string): void => {
-        if (running.child.connected) running.child.send({ type: 'desktop-answer', id, ...(error ? { error } : {}) });
-      };
-      if (message.type === 'open-path') void shell.openPath(message.path).then((error) => answer(error || undefined));
-      // "Reveal in Finder / Explorer" (the Files panel's context menu): the backend validated the path as for open-path.
-      else if (message.type === 'reveal-path') {
-        shell.showItemInFolder(message.path);
-        answer();
-      }
-    });
+        if (message.type === 'open-path') void shell.openPath(message.path).then((error) => answer(error || undefined));
+        // "Reveal in Finder / Explorer" (the Files panel's context menu): the backend validated the path as for open-path.
+        else if (message.type === 'reveal-path') {
+          shell.showItemInFolder(message.path);
+          answer();
+        }
+      },
+    );
     return running;
   }, HEALTH_TIMEOUT_MS);
 }
@@ -365,7 +466,9 @@ async function boot(): Promise<void> {
   const logs = app.getPath('logs');
   mainLog = new FileLog(logs, 'main.log');
   backendLog = new FileLog(logs, 'backend.log');
-  mainLog.line(`pi-kit ${app.getVersion()} starting (${app.isPackaged ? 'packaged' : 'development'}, electron ${process.versions.electron}, ${process.platform}-${process.arch})`);
+  mainLog.line(
+    `pi-kit ${app.getVersion()} starting (${app.isPackaged ? 'packaged' : 'development'}, electron ${process.versions.electron}, ${process.platform}-${process.arch})`,
+  );
   app.setAboutPanelOptions({
     applicationName: 'pi-kit',
     applicationVersion: app.getVersion(),
@@ -382,16 +485,25 @@ async function boot(): Promise<void> {
   const path = app.isPackaged ? loginShellPath() : undefined;
   endpoint = await allocateEndpoint();
   if (!DEV_URL) serveRenderer(RENDERER_ROOT, endpoint.url);
-  const storageReady = !DEV_URL ? (async () => {
-    uiStorage = new UiStorage(join(app.getPath('userData'), 'ui-storage.json'));
-    await uiStorage.load(async () => {
-      const worker = new BrowserWindow({ show: false, width: 1, height: 1, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
-      try {
-        await worker.loadURL(`${APP_ORIGIN}/__ui-storage`);
-        return await worker.webContents.executeJavaScript('Object.fromEntries(Object.entries(localStorage))');
-      } finally { worker.destroy(); }
-    });
-  })().catch((error: Error) => mainLog?.line(`UI preference cache could not load: ${error.message}`)) : Promise.resolve();
+  const storageReady = !DEV_URL
+    ? (async () => {
+        uiStorage = new UiStorage(join(app.getPath('userData'), 'ui-storage.json'));
+        await uiStorage.load(async () => {
+          const worker = new BrowserWindow({
+            show: false,
+            width: 1,
+            height: 1,
+            webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+          });
+          try {
+            await worker.loadURL(`${APP_ORIGIN}/__ui-storage`);
+            return await worker.webContents.executeJavaScript('Object.fromEntries(Object.entries(localStorage))');
+          } finally {
+            worker.destroy();
+          }
+        });
+      })().catch((error: Error) => mainLog?.line(`UI preference cache could not load: ${error.message}`))
+    : Promise.resolve();
   // The first start fails fast with a dialog; only a backend that was up is restarted by the watchdog.
   let adopted: Awaited<ReturnType<typeof launch>> | undefined = await firstLaunch(path, splash);
   mainLog.line(`backend healthy at ${endpoint.url} (bootId ${adopted.health.bootId})`);
@@ -423,7 +535,9 @@ async function boot(): Promise<void> {
   ipcMain.handle('pi-kit:backend-url', (event) => (fromRenderer(event) ? url : Promise.reject(new Error('forbidden'))));
   ipcMain.handle('pi-kit:token', (event) => (fromRenderer(event) ? token : Promise.reject(new Error('forbidden'))));
   // The watchdog's state, for a window that opened after the last change.
-  ipcMain.handle('pi-kit:backend-status-get', (event) => (fromRenderer(event) ? latestStatus : Promise.reject(new Error('forbidden'))));
+  ipcMain.handle('pi-kit:backend-status-get', (event) =>
+    fromRenderer(event) ? latestStatus : Promise.reject(new Error('forbidden')),
+  );
   ipcMain.handle('pi-kit:tray-threads', (event, input: unknown, copy: unknown) => {
     if (!fromRenderer(event)) throw new Error('forbidden');
     const labels = trayLabelsInput(copy);
@@ -453,7 +567,9 @@ async function boot(): Promise<void> {
   ipcMain.handle('pi-kit:open-folder', async (event) => {
     if (!fromRenderer(event)) throw new Error('forbidden');
     const win = BrowserWindow.fromWebContents(event.sender) ?? undefined;
-    const result = await (win ? dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] }) : dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] }));
+    const result = await (win
+      ? dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
+      : dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] }));
     return result.canceled ? undefined : result.filePaths[0];
   });
   // The theme setting's "System" follows the OS through Chromium's prefers-color-scheme; light and dark pin it.
@@ -473,7 +589,8 @@ async function boot(): Promise<void> {
         type: 'info',
         title: 'pi-kit',
         message: 'pi-kit needs the microphone for voice input.',
-        detail: 'Whistle runs on this Mac and the audio is not sent anywhere. Turn the microphone on for pi-kit in System Settings › Privacy & Security › Microphone.',
+        detail:
+          'Whistle runs on this Mac and the audio is not sent anywhere. Turn the microphone on for pi-kit in System Settings › Privacy & Security › Microphone.',
         buttons: ['Open System Settings', 'Not now'],
         defaultId: 0,
         cancelId: 1,
@@ -512,7 +629,11 @@ async function boot(): Promise<void> {
 async function reportSmoke(win: BrowserWindow, url: string, token: string): Promise<void> {
   let rootChildren = 0;
   for (let i = 0; i < 100 && rootChildren === 0; i++) {
-    rootChildren = Number(await win.webContents.executeJavaScript("document.querySelector('pk-root')?.childElementCount ?? 0").catch(() => 0));
+    rootChildren = Number(
+      await win.webContents
+        .executeJavaScript("document.querySelector('pk-root')?.childElementCount ?? 0")
+        .catch(() => 0),
+    );
     if (rootChildren === 0) await new Promise((resolve) => setTimeout(resolve, 200));
   }
   // Check from Chromium too: a healthy Node-side probe cannot catch a broken
@@ -535,13 +656,21 @@ async function reportSmoke(win: BrowserWindow, url: string, token: string): Prom
     platform: process.platform,
     arch: process.arch,
     packaged: app.isPackaged,
-    window: { url: win.webContents.getURL(), rootChildren, backendStatus: connection.status, backendError: connection.error },
+    window: {
+      url: win.webContents.getURL(),
+      rootChildren,
+      backendStatus: connection.status,
+      backendError: connection.error,
+    },
     splash: splashState,
   });
   mainLog?.line(`smoke report written (pk-root children: ${rootChildren})`);
 }
 
-app.whenReady().then(boot).catch((err: Error) => {
+app
+  .whenReady()
+  .then(boot)
+  .catch((err: Error) => {
     if (err instanceof StartupCancelled) {
       mainLog?.line('could not start: the user quit');
       app.quit();
@@ -559,7 +688,10 @@ app.on('before-quit', (event) => {
   if (uiStorage && !flushingUiStorage) {
     event.preventDefault();
     flushingUiStorage = true;
-    void uiStorage.flush().catch((error: Error) => mainLog?.line(`UI preferences could not save: ${error.message}`)).finally(() => app.quit());
+    void uiStorage
+      .flush()
+      .catch((error: Error) => mainLog?.line(`UI preferences could not save: ${error.message}`))
+      .finally(() => app.quit());
     return;
   }
   tray?.destroy();

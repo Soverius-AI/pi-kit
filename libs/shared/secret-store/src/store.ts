@@ -42,7 +42,11 @@ export function osStoreLabel(platform: NodeJS.Platform = process.platform): stri
 
 /** What `@napi-rs/keyring` offers, as far as this file uses it (the package is loaded lazily, so a platform without its binary still starts). */
 interface KeyringModule {
-  Entry: new (service: string, account: string, options?: { linux?: { store?: 'secret-service' | 'keyutils' } }) => {
+  Entry: new (
+    service: string,
+    account: string,
+    options?: { linux?: { store?: 'secret-service' | 'keyutils' } },
+  ) => {
     getPassword(): string | null;
     setPassword(value: string): void;
     deletePassword(): boolean;
@@ -52,7 +56,10 @@ interface KeyringModule {
 
 /** Safe to show or log; native details remain on the cause, which may contain sensitive data. */
 export class SecretStoreAccessError extends Error {
-  constructor(readonly access: CredentialAccess, cause?: unknown) {
+  constructor(
+    readonly access: CredentialAccess,
+    cause?: unknown,
+  ) {
     super(access.reason, { cause });
     this.name = 'SecretStoreAccessError';
   }
@@ -60,8 +67,13 @@ export class SecretStoreAccessError extends Error {
 
 export function accessFailure(error: unknown): CredentialAccess {
   const message = error instanceof Error ? error.message : '';
-  if (/locked|interaction.*not.*allowed|-25308/i.test(message)) return { state: 'locked', reason: 'The credential store is locked. Unlock it, then retry access.' };
-  if (/denied|cancelled|canceled|authorization|authentication.*failed|-25293|(?:^|\D)-128(?:\D|$)/i.test(message)) return { state: 'denied', reason: 'Credential access was denied or cancelled. Allow access in the operating system, then retry.' };
+  if (/locked|interaction.*not.*allowed|-25308/i.test(message))
+    return { state: 'locked', reason: 'The credential store is locked. Unlock it, then retry access.' };
+  if (/denied|cancelled|canceled|authorization|authentication.*failed|-25293|(?:^|\D)-128(?:\D|$)/i.test(message))
+    return {
+      state: 'denied',
+      reason: 'Credential access was denied or cancelled. Allow access in the operating system, then retry.',
+    };
   return { state: 'failed', reason: 'The credential store could not be accessed. Check its availability, then retry.' };
 }
 
@@ -98,7 +110,11 @@ export class KeyringSecretStore implements SecretStore {
     const keyring = this.keyring();
     if (!keyring) throw new Error('The operating system’s credential store is not available here.');
     // On Linux the entry is pinned to the Secret Service, so that `secret-tool` (which only sees that store) can resolve it; the kernel-keyring fallback would be invisible to it.
-    return new keyring.Entry(SECRET_SERVICE, account, this.platform === 'linux' ? { linux: { store: 'secret-service' } } : undefined);
+    return new keyring.Entry(
+      SECRET_SERVICE,
+      account,
+      this.platform === 'linux' ? { linux: { store: 'secret-service' } } : undefined,
+    );
   }
 
   /** Loading the module must not provoke OS consent just to draw a status card. */
@@ -107,7 +123,8 @@ export class KeyringSecretStore implements SecretStore {
   }
 
   accessStatus(): CredentialAccess {
-    if (!this.available()) return { state: 'unavailable', reason: 'The native credential store is not available here.' };
+    if (!this.available())
+      return { state: 'unavailable', reason: 'The native credential store is not available here.' };
     const failure = this.blocked.values().next().value;
     return failure?.access ?? { state: this.accessed ? 'ready' : 'unknown' };
   }
@@ -147,11 +164,13 @@ export class KeyringSecretStore implements SecretStore {
   list(): string[] {
     const keyring = this.keyring();
     if (!keyring) return [];
-    return this.operate('pi-kit/list', () => keyring
-      .findCredentials(SECRET_SERVICE)
-      .map((c) => c.account)
-      .filter((account) => account !== 'pi-kit/probe')
-      .sort());
+    return this.operate('pi-kit/list', () =>
+      keyring
+        .findCredentials(SECRET_SERVICE)
+        .map((c) => c.account)
+        .filter((account) => account !== 'pi-kit/probe')
+        .sort(),
+    );
   }
 }
 
@@ -266,7 +285,8 @@ export function selectSecretStore(env: NodeJS.ProcessEnv = process.env, fresh = 
   else if (setting.startsWith('file:')) store = new FileSecretStore(setting.slice('file:'.length));
   else if (setting === 'legacy') store = new KeyringSecretStore();
   else if (setting === 'macos') store = new MacKeychainSecretStore(env);
-  else if (setting !== '') throw new Error('Unknown PI_KIT_SECRET_STORE setting. Use macos, legacy, memory, file:<path>, or none.');
+  else if (setting !== '')
+    throw new Error('Unknown PI_KIT_SECRET_STORE setting. Use macos, legacy, memory, file:<path>, or none.');
   else if (process.platform === 'darwin') store = new NoSecretStore();
   else {
     const keyring = new KeyringSecretStore();

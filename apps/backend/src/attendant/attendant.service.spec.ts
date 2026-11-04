@@ -20,7 +20,12 @@ const CHOICE: ModelChoice = { provider: 'llama-swap', id: 'gemma', price: 0, rea
 class FakeModel extends AttendantModelPort {
   calls = 0;
   cost = 0;
-  answers = { title: 'Add a monthly summary to the report', summary: 'Writing the summary function', label: 'Retry or give up', draft: 'Allow' };
+  answers = {
+    title: 'Add a monthly summary to the report',
+    summary: 'Writing the summary function',
+    label: 'Retry or give up',
+    draft: 'Allow',
+  };
   prompts: Prompt[] = [];
   resolve = vi.fn(async (_settings: AttendantSettings) => CHOICE as ModelChoice | undefined);
   async ask(prompt: Prompt, _choice?: ModelChoice, _signal?: AbortSignal): Promise<ModelReply> {
@@ -43,7 +48,10 @@ const msg = (id: string, parentId: string | null, role: 'user' | 'assistant', te
   parentId,
   message: { role, content: [{ type: 'text', text }] },
 });
-const LINEAR: PiSessionEntry[] = [msg('u1', null, 'user', 'Add a monthly summary to the report module'), msg('a1', 'u1', 'assistant', 'I will write it now.')];
+const LINEAR: PiSessionEntry[] = [
+  msg('u1', null, 'user', 'Add a monthly summary to the report module'),
+  msg('a1', 'u1', 'assistant', 'I will write it now.'),
+];
 
 let dir: string;
 let db: DatabaseService;
@@ -80,22 +88,49 @@ const make = () =>
   );
 
 /** A thread with a session file on disk (the attendant keys its memory on the file's mtime) and `messageCount` messages. */
-function addThread(id: string, over: { title?: string; cwd?: string; messageCount?: number; archived?: boolean } = {}): string {
+function addThread(
+  id: string,
+  over: { title?: string; cwd?: string; messageCount?: number; archived?: boolean } = {},
+): string {
   const path = join(dir, `${id}.jsonl`);
   writeFileSync(path, '{}\n');
   rows.insertDraft({ id, sessionPath: path, cwd: over.cwd ?? '/proj', ...(over.title ? { title: over.title } : {}) });
-  rows.upsertFromSession({ id, sessionPath: path, cwd: over.cwd ?? '/proj', title: over.title, preview: 'p', parentSessionPath: undefined, messageCount: over.messageCount ?? 2, createdAt: 1, updatedAt: 2 }, 1);
+  rows.upsertFromSession(
+    {
+      id,
+      sessionPath: path,
+      cwd: over.cwd ?? '/proj',
+      title: over.title,
+      preview: 'p',
+      parentSessionPath: undefined,
+      messageCount: over.messageCount ?? 2,
+      createdAt: 1,
+      updatedAt: 2,
+    },
+    1,
+  );
   if (over.archived) rows.update(id, { archived: true });
   return path;
 }
 
-const enable = (over: Partial<AttendantSettings> = {}): void => void meta.setSetting('attendant', { enabled: true, model: null, when: { onEnd: true, onInterrupt: true, everyMinutes: 0 }, dailyCostCap: 0.5, ...over });
+const enable = (over: Partial<AttendantSettings> = {}): void =>
+  void meta.setSetting('attendant', {
+    enabled: true,
+    model: null,
+    when: { onEnd: true, onInterrupt: true, everyMinutes: 0 },
+    dailyCostCap: 0.5,
+    ...over,
+  });
 
 /**
  * Holds every model request until `release()` (or until its signal aborts, as a real request ends then), and keeps the signal each was given.
  * A request whose signal aborted fails the way a cancelled one does; one that was released answers as the fake does.
  */
-function holdModel(): { seen: { prompt: Prompt; signal: AbortSignal | undefined }[]; release: () => void; until: (count: number) => Promise<void> } {
+function holdModel(): {
+  seen: { prompt: Prompt; signal: AbortSignal | undefined }[];
+  release: () => void;
+  until: (count: number) => Promise<void>;
+} {
   let release!: () => void;
   const gate = new Promise<void>((resolve) => (release = resolve));
   const real = model.ask.bind(model);
@@ -203,8 +238,20 @@ describe('the attendant is on', () => {
 
   it('lists a note with the replay’s usage when another service hands one in', () => {
     addThread('t1');
-    make().note('learn', rows.get('t1') as never, 'Verified the skill x: pass.', 'done', { model: 'p/m', inputTokens: 50, outputTokens: 0, cost: 0.01 });
-    expect(repo.actions()[0]).toMatchObject({ kind: 'learn', status: 'done', model: 'p/m', inputTokens: 50, cost: 0.01, text: 'Verified the skill x: pass.' });
+    make().note('learn', rows.get('t1') as never, 'Verified the skill x: pass.', 'done', {
+      model: 'p/m',
+      inputTokens: 50,
+      outputTokens: 0,
+      cost: 0.01,
+    });
+    expect(repo.actions()[0]).toMatchObject({
+      kind: 'learn',
+      status: 'done',
+      model: 'p/m',
+      inputTokens: 50,
+      cost: 0.01,
+      text: 'Verified the skill x: pass.',
+    });
     expect(repo.usageSince(0).cost).toBeCloseTo(0.01);
   });
 
@@ -357,7 +404,15 @@ describe('suggestions', () => {
     addThread('t1', { title: 'x' });
     dialogs = [{ id: 'd1', request: { method: 'confirm', title: 'Run npm test?' } }];
     await make().process('t1', 'interrupt');
-    expect(repo.openSuggestions('t1')).toEqual([{ id: expect.any(Number), kind: 'answer', target: 'd1', text: 'Allow', reason: expect.stringContaining('Run npm test?') }]);
+    expect(repo.openSuggestions('t1')).toEqual([
+      {
+        id: expect.any(Number),
+        kind: 'answer',
+        target: 'd1',
+        text: 'Allow',
+        reason: expect.stringContaining('Run npm test?'),
+      },
+    ]);
     expect(repo.actions().find((a) => a.kind === 'draft')?.text).toContain('Suggested “Allow”');
   });
 
@@ -401,7 +456,13 @@ describe('suggestions', () => {
 
   it('proposes a label for a fork point that has none, once', async () => {
     const path = addThread('t1', { title: 'x' });
-    entries = [...LINEAR, msg('u2', 'a1', 'user', 'Retry the build'), msg('a2', 'u2', 'assistant', 'Retrying'), msg('u3', 'a1', 'user', 'Give up and ship'), msg('a3', 'u3', 'assistant', 'Shipping')];
+    entries = [
+      ...LINEAR,
+      msg('u2', 'a1', 'user', 'Retry the build'),
+      msg('a2', 'u2', 'assistant', 'Retrying'),
+      msg('u3', 'a1', 'user', 'Give up and ship'),
+      msg('a3', 'u3', 'assistant', 'Shipping'),
+    ];
     leaf = 'a2';
     rows.setForkCount('t1', 1, null);
     const attendant = make();
@@ -435,7 +496,8 @@ describe('suggestions', () => {
 describe('work for other services (drafting a skill)', () => {
   const prompt: Prompt = { system: 'You turn work into a skill.', user: 'the thread' };
   const describeText = (text: string) => ({ status: 'done' as const, text: `Answered ${text.length}` });
-  const ask = (attendant: AttendantService, initiative: 'attendant' | 'person', signal?: AbortSignal) => attendant.complete(rows.get('t1')!, prompt, { kind: 'learn', initiative, describe: describeText, signal });
+  const ask = (attendant: AttendantService, initiative: 'attendant' | 'person', signal?: AbortSignal) =>
+    attendant.complete(rows.get('t1')!, prompt, { kind: 'learn', initiative, describe: describeText, signal });
 
   it('refuses a task while it is off, and for a project that opted out', () => {
     addThread('t1');
@@ -488,7 +550,13 @@ describe('work for other services (drafting a skill)', () => {
     const done = await ask(make(), 'person');
     expect(done).toMatchObject({ ok: true, text: 'a draft', cost: 0.003 });
     expect(model.calls).toBe(1);
-    expect(repo.actions()[0]).toMatchObject({ kind: 'learn', status: 'done', threadId: 't1', text: 'Answered 7', cost: 0.003 });
+    expect(repo.actions()[0]).toMatchObject({
+      kind: 'learn',
+      status: 'done',
+      threadId: 't1',
+      text: 'Answered 7',
+      cost: 0.003,
+    });
     expect(repo.usageSince(startOfDay()).cost).toBeCloseTo(0.003);
   });
 
@@ -525,27 +593,40 @@ describe('work for other services (drafting a skill)', () => {
 
   it.each([
     // The backend quitting aborts every request in flight, the loop's included; a caller's signal reaches only the request it was given with.
-    { who: 'the backend quitting', cancel: (attendant: AttendantService, _caller: AbortController) => attendant.onModuleDestroy(), reasons: ['cancelled', 'cancelled'], title: null },
-    { who: 'the caller’s own signal', cancel: (_attendant: AttendantService, caller: AbortController) => caller.abort(), reasons: [undefined, 'cancelled'], title: 'Add a monthly summary to the report' },
-  ])('a person’s request in flight is aborted by $who: the model hears it, the answer is failed, nothing is listed for it', async ({ cancel, reasons, title }) => {
-    enable();
-    addThread('t1');
-    const held = holdModel();
-    const attendant = make();
-    attendant.enqueue('t1', 'end'); // the attendant's own request: its loop, naming the thread
-    await held.until(1);
-    const caller = new AbortController();
-    const pending = ask(attendant, 'person', caller.signal);
-    await held.until(2);
-    expect(held.seen.map((request) => request.signal?.aborted)).toEqual([false, false]);
-    cancel(attendant, caller);
-    expect(held.seen.map((request) => request.signal?.reason)).toEqual(reasons);
-    expect(await pending).toEqual({ ok: false, code: 'failed', error: 'The request was cancelled.' });
-    held.release();
-    await attendant.idle();
-    expect(rows.get('t1')?.title).toBe(title);
-    expect(repo.actions().filter((a) => a.kind === 'learn')).toEqual([]);
-  });
+    {
+      who: 'the backend quitting',
+      cancel: (attendant: AttendantService, _caller: AbortController) => attendant.onModuleDestroy(),
+      reasons: ['cancelled', 'cancelled'],
+      title: null,
+    },
+    {
+      who: 'the caller’s own signal',
+      cancel: (_attendant: AttendantService, caller: AbortController) => caller.abort(),
+      reasons: [undefined, 'cancelled'],
+      title: 'Add a monthly summary to the report',
+    },
+  ])(
+    'a person’s request in flight is aborted by $who: the model hears it, the answer is failed, nothing is listed for it',
+    async ({ cancel, reasons, title }) => {
+      enable();
+      addThread('t1');
+      const held = holdModel();
+      const attendant = make();
+      attendant.enqueue('t1', 'end'); // the attendant's own request: its loop, naming the thread
+      await held.until(1);
+      const caller = new AbortController();
+      const pending = ask(attendant, 'person', caller.signal);
+      await held.until(2);
+      expect(held.seen.map((request) => request.signal?.aborted)).toEqual([false, false]);
+      cancel(attendant, caller);
+      expect(held.seen.map((request) => request.signal?.reason)).toEqual(reasons);
+      expect(await pending).toEqual({ ok: false, code: 'failed', error: 'The request was cancelled.' });
+      held.release();
+      await attendant.idle();
+      expect(rows.get('t1')?.title).toBe(title);
+      expect(repo.actions().filter((a) => a.kind === 'learn')).toEqual([]);
+    },
+  );
 
   it.each(['caller already cancelled', 'backend already stopped'])('%s makes no request at all', async (why) => {
     addThread('t1');
@@ -553,7 +634,11 @@ describe('work for other services (drafting a skill)', () => {
     const attendant = make();
     if (why === 'backend already stopped') attendant.onModuleDestroy();
     else caller.abort();
-    expect(await ask(attendant, 'person', caller.signal)).toEqual({ ok: false, code: 'failed', error: 'The request was cancelled.' });
+    expect(await ask(attendant, 'person', caller.signal)).toEqual({
+      ok: false,
+      code: 'failed',
+      error: 'The request was cancelled.',
+    });
     expect(model.calls).toBe(0);
     expect(model.resolve).not.toHaveBeenCalled();
     expect(repo.actions()).toEqual([]);
@@ -593,13 +678,23 @@ describe('work for other services (drafting a skill)', () => {
 
 describe('settings', () => {
   it('start from the defaults: off, the cheapest model, on end and on a question, $0.50 a day', () => {
-    expect(make().settings()).toEqual({ enabled: false, followUpSuggestions: false, model: null, when: { onEnd: true, onInterrupt: true, everyMinutes: 0 }, dailyCostCap: 0.5 });
+    expect(make().settings()).toEqual({
+      enabled: false,
+      followUpSuggestions: false,
+      model: null,
+      when: { onEnd: true, onInterrupt: true, everyMinutes: 0 },
+      dailyCostCap: 0.5,
+    });
   });
 
   it('patch merges the schedule and keeps what it was not given', () => {
     const attendant = make();
     attendant.patch({ model: { provider: 'llama-swap', modelId: 'gemma' }, when: { everyMinutes: 15 } });
-    expect(attendant.settings()).toMatchObject({ enabled: false, model: { provider: 'llama-swap', modelId: 'gemma' }, when: { onEnd: true, onInterrupt: true, everyMinutes: 15 } });
+    expect(attendant.settings()).toMatchObject({
+      enabled: false,
+      model: { provider: 'llama-swap', modelId: 'gemma' },
+      when: { onEnd: true, onInterrupt: true, everyMinutes: 15 },
+    });
     attendant.patch({ dailyCostCap: null });
     expect(attendant.settings().dailyCostCap).toBeNull();
     attendant.onModuleDestroy();

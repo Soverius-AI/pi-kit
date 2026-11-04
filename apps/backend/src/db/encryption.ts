@@ -61,8 +61,15 @@ export function keyOpens(path: string, hexKey: string): boolean {
 
 /** Every table with its row count, for comparing a file before and after migration. */
 function tableCounts(db: Database.Database): Record<string, number> {
-  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as { name: string }[];
-  return Object.fromEntries(tables.map(({ name }) => [name, (db.prepare(`SELECT count(*) AS n FROM "${name.replace(/"/g, '""')}"`).get() as { n: number }).n]));
+  const tables = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .all() as { name: string }[];
+  return Object.fromEntries(
+    tables.map(({ name }) => [
+      name,
+      (db.prepare(`SELECT count(*) AS n FROM "${name.replace(/"/g, '""')}"`).get() as { n: number }).n,
+    ]),
+  );
 }
 
 const sidecars = (path: string): string[] => [`${path}-wal`, `${path}-shm`, `${path}-journal`];
@@ -79,7 +86,9 @@ export interface EncryptResult {
 /** Throws when a protection transition of `path` was interrupted (a `.plaintext`, `.encrypted`, `.encrypting` or `.decrypting` file is beside it), so nothing replaces the retained originals. */
 export function assertNoPendingDatabaseTransition(path: string): void {
   if (['.plaintext', '.encrypted', '.encrypting', '.decrypting'].some((suffix) => existsSync(`${path}${suffix}`))) {
-    throw new Error('An interrupted database protection transition needs recovery. Original database files were retained; do not delete them or start a replacement database.');
+    throw new Error(
+      'An interrupted database protection transition needs recovery. Original database files were retained; do not delete them or start a replacement database.',
+    );
   }
 }
 
@@ -125,7 +134,10 @@ export function encryptDatabaseFile(path: string, hexKey: string): EncryptResult
     try {
       useKey(check, hexKey);
       const after = tableCounts(check);
-      if (JSON.stringify(after) !== JSON.stringify(before)) throw new Error(`The encrypted copy differs from the original (${JSON.stringify(after)} against ${JSON.stringify(before)}).`);
+      if (JSON.stringify(after) !== JSON.stringify(before))
+        throw new Error(
+          `The encrypted copy differs from the original (${JSON.stringify(after)} against ${JSON.stringify(before)}).`,
+        );
       const integrity = check.pragma('integrity_check', { simple: true });
       if (integrity !== 'ok') throw new Error(`The encrypted copy failed its integrity check: ${String(integrity)}.`);
     } finally {

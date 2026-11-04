@@ -27,8 +27,9 @@ export class ParentProcessMonitor implements OnApplicationBootstrap, OnModuleDes
     if (!parent || parent === process.pid) return;
     this.timer = setInterval(() => {
       if (this.stopping) return;
-      try { process.kill(parent, 0); }
-      catch (error) {
+      try {
+        process.kill(parent, 0);
+      } catch (error) {
         // EPERM means the process exists but cannot be signalled, not that it died.
         if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return;
         this.stopping = true;

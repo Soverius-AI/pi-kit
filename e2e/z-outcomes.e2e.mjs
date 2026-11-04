@@ -22,7 +22,11 @@ let project;
 
 async function call(method, path, body) {
   const { token } = await (await fetch(`${env.api}/api/dev/token`, { headers: { Origin: env.base } })).json();
-  const res = await fetch(`${env.api}${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  const res = await fetch(`${env.api}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
   return { status: res.status, body: res.status === 204 ? undefined : await res.json().catch(() => undefined) };
 }
 
@@ -31,7 +35,8 @@ const spawned = [];
 async function ensureBackend() {
   const up = async () => {
     try {
-      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } })).ok;
+      return (await fetch(`${env.api}/api/health`, { headers: { Authorization: `Bearer ${env.server.PI_KIT_TOKEN}` } }))
+        .ok;
     } catch {
       return false;
     }
@@ -39,7 +44,13 @@ async function ensureBackend() {
   if (await up()) return;
   const child = spawn('node', ['dist/apps/backend/main.js'], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, ...env.server, NODE_ENV: 'development', PI_KIT_PORT: new URL(env.api).port, PI_KIT_ORIGIN: env.base },
+    env: {
+      ...process.env,
+      ...env.server,
+      NODE_ENV: 'development',
+      PI_KIT_PORT: new URL(env.api).port,
+      PI_KIT_ORIGIN: env.base,
+    },
     stdio: 'ignore',
     detached: true,
   });
@@ -91,10 +102,15 @@ async function newThread(title) {
   await app.page.getByRole('button', { name: `New thread in ${NAME}` }).click();
   await app.page.getByLabel('Message to pi').waitFor();
   await app.h.settle(500);
-  const created = (await threads()).filter((t) => !t.title && t.messageCount === 0).sort((a, b) => b.createdAt - a.createdAt)[0];
+  const created = (await threads())
+    .filter((t) => !t.title && t.messageCount === 0)
+    .sort((a, b) => b.createdAt - a.createdAt)[0];
   assert.ok(created, 'the new thread is listed');
   await call('PATCH', `/api/threads/${created.id}`, { title });
-  await eventually(async () => (await group().locator('.pk-thread', { hasText: title }).count()) > 0, `the row of ${title}`);
+  await eventually(
+    async () => (await group().locator('.pk-thread', { hasText: title }).count()) > 0,
+    `the row of ${title}`,
+  );
   return created.id;
 }
 
@@ -108,7 +124,7 @@ async function prompt(text, timeout = 240_000) {
   await app.h.settle(800);
 }
 
-const outcomeOf = async (id) => (await call('GET', `/api/threads/${id}/outcome`));
+const outcomeOf = async (id) => await call('GET', `/api/threads/${id}/outcome`);
 const badge = (title) => rowOf(title).getByTestId('outcome-badge');
 
 /** What the Outcome source serves, next to what git itself says for the same two commits. */
@@ -128,10 +144,14 @@ async function assertOutcomeDiffIsGits(id, folder) {
     'the Outcome file list is git diff --numstat base..head',
   );
   for (const file of served.files) {
-    const model = (await call('GET', `/api/threads/${id}/changes/${encodeURIComponent(file.path)}?source=outcome`)).body;
+    const model = (await call('GET', `/api/threads/${id}/changes/${encodeURIComponent(file.path)}?source=outcome`))
+      .body;
     const patch = gitIn(folder, 'diff', '--no-renames', '-U3', `${outcome.base}..${outcome.head}`, '--', file.path);
     const changed = patch.split('\n').filter((l) => /^[+-]/.test(l) && !/^(\+\+\+|---)/.test(l));
-    const modelled = model.hunks.flatMap((h) => h.lines).filter((l) => l.kind === 'add' || l.kind === 'del').map((l) => `${l.kind === 'add' ? '+' : '-'}${l.text}`);
+    const modelled = model.hunks
+      .flatMap((h) => h.lines)
+      .filter((l) => l.kind === 'add' || l.kind === 'del')
+      .map((l) => `${l.kind === 'add' ? '+' : '-'}${l.text}`);
     assert.deepEqual(modelled, changed, `the diff of ${file.path} is git's`);
   }
   return { outcome, served };
@@ -157,11 +177,13 @@ describe('a commit made in the folder', () => {
   let id;
   let base;
 
-  it('is the thread\'s outcome when it contains a file the thread changed: the badge appears and the Outcome toggle shows the diff', async () => {
+  it("is the thread's outcome when it contains a file the thread changed: the badge appears and the Outcome toggle shows the diff", async () => {
     base = git('rev-parse', 'HEAD');
     id = await newThread(TITLE);
     assert.equal((await api(`/api/threads/${id}`)).state.outcome, null);
-    await prompt('Use the write tool to overwrite src/map.ts with exactly this one line: export const mapped = true;\nThen say done in one short sentence.');
+    await prompt(
+      'Use the write tool to overwrite src/map.ts with exactly this one line: export const mapped = true;\nThen say done in one short sentence.',
+    );
     assert.match(gitIn(project, 'status', '--porcelain'), /src\/map\.ts/, 'pi changed the file in the folder');
     assert.equal(await badge(TITLE).count(), 0, 'an uncommitted change is no outcome');
 
@@ -171,16 +193,25 @@ describe('a commit made in the folder', () => {
     await term.waitFor();
     await app.h.settle(1500);
     await term.click();
-    await app.page.keyboard.type("git add -A && git -c user.name=e2e -c user.email=e2e@example.com commit -q -m 'Map rows to the dashboard shape'");
+    await app.page.keyboard.type(
+      "git add -A && git -c user.name=e2e -c user.email=e2e@example.com commit -q -m 'Map rows to the dashboard shape'",
+    );
     await app.page.keyboard.press('Enter');
-    await eventually(() => git('log', '-1', '--format=%s') === 'Map rows to the dashboard shape', 'the commit to be made in the terminal', 30_000);
+    await eventually(
+      () => git('log', '-1', '--format=%s') === 'Map rows to the dashboard shape',
+      'the commit to be made in the terminal',
+      30_000,
+    );
     const commit = git('rev-parse', 'HEAD');
     await app.h.closePanel();
 
     // The watcher debounces by 300 ms; the badge follows the pushed state.
     await badge(TITLE).waitFor();
     assert.equal(await badge(TITLE).getAttribute('data-kind'), 'committed');
-    assert.match(await badge(TITLE).getAttribute('title'), new RegExp(`^Committed as ${commit.slice(0, 7)}, (just now|1 min ago)$`));
+    assert.match(
+      await badge(TITLE).getAttribute('title'),
+      new RegExp(`^Committed as ${commit.slice(0, 7)}, (just now|1 min ago)$`),
+    );
     const outcome = (await outcomeOf(id)).body;
     assert.equal(outcome.kind, 'committed');
     assert.equal(outcome.head, commit);
@@ -205,14 +236,22 @@ describe('a commit made in the folder', () => {
     const menu = app.page.getByRole('menu', { name: 'Outcome' });
     await menu.waitFor();
     // 10b adds "Learn a skill from this thread" after the built-in item (OutcomeMenuStore.extend), 10e "Score this thread".
-    assert.deepEqual(await menu.getByRole('menuitem').allInnerTexts(), ['Show the outcome', 'Learn a skill from this thread', 'Score this thread']);
+    assert.deepEqual(await menu.getByRole('menuitem').allInnerTexts(), [
+      'Show the outcome',
+      'Learn a skill from this thread',
+      'Score this thread',
+    ]);
     await menu.getByRole('menuitem', { name: 'Show the outcome' }).click();
     await app.page.locator('pk-review-view').waitFor();
     const diff = app.page.locator('pk-review-view .pk-diff');
     await diff.waitFor();
     assert.ok((await diff.innerText()).includes('mapped = true'), 'the diff is the committed change');
     // The source is the diff's subtitle under the file name (the toolbar keeps it only as the progress title).
-    await app.page.locator('pk-review-view').getByText(/in the outcome, committed as/).first().waitFor();
+    await app.page
+      .locator('pk-review-view')
+      .getByText(/in the outcome, committed as/)
+      .first()
+      .waitFor();
     await app.page.getByRole('button', { name: /Chat/ }).first().click();
   });
 
@@ -220,15 +259,21 @@ describe('a commit made in the folder', () => {
     const before = (await outcomeOf(id)).body;
     await app.h.openPanel('Terminal');
     await app.page.locator('.pk-term').click();
-    await app.page.keyboard.type("echo 'export const second = 2;' >> src/map.ts && git add -A && git -c user.name=e2e -c user.email=e2e@example.com commit -q -m 'Second change'");
+    await app.page.keyboard.type(
+      "echo 'export const second = 2;' >> src/map.ts && git add -A && git -c user.name=e2e -c user.email=e2e@example.com commit -q -m 'Second change'",
+    );
     await app.page.keyboard.press('Enter');
     await eventually(() => git('log', '-1', '--format=%s') === 'Second change', 'the second commit', 30_000);
     const second = git('rev-parse', 'HEAD');
     await app.h.closePanel();
-    const after = await eventually(async () => {
-      const o = (await outcomeOf(id)).body;
-      return o.head === second ? o : undefined;
-    }, 'the outcome to move to the second commit', 15_000);
+    const after = await eventually(
+      async () => {
+        const o = (await outcomeOf(id)).body;
+        return o.head === second ? o : undefined;
+      },
+      'the outcome to move to the second commit',
+      15_000,
+    );
     assert.equal(after.kind, 'committed');
     assert.equal(after.base, before.base, 'the base stays where the first commit put it');
     assert.ok(after.files.includes('src/map.ts'));
@@ -241,15 +286,20 @@ describe('a worktree merged back', () => {
   let id;
   let worktree;
 
-  it('merges back into main: `merged`, the merge commit, and the Outcome diff is git\'s base..head', async () => {
+  it("merges back into main: `merged`, the merge commit, and the Outcome diff is git's base..head", async () => {
     // The page opens with the row showing Worktree; the first message makes the worktree and starts the thread in it.
     const before = new Set((await threads()).map((t) => t.id));
     await app.page.getByTestId('new-thread-menu').click();
     await app.page.getByTestId('new-in-worktree').click();
     await app.page.getByTestId('where-row').waitFor();
     const draft = (await threads()).find((t) => !before.has(t.id));
-    await prompt('Use the write tool to create docs/outcome.md containing exactly: # Outcome\nThen say done in one short sentence.');
-    const created = await eventually(async () => (await threads()).find((t) => t.id === draft.id && t.worktree?.exists), 'the worktree thread');
+    await prompt(
+      'Use the write tool to create docs/outcome.md containing exactly: # Outcome\nThen say done in one short sentence.',
+    );
+    const created = await eventually(
+      async () => (await threads()).find((t) => t.id === draft.id && t.worktree?.exists),
+      'the worktree thread',
+    );
     id = created.id;
     worktree = created.worktree.path;
     await call('PATCH', `/api/threads/${id}`, { title: TITLE });
@@ -258,7 +308,11 @@ describe('a worktree merged back', () => {
     assert.equal(startedAt, git('rev-parse', 'main'), 'a worktree starts at the tip of its base branch');
     assert.equal(await badge(TITLE).count(), 0);
 
-    const merged = await call('POST', `/api/threads/${id}/worktree/merge`, { mode: 'merge', message: 'Document the outcome', remove: true });
+    const merged = await call('POST', `/api/threads/${id}/worktree/merge`, {
+      mode: 'merge',
+      message: 'Document the outcome',
+      remove: true,
+    });
     assert.equal(merged.body.status, 'merged', JSON.stringify(merged.body));
     const mergeCommit = git('rev-parse', 'HEAD');
     assert.match(merged.body.commit, /^[0-9a-f]+$/);
@@ -266,7 +320,10 @@ describe('a worktree merged back', () => {
 
     await badge(TITLE).waitFor();
     assert.equal(await badge(TITLE).getAttribute('data-kind'), 'merged');
-    assert.match(await badge(TITLE).getAttribute('title'), new RegExp(`^Merged into main as ${mergeCommit.slice(0, 7)}, (just now|1 min ago)$`));
+    assert.match(
+      await badge(TITLE).getAttribute('title'),
+      new RegExp(`^Merged into main as ${mergeCommit.slice(0, 7)}, (just now|1 min ago)$`),
+    );
     const { outcome, served } = await assertOutcomeDiffIsGits(id, project);
     assert.equal(outcome.kind, 'merged');
     assert.equal(outcome.head, mergeCommit);
@@ -274,11 +331,14 @@ describe('a worktree merged back', () => {
     assert.equal(outcome.base, git('rev-parse', `${mergeCommit}^1`), 'the base is the tip the merge landed on');
     assert.equal(outcome.base, startedAt, 'which is where the thread started');
     assert.equal(outcome.baseBranch, 'main');
-    assert.deepEqual(served.files.map((f) => f.path), ['docs/outcome.md']);
+    assert.deepEqual(
+      served.files.map((f) => f.path),
+      ['docs/outcome.md'],
+    );
     assert.equal(git('show', 'main:docs/outcome.md'), '# Outcome');
   });
 
-  it('still shows the Outcome once the worktree is gone: the commits are on the project\'s branch', async () => {
+  it("still shows the Outcome once the worktree is gone: the commits are on the project's branch", async () => {
     const thread = await api(`/api/threads/${id}`);
     assert.equal(thread.worktree.exists, false);
     await rowOf(TITLE).click();

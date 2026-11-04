@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { wavFile } from './wav.testing';
-import { AudioError, chunked, durationMs, floatToPcm16, parseWav, pcm16ToFloat, peak, resample, sniffAudioFormat, toWhistleRate, WHISTLE_RATE } from './pcm';
+import {
+  AudioError,
+  chunked,
+  durationMs,
+  floatToPcm16,
+  parseWav,
+  pcm16ToFloat,
+  peak,
+  resample,
+  sniffAudioFormat,
+  toWhistleRate,
+  WHISTLE_RATE,
+} from './pcm';
 
 const int16 = (values: number[]): Uint8Array => {
   const out = new Uint8Array(values.length * 2);
@@ -9,15 +21,22 @@ const int16 = (values: number[]): Uint8Array => {
   return out;
 };
 
-const sine = (hz: number, rate: number, seconds: number, amplitude = 0.5): Float32Array => Float32Array.from({ length: Math.round(rate * seconds) }, (_, i) => amplitude * Math.sin((2 * Math.PI * hz * i) / rate));
-const rms = (s: Float32Array, from = 0, to = s.length): number => Math.sqrt(s.subarray(from, to).reduce((a, v) => a + v * v, 0) / (to - from));
+const sine = (hz: number, rate: number, seconds: number, amplitude = 0.5): Float32Array =>
+  Float32Array.from(
+    { length: Math.round(rate * seconds) },
+    (_, i) => amplitude * Math.sin((2 * Math.PI * hz * i) / rate),
+  );
+const rms = (s: Float32Array, from = 0, to = s.length): number =>
+  Math.sqrt(s.subarray(from, to).reduce((a, v) => a + v * v, 0) / (to - from));
 
 describe('sniffAudioFormat', () => {
   it('knows the containers a recorder produces by their first bytes', () => {
     expect(sniffAudioFormat(wavFile(int16([0, 0])))).toBe('wav');
     expect(sniffAudioFormat(Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3, 1, 2, 3]))).toBe('webm');
     expect(sniffAudioFormat(new TextEncoder().encode('OggS....'))).toBe('ogg');
-    expect(sniffAudioFormat(Uint8Array.from([0, 0, 0, 24, ...new TextEncoder().encode('ftypisom'), 0, 0, 0, 0]))).toBe('mp4');
+    expect(sniffAudioFormat(Uint8Array.from([0, 0, 0, 24, ...new TextEncoder().encode('ftypisom'), 0, 0, 0, 0]))).toBe(
+      'mp4',
+    );
     expect(sniffAudioFormat(new TextEncoder().encode('hello world, not audio'))).toBe('unknown');
     expect(sniffAudioFormat(new Uint8Array(0))).toBe('unknown');
   });
@@ -36,8 +55,14 @@ describe('parseWav', () => {
   });
 
   it('reads 8-bit unsigned, 24-bit, 32-bit integer and 32/64-bit float samples', () => {
-    expect(Array.from(parseWav(wavFile(Uint8Array.from([128, 255, 0]), { bits: 8 })).samples)).toEqual([0, 127 / 128, -1]);
-    expect(Array.from(parseWav(wavFile(Uint8Array.from([0, 0, 0x40, 0, 0, 0xc0]), { bits: 24 })).samples)).toEqual([0.5, -0.5]);
+    expect(Array.from(parseWav(wavFile(Uint8Array.from([128, 255, 0]), { bits: 8 })).samples)).toEqual([
+      0,
+      127 / 128,
+      -1,
+    ]);
+    expect(Array.from(parseWav(wavFile(Uint8Array.from([0, 0, 0x40, 0, 0, 0xc0]), { bits: 24 })).samples)).toEqual([
+      0.5, -0.5,
+    ]);
     const i32 = new Uint8Array(8);
     new DataView(i32.buffer).setInt32(0, 1 << 30, true);
     new DataView(i32.buffer).setInt32(4, -(1 << 30), true);

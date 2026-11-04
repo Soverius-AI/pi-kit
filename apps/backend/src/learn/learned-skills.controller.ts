@@ -1,10 +1,21 @@
 import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
-import { type LearnedSkill, LearnedSkillDetailSchema, type LearnedSkillDetail, LearnedSkillSchema, type SaveLearnedSkill, SaveLearnedSkillSchema } from '@pi-kit/protocol';
+import {
+  type LearnedSkill,
+  LearnedSkillDetailSchema,
+  type LearnedSkillDetail,
+  LearnedSkillSchema,
+  type SaveLearnedSkill,
+  SaveLearnedSkillSchema,
+} from '@pi-kit/protocol';
 import { Fails, Responds } from '../contract';
 import { LearnedSkillsService } from './learned-skills.service';
 
-const SKILL_ID = { name: 'id', description: 'The learned skill’s id: the id of the draft it was approved from.', schema: { type: 'string' } } as const;
+const SKILL_ID = {
+  name: 'id',
+  description: 'The learned skill’s id: the id of the draft it was approved from.',
+  schema: { type: 'string' },
+} as const;
 
 /** The record of the skills learned from finished threads: uses, outcomes, the last verification, and Re-verify, Edit, Retire. */
 @ApiTags('learn')
@@ -26,7 +37,11 @@ export class LearnedSkillsController {
 
   @Get(':id')
   @ApiParam(SKILL_ID)
-  @ApiOperation({ summary: 'Get a learned skill', description: 'The record of one learned skill and its `SKILL.md` as it is on disk now (in `.retired/` while it is retired), for the edit dialog.' })
+  @ApiOperation({
+    summary: 'Get a learned skill',
+    description:
+      'The record of one learned skill and its `SKILL.md` as it is on disk now (in `.retired/` while it is retired), for the edit dialog.',
+  })
   @Responds(LearnedSkillDetailSchema)
   @Fails({ 404: 'There is no such learned skill.' })
   get(@Param('id') id: string): LearnedSkillDetail {
@@ -43,7 +58,10 @@ export class LearnedSkillsController {
       'so the skill is gone from the `/` menu and the chips. Nothing is deleted; `unretire` moves it back.',
   })
   @Responds(LearnedSkillSchema)
-  @Fails({ 404: 'There is no such learned skill.', 409: 'The skill is retired already, is being verified, or its folder is not where pi-kit wrote it.' })
+  @Fails({
+    404: 'There is no such learned skill.',
+    409: 'The skill is retired already, is being verified, or its folder is not where pi-kit wrote it.',
+  })
   retire(@Param('id') id: string): Promise<LearnedSkill> {
     return this.learned.retire(id);
   }
@@ -51,9 +69,15 @@ export class LearnedSkillsController {
   @Post(':id/unretire')
   @HttpCode(200)
   @ApiParam(SKILL_ID)
-  @ApiOperation({ summary: 'Restore a retired learned skill', description: 'Moves the folder back out of `.retired/` and makes open sessions read their skills again.' })
+  @ApiOperation({
+    summary: 'Restore a retired learned skill',
+    description: 'Moves the folder back out of `.retired/` and makes open sessions read their skills again.',
+  })
   @Responds(LearnedSkillSchema)
-  @Fails({ 404: 'There is no such learned skill.', 409: 'The skill is not retired, its place is taken, or pi lists a skill of that name now.' })
+  @Fails({
+    404: 'There is no such learned skill.',
+    409: 'The skill is not retired, its place is taken, or pi lists a skill of that name now.',
+  })
   unretire(@Param('id') id: string): Promise<LearnedSkill> {
     return this.learned.unretire(id);
   }
@@ -68,7 +92,10 @@ export class LearnedSkillsController {
       '`verification.state` is `running`. The draft stays approved; the report lands in the draft’s `verification` and in the file’s `x-pi-kit.verified`.',
   })
   @Responds(LearnedSkillSchema)
-  @Fails({ 404: 'There is no such learned skill.', 409: 'The skill is retired, or cannot be verified now: no outcome, another verification is running, or the commits are gone.' })
+  @Fails({
+    404: 'There is no such learned skill.',
+    409: 'The skill is retired, or cannot be verified now: no outcome, another verification is running, or the commits are gone.',
+  })
   reverify(@Param('id') id: string): Promise<LearnedSkill> {
     return this.learned.reverify(id);
   }
@@ -83,8 +110,15 @@ export class LearnedSkillsController {
       'Open sessions read their skills again.',
   })
   @Responds(LearnedSkillSchema)
-  @Fails({ 400: 'The text is not a skill pi would load under that name.', 404: 'There is no such learned skill.', 409: 'The skill is retired, is being verified, or its file is gone.' })
-  save(@Param('id') id: string, @Body({ schema: SaveLearnedSkillSchema }) body: SaveLearnedSkill): Promise<LearnedSkill> {
+  @Fails({
+    400: 'The text is not a skill pi would load under that name.',
+    404: 'There is no such learned skill.',
+    409: 'The skill is retired, is being verified, or its file is gone.',
+  })
+  save(
+    @Param('id') id: string,
+    @Body({ schema: SaveLearnedSkillSchema }) body: SaveLearnedSkill,
+  ): Promise<LearnedSkill> {
     return this.learned.save(id, body);
   }
 }

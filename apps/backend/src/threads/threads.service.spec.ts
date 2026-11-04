@@ -30,9 +30,28 @@ beforeEach(() => {
     return path;
   };
   rows.insertDraft({ id: 'plain', sessionPath: sessionPath('plain'), cwd: project, baseCommit: null });
-  rows.insertDraft({ id: 'replay', sessionPath: sessionPath('replay'), cwd: scratch, baseCommit: null, worktree: { path: scratch, branch: 'pi-kit/verify-x', projectCwd: project, base: 'a'.repeat(40) } });
-  const outcomes = { refreshBase: vi.fn(async () => undefined), track: vi.fn(async () => undefined), headOf: vi.fn(async () => null) };
-  service = new ThreadsService(rows, {} as never, meta, {} as never, {} as never, {} as never, outcomes as never, { defaultCwd: project } as never);
+  rows.insertDraft({
+    id: 'replay',
+    sessionPath: sessionPath('replay'),
+    cwd: scratch,
+    baseCommit: null,
+    worktree: { path: scratch, branch: 'pi-kit/verify-x', projectCwd: project, base: 'a'.repeat(40) },
+  });
+  const outcomes = {
+    refreshBase: vi.fn(async () => undefined),
+    track: vi.fn(async () => undefined),
+    headOf: vi.fn(async () => null),
+  };
+  service = new ThreadsService(
+    rows,
+    {} as never,
+    meta,
+    {} as never,
+    {} as never,
+    {} as never,
+    outcomes as never,
+    { defaultCwd: project } as never,
+  );
 });
 
 afterEach(() => {
@@ -60,7 +79,9 @@ describe('prepareRun and a verification thread', () => {
   it('still opens it to read: the record can be looked at', async () => {
     meta.markVerificationThread('replay', 'draft-1');
     rows.clearWorktree('replay');
-    await expect(service.prepareRun('replay', project, { open: true })).resolves.toMatchObject({ sessionPath: expect.any(String) });
+    await expect(service.prepareRun('replay', project, { open: true })).resolves.toMatchObject({
+      sessionPath: expect.any(String),
+    });
   });
 
   it('does not touch any other thread: a worktree thread whose worktree was deleted carries on in the project, as says', async () => {

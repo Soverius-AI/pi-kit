@@ -9,7 +9,11 @@ export const GENUI_SANDBOX_CSP = [
   "style-src 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com",
   'img-src data: blob: https:',
   'font-src data: https://cdn.jsdelivr.net https://unpkg.com',
-  "connect-src 'none'", "frame-src 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'",
+  "connect-src 'none'",
+  "frame-src 'none'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
 ].join('; ');
 
 export const GENUI_SANDBOX_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Generated UI sandbox</title></head><body><script>
@@ -36,8 +40,17 @@ export class GenUiSandboxController {
   @Header('Cache-Control', 'no-store')
   @Header('X-Content-Type-Options', 'nosniff')
   @Header('Content-Security-Policy', GENUI_SANDBOX_CSP)
-  @ApiOperation({ summary: 'Get the generated UI sandbox bootstrap', description: 'Returns a credential-free bootstrap for an opaque-origin JetBrains WebSandbox iframe; generated UI arrives from its parent through postMessage.' })
+  @ApiOperation({
+    summary: 'Get the generated UI sandbox bootstrap',
+    description:
+      'Returns a credential-free bootstrap for an opaque-origin JetBrains WebSandbox iframe; generated UI arrives from its parent through postMessage.',
+  })
   @ApiProduces('text/html')
-  @ApiOkResponse({ description: 'The sandbox bootstrap document.', content: { 'text/html': { schema: { type: 'string' } } } })
-  frame(): string { return GENUI_SANDBOX_HTML; }
+  @ApiOkResponse({
+    description: 'The sandbox bootstrap document.',
+    content: { 'text/html': { schema: { type: 'string' } } },
+  })
+  frame(): string {
+    return GENUI_SANDBOX_HTML;
+  }
 }

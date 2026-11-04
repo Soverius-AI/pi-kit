@@ -65,9 +65,17 @@ export function substituteArgs(content: string, args: readonly string[]): string
   const allArgs = args.join(' ');
   return content.replace(
     /\$\{(\d+|ARGUMENTS|@):-([^}]*)\}|\$\{@:(\d+)(?::(\d+))?\}|\$(ARGUMENTS|@|\d+)/g,
-    (_match, defaultTarget: string | undefined, defaultValue: string, sliceStart: string | undefined, sliceLength: string | undefined, simple: string | undefined) => {
+    (
+      _match,
+      defaultTarget: string | undefined,
+      defaultValue: string,
+      sliceStart: string | undefined,
+      sliceLength: string | undefined,
+      simple: string | undefined,
+    ) => {
       if (defaultTarget) {
-        const value = defaultTarget === '@' || defaultTarget === 'ARGUMENTS' ? allArgs : args[parseInt(defaultTarget, 10) - 1];
+        const value =
+          defaultTarget === '@' || defaultTarget === 'ARGUMENTS' ? allArgs : args[parseInt(defaultTarget, 10) - 1];
         return value ? value : defaultValue;
       }
       if (sliceStart) {

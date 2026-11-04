@@ -5,7 +5,9 @@ import { ParentProcessMonitor } from './parent-process-monitor';
 describe('parent process lifecycle', () => {
   const monitors: ParentProcessMonitor[] = [];
   const monitor = () => {
-    const owner = new ParentProcessMonitor({ shutdown: { parentPid: process.pid + 100, parentPollMs: 10, graceMs: 100 } } as BackendConfig);
+    const owner = new ParentProcessMonitor({
+      shutdown: { parentPid: process.pid + 100, parentPollMs: 10, graceMs: 100 },
+    } as BackendConfig);
     monitors.push(owner);
     owner.onApplicationBootstrap();
     return owner;
@@ -34,7 +36,9 @@ describe('parent process lifecycle', () => {
 
   it('does not confuse permission denial with a dead parent', async () => {
     vi.useFakeTimers();
-    const kill = vi.spyOn(process, 'kill').mockImplementation(() => { throw Object.assign(new Error('forbidden'), { code: 'EPERM' }); });
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw Object.assign(new Error('forbidden'), { code: 'EPERM' });
+    });
     monitor();
     await vi.advanceTimersByTimeAsync(30);
     expect(kill).toHaveBeenCalledTimes(3);

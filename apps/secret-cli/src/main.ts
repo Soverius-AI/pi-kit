@@ -55,10 +55,12 @@ const io: CliIo = {
 };
 
 // Resolve the explicit store inside the promise so invalid settings use the safe CLI error path too.
-Promise.resolve().then(() => runCli(process.argv.slice(2), io, selectSecretStore(cliStoreEnvironment(process.env)))).then(
-  (code) => process.exit(code),
-  (error: unknown) => {
-    process.stderr.write(`pi-kit-secret: ${error instanceof Error ? error.message : String(error)}\n`);
-    process.exit(1);
-  },
-);
+Promise.resolve()
+  .then(() => runCli(process.argv.slice(2), io, selectSecretStore(cliStoreEnvironment(process.env))))
+  .then(
+    (code) => process.exit(code),
+    (error: unknown) => {
+      process.stderr.write(`pi-kit-secret: ${error instanceof Error ? error.message : String(error)}\n`);
+      process.exit(1);
+    },
+  );

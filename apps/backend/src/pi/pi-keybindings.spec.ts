@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 import { piKeybindings, savePiKeybindings } from './pi-keybindings';
 
 const agentDir = () => realpathSync(mkdtempSync(join(tmpdir(), 'pk-keys-')));
-const read = (dir: string) => JSON.parse(readFileSync(join(dir, 'keybindings.json'), 'utf8')) as Record<string, unknown>;
+const read = (dir: string) =>
+  JSON.parse(readFileSync(join(dir, 'keybindings.json'), 'utf8')) as Record<string, unknown>;
 
 describe('pi key bindings', () => {
   it('lists pi’s defaults when there is no keybindings.json', () => {
@@ -16,7 +17,11 @@ describe('pi key bindings', () => {
 
   it('writes only what differs from the default and reads it back', () => {
     const dir = agentDir();
-    const saved = savePiKeybindings(dir, { 'app.session.new': ['ctrl+shift+n'], 'app.model.cycleForward': ['ctrl+p'], 'app.exit': ['ctrl+d'] }).find((b) => b.id === 'app.session.new');
+    const saved = savePiKeybindings(dir, {
+      'app.session.new': ['ctrl+shift+n'],
+      'app.model.cycleForward': ['ctrl+p'],
+      'app.exit': ['ctrl+d'],
+    }).find((b) => b.id === 'app.session.new');
     expect(saved).toMatchObject({ keys: ['ctrl+shift+n'], custom: true });
     expect(read(dir)).toEqual({ 'app.session.new': 'ctrl+shift+n' });
     expect(piKeybindings(dir).find((b) => b.id === 'app.model.cycleForward')?.custom).toBe(false);
@@ -24,9 +29,19 @@ describe('pi key bindings', () => {
 
   it('keeps keys the table does not know and drops an action that goes back to its default', () => {
     const dir = agentDir();
-    writeFileSync(join(dir, 'keybindings.json'), JSON.stringify({ $schema: 'https://pi.dev/schemas/keybindings.schema.json', 'tui.altScreen.pageUp': [], 'app.session.new': 'ctrl+shift+n' }));
+    writeFileSync(
+      join(dir, 'keybindings.json'),
+      JSON.stringify({
+        $schema: 'https://pi.dev/schemas/keybindings.schema.json',
+        'tui.altScreen.pageUp': [],
+        'app.session.new': 'ctrl+shift+n',
+      }),
+    );
     savePiKeybindings(dir, {});
-    expect(read(dir)).toEqual({ $schema: 'https://pi.dev/schemas/keybindings.schema.json', 'tui.altScreen.pageUp': [] });
+    expect(read(dir)).toEqual({
+      $schema: 'https://pi.dev/schemas/keybindings.schema.json',
+      'tui.altScreen.pageUp': [],
+    });
   });
 
   it('switches an action off with an empty list and allows several keys', () => {

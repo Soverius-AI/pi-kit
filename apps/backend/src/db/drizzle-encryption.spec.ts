@@ -27,10 +27,12 @@ it('uses the existing encrypted connection for typed reads, writes, rollback and
     expect(db.select().from(rows).all()).toEqual([{ id: 1, value: 'existing row' }]);
     const inserted = db.transaction((tx) => tx.insert(rows).values({ value: marker }).returning().get());
     expect(inserted).toEqual({ id: 2, value: marker });
-    expect(() => db.transaction((tx) => {
-      tx.insert(rows).values({ value: 'rolled back' }).run();
-      throw new Error('rollback marker');
-    })).toThrow('rollback marker');
+    expect(() =>
+      db.transaction((tx) => {
+        tx.insert(rows).values({ value: 'rolled back' }).run();
+        throw new Error('rollback marker');
+      }),
+    ).toThrow('rollback marker');
     expect(db.select().from(rows).all()).toHaveLength(2);
     database.onApplicationShutdown();
     expect(isPlainDatabase(database.path)).toBe(false);
@@ -40,13 +42,17 @@ it('uses the existing encrypted connection for typed reads, writes, rollback and
       try {
         if (suppliedKey) useKey(unreadable, suppliedKey);
         expect(() => unreadable.prepare('SELECT * FROM drizzle_compatibility').all()).toThrow();
-      } finally { unreadable.close(); }
+      } finally {
+        unreadable.close();
+      }
     }
     const reopened = new Database(database.path);
     try {
       useKey(reopened, key);
       expect(drizzle(reopened).select().from(rows).all()).toEqual([{ id: 1, value: 'existing row' }, inserted]);
-    } finally { reopened.close(); }
+    } finally {
+      reopened.close();
+    }
   } finally {
     database.onApplicationShutdown();
     rmSync(dir, { recursive: true, force: true });

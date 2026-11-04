@@ -62,13 +62,16 @@ export class OutcomesRepository {
   }
 
   get(threadId: string): OutcomeRow | undefined {
-    const row = this.db.prepare('SELECT * FROM thread_outcomes WHERE thread_id = ?').get(threadId) as RawOutcome | undefined;
+    const row = this.db.prepare('SELECT * FROM thread_outcomes WHERE thread_id = ?').get(threadId) as
+      RawOutcome | undefined;
     return row && toRow(row);
   }
 
   /** Every thread's outcome, for a pass over the thread list. */
   all(): Map<string, OutcomeRow> {
-    return new Map((this.db.prepare('SELECT * FROM thread_outcomes').all() as RawOutcome[]).map((r) => [r.thread_id, toRow(r)]));
+    return new Map(
+      (this.db.prepare('SELECT * FROM thread_outcomes').all() as RawOutcome[]).map((r) => [r.thread_id, toRow(r)]),
+    );
   }
 
   /** Writes the thread's outcome, replacing the one it had. The scores and labels kept there survive a replacement of the rest. */
@@ -80,7 +83,16 @@ export class OutcomesRepository {
          ON CONFLICT (thread_id) DO UPDATE SET kind = excluded.kind, base_commit = excluded.base_commit, head_commit = excluded.head_commit,
            merge_commit = excluded.merge_commit, pr_url = excluded.pr_url, at = excluded.at, files = excluded.files`,
       )
-      .run(row.threadId, row.kind, row.baseCommit, row.headCommit, row.mergeCommit, row.prUrl, row.at, JSON.stringify(row.files));
+      .run(
+        row.threadId,
+        row.kind,
+        row.baseCommit,
+        row.headCommit,
+        row.mergeCommit,
+        row.prUrl,
+        row.at,
+        JSON.stringify(row.files),
+      );
   }
 
   // ---- what the score service annotates: dedicated setters, so `put` never has to know about them
@@ -98,6 +110,9 @@ export class OutcomesRepository {
       values.push(annotations.scores === null ? null : JSON.stringify(annotations.scores));
     }
     if (sets.length === 0) return this.get(threadId) !== undefined;
-    return this.db.prepare(`UPDATE thread_outcomes SET ${sets.join(', ')} WHERE thread_id = ?`).run(...values, threadId).changes > 0;
+    return (
+      this.db.prepare(`UPDATE thread_outcomes SET ${sets.join(', ')} WHERE thread_id = ?`).run(...values, threadId)
+        .changes > 0
+    );
   }
 }

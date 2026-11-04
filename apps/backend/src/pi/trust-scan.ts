@@ -14,7 +14,9 @@ const isDir = (path: string): boolean => {
 };
 const list = (dir: string): string[] => {
   try {
-    return readdirSync(dir).filter((name) => !name.startsWith('.')).sort();
+    return readdirSync(dir)
+      .filter((name) => !name.startsWith('.'))
+      .sort();
   } catch {
     return [];
   }

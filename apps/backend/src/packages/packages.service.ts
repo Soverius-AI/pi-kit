@@ -24,7 +24,20 @@ import { PiSessionService } from '../pi/pi-session.service';
 import { isNewerVersion } from '../pi/version';
 import { TrustService } from '../pi/trust.service';
 import { UpdateService } from '../update/update.service';
-import { SearchCache, bringsOfManifest, getJson, matchesKind, packumentUrl, parsePackument, parseSearch, readmeUrlOfGit, registryOf, README_LIMIT, REGISTRY_TIMEOUT_MS, searchUrl } from './npm-registry';
+import {
+  SearchCache,
+  bringsOfManifest,
+  getJson,
+  matchesKind,
+  packumentUrl,
+  parsePackument,
+  parseSearch,
+  readmeUrlOfGit,
+  registryOf,
+  README_LIMIT,
+  REGISTRY_TIMEOUT_MS,
+  searchUrl,
+} from './npm-registry';
 import {
   BUNDLED_PACKAGES,
   type PackageEntry,
@@ -68,12 +81,15 @@ const idOf = (scope: 'user' | 'project', source: string): string => `${scope}:${
 const readJson = (file: string): Record<string, unknown> | undefined => {
   try {
     const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : undefined;
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : undefined;
   } catch {
     return undefined;
   }
 };
-const str = (value: unknown): string | undefined => (typeof value === 'string' && value.trim() ? value.trim() : undefined);
+const str = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
 /**
  * Packages in Settings › Extensions and skills: the list from pi's settings with what each brings, the install/update/remove through pi's own package manager
@@ -98,7 +114,12 @@ export class PackagesService {
     const pi = await loadPi();
     const isTrusted = trusted ?? (await this.trust.state(cwd)).status === 'trusted';
     const settings = pi.SettingsManager.create(cwd, pi.getAgentDir(), { projectTrusted: isTrusted });
-    const manager = new pi.DefaultPackageManager({ cwd, agentDir: pi.getAgentDir(), settingsManager: settings, builtinExtensions: [] });
+    const manager = new pi.DefaultPackageManager({
+      cwd,
+      agentDir: pi.getAgentDir(),
+      settingsManager: settings,
+      builtinExtensions: [],
+    });
     return { pi, cwd, trusted: isTrusted, settings, manager };
   }
 
@@ -111,7 +132,10 @@ export class PackagesService {
   private rows(ctx: Context): Row[] {
     const user = (ctx.settings.getGlobalSettings().packages ?? []) as PackageEntry[];
     const project = ctx.trusted ? ((ctx.settings.getProjectSettings().packages ?? []) as PackageEntry[]) : [];
-    return [...user.map((entry) => ({ scope: 'user' as const, entry })), ...project.map((entry) => ({ scope: 'project' as const, entry }))];
+    return [
+      ...user.map((entry) => ({ scope: 'user' as const, entry })),
+      ...project.map((entry) => ({ scope: 'project' as const, entry })),
+    ];
   }
 
   // ---- the list
@@ -126,7 +150,9 @@ export class PackagesService {
     try {
       groups = groupBrings(await ctx.manager.resolve(async () => 'skip'));
     } catch (error) {
-      errors.push(`pi could not list what the packages bring: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(
+        `pi could not list what the packages bring: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     for (const failure of ctx.settings.drainErrors()) errors.push(failure.error.message);
     const configured = ctx.manager.listConfiguredPackages();
@@ -177,7 +203,10 @@ export class PackagesService {
 
   async install(cwd: string, body: InstallPackage): Promise<PackageActionResult> {
     const scope = body.scope ?? 'user';
-    if (scope === 'project' && !(await this.trust.folderTrusted(cwd))) throw new ConflictException('This folder is not trusted yet, so pi would not read its .pi/settings.json. Trust the folder first, or install for every project.');
+    if (scope === 'project' && !(await this.trust.folderTrusted(cwd)))
+      throw new ConflictException(
+        'This folder is not trusted yet, so pi would not read its .pi/settings.json. Trust the folder first, or install for every project.',
+      );
     const ctx = await this.context(cwd, scope === 'project' ? true : undefined);
     let source = normalizeSource(body.source);
     const problem = sourceProblem(source);
@@ -188,20 +217,32 @@ export class PackagesService {
       source = folder;
     }
     const identity = sourceIdentity(source, cwd);
-    if (this.rows(ctx).some((r) => r.scope === scope && this.identity(ctx, r.scope, sourceOfEntry(r.entry)) === identity)) throw new ConflictException(`${nameOfSource(source)} is installed already${scope === 'project' ? ' in this project' : ''}.`);
+    if (
+      this.rows(ctx).some((r) => r.scope === scope && this.identity(ctx, r.scope, sourceOfEntry(r.entry)) === identity)
+    )
+      throw new ConflictException(
+        `${nameOfSource(source)} is installed already${scope === 'project' ? ' in this project' : ''}.`,
+      );
     try {
       await ctx.manager.installAndPersist(source, { local: scope === 'project' });
       await ctx.settings.flush();
     } catch (error) {
-      throw new BadRequestException(`pi could not install ${source}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new BadRequestException(
+        `pi could not install ${source}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     const failures = ctx.settings.drainErrors();
-    if (failures.length > 0) throw new BadRequestException(`pi could not save its settings: ${failures[0].error.message}`);
+    if (failures.length > 0)
+      throw new BadRequestException(`pi could not save its settings: ${failures[0].error.message}`);
     this.logger.log(`Installed ${source} (${scope}).`);
     const reloaded = await this.sessions.reloadIdleSessions();
     const overview = await this.overview(await this.context(cwd));
     const item = overview.packages.find((p) => p.scope === scope && this.identity(ctx, p.scope, p.source) === identity);
-    return { message: `Installed ${item?.name ?? nameOfSource(source)}${item?.version ? ` ${item.version}` : ''}.${reloaded > 0 ? ` ${reloaded} open ${reloaded === 1 ? 'thread' : 'threads'} reloaded.` : ''}`, overview, reloaded };
+    return {
+      message: `Installed ${item?.name ?? nameOfSource(source)}${item?.version ? ` ${item.version}` : ''}.${reloaded > 0 ? ` ${reloaded} open ${reloaded === 1 ? 'thread' : 'threads'} reloaded.` : ''}`,
+      overview,
+      reloaded,
+    };
   }
 
   async remove(cwd: string, id: string): Promise<PackageActionResult> {
@@ -212,7 +253,9 @@ export class PackagesService {
       await ctx.manager.removeAndPersist(source, { local: scope === 'project' });
       await ctx.settings.flush();
     } catch (error) {
-      throw new BadRequestException(`pi could not remove ${source}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new BadRequestException(
+        `pi could not remove ${source}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     this.outdatedIds.delete(id);
     const reloaded = await this.sessions.reloadIdleSessions();
@@ -228,7 +271,9 @@ export class PackagesService {
       await ctx.manager.update(source);
       await ctx.settings.flush();
     } catch (error) {
-      throw new BadRequestException(`pi could not update ${source}: ${error instanceof Error ? error.message : String(error)}`);
+      throw new BadRequestException(
+        `pi could not update ${source}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     this.outdatedIds.delete(id);
     const reloaded = await this.sessions.reloadIdleSessions();
@@ -242,14 +287,19 @@ export class PackagesService {
   async setEnabled(cwd: string, id: string, enabled: boolean): Promise<PackagesOverview> {
     const ctx = await this.context(cwd);
     const { scope, source } = await this.find(ctx, id);
-    const list = [...((scope === 'project' ? ctx.settings.getProjectSettings().packages : ctx.settings.getGlobalSettings().packages) ?? [])] as PackageEntry[];
+    const list = [
+      ...((scope === 'project'
+        ? ctx.settings.getProjectSettings().packages
+        : ctx.settings.getGlobalSettings().packages) ?? []),
+    ] as PackageEntry[];
     const index = list.findIndex((entry) => sourceOfEntry(entry) === source);
     list[index] = entryWithEnabled(list[index], enabled);
     if (scope === 'project') ctx.settings.setProjectPackages(list as never);
     else ctx.settings.setPackages(list as never);
     await ctx.settings.flush();
     const failures = ctx.settings.drainErrors();
-    if (failures.length > 0) throw new BadRequestException(`pi could not save its settings: ${failures[0].error.message}`);
+    if (failures.length > 0)
+      throw new BadRequestException(`pi could not save its settings: ${failures[0].error.message}`);
     return this.overview(await this.context(cwd));
   }
 
@@ -264,7 +314,11 @@ export class PackagesService {
     if (!skipped) {
       const updates = await this.updates.packageUpdates({ cwd, projectTrusted: ctx.trusted });
       for (const update of updates) {
-        const item = packages.find((p) => p.scope === update.scope && this.identity(ctx, p.scope, p.source) === this.identity(ctx, p.scope, update.source));
+        const item = packages.find(
+          (p) =>
+            p.scope === update.scope &&
+            this.identity(ctx, p.scope, p.source) === this.identity(ctx, p.scope, update.source),
+        );
         if (!item) continue;
         const latest = item.origin === 'npm' ? await this.latestVersion(item.name) : undefined;
         found.set(item.id, { ...(item.version ? { current: item.version } : {}), ...(latest ? { latest } : {}) });
@@ -283,7 +337,9 @@ export class PackagesService {
   private async latestVersion(name: string): Promise<string | undefined> {
     try {
       const manifest = await getJson(`${packumentUrl(name, registryOf())}/latest`);
-      return typeof manifest === 'object' && manifest !== null ? str((manifest as Record<string, unknown>)['version']) : undefined;
+      return typeof manifest === 'object' && manifest !== null
+        ? str((manifest as Record<string, unknown>)['version'])
+        : undefined;
     } catch {
       return undefined;
     }
@@ -313,7 +369,12 @@ export class PackagesService {
   private bundledDirs(): { dir: string; folder: string }[] {
     const found: { dir: string; folder: string }[] = [];
     for (const { folder, env } of BUNDLED_FOLDERS) {
-      const candidates = [process.env[env], join(__dirname, 'packages', folder), resolve(__dirname, '..', '..', '..', '..', 'packages', folder), join(process.cwd(), 'packages', folder)].filter((d): d is string => !!d);
+      const candidates = [
+        process.env[env],
+        join(__dirname, 'packages', folder),
+        resolve(__dirname, '..', '..', '..', '..', 'packages', folder),
+        join(process.cwd(), 'packages', folder),
+      ].filter((d): d is string => !!d);
       const dir = candidates.find((d) => {
         const name = str(readJson(join(d, 'package.json'))?.['name']);
         return !!name && (BUNDLED_PACKAGES as readonly string[]).includes(name);
@@ -331,7 +392,9 @@ export class PackagesService {
       const name = str(manifest?.['name']);
       const version = str(manifest?.['version']);
       if (!manifest || !name || !version) continue;
-      const keywords = Array.isArray(manifest['keywords']) ? manifest['keywords'].filter((k): k is string => typeof k === 'string') : [];
+      const keywords = Array.isArray(manifest['keywords'])
+        ? manifest['keywords'].filter((k): k is string => typeof k === 'string')
+        : [];
       const description = str(manifest['description']);
       const haystack = `${name} ${description ?? ''} ${keywords.join(' ')} pi-kit`.toLowerCase();
       if (!words.every((w) => haystack.includes(w))) continue;
@@ -356,7 +419,9 @@ export class PackagesService {
     const typed = normalizeSource(source);
     const origin = originOfSource(typed);
     const ctx = await this.context(cwd);
-    const installed = this.rows(ctx).some((r) => this.identity(ctx, r.scope, sourceOfEntry(r.entry)) === sourceIdentity(typed, cwd));
+    const installed = this.rows(ctx).some(
+      (r) => this.identity(ctx, r.scope, sourceOfEntry(r.entry)) === sourceIdentity(typed, cwd),
+    );
     const notes: string[] = [];
     const base = { source: typed, command: installCommand(typed), installed };
     if (origin === 'folder') {
@@ -387,7 +452,8 @@ export class PackagesService {
     }
     if (origin === 'npm') {
       const name = sourceIdentity(typed).slice(4);
-      const pinned = typed.slice(4).lastIndexOf('@') > 0 ? typed.slice(4).slice(typed.slice(4).lastIndexOf('@') + 1) : undefined;
+      const pinned =
+        typed.slice(4).lastIndexOf('@') > 0 ? typed.slice(4).slice(typed.slice(4).lastIndexOf('@') + 1) : undefined;
       try {
         const json = await getJson(packumentUrl(name, registryOf()), undefined, REGISTRY_TIMEOUT_MS);
         const doc = parsePackument(json, pinned);
@@ -397,7 +463,15 @@ export class PackagesService {
         const { brings: _brings, ...rest } = doc;
         return { ...base, origin: 'npm', ...rest, ...(brings ? { brings } : {}), notes };
       } catch (error) {
-        return { ...base, origin: 'npm', name, notes: [error instanceof Error ? error.message : String(error), 'The install still works if the registry answers then.'] };
+        return {
+          ...base,
+          origin: 'npm',
+          name,
+          notes: [
+            error instanceof Error ? error.message : String(error),
+            'The install still works if the registry answers then.',
+          ],
+        };
       }
     }
     // git
@@ -426,13 +500,20 @@ export class PackagesService {
     if (!existsSync(folder)) throw new BadRequestException(`${folder} does not exist.`);
     const stat = statSync(folder);
     if (stat.isFile()) {
-      if (!/\.(ts|js|mjs|cjs)$/.test(folder)) throw new BadRequestException('A single file has to be an extension (.ts or .js).');
+      if (!/\.(ts|js|mjs|cjs)$/.test(folder))
+        throw new BadRequestException('A single file has to be an extension (.ts or .js).');
       return;
     }
     const manifest = readJson(join(folder, 'package.json'));
     const conventional = PACKAGE_KINDS.some((kind) => existsSync(join(folder, kind)));
-    if (!manifest && !conventional) throw new BadRequestException(`${folder} is not a pi package: it has no package.json and no extensions, skills, prompts or themes folder.`);
-    if (manifest && !manifest['pi'] && !conventional) throw new BadRequestException(`${folder} has a package.json without a "pi" key and no extensions, skills, prompts or themes folder, so pi would load nothing from it.`);
+    if (!manifest && !conventional)
+      throw new BadRequestException(
+        `${folder} is not a pi package: it has no package.json and no extensions, skills, prompts or themes folder.`,
+      );
+    if (manifest && !manifest['pi'] && !conventional)
+      throw new BadRequestException(
+        `${folder} has a package.json without a "pi" key and no extensions, skills, prompts or themes folder, so pi would load nothing from it.`,
+      );
   }
 }
 
@@ -440,9 +521,13 @@ export class PackagesService {
 export function sourceProblem(source: string): string | undefined {
   switch (originOfSource(source)) {
     case 'npm':
-      return /^npm:(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*(?:@[^\s@]+)?$/i.test(source) ? undefined : 'An npm source is npm:name or npm:@scope/name, optionally with @version.';
+      return /^npm:(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*(?:@[^\s@]+)?$/i.test(source)
+        ? undefined
+        : 'An npm source is npm:name or npm:@scope/name, optionally with @version.';
     case 'git':
-      return /^(?:git:|git\+)?(?:(?:https?|ssh):\/\/)?(?:git@)?[a-z0-9.-]+[/:][^\s/]+\/[^\s]+$/i.test(source) ? undefined : 'A git source is a repository address: git:github.com/owner/name or https://github.com/owner/name.';
+      return /^(?:git:|git\+)?(?:(?:https?|ssh):\/\/)?(?:git@)?[a-z0-9.-]+[/:][^\s/]+\/[^\s]+$/i.test(source)
+        ? undefined
+        : 'A git source is a repository address: git:github.com/owner/name or https://github.com/owner/name.';
     default:
       return undefined;
   }
@@ -466,7 +551,9 @@ export function latestOverrides(env: NodeJS.ProcessEnv = process.env): Record<st
   try {
     const parsed: unknown = JSON.parse(env['PI_KIT_PACKAGE_LATEST']);
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return Object.fromEntries(Object.entries(parsed).filter((pair): pair is [string, string] => typeof pair[1] === 'string'));
+    return Object.fromEntries(
+      Object.entries(parsed).filter((pair): pair is [string, string] => typeof pair[1] === 'string'),
+    );
   } catch {
     return {};
   }

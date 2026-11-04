@@ -2,4 +2,5 @@ export default {
   singleQuote: true,
   printWidth: 120,
   trailingComma: 'all',
+  overrides: [{ files: '*.html', options: { parser: 'angular' } }],
 };

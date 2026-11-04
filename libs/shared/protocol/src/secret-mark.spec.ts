@@ -30,9 +30,23 @@ describe('the secret mark', () => {
   });
 
   it('replaces the marked field and what the schema does not describe, and keeps the rest', () => {
-    const schema = z.object({ provider: z.string(), key: z.string().meta({ secret: true }), nested: z.object({ token: z.string().meta({ secret: true }).optional(), note: z.string() }) });
-    const printable = redactSecrets(schema, { provider: 'acme', key: KEY, nested: { token: KEY, note: 'hello' }, stray: KEY });
-    expect(printable).toEqual({ provider: 'acme', key: SECRET_PLACEHOLDER, nested: { token: SECRET_PLACEHOLDER, note: 'hello' }, stray: SECRET_PLACEHOLDER });
+    const schema = z.object({
+      provider: z.string(),
+      key: z.string().meta({ secret: true }),
+      nested: z.object({ token: z.string().meta({ secret: true }).optional(), note: z.string() }),
+    });
+    const printable = redactSecrets(schema, {
+      provider: 'acme',
+      key: KEY,
+      nested: { token: KEY, note: 'hello' },
+      stray: KEY,
+    });
+    expect(printable).toEqual({
+      provider: 'acme',
+      key: SECRET_PLACEHOLDER,
+      nested: { token: SECRET_PLACEHOLDER, note: 'hello' },
+      stray: SECRET_PLACEHOLDER,
+    });
     expect(JSON.stringify(printable)).not.toContain(KEY);
   });
 
@@ -49,8 +63,20 @@ describe('the secret mark', () => {
   it('marks what the API-key workflow and the connectors send', () => {
     const answer = redactSecrets(LoginAnswerSchema, { promptId: 'p1', value: KEY });
     expect(answer).toEqual({ promptId: 'p1', value: SECRET_PLACEHOLDER });
-    const connect = redactSecrets(ConnectRequestSchema, { id: 'linear', scope: 'user', token: KEY, clientId: 'abc', clientSecret: KEY });
-    expect(connect).toEqual({ id: 'linear', scope: 'user', token: SECRET_PLACEHOLDER, clientId: 'abc', clientSecret: SECRET_PLACEHOLDER });
+    const connect = redactSecrets(ConnectRequestSchema, {
+      id: 'linear',
+      scope: 'user',
+      token: KEY,
+      clientId: 'abc',
+      clientSecret: KEY,
+    });
+    expect(connect).toEqual({
+      id: 'linear',
+      scope: 'user',
+      token: SECRET_PLACEHOLDER,
+      clientId: 'abc',
+      clientSecret: SECRET_PLACEHOLDER,
+    });
   });
 
   it('changes nothing about validation', () => {

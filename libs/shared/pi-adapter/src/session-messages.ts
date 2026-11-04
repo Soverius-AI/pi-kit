@@ -53,7 +53,16 @@ interface PiStoredMessage {
   provider?: string;
   model?: string;
   thinkingLevel?: string;
-  details?: { patch?: string; truncation?: { truncated?: boolean }; server?: string; tool?: string; a2ui_operations?: unknown; open_generative_ui?: unknown } | undefined;
+  details?:
+    | {
+        patch?: string;
+        truncation?: { truncated?: boolean };
+        server?: string;
+        tool?: string;
+        a2ui_operations?: unknown;
+        open_generative_ui?: unknown;
+      }
+    | undefined;
   durationMs?: number;
   timestamp?: number;
   // bashExecution
@@ -89,7 +98,10 @@ export interface SessionToMessagesOptions {
  * (model and thinking changes, usage, labels, session_info, custom entries) and the leading system
  * messages produce nothing; compactions and branch summaries become marker activities.
  */
-export function sessionToMessages(branch: readonly PiSessionEntry[], options: SessionToMessagesOptions = {}): Message[] {
+export function sessionToMessages(
+  branch: readonly PiSessionEntry[],
+  options: SessionToMessagesOptions = {},
+): Message[] {
   const out: Message[] = [];
   // Tool calls still waiting for a result. A call the user moved on from (the run was killed while it
   // executed) gets a stand-in result, so the transcript does not show it as running forever; pi
@@ -145,7 +157,8 @@ export function sessionToMessages(branch: readonly PiSessionEntry[], options: Se
         unanswered.clear();
       }
       const produced = fromMessage(entry.id, message);
-      if (message.role === 'user' && pendingSkills) produced.splice(0, produced.length, ...typedUserMessage(produced, pendingSkills.entry.text));
+      if (message.role === 'user' && pendingSkills)
+        produced.splice(0, produced.length, ...typedUserMessage(produced, pendingSkills.entry.text));
       for (const m of produced) {
         if (m.role === 'assistant') {
           for (const call of m.toolCalls ?? []) {
@@ -156,23 +169,36 @@ export function sessionToMessages(branch: readonly PiSessionEntry[], options: Se
         if (m.role === 'tool') unanswered.delete(m.toolCallId);
       }
       out.push(...produced);
-      if (message.role === 'assistant' && message.usage) out.push(turnUsage(entry, message, byId.get(String(entry.parentId))));
+      if (message.role === 'assistant' && message.usage)
+        out.push(turnUsage(entry, message, byId.get(String(entry.parentId))));
       if (message.role === 'user' && pendingReview) {
-        out.push(activityMessage(activityId.review(pendingReview.id), 'pi.review', { comments: pendingReview.comments }));
+        out.push(
+          activityMessage(activityId.review(pendingReview.id), 'pi.review', { comments: pendingReview.comments }),
+        );
         pendingReview = undefined;
       }
       if (message.role === 'user' && pendingSkills) {
-        out.push(activityMessage(activityId.skills(pendingSkills.id), 'pi.skills', { chips: pendingSkills.entry.chips }));
+        out.push(
+          activityMessage(activityId.skills(pendingSkills.id), 'pi.skills', { chips: pendingSkills.entry.chips }),
+        );
         pendingSkills = undefined;
       }
-      if (message.role === 'toolResult') out.push(...toolActivities(message, calls.get(String(message.toolCallId)), options));
+      if (message.role === 'toolResult')
+        out.push(...toolActivities(message, calls.get(String(message.toolCallId)), options));
     } else if (entry.type === 'custom_message' && entry['display'] === true) {
       // Extension messages shown in the transcript: render as a user-side note. A background agent's report keeps the
       // attribution its live events carried (`subagentEnvelope` in the backend builds the same id) and the agent's name, so a reload shows it.
       const text = textOf(entry['content'] as string | PiContentBlock[] | undefined);
       const subagentRunId = subagentRunIdOf(entry['customType'] as string | undefined, entry['details']);
       const subagentName = subagentRunId ? (entry['details'] as { name?: string } | undefined)?.name : undefined;
-      if (text) out.push({ id: entry.id, role: 'user', content: text, ...(subagentRunId ? { subagentRunId } : {}), ...(subagentName ? { metadata: { piKitSubagentName: subagentName } } : {}) });
+      if (text)
+        out.push({
+          id: entry.id,
+          role: 'user',
+          content: text,
+          ...(subagentRunId ? { subagentRunId } : {}),
+          ...(subagentName ? { metadata: { piKitSubagentName: subagentName } } : {}),
+        });
     }
   }
   return out;
@@ -216,7 +242,11 @@ function parseArgs(json: string): Record<string, unknown> {
 }
 
 /** The activities the live stream would have produced for a finished tool call (see `mapEvent`). */
-function toolActivities(message: PiStoredMessage, call: KnownCall | undefined, options: SessionToMessagesOptions): Message[] {
+function toolActivities(
+  message: PiStoredMessage,
+  call: KnownCall | undefined,
+  options: SessionToMessagesOptions,
+): Message[] {
   const id = String(message.toolCallId ?? '');
   const name = message.toolName ?? call?.name ?? 'tool';
   const text = textOf(message.content);
@@ -245,7 +275,13 @@ function toolActivities(message: PiStoredMessage, call: KnownCall | undefined, o
   } else if (!message.isError && name === 'edit' && typeof message.details?.patch === 'string') {
     const hunks = parseUnifiedPatch(message.details.patch);
     if (hunks.length > 0) {
-      out.push(activityMessage(activityId.diff(id), 'pi.diff', { path: String(call?.args['path'] ?? ''), hunks, toolCallId: id }));
+      out.push(
+        activityMessage(activityId.diff(id), 'pi.diff', {
+          path: String(call?.args['path'] ?? ''),
+          hunks,
+          toolCallId: id,
+        }),
+      );
     }
   } else if (!message.isError && name === 'write' && typeof call?.args['content'] === 'string') {
     out.push(
@@ -262,21 +298,40 @@ function toolActivities(message: PiStoredMessage, call: KnownCall | undefined, o
 }
 
 /** The generative UI of a finished call, as the live stream made it (`genUiActivities` in `map.ts`). */
-function genUiActivities(id: string, message: PiStoredMessage, call: KnownCall | undefined, text: string, options: SessionToMessagesOptions): Message[] {
+function genUiActivities(
+  id: string,
+  message: PiStoredMessage,
+  call: KnownCall | undefined,
+  text: string,
+  options: SessionToMessagesOptions,
+): Message[] {
   const out: Message[] = [];
   const openUi = openGenerativeUiOf(message.details);
-  if (!message.isError && openUi) out.push({ id: `${id}-activity`, role: 'activity', activityType: OPEN_GENERATIVE_UI_ACTIVITY, content: openUi } as Message);
+  if (!message.isError && openUi)
+    out.push({
+      id: `${id}-activity`,
+      role: 'activity',
+      activityType: OPEN_GENERATIVE_UI_ACTIVITY,
+      content: openUi,
+    } as Message);
   // Both conventions: pi-kit's `details.a2ui_operations` and a result text that is the AG-UI JSON container.
   const found = a2uiOperationsOf({ details: message.details, text });
   const operations = found && normalizeA2uiOperations(found);
   if (operations) {
-    out.push({ id: genUiId.a2uiSurface(id), role: 'activity', activityType: A2UI_SURFACE_ACTIVITY, content: { a2ui_operations: operations } } as Message);
+    out.push({
+      id: genUiId.a2uiSurface(id),
+      role: 'activity',
+      activityType: A2UI_SURFACE_ACTIVITY,
+      content: { a2ui_operations: operations },
+    } as Message);
   }
   const { server, tool } = message.details ?? {};
   if (options.mcpApp && typeof server === 'string' && typeof tool === 'string') {
     const resourceUri = options.mcpApp(server, tool);
     if (resourceUri) {
-      const blocks = (Array.isArray(message.content) ? message.content : []).filter((block) => block.type === 'text' || block.type === 'image');
+      const blocks = (Array.isArray(message.content) ? message.content : []).filter(
+        (block) => block.type === 'text' || block.type === 'image',
+      );
       out.push({
         id: genUiId.mcpApp(id),
         role: 'activity',
@@ -374,7 +429,10 @@ function fromUser(id: string, message: PiStoredMessage): Message[] {
   for (const block of message.content ?? []) {
     if (block.type === 'text') parts.push({ type: 'text', text: collapseSkill(block.text ?? '') });
     else if (block.type === 'image' && block.data) {
-      parts.push({ type: 'image', source: { type: 'data', value: block.data, mimeType: block.mimeType ?? 'image/png' } });
+      parts.push({
+        type: 'image',
+        source: { type: 'data', value: block.data, mimeType: block.mimeType ?? 'image/png' },
+      });
     }
   }
   if (parts.every((part) => part.type === 'text')) {

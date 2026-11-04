@@ -47,7 +47,9 @@ export async function runCli(args: readonly string[], io: CliIo, store: SecretSt
     return 2;
   }
   if (!store.available()) {
-    io.err('pi-kit-secret: there is no credential store on this machine (a headless Linux needs a Secret Service such as gnome-keyring).\n');
+    io.err(
+      'pi-kit-secret: there is no credential store on this machine (a headless Linux needs a Secret Service such as gnome-keyring).\n',
+    );
     return 3;
   }
   try {

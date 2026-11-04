@@ -1,4 +1,6 @@
-import type { ExtensionAPI, ExtensionFactory } from '@earendil-works/pi-coding-agent' with { 'resolution-mode': 'import' };
+import type { ExtensionAPI, ExtensionFactory } from '@earendil-works/pi-coding-agent' with {
+  'resolution-mode': 'import',
+};
 import type { PiModule } from './load-pi';
 
 /** The `customType` of the message that tells pi another thread changed a file it knows. */
@@ -26,7 +28,10 @@ export interface CoordinationHook {
  * - `turn_end` does the same between the turns of a run that goes on (the model is about to make another request after its tool calls);
  * - the `bash` tool gets `PI_KIT=1` and `PI_KIT_THREAD_ID` in its environment, so user extensions and scripts can tell.
  */
-export function createCoordinationExtension(pi: PiModule, options: { threadId: string; cwd: string; hook: () => CoordinationHook | undefined }): ExtensionFactory {
+export function createCoordinationExtension(
+  pi: PiModule,
+  options: { threadId: string; cwd: string; hook: () => CoordinationHook | undefined },
+): ExtensionFactory {
   const { threadId, cwd } = options;
   return (api: ExtensionAPI) => {
     api.registerTool(
@@ -51,7 +56,11 @@ export function createCoordinationExtension(pi: PiModule, options: { threadId: s
       if (event.toolResults.length === 0) return undefined;
       const notices = options.hook()?.notices(threadId) ?? [];
       if (notices.length === 0) return undefined;
-      return { entries: [{ type: 'custom_message', customType: COORDINATION_NOTICE, content: notices.join('\n'), display: true }] };
+      return {
+        entries: [
+          { type: 'custom_message', customType: COORDINATION_NOTICE, content: notices.join('\n'), display: true },
+        ],
+      };
     });
   };
 }
