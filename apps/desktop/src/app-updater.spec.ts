@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { autoUpdater } from 'electron-updater';
 import { AppUpdater } from './app-updater';
 
-vi.mock('electron', () => ({ app: { isPackaged: true } }));
+const electron = vi.hoisted(() => ({ isPackaged: true }));
+vi.mock('electron', () => ({
+  app: {
+    get isPackaged() {
+      return electron.isPackaged;
+    },
+  },
+}));
 vi.mock('electron-updater', () => ({
   autoUpdater: { on: vi.fn(), isUpdaterActive: vi.fn(() => true), checkForUpdates: vi.fn(), downloadUpdate: vi.fn() },
 }));
@@ -32,7 +39,17 @@ describe('app release availability', () => {
 });
 
 describe('copies that cannot update themselves', () => {
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    electron.isPackaged = true;
+  });
+
+  it('answers a development build as unavailable without touching electron-updater', async () => {
+    electron.isPackaged = false;
+    expect(await new AppUpdater(vi.fn()).run('check')).toHaveProperty('unavailable');
+    expect(autoUpdater.on).not.toHaveBeenCalled();
+    expect(autoUpdater.isUpdaterActive).not.toHaveBeenCalled();
+  });
 
   it.each(['check', 'download'] as const)(
     'answers %s as unavailable without electron-updater installing the NSIS build',
