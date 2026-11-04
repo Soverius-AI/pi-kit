@@ -114,12 +114,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      # pnpm first: setup-node's `cache: pnpm` needs it. The pnpm version comes from `packageManager` in package.json.
+      # The pnpm version comes from `packageManager` in package.json. No store cache: a restored store once lacked files of
+      # better-sqlite3-multiple-ciphers and broke the mac packaging, and a fresh install is only seconds slower.
       - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Notarisation API key file (only when APPLE_API_KEY_BASE64 is set)
         run: |
@@ -172,12 +172,12 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-      # pnpm first: setup-node's `cache: pnpm` needs it. The pnpm version comes from `packageManager` in package.json.
+      # The pnpm version comes from `packageManager` in package.json. No store cache: a restored store once lacked files of
+      # better-sqlite3-multiple-ciphers and broke the mac packaging, and a fresh install is only seconds slower.
       - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
       # Avoid pnpm's hoisted importer on Windows: importing nested packages can fail with
       # ENOENT when renaming _tmp_* directories (seen with the SQLite alias under @ag-ui/client).
       # Public hoisting keeps root node_modules lookups used by Nx and the build scripts working.
@@ -226,7 +226,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
       # node-pty compiles during install (allowBuilds); Electron needs desktop libraries.
       - name: Linux build and runtime dependencies
         run: |
