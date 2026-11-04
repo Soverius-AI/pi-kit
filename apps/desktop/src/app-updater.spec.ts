@@ -70,6 +70,39 @@ describe('copies that cannot update themselves', () => {
   });
 });
 
+describe('a packaged build', () => {
+  const events = [
+    'checking-for-update',
+    'update-available',
+    'update-not-available',
+    'download-progress',
+    'update-downloaded',
+    'error',
+  ];
+
+  it('wires electron-updater on the first request and forwards its events', async () => {
+    const emit = vi.fn();
+    await new AppUpdater(emit).run('check');
+    expect(autoUpdater.autoDownload).toBe(false);
+    expect(autoUpdater.autoInstallOnAppQuit).toBe(true);
+    expect(autoUpdater.allowPrerelease).toBe(false);
+    expect(autoUpdater.fullChangelog).toBe(true);
+    expect(vi.mocked(autoUpdater.on).mock.calls.map(([event]) => event)).toEqual(events);
+    const [, onAvailable] = vi.mocked(autoUpdater.on).mock.calls.find(([event]) => event === 'update-available') ?? [];
+    (onAvailable as (info: { version: string }) => void)({ version: '0.11.0' });
+    expect(emit).toHaveBeenCalledWith({ kind: 'available', version: '0.11.0' });
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+  });
+
+  it('registers the listeners once, not on every request', async () => {
+    const updater = new AppUpdater(vi.fn());
+    await updater.run('check');
+    await updater.run('check');
+    expect(autoUpdater.on).toHaveBeenCalledTimes(events.length);
+    expect(autoUpdater.checkForUpdates).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('release notes', () => {
   it("passes on GitHub's notes of every newer release, without the empty ones", async () => {
     const releaseNotes = [
