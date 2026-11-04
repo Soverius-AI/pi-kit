@@ -29,7 +29,7 @@ import {
 } from '@pi-kit/protocol';
 import type { Request, Response } from 'express';
 import type { z } from 'zod';
-import { Fails, Responds, Streams } from '../contract';
+import { Fails, Responds, Streams, Remote } from '../contract';
 import { AudioError } from './pcm';
 import { parseLanguage, TranscribeService } from './transcribe.service';
 
@@ -95,6 +95,7 @@ const BAD_AUDIO = 'The recording could not be decoded.';
 export class TranscribeController {
   constructor(private readonly transcribe: TranscribeService) {}
 
+  @Remote()
   @Get('status')
   @ApiOperation({
     summary: 'Get the voice status',
@@ -128,6 +129,7 @@ export class TranscribeController {
     return this.transcribe.removeModel();
   }
 
+  @Remote()
   @Post()
   @ApiOperation({
     summary: 'Transcribe a recording',
@@ -154,6 +156,7 @@ export class TranscribeController {
     }
   }
 
+  @Remote()
   @Post('stream')
   @HttpCode(200)
   @ApiOperation({
@@ -176,6 +179,7 @@ export class TranscribeController {
     res.end();
   }
 
+  @Remote()
   @Post('live')
   @ApiOperation({
     summary: 'Start a live transcription',
@@ -188,6 +192,7 @@ export class TranscribeController {
     return this.transcribe.startLive(parseLanguage(query.language));
   }
 
+  @Remote()
   @Post('live/:id/chunk')
   @HttpCode(204)
   @ApiOperation({
@@ -203,6 +208,7 @@ export class TranscribeController {
     this.transcribe.pushLive(id, await readBody(req, 4 * 1024 * 1024));
   }
 
+  @Remote()
   @Get('live/:id/events')
   @ApiOperation({
     summary: 'Stream a live transcription',
@@ -220,6 +226,7 @@ export class TranscribeController {
     res.on('close', off);
   }
 
+  @Remote()
   @Post('live/:id/end')
   @ApiOperation({
     summary: 'End a live transcription',
@@ -232,6 +239,7 @@ export class TranscribeController {
     return this.transcribe.endLive(id);
   }
 
+  @Remote()
   @Delete('live/:id')
   @HttpCode(204)
   @ApiOperation({

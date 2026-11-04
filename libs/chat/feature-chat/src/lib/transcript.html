@@ -160,9 +160,7 @@
         }
       </ng-template>
     </copilot-chat-user-message>
-    <div class="pk-when">
-      {{ 'chat.transcript.turn' | transloco: { value1: chat.turns().turns.get(message.id) } }}
-    </div>
+    <div class="pk-when">{{ 'chat.transcript.turn' | transloco: { value1: chat.turns().turns.get(message.id) } }}</div>
   </pk-turn>
 </ng-template>
 
@@ -372,7 +370,6 @@
       (dismiss)="dismissDraft(draft.id)"
     />
   }
-
   @if (chat.compacting()) {
     <pk-marker
       ><span class="animate-pulse">{{ 'chat.transcript.compactingContext' | transloco }}</span></pk-marker
@@ -420,7 +417,6 @@
       </button>
     </div>
   }
-
   @if (chat.blocks().length === 0 && !chat.waitingForAnswer() && !onNewThreadPage() && !chat.connecting()) {
     <div class="grid place-items-center py-16 text-center text-sm text-muted">
       <p>

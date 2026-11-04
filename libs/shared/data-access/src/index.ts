@@ -1,5 +1,6 @@
 // Shared stores, renderer policies and store traits. Generated operations and HTTP transport are @pi-kit/api.
 export * from './lib/clock.store';
+export * from './lib/environments.store';
 export * from './lib/context-policy';
 export * from './lib/dialog.store';
 export * from './lib/health.store';

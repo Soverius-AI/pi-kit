@@ -4,3 +4,4 @@ export { ContractValidationPipe, issueMessages } from './pipe';
 export { Fails, Responds, Streams } from './responds';
 export { ContractSerializerInterceptor } from './serializer';
 export { ThreadIdParam, WorkspaceIdParam } from './params';
+export { Remote } from './remote';

@@ -2,3 +2,4 @@
 export * from './lib/thread-sidebar';
 export * from './lib/trust-dialog';
 export * from './lib/outcome-menu-host';
+export * from './lib/environment-project-picker';

@@ -552,6 +552,12 @@ export type EntryText = {
     parentId: string | null;
 };
 
+export type Environment = {
+    instanceId: string;
+    name: string;
+    protocolVersion: 1;
+};
+
 export type ExportRequest = {
     path?: string;
 };
@@ -664,6 +670,11 @@ export type InstallSkill = {
     name: string;
     scope: 'user' | 'project';
     commit?: string;
+};
+
+export type InstanceAccessPreferences = {
+    desiredEnabled: boolean;
+    httpsPort: number;
 };
 
 export type KeybindingInfo = {
@@ -1637,6 +1648,48 @@ export type PatchWorktreeSettings = {
     setupScripts?: Array<SetupScript>;
 };
 
+export type PeerConnect = {
+    allowRelay: boolean;
+};
+
+export type PeerConsent = {
+    allowRelay: boolean;
+};
+
+export type PeerInvitationResult = {
+    invitation: string;
+    expiresAt: number;
+};
+
+export type PeerManager = {
+    self: Environment;
+    keyInitialized: boolean;
+    endpoint?: string;
+    peers: Array<PeerSummary>;
+    requests: Array<{
+        pairId: string;
+        name: string;
+        origin: string;
+        fingerprint: string;
+        confirmationCode: string;
+        expiresAt: number;
+    }>;
+};
+
+export type PeerSummary = {
+    peerId: string;
+    pairId: string;
+    name: string;
+    origin: string;
+    fingerprint: string;
+    state: 'pending' | 'active' | 'revoked';
+    allowRelay: boolean;
+    remoteAllowRelay: boolean;
+    sharedWithPhones: boolean;
+    unpairPending: boolean;
+    confirmationCode?: string;
+};
+
 export type PiBashContent = {
     command: string;
     output: string;
@@ -1706,6 +1759,16 @@ export type Problem = {
     statusCode: number;
     message: string | Array<string>;
     error?: string;
+};
+
+export type ProjectFolders = {
+    instanceId: string;
+    directory: string;
+    parent: string | null;
+    folders: Array<{
+        name: string;
+        path: string;
+    }>;
 };
 
 export type ProjectGit = {
@@ -1854,6 +1917,10 @@ export type Releases = {
 
 export type ReloadResult = {
     commands: number;
+};
+
+export type RenameEnvironment = {
+    name: string;
 };
 
 export type RequestScore = {
@@ -2228,6 +2295,17 @@ export type StartVerify = {
     prompt?: string;
 };
 
+export type StoredDeviceGrant = {
+    id: string;
+    name: string;
+    createdAt: number;
+    lastSeenAt: number;
+    cookieHash: string;
+    csrf: string;
+};
+
+export type StoredDeviceGrants = Array<StoredDeviceGrant>;
+
 export type SummarizeBranchRequest = {
     targetId: string;
     instructions?: string;
@@ -2261,6 +2339,7 @@ export type TerminalStart = {
 };
 
 export type ThreadDetail = {
+    instanceId?: string;
     id: string;
     cwd: string;
     title: string | null;
@@ -2397,6 +2476,7 @@ export type ThreadSuggestion = {
 };
 
 export type ThreadSummary = {
+    instanceId?: string;
     id: string;
     cwd: string;
     title: string | null;
@@ -2702,6 +2782,7 @@ export type WatchEvent = {
 };
 
 export type Workspace = {
+    instanceId?: string;
     cwd: string;
     name: string;
     lastOpenedAt: number;
@@ -2895,6 +2976,11 @@ export type McpServerCreateWritable = {
     scope: 'user' | 'project';
 };
 
+export type PeerConnectWritable = {
+    invitation: string;
+    allowRelay: boolean;
+};
+
 export type HealthHealthData = {
     body?: never;
     path?: never;
@@ -2919,6 +3005,232 @@ export type HealthHealthResponses = {
 };
 
 export type HealthHealthResponse = HealthHealthResponses[keyof HealthHealthResponses];
+
+export type InstanceIdentityData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/instance';
+};
+
+export type InstanceIdentityErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type InstanceIdentityError = InstanceIdentityErrors[keyof InstanceIdentityErrors];
+
+export type InstanceIdentityResponses = {
+    /**
+     * OK
+     */
+    200: Environment;
+};
+
+export type InstanceIdentityResponse = InstanceIdentityResponses[keyof InstanceIdentityResponses];
+
+export type InstanceRenameData = {
+    body: RenameEnvironment;
+    path?: never;
+    query?: never;
+    url: '/api/instance';
+};
+
+export type InstanceRenameErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type InstanceRenameError = InstanceRenameErrors[keyof InstanceRenameErrors];
+
+export type InstanceRenameResponses = {
+    /**
+     * OK
+     */
+    200: Environment;
+};
+
+export type InstanceRenameResponse = InstanceRenameResponses[keyof InstanceRenameResponses];
+
+export type InstanceAccessData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/instance/access';
+};
+
+export type InstanceAccessErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type InstanceAccessError = InstanceAccessErrors[keyof InstanceAccessErrors];
+
+export type InstanceAccessResponses = {
+    /**
+     * OK
+     */
+    200: InstanceAccessPreferences;
+};
+
+export type InstanceAccessResponse = InstanceAccessResponses[keyof InstanceAccessResponses];
+
+export type InstanceSetAccessData = {
+    body: InstanceAccessPreferences;
+    path?: never;
+    query?: never;
+    url: '/api/instance/access';
+};
+
+export type InstanceSetAccessErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type InstanceSetAccessError = InstanceSetAccessErrors[keyof InstanceSetAccessErrors];
+
+export type InstanceSetAccessResponses = {
+    /**
+     * OK
+     */
+    200: InstanceAccessPreferences;
+};
+
+export type InstanceSetAccessResponse = InstanceSetAccessResponses[keyof InstanceSetAccessResponses];
+
+export type InstanceEndpointData = {
+    body: {
+        origin: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/instance/endpoint';
+};
+
+export type InstanceEndpointErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type InstanceEndpointError = InstanceEndpointErrors[keyof InstanceEndpointErrors];
+
+export type InstanceEndpointResponses = {
+    /**
+     * OK
+     */
+    200: {
+        saved: true;
+    };
+};
+
+export type InstanceEndpointResponse = InstanceEndpointResponses[keyof InstanceEndpointResponses];
+
+export type InstanceDevicesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/instance/devices';
+};
+
+export type InstanceDevicesErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type InstanceDevicesError = InstanceDevicesErrors[keyof InstanceDevicesErrors];
+
+export type InstanceDevicesResponses = {
+    /**
+     * OK
+     */
+    200: StoredDeviceGrants;
+};
+
+export type InstanceDevicesResponse = InstanceDevicesResponses[keyof InstanceDevicesResponses];
+
+export type InstanceSaveDeviceData = {
+    body: StoredDeviceGrant;
+    path?: never;
+    query?: never;
+    url: '/api/instance/devices';
+};
+
+export type InstanceSaveDeviceErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type InstanceSaveDeviceError = InstanceSaveDeviceErrors[keyof InstanceSaveDeviceErrors];
+
+export type InstanceSaveDeviceResponses = {
+    /**
+     * OK
+     */
+    200: {
+        saved: true;
+    };
+};
+
+export type InstanceSaveDeviceResponse = InstanceSaveDeviceResponses[keyof InstanceSaveDeviceResponses];
+
+export type InstanceRevokeDeviceData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/instance/devices/{id}';
+};
+
+export type InstanceRevokeDeviceErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type InstanceRevokeDeviceError = InstanceRevokeDeviceErrors[keyof InstanceRevokeDeviceErrors];
+
+export type InstanceRevokeDeviceResponses = {
+    /**
+     * OK
+     */
+    200: {
+        revoked: true;
+    };
+};
+
+export type InstanceRevokeDeviceResponse = InstanceRevokeDeviceResponses[keyof InstanceRevokeDeviceResponses];
 
 export type OpenApiDocumentData = {
     body?: never;
@@ -10952,3 +11264,256 @@ export type UsageGetResponses = {
 };
 
 export type UsageGetResponse = UsageGetResponses[keyof UsageGetResponses];
+
+export type PeersListData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/instances';
+};
+
+export type PeersListErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type PeersListError = PeersListErrors[keyof PeersListErrors];
+
+export type PeersListResponses = {
+    /**
+     * OK
+     */
+    200: PeerManager;
+};
+
+export type PeersListResponse = PeersListResponses[keyof PeersListResponses];
+
+export type PeersInviteData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/instances/invitations';
+};
+
+export type PeersInviteErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type PeersInviteError = PeersInviteErrors[keyof PeersInviteErrors];
+
+export type PeersInviteResponses = {
+    /**
+     * Created
+     */
+    201: PeerInvitationResult;
+};
+
+export type PeersInviteResponse = PeersInviteResponses[keyof PeersInviteResponses];
+
+export type PeersConnectData = {
+    body: PeerConnectWritable;
+    path?: never;
+    query?: never;
+    url: '/api/instances/connect';
+};
+
+export type PeersConnectErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type PeersConnectError = PeersConnectErrors[keyof PeersConnectErrors];
+
+export type PeersConnectResponses = {
+    /**
+     * OK
+     */
+    200: PeerManager;
+};
+
+export type PeersConnectResponse = PeersConnectResponses[keyof PeersConnectResponses];
+
+export type PeersApproveData = {
+    body: PeerConsent;
+    path: {
+        pairId: string;
+    };
+    query?: never;
+    url: '/api/instances/requests/{pairId}/approve';
+};
+
+export type PeersApproveErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type PeersApproveError = PeersApproveErrors[keyof PeersApproveErrors];
+
+export type PeersApproveResponses = {
+    /**
+     * OK
+     */
+    200: PeerManager;
+};
+
+export type PeersApproveResponse = PeersApproveResponses[keyof PeersApproveResponses];
+
+export type PeersRejectData = {
+    body?: never;
+    path: {
+        pairId: string;
+    };
+    query?: never;
+    url: '/api/instances/requests/{pairId}';
+};
+
+export type PeersRejectErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type PeersRejectError = PeersRejectErrors[keyof PeersRejectErrors];
+
+export type PeersRejectResponses = {
+    /**
+     * OK
+     */
+    200: PeerManager;
+};
+
+export type PeersRejectResponse = PeersRejectResponses[keyof PeersRejectResponses];
+
+export type PeersUnpairData = {
+    body?: never;
+    path: {
+        peerId: string;
+    };
+    query?: never;
+    url: '/api/instances/{peerId}';
+};
+
+export type PeersUnpairErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type PeersUnpairError = PeersUnpairErrors[keyof PeersUnpairErrors];
+
+export type PeersUnpairResponses = {
+    /**
+     * OK
+     */
+    200: PeerManager;
+};
+
+export type PeersUnpairResponse = PeersUnpairResponses[keyof PeersUnpairResponses];
+
+export type PeersRenameData = {
+    body: RenameEnvironment;
+    path: {
+        peerId: string;
+    };
+    query?: never;
+    url: '/api/instances/{peerId}';
+};
+
+export type PeersRenameErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type PeersRenameError = PeersRenameErrors[keyof PeersRenameErrors];
+
+export type PeersRenameResponses = {
+    /**
+     * OK
+     */
+    200: PeerManager;
+};
+
+export type PeersRenameResponse = PeersRenameResponses[keyof PeersRenameResponses];
+
+export type PeersProjectsData = {
+    body?: never;
+    path: {
+        peerId: string;
+    };
+    query?: never;
+    url: '/api/instances/{peerId}/projects';
+};
+
+export type PeersProjectsErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type PeersProjectsError = PeersProjectsErrors[keyof PeersProjectsErrors];
+
+export type PeersProjectsResponses = {
+    /**
+     * OK
+     */
+    200: Array<Workspace>;
+};
+
+export type PeersProjectsResponse = PeersProjectsResponses[keyof PeersProjectsResponses];
+
+export type ProjectFoldersListData = {
+    body?: never;
+    path?: never;
+    query?: {
+        directory?: string;
+    };
+    url: '/api/project-folders';
+};
+
+export type ProjectFoldersListErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type ProjectFoldersListError = ProjectFoldersListErrors[keyof ProjectFoldersListErrors];
+
+export type ProjectFoldersListResponses = {
+    /**
+     * OK
+     */
+    200: ProjectFolders;
+};
+
+export type ProjectFoldersListResponse = ProjectFoldersListResponses[keyof ProjectFoldersListResponses];

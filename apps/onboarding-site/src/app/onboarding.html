@@ -1,0 +1,123 @@
+<header class="top">
+  <a class="brand" href="https://pi-kit.dev"
+    ><img src="/icons/icon-192.png" alt="" width="36" height="36" /><span>pi-kit</span></a
+  >
+  <nav class="lang" [attr.aria-label]="'remoteSite.language' | transloco">
+    <button type="button" [attr.aria-pressed]="language.code() === 'en'" (click)="setLanguage('en')">EN</button>
+    <button type="button" [attr.aria-pressed]="language.code() === 'de'" (click)="setLanguage('de')">DE</button>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <h1>{{ 'remoteSite.title' | transloco }}</h1>
+    <p>{{ 'remoteSite.intro' | transloco }}</p>
+    <p class="note">{{ 'remoteSite.privacy' | transloco }}</p>
+  </section>
+
+  <section class="card">
+    <h2>{{ 'remoteSite.openTitle' | transloco }}</h2>
+    <form (submit)="$event.preventDefault(); open()">
+      <label for="address">{{ 'remoteSite.openLabel' | transloco }}</label>
+      <div class="address">
+        <input
+          id="address"
+          type="url"
+          inputmode="url"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="https://my-mac.tail1234.ts.net:8443"
+          [value]="address()"
+          (input)="address.set($any($event.target).value)"
+          [attr.aria-invalid]="invalid()"
+          data-testid="address"
+        />
+        <button type="submit" class="primary icon" [attr.aria-label]="'remoteSite.openButton' | transloco">
+          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path
+              d="M5 12h14m-6-6 6 6-6 6"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+      </div>
+      @if (invalid()) {
+        <p class="error" role="alert">{{ 'remoteSite.openInvalid' | transloco }}</p>
+      }
+    </form>
+    <button
+      type="button"
+      class="ghost wide"
+      (click)="scan()"
+      [disabled]="scanning()"
+      aria-controls="camera-panel"
+      [attr.aria-expanded]="scanning()"
+    >
+      {{ 'remoteSite.scanButton' | transloco }}
+    </button>
+    @if (scanStatus() && !scanning()) {
+      <p class="note" role="status" aria-live="polite">{{ scanStatus() | transloco }}</p>
+    }
+    <dialog #dialog class="scanner" (close)="cancelScan()" [attr.aria-label]="'remoteSite.scanner' | transloco">
+      <video #video class="camera" autoplay muted playsinline></video>
+      <canvas #canvas hidden></canvas>
+      @if (scanStatus()) {
+        <p class="note" role="status" aria-live="polite">{{ scanStatus() | transloco }}</p>
+      }
+      <button type="button" class="ghost wide" (click)="cancelScan()">{{ 'remoteSite.cancelScan' | transloco }}</button>
+    </dialog>
+  </section>
+
+  <ol class="steps">
+    <li class="card">
+      <h2>{{ 'remoteSite.s1Title' | transloco }}</h2>
+      <p>{{ 'remoteSite.s1Text' | transloco }}</p>
+      <a class="download" href="https://github.com/Soverius-AI/pi-kit/releases/latest" rel="noopener">{{
+        'remoteSite.download' | transloco
+      }}</a>
+      <p class="note">{{ 'remoteSite.downloadNote' | transloco }}</p>
+    </li>
+    <li class="card">
+      <h2>{{ 'remoteSite.s2Title' | transloco }}</h2>
+      <p>{{ 'remoteSite.s2Text' | transloco }}</p>
+      <ul class="links">
+        <li>
+          <a href="https://tailscale.com/download" rel="noopener">{{ 'remoteSite.tsDesktop' | transloco }}</a>
+        </li>
+        <li>
+          <a href="https://apps.apple.com/app/tailscale/id1470499037" rel="noopener">{{
+            'remoteSite.tsIos' | transloco
+          }}</a>
+        </li>
+        <li>
+          <a href="https://play.google.com/store/apps/details?id=com.tailscale.ipn" rel="noopener">{{
+            'remoteSite.tsAndroid' | transloco
+          }}</a>
+        </li>
+      </ul>
+    </li>
+    <li class="card">
+      <h2>{{ 'remoteSite.s3Title' | transloco }}</h2>
+      <p>{{ 'remoteSite.s3Text' | transloco }}</p>
+      <p class="note">{{ 'remoteSite.s3Note' | transloco }}</p>
+    </li>
+    <li class="card">
+      <h2>{{ 'remoteSite.s4Title' | transloco }}</h2>
+      <p>{{ 'remoteSite.s4Text' | transloco }}</p>
+      <p class="note">{{ 'remoteSite.s4Note' | transloco }}</p>
+    </li>
+    <li class="card">
+      <h2>{{ 'remoteSite.s5Title' | transloco }}</h2>
+      <p>{{ 'remoteSite.s5Text' | transloco }}</p>
+      <p class="warn">{{ 'remoteSite.s5Warn' | transloco }}</p>
+    </li>
+  </ol>
+</main>
+
+<footer>
+  <p>{{ 'remoteSite.footer' | transloco }}</p>
+</footer>

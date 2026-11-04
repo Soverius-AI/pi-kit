@@ -24,8 +24,10 @@ interface DatabaseKey {
   reason?: string;
 }
 
-/** Made by another pi-kit version or damaged; the desktop offers to recreate it. Never thrown for key problems. */
+/** Damaged; the desktop may offer recreation. Never thrown for key/version problems. */
 export class DatabaseBrokenError extends Error {}
+/** Incompatible schema is not corruption. Never offer destructive recreation on this error. */
+export class DatabaseVersionError extends Error {}
 
 /**
  * Owns the SQLite connection and applies the plain SQL files in `migrations/`
@@ -79,6 +81,17 @@ export class DatabaseService implements OnApplicationShutdown {
       if (isCorruption(error))
         throw new DatabaseBrokenError(`${this.path} is damaged (${(error as Error).message}).`, { cause: error });
       throw error;
+    }
+  }
+
+  /** Security-sensitive writes fsync the WAL before acknowledging; ordinary writes keep `synchronous = NORMAL`. */
+  durable<T>(write: () => T): T {
+    const previous = this.db.pragma('synchronous', { simple: true }) as number;
+    this.db.pragma('synchronous = FULL');
+    try {
+      return write();
+    } finally {
+      this.db.pragma(`synchronous = ${previous}`);
     }
   }
 
@@ -230,8 +243,8 @@ export class DatabaseService implements OnApplicationShutdown {
           return !file || hash !== schemaHash(file.sql);
         });
         if (changed.length) {
-          throw new DatabaseBrokenError(
-            `${this.path} was created by a different pi-kit version (migrations ${changed.map(([name]) => name).join(', ')}). Delete it and restart to start fresh.`,
+          throw new DatabaseVersionError(
+            `${this.path} was created by a different pi-kit version (migrations ${changed.map(([name]) => name).join(', ')}). The database was retained. Open it with the matching app version or restore a compatible backup; recreating it would lose metadata.`,
           );
         }
         const added: string[] = [];

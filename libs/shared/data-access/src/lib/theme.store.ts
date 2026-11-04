@@ -33,11 +33,12 @@ export const ThemeStore = signalStore(
   withState<ThemeState>({ preference: 'system', os: 'pi-dark' }),
   withPersistence<ThemeState>({
     readLocal: () => {
-      const stored = readStorage(KEY);
+      const stored = readStorage(KEY, 'controller');
       return isPreference(stored) ? { preference: stored } : {};
     },
-    writeLocal: (state) => writeStorage(KEY, state.preference),
+    writeLocal: (state) => writeStorage(KEY, state.preference, 'controller'),
     remote: {
+      scope: 'controller',
       keys: { preference: 'theme' },
       parse: (saved) => (isPreference(saved['theme']) ? { preference: saved['theme'] } : {}),
     },

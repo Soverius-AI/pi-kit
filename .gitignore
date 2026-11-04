@@ -17,3 +17,5 @@ tmp/
 .claude/worktrees/
 .pnpm-store/
 output/
+.pi-kit-data-desktop-second/
+apps/onboarding-site/public/i18n/

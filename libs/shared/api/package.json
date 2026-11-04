@@ -2,7 +2,9 @@
   "name": "@pi-kit/api",
   "version": "0.0.1",
   "peerDependencies": {
-    "@angular/core": "22.2.3"
+    "@angular/core": "22.2.3",
+    "@pi-kit/protocol": "0.0.1",
+    "zod": "4.6.7"
   },
   "sideEffects": false,
   "private": true

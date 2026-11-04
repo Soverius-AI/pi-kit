@@ -19,7 +19,7 @@ import {
 import { ChatStore } from '@pi-kit/chat/data';
 import { FlaskIcon, ModelPanel } from '@pi-kit/chat/ui';
 import { EffortPanel } from '@pi-kit/chat/ui/effort';
-import { PkIcon, PkTip } from '@pi-kit/design-system';
+import { PkIcon, PkTip, PkSafeOverlay } from '@pi-kit/design-system';
 import { effortTip } from '@pi-kit/chat/util';
 import { ProviderUsageStore, UiStore } from '@pi-kit/data-access';
 import type { ModelInfo } from '@pi-kit/protocol';
@@ -35,6 +35,7 @@ import type { ModelInfo } from '@pi-kit/protocol';
     CdkConnectedOverlay,
     CdkOverlayOrigin,
     PkTip,
+    PkSafeOverlay,
     TranslocoPipe,
     PkIcon,
   ],
@@ -55,6 +56,7 @@ import type { ModelInfo } from '@pi-kit/protocol';
           [attr.aria-expanded]="open()"
           [attr.aria-label]="'chat.modelPicker.model' | transloco"
           [title]="'chat.modelPicker.modelMSwitchesToTheNextPinned' | transloco"
+          #modelTrigger
           data-testid="model-chip"
           (click)="toggle()"
         >
@@ -62,9 +64,6 @@ import type { ModelInfo } from '@pi-kit/protocol';
           <span class="v mono">{{ session.model()?.id ?? ('chat.modelPicker.noModel' | transloco) }}</span>
           <pk-icon name="chevron-down" class="chev" />
         </button>
-        @if (open()) {
-          <ng-container *ngTemplateOutlet="panel" />
-        }
       </div>
       <ng-container *ngTemplateOutlet="effortControl" />
     } @else if (session.stats(); as stats) {
@@ -76,6 +75,7 @@ import type { ModelInfo } from '@pi-kit/protocol';
         aria-haspopup="dialog"
         [attr.aria-expanded]="open()"
         [title]="'chat.modelPicker.modelForTheNextMessage' | transloco"
+        #modelTrigger
         data-testid="header-model"
         (click)="toggle()"
       >
@@ -83,9 +83,25 @@ import type { ModelInfo } from '@pi-kit/protocol';
         <span class="mono truncate">{{ stats.model?.id ?? ('chat.modelPicker.noModel' | transloco) }}</span>
       </button>
       <ng-container *ngTemplateOutlet="effortControl" />
-      @if (open()) {
-        <ng-container *ngTemplateOutlet="panel" />
-      }
+    }
+    @if (modelTrigger(); as origin) {
+      <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="origin"
+        [cdkConnectedOverlayOpen]="open()"
+        [cdkConnectedOverlayPositions]="modelPositions()"
+        [cdkConnectedOverlayViewportMargin]="16"
+        [cdkConnectedOverlayPush]="true"
+        [cdkConnectedOverlayHasBackdrop]="true"
+        [cdkConnectedOverlayDisableClose]="true"
+        cdkConnectedOverlayPanelClass="pk-model-overlay"
+        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+        (backdropClick)="close(false)"
+        (overlayKeydown)="$event.key === 'Escape' && onEscape($event)"
+        (detach)="close(false)"
+      >
+        <div #modelPopup pkSafeOverlay><ng-container *ngTemplateOutlet="panel" /></div>
+      </ng-template>
     }
     <ng-template #effortControl>
       <button
@@ -121,18 +137,20 @@ import type { ModelInfo } from '@pi-kit/protocol';
         (overlayKeydown)="onEffortKey($event)"
         (detach)="closeEffort(false)"
       >
-        @defer (on immediate) {
-          <pk-effort-panel
-            [levels]="session.levels()"
-            [level]="selectedEffort()"
-            [adjustable]="effortAdjustable()"
-            [unavailable]="effortTitle()"
-            [testId]="placement() + '-effort-slider'"
-            (preview)="previewEffort($event)"
-            (commit)="commitEffort()"
-            (dismiss)="closeEffort()"
-          />
-        }
+        <div pkSafeOverlay>
+          @defer (on immediate) {
+            <pk-effort-panel
+              [levels]="session.levels()"
+              [level]="selectedEffort()"
+              [adjustable]="effortAdjustable()"
+              [unavailable]="effortTitle()"
+              [testId]="placement() + '-effort-slider'"
+              (preview)="previewEffort($event)"
+              (commit)="commitEffort()"
+              (dismiss)="closeEffort()"
+            />
+          }
+        </div>
       </ng-template>
     </ng-template>
     <ng-template #panel>
@@ -202,6 +220,11 @@ export class ModelPicker {
   private readonly zone = inject(NgZone);
 
   protected readonly open = signal(false);
+  protected readonly modelTrigger = viewChild<ElementRef<HTMLButtonElement>>('modelTrigger');
+  private readonly modelPopup = viewChild<ElementRef<HTMLElement>>('modelPopup');
+  protected readonly modelPositions = computed<ConnectedPosition[]>(() =>
+    this.effortPositions().map((position) => ({ ...position, originX: 'start', overlayX: 'start' })),
+  );
   private readonly effortTrigger = viewChild<ElementRef<HTMLButtonElement>>('effortTrigger');
   private readonly effortOwner = computed(
     () => `${this.session.threadId()}/${this.session.model()?.provider}/${this.session.model()?.id}`,
@@ -338,10 +361,10 @@ export class ModelPicker {
     this.bus.openSettings('models');
   }
 
-  protected close(): void {
+  protected close(restoreFocus = true): void {
     if (!this.open()) return;
     this.open.set(false);
-    this.bus.focusComposer();
+    if (restoreFocus) this.bus.focusComposer();
   }
 
   protected refreshUsage(): void {
@@ -349,7 +372,12 @@ export class ModelPicker {
   }
 
   protected onDocumentClick(event: Event): void {
-    if (this.open() && !this.host.nativeElement.contains(event.target as Node)) this.open.set(false);
+    if (
+      this.open() &&
+      !this.host.nativeElement.contains(event.target as Node) &&
+      !this.modelPopup()?.nativeElement.contains(event.target as Node)
+    )
+      this.open.set(false);
   }
 
   protected onEscape(event: Event): void {

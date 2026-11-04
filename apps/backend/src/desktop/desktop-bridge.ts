@@ -8,6 +8,9 @@ import {
   type OpenPathResult,
   type ReleaseNote,
   emptyBrowserState,
+  InstanceKeyInfoSchema,
+  type InstanceKeyInfo,
+  type PeerProofClaims,
 } from '@pi-kit/protocol';
 
 interface DesktopAnswer {
@@ -75,6 +78,20 @@ export class DesktopBridge implements OnModuleDestroy {
 
   revealPath(path: string): Promise<OpenPathResult> {
     return this.open('reveal-path', path, 'Revealing a file in the file manager needs the desktop app.');
+  }
+
+  async instanceKeyInfo(instanceId: string, create = false): Promise<InstanceKeyInfo> {
+    if (!this.available) throw new Error('OS-protected instance keys require a supported desktop/runtime adapter.');
+    return InstanceKeyInfoSchema.parse(
+      await this.exchange('instance-key', { keyRequest: { action: 'info', instanceId, create } }),
+    );
+  }
+
+  async instanceSign(instanceId: string, claims: PeerProofClaims): Promise<string> {
+    if (!this.available) throw new Error('The protected instance key is unavailable.');
+    const proof = await this.exchange<unknown>('instance-key', { keyRequest: { action: 'sign', instanceId, claims } });
+    if (typeof proof !== 'string' || proof.length > 16384) throw new Error('Invalid instance proof.');
+    return proof;
   }
 
   appUpdate(action: AppUpdateAction): Promise<AppUpdateResult> {

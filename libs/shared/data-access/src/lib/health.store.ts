@@ -1,7 +1,7 @@
 import { Language } from '@pi-kit/i18n';
 import { DestroyRef, inject, NgZone } from '@angular/core';
 import { patchState, signalStore, withHooks, withMethods, withProps, withState } from '@ngrx/signals';
-import { ApiClient, BackendStatus, healthHealth, unwrap } from '@pi-kit/api';
+import { ApiClient, BACKEND_CONNECTION, BackendStatus, healthHealth, unwrap } from '@pi-kit/api';
 import { RENDERER_POLICY } from './renderer-policy';
 import { withBackendEvents } from './store';
 import { ToastStore } from './toast.store';
@@ -94,7 +94,34 @@ export const HealthStore = signalStore(
       const timer = inject(NgZone).runOutsideAngular(() =>
         setInterval(() => void store.poll(), store._policy.healthPollMs),
       );
-      inject(DestroyRef).onDestroy(() => clearInterval(timer));
+      const connection = inject(BACKEND_CONNECTION);
+      let resuming: Promise<void> | undefined;
+      const resume = () => {
+        if (document.visibilityState === 'hidden' || resuming) return;
+        resuming = (async () => {
+          const epoch = store.epoch();
+          try {
+            await connection.resume?.();
+          } catch {
+            /* Connectivity errors are reported by the bounded health check. */
+          }
+          await store.poll();
+          // iOS can retire sockets while timers are suspended, without a changed backend boot ID.
+          if (store.state() === 'ok' && store.epoch() === epoch)
+            patchState(store, (state) => ({ epoch: state.epoch + 1 }));
+        })().finally(() => {
+          resuming = undefined;
+        });
+      };
+      window.addEventListener('online', resume);
+      window.addEventListener('pageshow', resume);
+      document.addEventListener('visibilitychange', resume);
+      inject(DestroyRef).onDestroy(() => {
+        clearInterval(timer);
+        window.removeEventListener('online', resume);
+        window.removeEventListener('pageshow', resume);
+        document.removeEventListener('visibilitychange', resume);
+      });
       store.watchBackend((status) => store.onStatus(status));
     },
   }),

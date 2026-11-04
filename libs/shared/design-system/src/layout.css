@@ -6,6 +6,8 @@
   display: grid;
   overflow: hidden;
   height: 100dvh;
+  box-sizing: border-box;
+  padding: var(--pk-safe-top) var(--pk-safe-right) var(--pk-safe-bottom) var(--pk-safe-left);
   /* The sidebar's column: `--pk-threads` (the width the user dragged, ViewPrefs), or 0 while it is collapsed (⌘B). */
   --pk-threads-col: var(--pk-threads);
   --pk-panel: clamp(320px, var(--pk-panel-width, 400px), calc(100vw - var(--pk-threads-col) - 480px));
@@ -102,6 +104,9 @@
 }
 .pk-header-actions {
   min-width: 0;
+}
+.pk-changes-row {
+  display: none;
 }
 .pk-crumbs {
   height: 28px;
@@ -1185,10 +1190,10 @@ html[data-sidebar-drag] {
   }
   .pk-panel {
     position: fixed;
-    top: 0;
-    right: 0;
-    bottom: var(--pk-status);
-    width: var(--pk-panel);
+    top: var(--pk-safe-top);
+    right: var(--pk-safe-right);
+    bottom: calc(var(--pk-status) + var(--pk-safe-bottom));
+    width: min(var(--pk-panel), calc(100vw - var(--pk-safe-left) - var(--pk-safe-right)));
     box-shadow: var(--pk-shadow);
     z-index: 30;
   }
@@ -1203,6 +1208,12 @@ html[data-sidebar-drag] {
     top: 0;
     left: 0;
     bottom: var(--pk-status);
+    box-sizing: border-box;
+    /* Fixed drawers are outside the shell's padded grid. Keep the background
+       edge-to-edge, but put BOTH header and footer inside the hardware insets. */
+    padding-top: var(--pk-safe-top);
+    padding-left: var(--pk-safe-left);
+    padding-bottom: var(--pk-safe-bottom);
     width: var(--pk-threads);
     z-index: 30;
     transform: translateX(-110%);
@@ -1228,6 +1239,34 @@ html[data-sidebar-drag] {
   }
 }
 @media (max-width: 767px) {
+  .pk-shell,
+  .pk-shell[data-panel='open'] {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: 'threads main panel';
+  }
+  .pk-header {
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scroll-padding-inline: var(--pk-gutter);
+  }
+  .pk-header > h1 {
+    flex: 0 0 auto;
+    max-width: 60vw;
+  }
+  .pk-header-actions {
+    flex: none;
+  }
+  .pk-crumbs {
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+  .pk-crumbs > * {
+    flex-shrink: 0;
+  }
   .pk-panel-resize {
     display: none;
   }
@@ -1239,13 +1278,57 @@ html[data-sidebar-drag] {
     bottom: 0;
   }
   .pk-panel {
-    width: 100vw;
-    bottom: 0;
+    width: calc(100vw - var(--pk-safe-left) - var(--pk-safe-right));
+    bottom: var(--pk-safe-bottom);
   }
   .pk-status {
     display: none;
   }
   .pk-hide-sm {
     display: none !important;
+  }
+  .pk-changes-row {
+    display: flex;
+    align-items: center;
+    padding: 4px var(--pk-gutter);
+    background: var(--color-base-100);
+    border-bottom: 1px solid var(--color-base-300);
+  }
+}
+
+/* The environment switcher: its own row above the foot. */
+.pk-env-dot {
+  width: 8px;
+  height: 8px;
+  margin: 0 2px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--color-primary);
+}
+.pk-env-switch {
+  border-bottom: 0;
+  border-top: 1px solid var(--color-base-300);
+}
+.pk-env-dot[data-remote='true'] {
+  background: var(--pk-muted);
+}
+.pk-env-missing {
+  display: grid;
+  gap: 6px;
+  margin: 4px 12px 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+.pk-env-missing p {
+  margin: 0;
+}
+@media (max-width: 767px) {
+  .pk-project-head .name {
+    min-width: min(12ch, 45%);
+  }
+  .pk-project-head .branch {
+    max-width: 40%;
   }
 }

@@ -174,6 +174,7 @@ describe('ModelPanel', () => {
     const pin = root.querySelector(
       '[data-model="anthropic/claude-haiku-5-5"] [data-testid="picker-pin"]',
     ) as HTMLButtonElement;
+    expect(pin.querySelector('pk-icon')?.getAttribute('style')).toContain('--pk-icon-pin)');
     expect(pin.getAttribute('aria-pressed')).toBe('false');
     expect(pin.getAttribute('aria-label')).toBe('Pin claude-haiku-5-5');
     pin.click();
@@ -181,6 +182,8 @@ describe('ModelPanel', () => {
     expect(events.pin.map((m) => m.id)).toEqual(['claude-haiku-5-5']);
     expect(events.pick.map((m) => m.id)).toEqual(['gpt-5.2']);
     const pinned = root.querySelector('[data-model="llama-swap/gemma-4-26b"] [data-testid="picker-pin"]');
+    expect(pinned?.querySelector('pk-icon')?.getAttribute('style')).toContain('--pk-icon-pin-filled)');
+    expect(root.querySelector('.tile.pinned pk-icon')?.getAttribute('style')).toContain('--pk-icon-pin-filled)');
     expect(pinned?.getAttribute('aria-pressed')).toBe('true');
     expect(pinned?.getAttribute('aria-label')).toBe('Unpin gemma-4-26b');
   });

@@ -15,7 +15,7 @@ import {
   StageResultSchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Fails, Responds, ThreadIdParam } from '../contract';
+import { Fails, Responds, ThreadIdParam, Remote } from '../contract';
 import { ChangesService } from './changes.service';
 
 const NO_THREAD = 'There is no such thread.';
@@ -31,6 +31,7 @@ const NOT_IDLE = 'A run holds the thread: stop it first.';
 export class ChangesController {
   constructor(private readonly changes: ChangesService) {}
 
+  @Remote()
   @Get('changes')
   @ApiOperation({
     summary: 'List changed files',
@@ -46,6 +47,7 @@ export class ChangesController {
     return this.changes.list(id, query.source);
   }
 
+  @Remote()
   @Get('changes/:file')
   @ApiOperation({
     summary: 'Get the diff of a file',
@@ -67,6 +69,7 @@ export class ChangesController {
   }
 
   /** Asks for `confirm: true`: this overwrites the file on disk. */
+  @Remote()
   @Post('revert')
   @HttpCode(204)
   @ApiOperation({
@@ -86,6 +89,7 @@ export class ChangesController {
     return this.changes.revert(id, body.source, body.file);
   }
 
+  @Remote()
   @Post('stage')
   @HttpCode(200)
   @ApiOperation({
@@ -106,6 +110,7 @@ export class ChangesController {
     return this.changes.stage(id, body.source, body.files);
   }
 
+  @Remote()
   @Get('review-comments')
   @ApiOperation({
     summary: 'List review comments',
@@ -117,6 +122,7 @@ export class ChangesController {
     return this.changes.comments(id);
   }
 
+  @Remote()
   @Put('review-comments')
   @HttpCode(204)
   @ApiOperation({

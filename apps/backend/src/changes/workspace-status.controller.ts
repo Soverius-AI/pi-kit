@@ -8,7 +8,7 @@ import {
   WorkspaceStatusSchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Fails, Responds, WorkspaceIdParam } from '../contract';
+import { Fails, Responds, WorkspaceIdParam, Remote } from '../contract';
 import { MetaRepository } from '../db/meta.repository';
 import { ChangesService } from './changes.service';
 import { git, isWorkTree } from './git';
@@ -24,6 +24,7 @@ export class WorkspaceStatusController {
   ) {}
 
   /** git's badge per changed file, plus (with `thread`) the files pi changed in that thread. */
+  @Remote()
   @Get('status')
   @ApiOperation({
     summary: "Get a folder's git status",

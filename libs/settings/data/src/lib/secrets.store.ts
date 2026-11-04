@@ -4,6 +4,8 @@ import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 import {
   ApiClient,
   errorMessage,
+  isLocalExecution,
+  isDeviceConnection,
   secretsCredentialStorage,
   secretsInstall,
   secretsMove,
@@ -95,6 +97,7 @@ export const SecretsStore = signalStore(
         }
       },
       async loadStatus(): Promise<void> {
+        if (isDeviceConnection() || !isLocalExecution()) return;
         try {
           patchState(store, { status: await unwrap(secretsStatus({ client: api.client })) });
         } catch (error) {
@@ -106,6 +109,7 @@ export const SecretsStore = signalStore(
       },
 
       async loadProtection(): Promise<void> {
+        if (isDeviceConnection() || !isLocalExecution()) return;
         try {
           patchState(store, { protection: await unwrap(secretsProtection({ client: api.client })) });
         } catch (error) {

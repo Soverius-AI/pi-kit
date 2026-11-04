@@ -2,7 +2,7 @@ import { Body, ConflictException, Controller, Get, HttpCode, Param, Post } from 
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { type QueueSnapshot, QueueSnapshotSchema, QueueTargetSchema } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Fails, Responds, ThreadIdParam } from '../contract';
+import { Fails, Responds, ThreadIdParam, Remote } from '../contract';
 import { PiSessionService, QueueStaleError } from '../pi/pi-session.service';
 
 const STALE = 'The queue changed since the client read it: the message is no longer where it was.';
@@ -19,6 +19,7 @@ const STALE = 'The queue changed since the client read it: the message is no lon
 export class QueueController {
   constructor(private readonly sessions: PiSessionService) {}
 
+  @Remote()
   @Get('threads/:id/queue')
   @ApiOperation({
     summary: 'Get the message queue',
@@ -31,6 +32,7 @@ export class QueueController {
   }
 
   /** Steer now: a follow-up moves to the steering queue (after the others waiting there). */
+  @Remote()
   @Post('threads/:id/queue/promote')
   @HttpCode(200)
   @ApiOperation({
@@ -46,6 +48,7 @@ export class QueueController {
     return this.guard(() => this.sessions.promoteQueued(id, body));
   }
 
+  @Remote()
   @Post('threads/:id/queue/remove')
   @HttpCode(200)
   @ApiOperation({
@@ -62,6 +65,7 @@ export class QueueController {
   }
 
   /** Every queued text in one message, joined by blank lines, in delivery order. */
+  @Remote()
   @Post('threads/:id/queue/merge')
   @HttpCode(200)
   @ApiOperation({
@@ -74,6 +78,7 @@ export class QueueController {
     return this.guard(() => this.sessions.mergeQueued(id));
   }
 
+  @Remote()
   @Post('threads/:id/queue/clear')
   @HttpCode(200)
   @ApiOperation({

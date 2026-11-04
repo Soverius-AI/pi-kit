@@ -1,7 +1,7 @@
 import { ApplicationConfig, inject, provideBrowserGlobalErrorListeners } from '@angular/core';
 import { provideCopilotKit, ɵCOPILOTKIT_INSPECTOR_DEVELOPMENT_MODE } from '@copilotkit/angular';
 import { provideMCPApps } from '@copilotkit/angular/mcp-apps';
-import { BACKEND_CONNECTION, type BackendConnection } from '@pi-kit/api';
+import { BACKEND_CONNECTION, ENTRY_CONNECTION, type BackendConnection } from '@pi-kit/api';
 import {
   ChatConnectors,
   ChatTree,
@@ -37,12 +37,14 @@ export function buildAppConfig(
   backend: BackendEndpoint,
   connection?: BackendConnection,
   inspector = readInspectorPreference(),
+  entry?: BackendConnection,
 ): ApplicationConfig {
   return {
     providers: [
-      provideLanguage(() => readLanguagePreference(readStorage('pi-kit.look'))),
+      provideLanguage(() => readLanguagePreference(readStorage('pi-kit.look', 'controller'))),
       { provide: COPILOT_INSPECTOR_AT_START, useValue: inspector },
       ...(connection ? [{ provide: BACKEND_CONNECTION, useValue: connection }] : []),
+      ...(entry ? [{ provide: ENTRY_CONNECTION, useValue: entry }] : []),
       provideBrowserGlobalErrorListeners(),
       provideOpenUiSandbox(),
       provideCopilotKit({

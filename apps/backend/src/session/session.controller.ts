@@ -60,7 +60,7 @@ import {
 } from '@pi-kit/protocol';
 import type { Response } from 'express';
 import type { z } from 'zod';
-import { Fails, Responds, Streams, ThreadIdParam, WorkspaceIdParam } from '../contract';
+import { Fails, Responds, Streams, ThreadIdParam, WorkspaceIdParam, Remote } from '../contract';
 import { MetaRepository } from '../db/meta.repository';
 import { RedactionService } from '../db/redaction.service';
 import { ThreadsRepository } from '../db/threads.repository';
@@ -102,6 +102,7 @@ export class SessionController {
     private readonly threadRows: ThreadsRepository,
   ) {}
 
+  @Remote()
   @ApiTags('session')
   @ThreadIdParam()
   @Get('threads/:id/commands')
@@ -116,6 +117,7 @@ export class SessionController {
     return this.commands.list(id);
   }
 
+  @Remote()
   @ApiTags('session')
   @ThreadIdParam()
   @Get('threads/:id/stats')
@@ -130,6 +132,7 @@ export class SessionController {
     return this.sessions.stats(id);
   }
 
+  @Remote()
   @ApiTags('session')
   @ThreadIdParam()
   @Get('threads/:id/context')
@@ -146,6 +149,7 @@ export class SessionController {
   }
 
   /** Usage by model and by turn, aggregated from the session file (not the open session, not the event log): CLI turns count. */
+  @Remote()
   @ApiTags('session')
   @ThreadIdParam()
   @Get('threads/:id/usage')
@@ -160,6 +164,7 @@ export class SessionController {
     return readThreadUsage(this.threads.sessionPathOf(id), id);
   }
 
+  @Remote()
   @ApiTags('session')
   @Get('models')
   @ApiOperation({
@@ -176,6 +181,7 @@ export class SessionController {
     return this.sessions.models(query.thread);
   }
 
+  @Remote()
   @ApiTags('session')
   @ThreadIdParam()
   @Patch('threads/:id/model')
@@ -199,6 +205,7 @@ export class SessionController {
     return this.sessions.stats(id);
   }
 
+  @Remote()
   @ApiTags('session')
   @ThreadIdParam()
   @Post('threads/:id/compact')
@@ -221,6 +228,7 @@ export class SessionController {
     }
   }
 
+  @Remote()
   @ApiTags('session')
   @ThreadIdParam()
   @Post('threads/:id/reload')
@@ -267,6 +275,7 @@ export class SessionController {
    * `!command`: runs it through pi and streams NDJSON, one `pi.bash` activity content per line (throttled,
    * the last with `running: false`). The renderer shows it as a bash activity; `abort-bash` stops it.
    */
+  @Remote()
   @ApiTags('session')
   @ThreadIdParam()
   @Post('threads/:id/bash')
@@ -337,6 +346,7 @@ export class SessionController {
     res.end();
   }
 
+  @Remote()
   @ApiTags('session')
   @ThreadIdParam()
   @Post('threads/:id/abort-bash')
@@ -351,6 +361,7 @@ export class SessionController {
   }
 
   /** `@file` completion. `:id` is the workspace's folder, URL-encoded (a workspace has no other id). */
+  @Remote()
   @ApiTags('files')
   @WorkspaceIdParam()
   @Get('workspaces/:id/files')
@@ -368,6 +379,7 @@ export class SessionController {
   }
 
   /** The Files panel: the entries under `dir` (default: the root), ignore-aware, folders first; `ignored=1` lists what git ignores too. */
+  @Remote()
   @ApiTags('files')
   @WorkspaceIdParam()
   @Get('workspaces/:id/tree')
@@ -392,6 +404,7 @@ export class SessionController {
    * The live refresh: newline-delimited JSON, `ready` at once, then a `change` whenever the backend learns that the folder changed (a run ended,
    * `HEAD` moved), and a `ping` every 20 s. Nothing watches or polls the folder for it.
    */
+  @Remote()
   @ApiTags('files')
   @WorkspaceIdParam()
   @Get('workspaces/:id/watch')
@@ -446,6 +459,7 @@ export class SessionController {
   }
 
   /** New file or folder, rename and delete of the Files panel's context menu. */
+  @Remote()
   @ApiTags('files')
   @WorkspaceIdParam()
   @Post('workspaces/:id/fs/create')
@@ -467,6 +481,7 @@ export class SessionController {
     return this.fs.create(this.workspace(id), body.path, body.dir);
   }
 
+  @Remote()
   @ApiTags('files')
   @WorkspaceIdParam()
   @Post('workspaces/:id/fs/rename')
@@ -488,6 +503,7 @@ export class SessionController {
     return this.fs.rename(this.workspace(id), body.from, body.to);
   }
 
+  @Remote()
   @ApiTags('files')
   @WorkspaceIdParam()
   @Post('workspaces/:id/fs/delete')
@@ -530,6 +546,7 @@ export class SessionController {
   }
 
   /** pi's own changelog, for `/changelog`. */
+  @Remote()
   @ApiTags('session')
   @Get('changelog')
   @ApiOperation({

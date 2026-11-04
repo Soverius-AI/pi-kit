@@ -68,10 +68,16 @@ import { PkIcon } from '@pi-kit/design-system';
         {{ action.icon }}
       </button>
     }
-    <pk-model-picker />
-    @if (chat.running()) {
-      <pk-deliver-chip [mode]="chat.behavior()" (pick)="chat.setBehavior($event)" />
-    }
+    <div
+      class="pk-composer-settings"
+      role="group"
+      [attr.aria-label]="'chat.composerToolbar.messageSettings' | transloco"
+    >
+      <pk-model-picker />
+      @if (chat.running()) {
+        <pk-deliver-chip [mode]="chat.behavior()" (pick)="chat.setBehavior($event)" />
+      }
+    </div>
     <div class="grow"></div>
     <div class="end">
       @for (action of ext.rightActions(); track action.id) {

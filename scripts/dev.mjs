@@ -1,5 +1,6 @@
 // Dev launcher.
 //   node scripts/dev.mjs desktop   renderer dev server + backend watch build + Electron (pnpm run dev)
+//   node scripts/dev.mjs desktop --second   a second desktop profile beside a running `pnpm run dev` (pnpm run dev:second)
 //   node scripts/dev.mjs web       backend + renderer dev server for a normal browser (pnpm run dev:web)
 import { fork, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +17,7 @@ if (proxied) {
 }
 
 const mode = process.argv[2];
+const second = process.argv.includes('--second');
 if (mode !== 'desktop' && mode !== 'web') {
   console.error('Usage: node scripts/dev.mjs <desktop|web>');
   process.exit(2);
@@ -55,7 +57,7 @@ let RENDERER_URL;
 try {
   RENDERER_URL =
     mode === 'desktop'
-      ? (await Promise.all([desktopBuilderReady('renderer'), desktopBuilderReady('backend')]))[0]
+      ? (await Promise.all([desktopBuilderReady('renderer'), ...(second ? [] : [desktopBuilderReady('backend')])]))[0]
       : `http://localhost:${RENDERER_PORT}`;
 } catch (error) {
   console.error(error.message);
@@ -66,7 +68,12 @@ const modes = {
   // Electron main starts the backend itself on a random port with a random token,
   // so here the backend is only kept built (esbuild --watch) and Electron is restarted by hand.
   desktop: {
-    env: { PI_KIT_DEV_URL: RENDERER_URL },
+    env: {
+      PI_KIT_DEV_URL: RENDERER_URL,
+      ...(second
+        ? { PI_KIT_DATA_DIR: process.env.PI_KIT_DATA_DIR ?? `${process.cwd()}/.pi-kit-data-desktop-second` }
+        : {}),
+    },
     commands: [['desktop', 'nx start desktop']],
   },
   // The browser has no preload, so the backend runs here on a fixed loopback port and hands the

@@ -1,0 +1,16 @@
+@import '../../../libs/shared/design-system/src/tokens.css';
+
+html,
+body {
+  margin: 0;
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+  font:
+    17px/1.55 system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+* {
+  box-sizing: border-box;
+}

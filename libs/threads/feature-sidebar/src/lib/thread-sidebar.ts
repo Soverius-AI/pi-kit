@@ -16,6 +16,7 @@ import {
 } from '@angular/core';
 import {
   ApiClient,
+  isLocalExecution,
   sessionOpenInEditor,
   type TrayThread,
   unwrap,
@@ -28,6 +29,7 @@ import {
   ClockStore,
   DRAWER_BELOW_PX,
   DialogStore,
+  EnvironmentsStore,
   HealthStore,
   IS_MAC,
   SIDEBAR_WIDTH,
@@ -37,7 +39,7 @@ import {
   ViewPrefs,
 } from '@pi-kit/data-access';
 import { PkIcon, PkOutcomeBadge, PkRunRing, PkTip, PkViewportMenu } from '@pi-kit/design-system';
-import type { ThreadSuggestion, ThreadSummary } from '@pi-kit/protocol';
+import type { ProjectRef, ThreadSuggestion, ThreadSummary } from '@pi-kit/protocol';
 import { ConnectorsStore } from '@pi-kit/settings/api';
 import {
   type Project,
@@ -141,6 +143,7 @@ export class ThreadSidebar {
   private readonly search = viewChild.required<ElementRef<HTMLInputElement>>('search');
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly api = inject(ApiClient);
+  protected readonly environments = inject(EnvironmentsStore);
   private readonly worktrees = inject(WorktreeStore);
   private readonly newThread = inject(NewThreadStore);
   private readonly outcomeMenu = inject(OutcomeMenuStore);
@@ -150,7 +153,7 @@ export class ThreadSidebar {
   /** The count on the "Working tree changes" button. */
   protected readonly changed = inject(ChangedCountStore);
   /** The desktop app can open a folder in an editor; a browser cannot. */
-  protected readonly desktop = typeof window !== 'undefined' && !!window.piKit;
+  protected readonly desktop = typeof window !== 'undefined' && isLocalExecution() && !!window.piKit;
 
   /** Emits the id of the thread the user chose or created. */
   readonly opened = output<string>();
@@ -181,8 +184,15 @@ export class ThreadSidebar {
   private readonly minute = computed(() => Math.floor(this.clock.now() / 30_000));
 
   constructor() {
+    void this.environments.refresh();
     const stopTrayListener = window.piKit?.onTrayOpenThread?.((threadId) =>
-      untracked(() => this.openFromSystem(threadId)),
+      untracked(() => {
+        if (isLocalExecution()) this.openFromSystem(threadId);
+        else {
+          const instanceId = this.environments.manager()?.self.instanceId ?? this.environments.context.entryId;
+          if (instanceId) void this.environments.navigate({ instanceId, threadId });
+        }
+      }),
     );
     this.destroyRef.onDestroy(() => {
       stopTrayListener?.();
@@ -191,6 +201,7 @@ export class ThreadSidebar {
     });
     // Keep the native tray useful while the window is minimized: waiting questions first, then active runs.
     effect(() => {
+      if (!isLocalExecution()) return; // The native tray belongs to the entry instance, not a bare remote thread ID.
       const threads: TrayThread[] = this.store.visibleProjects().flatMap((project) =>
         project.threads.flatMap((thread): TrayThread[] => {
           if (thread.archived || (thread.state.activity !== 'running' && thread.state.activity !== 'waiting'))
@@ -920,6 +931,10 @@ export class ThreadSidebar {
   /** The folder picker of the desktop app; a browser has none, so it asks for the path (development). */
   protected async openFolder(event: Event): Promise<void> {
     closeMenu(event);
+    if (this.environments.hasPeers() || !isLocalExecution()) {
+      this.environments.requestPicker((project) => this.openEnvironmentProject(project));
+      return;
+    }
     const picked = window.piKit?.showOpenDialog
       ? await window.piKit.showOpenDialog()
       : await this.dialogs.askName(
@@ -928,6 +943,16 @@ export class ThreadSidebar {
           '/absolute/path/to/the/folder',
         );
     if (picked) await this.store.openWorkspace(picked).catch(() => undefined); // the store shows the error in the footer
+  }
+
+  protected async switchEnvironment(event: Event, instanceId: string): Promise<void> {
+    closeMenu(event);
+    if (instanceId !== this.environments.ownerId()) await this.environments.navigate({ instanceId });
+  }
+
+  protected async openEnvironmentProject(project: ProjectRef): Promise<void> {
+    if (project.instanceId === this.environments.ownerId()) await this.store.openWorkspace(project.cwd);
+    else await this.environments.navigate({ instanceId: project.instanceId, cwd: project.cwd });
   }
 
   // ---- threads

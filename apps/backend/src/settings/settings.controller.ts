@@ -62,7 +62,7 @@ import {
 } from '@pi-kit/protocol';
 import type { Response } from 'express';
 import type { z } from 'zod';
-import { Fails, Responds, Streams, WorkspaceIdParam } from '../contract';
+import { Fails, Responds, Streams, WorkspaceIdParam, Remote } from '../contract';
 import { MetaRepository } from '../db/meta.repository';
 import { PiConfigService } from '../pi/pi-config.service';
 import { PiSessionService } from '../pi/pi-session.service';
@@ -99,6 +99,7 @@ export class SettingsController {
     @Inject(CONFIG) private readonly backend: BackendConfig,
   ) {}
 
+  @Remote()
   @ApiTags('pi-settings')
   @Get('pi-settings')
   @ApiOperation({
@@ -143,6 +144,7 @@ export class SettingsController {
 
   // ---- about and the pi update check
 
+  @Remote()
   @ApiTags('pi-settings')
   @Get('about')
   @ApiOperation({
@@ -306,6 +308,7 @@ export class SettingsController {
 
   // ---- keybindings (pi's keybindings.json)
 
+  @Remote()
   @ApiTags('pi-settings')
   @Get('pi-keybindings')
   @ApiOperation({
@@ -340,6 +343,7 @@ export class SettingsController {
 
   // ---- extensions, skills and prompt templates
 
+  @Remote()
   @ApiTags('pi-settings')
   @Get('resources')
   @ApiOperation({
@@ -392,6 +396,7 @@ export class SettingsController {
 
   // ---- saved trust decisions
 
+  @Remote()
   @ApiTags('trust')
   @Get('trust')
   @ApiOperation({
@@ -425,6 +430,7 @@ export class SettingsController {
 
   // ---- project trust
 
+  @Remote()
   @ApiTags('trust')
   @WorkspaceIdParam()
   @Get('workspaces/:id/trust')
@@ -439,6 +445,7 @@ export class SettingsController {
     return this.trust.state(this.workspace(id));
   }
 
+  @Remote()
   @ApiTags('trust')
   @WorkspaceIdParam()
   @Post('workspaces/:id/trust')

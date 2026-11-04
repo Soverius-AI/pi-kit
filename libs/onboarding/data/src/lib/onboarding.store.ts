@@ -1,7 +1,7 @@
 import { Language } from '@pi-kit/i18n';
 import { computed, effect, inject, untracked } from '@angular/core';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
-import { ApiClient, errorMessage, setupReady, setupScratch, setupState, unwrap } from '@pi-kit/api';
+import { ApiClient, isLocalExecution, errorMessage, setupReady, setupScratch, setupState, unwrap } from '@pi-kit/api';
 import { ToastStore, UiStore } from '@pi-kit/data-access';
 import type { ReadyResult } from '@pi-kit/protocol';
 import { ProviderCardsStore, SettingsStore } from '@pi-kit/settings/api';
@@ -198,7 +198,7 @@ export const OnboardingStore = signalStore(
       },
       /** The native picker (the desktop app); a browser types the path instead. */
       async chooseFolder(): Promise<void> {
-        const picked = await window.piKit?.showOpenDialog?.();
+        const picked = isLocalExecution() ? await window.piKit?.showOpenDialog?.() : undefined;
         if (picked) {
           patchState(store, { folderPath: picked });
           await methods.openFolder();

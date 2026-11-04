@@ -1,5 +1,6 @@
 import { DestroyRef, inject } from '@angular/core';
 import { Language } from '@pi-kit/i18n';
+import { WorkbenchSelectionSchema } from '@pi-kit/api';
 import { HttpAgent } from '@ag-ui/client';
 import { effect, untracked } from '@angular/core';
 import { type SignalStoreFeatureType, patchState, signalStoreFeature, type, withHooks } from '@ngrx/signals';
@@ -13,6 +14,23 @@ export function withChatSession<_>() {
     withHooks({
       onInit(store) {
         const translate = inject(Language).t;
+        if (store._agent.session) {
+          const leave = (event: Event): void => {
+            if (!(event instanceof CustomEvent)) return;
+            const target = WorkbenchSelectionSchema.safeParse(event.detail?.target);
+            if (!target.success) {
+              event.preventDefault();
+              return;
+            }
+            if (
+              (store.draft() || store.images().length) &&
+              !window.confirm(translate('environments.projects.draftReview'))
+            )
+              event.preventDefault();
+          };
+          window.addEventListener('pk-workbench-leave', leave);
+          inject(DestroyRef).onDestroy(() => window.removeEventListener('pk-workbench-leave', leave));
+        }
         const bus = store._bus;
         const threads = store._threads;
         const health = store._health;

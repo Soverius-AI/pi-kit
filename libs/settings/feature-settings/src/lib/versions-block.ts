@@ -103,7 +103,7 @@ function ago(translate: Translate, at: number | undefined): string {
                 {{ 'settings.versionsBlock.aDownloadedUpdateInstallsWhenYouQuit' | transloco }}
               </div>
             </div>
-            <div class="ctl">
+            <div class="ctl ctl-w">
               <input
                 type="checkbox"
                 class="toggle toggle-primary"

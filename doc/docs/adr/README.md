@@ -58,3 +58,4 @@ Date: YYYY-MM-DD
 | [0032](0032-thread-hydration-and-virtual-transcript.md) | Hydrate thread state, cache cursor replay and virtualize the transcript |
 | [0033](0033-durable-background-agents.md) | Durable background agents per thread, on pi-durable, shown through AG-UI |
 | [0034](0034-backend-domain-folders-four-roles.md) | Backend folders are one module per domain with four roles |
+| [0035](0035-remote-access-over-the-tailnet.md) | Remote access over the user's tailnet, with paired devices and reciprocal instances |

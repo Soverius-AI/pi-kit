@@ -13,7 +13,7 @@ import {
   WorktreeDefaultsSchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Fails, Responds, WorkspaceIdParam } from '../contract';
+import { Fails, Responds, WorkspaceIdParam, Remote } from '../contract';
 import { MetaRepository } from '../db/meta.repository';
 import { WorktreeService } from '../worktree/worktree.service';
 import { ThreadsService } from './threads.service';
@@ -29,6 +29,7 @@ export class WorkspacesController {
   ) {}
 
   /** What the Where row of the new-thread page shows about the project's folder: the checked-out branch, the changed files, the branches and who holds them. */
+  @Remote()
   @Get(':id/git')
   @WorkspaceIdParam()
   @ApiOperation({
@@ -43,6 +44,7 @@ export class WorkspacesController {
   }
 
   /** The defaults for every project: where worktrees go and where a new thread starts. */
+  @Remote()
   @Get('defaults')
   @ApiOperation({
     summary: 'Get the defaults for every project',
@@ -67,6 +69,7 @@ export class WorkspacesController {
     return this.worktrees.patchDefaults(body);
   }
 
+  @Remote()
   @Get()
   @ApiOperation({
     summary: 'List projects',
@@ -78,6 +81,7 @@ export class WorkspacesController {
   }
 
   /** One project's sidebar flags (folded, hidden, the attendant's and the background agents' opt-outs) or its worktree settings; answers with the projects. */
+  @Remote()
   @Patch()
   @ApiOperation({
     summary: 'Change a project',
@@ -91,6 +95,7 @@ export class WorkspacesController {
   }
 
   /** The order of the sidebar's project groups; answers with the projects. */
+  @Remote()
   @Put('order')
   @ApiOperation({
     summary: 'Reorder projects',
@@ -102,6 +107,7 @@ export class WorkspacesController {
   }
 
   /** Takes a project off the sidebar and the list of projects; its threads and files stay (Settings › Projects › Forget). */
+  @Remote()
   @Delete(':id')
   @WorkspaceIdParam()
   @ApiOperation({
@@ -116,6 +122,7 @@ export class WorkspacesController {
   }
 
   /** Opens a folder as a project (the sidebar's "Add project", Settings › Projects, onboarding). */
+  @Remote()
   @Post()
   @HttpCode(204)
   @ApiOperation({ summary: 'Open a project', description: 'Adds a folder to the known projects.' })

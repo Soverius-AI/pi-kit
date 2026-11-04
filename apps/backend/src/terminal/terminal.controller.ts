@@ -10,7 +10,7 @@ import {
 } from '@pi-kit/protocol';
 import type { Response } from 'express';
 import type { z } from 'zod';
-import { Fails, Responds, Streams, WorkspaceIdParam } from '../contract';
+import { Fails, Responds, Streams, WorkspaceIdParam, Remote } from '../contract';
 import { MetaRepository } from '../db/meta.repository';
 import { TerminalService } from './terminal.service';
 
@@ -32,6 +32,7 @@ export class TerminalController {
     private readonly meta: MetaRepository,
   ) {}
 
+  @Remote()
   @Post()
   @HttpCode(200)
   @ApiOperation({
@@ -49,6 +50,7 @@ export class TerminalController {
     return this.terminals.start(cwd, body.cols, body.rows);
   }
 
+  @Remote()
   @Get('stream')
   @ApiOperation({
     summary: 'Stream terminal output',
@@ -79,6 +81,7 @@ export class TerminalController {
     });
   }
 
+  @Remote()
   @Post('input')
   @HttpCode(204)
   @ApiOperation({ summary: 'Send keystrokes', description: "Writes keystrokes to the project's terminal." })
@@ -91,6 +94,7 @@ export class TerminalController {
     if (!this.terminals.write(this.meta.requireWorkspace(id), body.data)) throw new NotFoundException(NO_TERMINAL);
   }
 
+  @Remote()
   @Post('resize')
   @HttpCode(204)
   @ApiOperation({ summary: 'Resize the terminal', description: "Sets the columns and rows of the project's terminal." })
@@ -104,6 +108,7 @@ export class TerminalController {
       throw new NotFoundException(NO_TERMINAL);
   }
 
+  @Remote()
   @Delete()
   @HttpCode(204)
   @ApiOperation({ summary: 'Stop the terminal', description: "Ends the shell of the project's terminal." })

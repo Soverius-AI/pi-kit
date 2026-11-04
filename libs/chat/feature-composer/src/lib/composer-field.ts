@@ -1,10 +1,13 @@
-import { TranslocoPipe } from '@pi-kit/i18n';
+import { Language, TranslocoPipe } from '@pi-kit/i18n';
+import { BreakpointObserver } from '@angular/cdk/layout';
+import { toSignal } from '@angular/core/rxjs-interop';
 import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
   ElementRef,
   afterNextRender,
+  computed,
   effect,
   inject,
   untracked,
@@ -56,7 +59,7 @@ import { UiStore } from '@pi-kit/data-access';
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
-        [attr.placeholder]="chat.followUp() ? '' : chat.placeholder()"
+        [attr.placeholder]="chat.followUp() ? '' : placeholder()"
         [attr.aria-expanded]="chat.menuOpen()"
         aria-controls="pk-composer-menu"
         [attr.aria-activedescendant]="chat.menuSelected() ? 'pk-composer-opt-' + chat.menuSelected() : null"
@@ -98,6 +101,16 @@ import { UiStore } from '@pi-kit/data-access';
 })
 export class ComposerField {
   protected readonly chat = inject(ChatStore);
+  private readonly i18n = inject(Language);
+  private readonly compact = toSignal(inject(BreakpointObserver).observe('(max-width: 767px)'), {
+    initialValue: { matches: false, breakpoints: {} },
+  });
+  protected readonly placeholder = computed(() =>
+    this.compact().matches &&
+    this.chat.placeholder() === this.i18n.t('chat.withChatComposerView.messagePiTypeForCommandsForFiles')
+      ? this.i18n.t('chat.composerField.messagePiShort')
+      : this.chat.placeholder(),
+  );
   private readonly bus = inject(UiStore);
   private readonly destroyRef = inject(DestroyRef);
   private readonly field = viewChild.required<ElementRef<HTMLTextAreaElement>>('field');
@@ -138,11 +151,18 @@ export class ComposerField {
       );
       onCleanup(() => clearTimeout(timer));
     });
-    // A new thread, ⌘N and the palette hand the focus to the composer.
+    // On a phone, restoring a thread must not open the software keyboard or pan
+    // the whole app before the user touches the editor. Explicit focus requests
+    // (commands, an inserted file, etc.) still work; desktop autofocus is unchanged.
+    let focusVersion = this.bus.composerFocus();
     effect(() => {
-      this.bus.composerFocus();
+      const version = this.bus.composerFocus();
       this.chat.threadId();
-      queueMicrotask(() => this.field().nativeElement.focus());
+      const explicit = version !== focusVersion;
+      focusVersion = version;
+      const mobile = untracked(() => this.compact().matches) || window.matchMedia('(pointer: coarse)').matches;
+      if (mobile && !explicit) return;
+      queueMicrotask(() => this.field().nativeElement.focus({ preventScroll: true }));
     });
   }
 

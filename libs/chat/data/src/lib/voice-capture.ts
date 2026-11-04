@@ -34,17 +34,6 @@ export async function decodeRecording(blob: Blob): Promise<Decoded> {
   }
 }
 
-const WORKLET = `
-class PkTap extends AudioWorkletProcessor {
-  process(inputs) {
-    const channel = inputs[0] && inputs[0][0];
-    if (channel) this.port.postMessage(channel.slice(0));
-    return true;
-  }
-}
-registerProcessor('pk-tap', PkTap);
-`;
-
 /**
  * The microphone as 16 kHz mono blocks, handed over in pieces of `LIVE_CHUNK_SAMPLES`. It opens its own stream (the recorder keeps its own for the
  * waveform and the fallback recording) and an `AudioContext` pinned to 16 kHz, so the browser does the resampling. `stop()` hands over the tail.
@@ -76,12 +65,8 @@ export class PcmTap {
       };
       const nodes: AudioNode[] = [source, mute];
       if (context.audioWorklet) {
-        const url = URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' }));
-        try {
-          await context.audioWorklet.addModule(url);
-        } finally {
-          URL.revokeObjectURL(url);
-        }
+        // A same-origin asset works under both desktop and phone CSP; blob: modules do not.
+        await context.audioWorklet.addModule(new URL('audio/pcm-tap.js', document.baseURI).href);
         const node = new AudioWorkletNode(context, 'pk-tap');
         node.port.onmessage = (event: MessageEvent<Float32Array>) => feed(event.data);
         source.connect(node);

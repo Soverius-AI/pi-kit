@@ -90,7 +90,7 @@ const INSPECTOR_KEY = 'pi-kit.copilotInspector';
  * from the `localStorage` copy and stays fixed until the window reloads.
  */
 export function readInspectorPreference(): boolean {
-  return readStorage(INSPECTOR_KEY) === 'true';
+  return readStorage(INSPECTOR_KEY, 'controller') === 'true';
 }
 
 export const COPILOT_INSPECTOR_AT_START = new InjectionToken<boolean>('COPILOT_INSPECTOR_AT_START', {
@@ -101,11 +101,11 @@ export const COPILOT_INSPECTOR_AT_START = new InjectionToken<boolean>('COPILOT_I
 /** The first paint is right before the backend has answered: a copy of the look-related choices lives in `localStorage` (the database is the source of truth). */
 function readLocal(): Partial<ViewPrefsState> {
   const out: Partial<ViewPrefsState> = {
-    showUsage: readStorage(USAGE_KEY) === 'true',
-    copilotInspector: readStorage(INSPECTOR_KEY) === 'true',
+    showUsage: readStorage(USAGE_KEY, 'controller') === 'true',
+    copilotInspector: readStorage(INSPECTOR_KEY, 'controller') === 'true',
   };
   try {
-    const look = JSON.parse(readStorage(LOOK_KEY) ?? '{}') as Partial<ViewPrefsState>;
+    const look = JSON.parse(readStorage(LOOK_KEY, 'controller') ?? '{}') as Partial<ViewPrefsState>;
     if (PROSE_SIZES.includes(look.proseSize as never)) out.proseSize = look.proseSize as number;
     if (CODE_SIZES.includes(look.codeSize as never)) out.codeSize = look.codeSize as number;
     if (isLanguage(look.language)) out.language = look.language;
@@ -127,8 +127,8 @@ function readLocal(): Partial<ViewPrefsState> {
 }
 
 function writeLocal(state: ViewPrefsState): void {
-  writeStorage(USAGE_KEY, String(state.showUsage));
-  writeStorage(INSPECTOR_KEY, String(state.copilotInspector));
+  writeStorage(USAGE_KEY, String(state.showUsage), 'controller');
+  writeStorage(INSPECTOR_KEY, String(state.copilotInspector), 'controller');
   const {
     language,
     proseSize,
@@ -159,6 +159,7 @@ function writeLocal(state: ViewPrefsState): void {
       screenshotQuality,
       browserAllowInvalidLocalCertificates,
     }),
+    'controller',
   );
 }
 
@@ -250,7 +251,11 @@ const KEYS: Record<keyof ViewPrefsState, string> = {
 export const ViewPrefs = signalStore(
   { providedIn: 'root' },
   withState<ViewPrefsState>(DEFAULTS),
-  withPersistence<ViewPrefsState>({ readLocal, writeLocal, remote: { keys: KEYS, parse: parseRemote } }),
+  withPersistence<ViewPrefsState>({
+    readLocal,
+    writeLocal,
+    remote: { scope: 'controller', keys: KEYS, parse: parseRemote },
+  }),
   withComputed(({ shortcuts }) => {
     const translate = inject(Language).t;
     return {

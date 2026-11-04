@@ -1,7 +1,8 @@
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, linkedSignal } from '@angular/core';
-import { errorMessage } from '@pi-kit/api';
+import { errorMessage, threadsCreate, unwrap } from '@pi-kit/api';
+import { EnvironmentsStore } from '@pi-kit/data-access';
 import { ChatStore, registerInputTransform } from '@pi-kit/chat/api';
 import { NewThreadStore, ThreadsStore } from '@pi-kit/threads/data';
 import {
@@ -71,6 +72,17 @@ type MenuName = 'project' | 'branch' | 'from' | 'setup';
                   >
                     <span>{{ project.workspace.name }}</span>
                     <span class="sub mono">{{ project.workspace.cwd }}</span>
+                  </button>
+                }
+                @if (environments.hasPeers()) {
+                  <button
+                    type="button"
+                    class="opt"
+                    role="option"
+                    aria-selected="false"
+                    (click)="pickOtherEnvironment()"
+                  >
+                    {{ 'environments.projects.other' | transloco }}
                   </button>
                 }
               </div>
@@ -451,6 +463,7 @@ type MenuName = 'project' | 'branch' | 'from' | 'setup';
 export class WhereRow {
   protected readonly i18n = inject(Language);
   private readonly threads = inject(ThreadsStore);
+  protected readonly environments = inject(EnvironmentsStore);
   private readonly store = inject(NewThreadStore);
   private readonly chat = inject(ChatStore);
 
@@ -594,6 +607,24 @@ export class WhereRow {
   }
 
   /** Another project: its own empty thread opens in its place (the one here had nothing in it). */
+  protected pickOtherEnvironment(): void {
+    this.open.set(undefined);
+    const original = this.threads.selectedId();
+    this.environments.requestPicker(async (project) => {
+      if (original !== this.threads.selectedId() || !this.visible() || this.chat.running())
+        throw new Error(this.i18n.t('environments.projects.changed'));
+      if (project.instanceId === this.environments.ownerId()) return this.pickProject(project.cwd);
+      const thread = await unwrap(
+        threadsCreate({ client: this.environments.api.forOwner(project.instanceId), body: { cwd: project.cwd } }),
+      );
+      if (thread.instanceId !== project.instanceId) throw new Error('Thread owner mismatch.');
+      if (original !== this.threads.selectedId() || this.chat.running())
+        throw new Error(this.i18n.t('environments.projects.emptyRetained'));
+      // Do not retarget or race-delete the old ID. The new owner's placement/model/attachment choices are revalidated.
+      await this.environments.navigate({ instanceId: project.instanceId, cwd: project.cwd, threadId: thread.id });
+    }, this.environments.context.ownerId);
+  }
+
   protected async pickProject(cwd: string): Promise<void> {
     this.open.set(undefined);
     const current = this.thread();

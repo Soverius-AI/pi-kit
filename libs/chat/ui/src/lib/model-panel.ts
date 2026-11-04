@@ -64,7 +64,7 @@ let panelCount = 0;
           <div class="grp" role="presentation" data-testid="picker-section" [attr.data-section]="section.key">
             @if (section.kind === 'pinned') {
               <span class="tile pinned" aria-hidden="true">
-                <pk-icon name="pushpin" size="11" />
+                <pk-icon name="pin-filled" size="11" />
               </span>
               <span class="nm">{{ 'chat.modelPanel.pinned' | transloco }}</span>
               <span class="hint"
@@ -154,7 +154,7 @@ let panelCount = 0;
                 "
                 (click)="$event.stopPropagation(); togglePin.emit(model); focusSearch()"
               >
-                <pk-icon name="pushpin" />
+                <pk-icon [name]="isPinned(model) ? 'pin-filled' : 'pin'" />
               </button>
             </div>
           }

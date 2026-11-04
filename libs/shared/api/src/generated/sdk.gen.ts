@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, ServerSentEventsResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { AppSettingsSetSettingData, AppSettingsSetSettingErrors, AppSettingsSetSettingResponses, AppSettingsSettingsData, AppSettingsSettingsErrors, AppSettingsSettingsResponses, AttendantAcceptData, AttendantAcceptErrors, AttendantAcceptResponses, AttendantDismissData, AttendantDismissErrors, AttendantDismissResponses, AttendantPatchData, AttendantPatchErrors, AttendantPatchResponses, AttendantRunData, AttendantRunErrors, AttendantRunResponses, AttendantStatusData, AttendantStatusErrors, AttendantStatusResponses, BgAgentsAnswerData, BgAgentsAnswerErrors, BgAgentsAnswerResponses, BgAgentsListData, BgAgentsListErrors, BgAgentsListResponses, BgAgentsMessageData, BgAgentsMessageErrors, BgAgentsMessageResponses, BgAgentsRemoveData, BgAgentsRemoveErrors, BgAgentsRemoveResponses, BgAgentsResumeData, BgAgentsResumeErrors, BgAgentsResumeResponses, BgAgentsStopData, BgAgentsStopErrors, BgAgentsStopResponses, BrowserActionData, BrowserActionErrors, BrowserActionResponses, BrowserStateData, BrowserStateErrors, BrowserStateResponses, ChangesCommentsData, ChangesCommentsErrors, ChangesCommentsResponses, ChangesFileData, ChangesFileErrors, ChangesFileResponses, ChangesListData, ChangesListErrors, ChangesListResponses, ChangesPutCommentsData, ChangesPutCommentsErrors, ChangesPutCommentsResponses, ChangesRevertData, ChangesRevertErrors, ChangesRevertResponses, ChangesStageData, ChangesStageErrors, ChangesStageResponses, ComposerCompleteData, ComposerCompleteErrors, ComposerCompleteResponses, ComposerComposerData, ComposerComposerErrors, ComposerComposerResponses, ComputerUseOpenData, ComputerUseOpenErrors, ComputerUseOpenResponses, ComputerUseSetData, ComputerUseSetErrors, ComputerUseSetResponses, ComputerUseStateData, ComputerUseStateErrors, ComputerUseStateResponses, ConnectorsCatalogData, ConnectorsCatalogErrors, ConnectorsCatalogResponses, ConnectorsConnectData, ConnectorsConnectErrors, ConnectorsConnectResponses, ConnectorsDisconnectData, ConnectorsDisconnectErrors, ConnectorsDisconnectResponses, ConnectorsExposureData, ConnectorsExposureErrors, ConnectorsExposureResponses, CoordinationGetData, CoordinationGetErrors, CoordinationGetResponses, GenUiSandboxFrameData, GenUiSandboxFrameResponses, HealthHealthData, HealthHealthErrors, HealthHealthResponses, LearnApproveData, LearnApproveErrors, LearnApproveResponses, LearnDiscardData, LearnDiscardErrors, LearnDiscardResponses, LearnedSkillsGetData, LearnedSkillsGetErrors, LearnedSkillsGetResponses, LearnedSkillsListData, LearnedSkillsListErrors, LearnedSkillsListResponses, LearnedSkillsRetireData, LearnedSkillsRetireErrors, LearnedSkillsRetireResponses, LearnedSkillsReverifyData, LearnedSkillsReverifyErrors, LearnedSkillsReverifyResponses, LearnedSkillsSaveData, LearnedSkillsSaveErrors, LearnedSkillsSaveResponses, LearnedSkillsUnretireData, LearnedSkillsUnretireErrors, LearnedSkillsUnretireResponses, LearnForThreadData, LearnForThreadErrors, LearnForThreadResponses, LearnPendingData, LearnPendingErrors, LearnPendingResponses, LearnPlanData, LearnPlanErrors, LearnPlanResponses, LearnReopenData, LearnReopenErrors, LearnReopenResponses, LearnRequestData, LearnRequestErrors, LearnRequestResponses, LearnStartData, LearnStartErrors, LearnStartResponses, LearnStopData, LearnStopErrors, LearnStopResponses, LearnWorkspaceData, LearnWorkspaceErrors, LearnWorkspaceResponses, LiteLlmDiscoverData, LiteLlmDiscoverErrors, LiteLlmDiscoverResponses, LiteLlmSaveData, LiteLlmSaveErrors, LiteLlmSaveResponses, LiteLlmStatusData, LiteLlmStatusErrors, LiteLlmStatusResponses, LocalRuntimeAutostartData, LocalRuntimeAutostartErrors, LocalRuntimeAutostartResponses, LocalRuntimeCancelData, LocalRuntimeCancelErrors, LocalRuntimeCancelResponses, LocalRuntimeCleanupData, LocalRuntimeCleanupErrors, LocalRuntimeCleanupResponses, LocalRuntimeConfigFileData, LocalRuntimeConfigFileErrors, LocalRuntimeConfigFileResponses, LocalRuntimeDismissData, LocalRuntimeDismissErrors, LocalRuntimeDismissResponses, LocalRuntimeDoctorData, LocalRuntimeDoctorErrors, LocalRuntimeDoctorResponses, LocalRuntimeDownloadData, LocalRuntimeDownloadErrors, LocalRuntimeDownloadResponses, LocalRuntimeHardwareData, LocalRuntimeHardwareErrors, LocalRuntimeHardwareResponses, LocalRuntimeInstallData, LocalRuntimeInstallErrors, LocalRuntimeInstallResponses, LocalRuntimeModelOptionsData, LocalRuntimeModelOptionsErrors, LocalRuntimeModelOptionsResponses, LocalRuntimeModelsData, LocalRuntimeModelsErrors, LocalRuntimeModelsResponses, LocalRuntimeReadConfigData, LocalRuntimeReadConfigErrors, LocalRuntimeReadConfigResponses, LocalRuntimeRegisterData, LocalRuntimeRegisterErrors, LocalRuntimeRegisterResponses, LocalRuntimeReloadModelData, LocalRuntimeReloadModelErrors, LocalRuntimeReloadModelResponses, LocalRuntimeRemoveFileData, LocalRuntimeRemoveFileErrors, LocalRuntimeRemoveFileResponses, LocalRuntimeRemoveModelData, LocalRuntimeRemoveModelErrors, LocalRuntimeRemoveModelResponses, LocalRuntimeRepairData, LocalRuntimeRepairErrors, LocalRuntimeRepairResponses, LocalRuntimeRetryData, LocalRuntimeRetryErrors, LocalRuntimeRetryResponses, LocalRuntimeRuntimeUpdatesData, LocalRuntimeRuntimeUpdatesErrors, LocalRuntimeRuntimeUpdatesResponses, LocalRuntimeSaveConfigFileData, LocalRuntimeSaveConfigFileErrors, LocalRuntimeSaveConfigFileResponses, LocalRuntimeSaveModelOptionsData, LocalRuntimeSaveModelOptionsErrors, LocalRuntimeSaveModelOptionsResponses, LocalRuntimeStartData, LocalRuntimeStartErrors, LocalRuntimeStartResponses, LocalRuntimeStatusData, LocalRuntimeStatusErrors, LocalRuntimeStatusResponses, LocalRuntimeStopData, LocalRuntimeStopErrors, LocalRuntimeStopResponses, LocalRuntimeStorageData, LocalRuntimeStorageErrors, LocalRuntimeStorageResponses, McpCancelSignInData, McpCancelSignInErrors, McpCancelSignInResponses, McpChangeData, McpChangeErrors, McpChangeResponses, McpCheckData, McpCheckErrors, McpCheckResponses, McpCreateData, McpCreateErrors, McpCreateResponses, McpDetailData, McpDetailErrors, McpDetailResponses, McpEnabledData, McpEnabledErrors, McpEnabledResponses, McpFileData, McpFileErrors, McpFileResponses, McpLoginData, McpLoginErrors, McpLoginResponses, McpLogoutData, McpLogoutErrors, McpLogoutResponses, McpOpenFileData, McpOpenFileErrors, McpOpenFileResponses, McpOverviewData, McpOverviewErrors, McpOverviewResponses, McpPasteSignInData, McpPasteSignInErrors, McpPasteSignInResponses, McpReconnectData, McpReconnectErrors, McpReconnectResponses, McpReloadData, McpReloadErrors, McpReloadResponses, McpRemoveData, McpRemoveErrors, McpRemoveResponses, McpRevealFileData, McpRevealFileErrors, McpRevealFileResponses, McpSandboxProxyData, McpSandboxProxyResponses, McpSaveFileData, McpSaveFileErrors, McpSaveFileResponses, OpenApiDocumentData, OpenApiDocumentErrors, OpenApiDocumentResponses, OutcomesGetData, OutcomesGetErrors, OutcomesGetResponses, PackagesDetailData, PackagesDetailErrors, PackagesDetailResponses, PackagesEnabledData, PackagesEnabledErrors, PackagesEnabledResponses, PackagesInstallData, PackagesInstallErrors, PackagesInstallResponses, PackagesListData, PackagesListErrors, PackagesListResponses, PackagesOutdatedData, PackagesOutdatedErrors, PackagesOutdatedResponses, PackagesRemoveData, PackagesRemoveErrors, PackagesRemoveResponses, PackagesSearchData, PackagesSearchErrors, PackagesSearchResponses, PackagesUpdateData, PackagesUpdateErrors, PackagesUpdateResponses, QueueClearData, QueueClearErrors, QueueClearResponses, QueueMergeData, QueueMergeErrors, QueueMergeResponses, QueuePromoteData, QueuePromoteErrors, QueuePromoteResponses, QueueQueueData, QueueQueueErrors, QueueQueueResponses, QueueRemoveData, QueueRemoveErrors, QueueRemoveResponses, ScoreGetData, ScoreGetErrors, ScoreGetResponses, ScoreOverviewData, ScoreOverviewErrors, ScoreOverviewResponses, ScoreRelabelData, ScoreRelabelErrors, ScoreRelabelResponses, ScoreRequestData, ScoreRequestErrors, ScoreRequestResponses, SecretsCredentialStorageData, SecretsCredentialStorageErrors, SecretsCredentialStorageResponses, SecretsInstallData, SecretsInstallErrors, SecretsInstallResponses, SecretsMoveData, SecretsMoveErrors, SecretsMoveResponses, SecretsProtectionData, SecretsProtectionErrors, SecretsProtectionResponses, SecretsRecoveryKeyData, SecretsRecoveryKeyErrors, SecretsRecoveryKeyResponses, SecretsRedactionConfigData, SecretsRedactionConfigErrors, SecretsRedactionConfigResponses, SecretsRetryData, SecretsRetryErrors, SecretsRetryResponses, SecretsSaveRedactionData, SecretsSaveRedactionErrors, SecretsSaveRedactionResponses, SecretsStatusData, SecretsStatusErrors, SecretsStatusResponses, SessionAbortBashData, SessionAbortBashErrors, SessionAbortBashResponses, SessionBashData, SessionBashErrors, SessionBashResponses, SessionChangelogData, SessionChangelogErrors, SessionChangelogResponses, SessionCompactData, SessionCompactErrors, SessionCompactResponses, SessionContextData, SessionContextErrors, SessionContextResponses, SessionCreateEntryData, SessionCreateEntryErrors, SessionCreateEntryResponses, SessionDeleteEntryData, SessionDeleteEntryErrors, SessionDeleteEntryResponses, SessionExportData, SessionExportErrors, SessionExportResponses, SessionListCommandsData, SessionListCommandsErrors, SessionListCommandsResponses, SessionModelsData, SessionModelsErrors, SessionModelsResponses, SessionOpenInEditorData, SessionOpenInEditorErrors, SessionOpenInEditorResponses, SessionReloadData, SessionReloadErrors, SessionReloadResponses, SessionRenameEntryData, SessionRenameEntryErrors, SessionRenameEntryResponses, SessionRevealInFileManagerData, SessionRevealInFileManagerErrors, SessionRevealInFileManagerResponses, SessionSetModelData, SessionSetModelErrors, SessionSetModelResponses, SessionStatsData, SessionStatsErrors, SessionStatsResponses, SessionUsageData, SessionUsageErrors, SessionUsageResponses, SessionWatchWorkspaceData, SessionWatchWorkspaceErrors, SessionWatchWorkspaceResponses, SessionWorkspaceFilesData, SessionWorkspaceFilesErrors, SessionWorkspaceFilesResponses, SessionWorkspaceTreeData, SessionWorkspaceTreeErrors, SessionWorkspaceTreeResponses, SettingsAboutData, SettingsAboutErrors, SettingsAboutResponses, SettingsAnswerData, SettingsAnswerErrors, SettingsAnswerResponses, SettingsCancelData, SettingsCancelErrors, SettingsCancelResponses, SettingsDecideData, SettingsDecideErrors, SettingsDecideResponses, SettingsDiagnoseData, SettingsDiagnoseErrors, SettingsDiagnoseResponses, SettingsEventsData, SettingsEventsErrors, SettingsEventsResponses, SettingsImportSessionData, SettingsImportSessionErrors, SettingsImportSessionResponses, SettingsKeybindingsData, SettingsKeybindingsErrors, SettingsKeybindingsResponses, SettingsListResourcesData, SettingsListResourcesErrors, SettingsListResourcesResponses, SettingsLogoutData, SettingsLogoutErrors, SettingsLogoutResponses, SettingsOverviewData, SettingsOverviewErrors, SettingsOverviewResponses, SettingsPatchData, SettingsPatchErrors, SettingsPatchResponses, SettingsPiUpdateData, SettingsPiUpdateErrors, SettingsPiUpdateResponses, SettingsRemoveProviderData, SettingsRemoveProviderErrors, SettingsRemoveProviderResponses, SettingsRevokeTrustData, SettingsRevokeTrustErrors, SettingsRevokeTrustResponses, SettingsSaveKeybindingsData, SettingsSaveKeybindingsErrors, SettingsSaveKeybindingsResponses, SettingsStartLoginData, SettingsStartLoginErrors, SettingsStartLoginResponses, SettingsToggleResourceData, SettingsToggleResourceErrors, SettingsToggleResourceResponses, SettingsTrustListData, SettingsTrustListErrors, SettingsTrustListResponses, SettingsTrustStateData, SettingsTrustStateErrors, SettingsTrustStateResponses, SettingsValidateData, SettingsValidateErrors, SettingsValidateResponses, SetupDetectData, SetupDetectErrors, SetupDetectResponses, SetupReadyData, SetupReadyErrors, SetupReadyResponses, SetupSaveLocalData, SetupSaveLocalErrors, SetupSaveLocalResponses, SetupScratchData, SetupScratchErrors, SetupScratchResponses, SetupStateData, SetupStateErrors, SetupStateResponses, SetupTestLocalData, SetupTestLocalErrors, SetupTestLocalResponses, SkillsDetailData, SkillsDetailErrors, SkillsDetailResponses, SkillsInstallData, SkillsInstallErrors, SkillsInstallResponses, SkillsReadData, SkillsReadErrors, SkillsReadResponses, SkillsRemoveData, SkillsRemoveErrors, SkillsRemoveResponses, SkillsSearchData, SkillsSearchErrors, SkillsSearchResponses, TerminalInputData, TerminalInputErrors, TerminalInputResponses, TerminalKillData, TerminalKillErrors, TerminalKillResponses, TerminalResizeData, TerminalResizeErrors, TerminalResizeResponses, TerminalStartData, TerminalStartErrors, TerminalStartResponses, TerminalStreamData, TerminalStreamErrors, TerminalStreamResponses, ThreadsCloneData, ThreadsCloneErrors, ThreadsCloneResponses, ThreadsCreateData, ThreadsCreateErrors, ThreadsCreateResponses, ThreadsEventsData, ThreadsEventsErrors, ThreadsEventsResponses, ThreadsForkData, ThreadsForkErrors, ThreadsForkResponses, ThreadsGetData, ThreadsGetErrors, ThreadsGetResponses, ThreadsListData, ThreadsListErrors, ThreadsListFeedbackData, ThreadsListFeedbackErrors, ThreadsListFeedbackResponses, ThreadsListResponses, ThreadsPatchData, ThreadsPatchErrors, ThreadsPatchResponses, ThreadsPlaceData, ThreadsPlaceErrors, ThreadsPlaceResponses, ThreadsPutFeedbackData, ThreadsPutFeedbackErrors, ThreadsPutFeedbackResponses, ThreadsRemoveData, ThreadsRemoveErrors, ThreadsRemoveResponses, ThreadsSeenData, ThreadsSeenErrors, ThreadsSeenResponses, TranscribeAbortData, TranscribeAbortErrors, TranscribeAbortResponses, TranscribeChunkData, TranscribeChunkErrors, TranscribeChunkResponses, TranscribeDownloadData, TranscribeDownloadErrors, TranscribeDownloadResponses, TranscribeEndData, TranscribeEndErrors, TranscribeEndResponses, TranscribeEventsData, TranscribeEventsErrors, TranscribeEventsResponse, TranscribeEventsResponses, TranscribeRecordingData, TranscribeRecordingErrors, TranscribeRecordingResponses, TranscribeRemoveData, TranscribeRemoveErrors, TranscribeRemoveResponses, TranscribeStartLiveData, TranscribeStartLiveErrors, TranscribeStartLiveResponses, TranscribeStatusData, TranscribeStatusErrors, TranscribeStatusResponses, TranscribeStreamData, TranscribeStreamErrors, TranscribeStreamResponse, TranscribeStreamResponses, TreeEntryData, TreeEntryErrors, TreeEntryResponses, TreeGetData, TreeGetErrors, TreeGetResponses, TreeLabelData, TreeLabelErrors, TreeLabelResponses, TreeNavigateData, TreeNavigateErrors, TreeNavigateResponses, TreeSummarizeData, TreeSummarizeErrors, TreeSummarizeResponses, UpdateAutoDownloadData, UpdateAutoDownloadErrors, UpdateAutoDownloadResponses, UpdateCancelData, UpdateCancelErrors, UpdateCancelResponses, UpdateCheckData, UpdateCheckErrors, UpdateCheckResponses, UpdateEventsData, UpdateEventsErrors, UpdateEventsResponses, UpdateInstallAppData, UpdateInstallAppErrors, UpdateInstallAppResponses, UpdateInstallCommandData, UpdateInstallCommandErrors, UpdateInstallCommandResponses, UpdatePinData, UpdatePinErrors, UpdatePinResponses, UpdateReleasesData, UpdateReleasesErrors, UpdateReleasesResponses, UpdateRestartData, UpdateRestartErrors, UpdateRestartResponses, UpdateStartData, UpdateStartErrors, UpdateStartResponses, UpdateStatusData, UpdateStatusErrors, UpdateStatusResponses, UsageGetData, UsageGetErrors, UsageGetResponses, WorkspacesAddWorkspaceData, WorkspacesAddWorkspaceErrors, WorkspacesAddWorkspaceResponses, WorkspacesDefaultsData, WorkspacesDefaultsErrors, WorkspacesDefaultsResponses, WorkspacesForgetWorkspaceData, WorkspacesForgetWorkspaceErrors, WorkspacesForgetWorkspaceResponses, WorkspacesGitData, WorkspacesGitErrors, WorkspacesGitResponses, WorkspacesOrderWorkspacesData, WorkspacesOrderWorkspacesErrors, WorkspacesOrderWorkspacesResponses, WorkspacesPatchDefaultsData, WorkspacesPatchDefaultsErrors, WorkspacesPatchDefaultsResponses, WorkspacesPatchWorkspaceData, WorkspacesPatchWorkspaceErrors, WorkspacesPatchWorkspaceResponses, WorkspaceStatusInitGitData, WorkspaceStatusInitGitErrors, WorkspaceStatusInitGitResponses, WorkspaceStatusStatusData, WorkspaceStatusStatusErrors, WorkspaceStatusStatusResponses, WorkspacesWorkspacesData, WorkspacesWorkspacesErrors, WorkspacesWorkspacesResponses, WorktreeAbortData, WorktreeAbortErrors, WorktreeAbortResponses, WorktreeBranchData, WorktreeBranchErrors, WorktreeBranchResponses, WorktreeHandoffData, WorktreeHandoffErrors, WorktreeHandoffResponses, WorktreeMergeData, WorktreeMergeErrors, WorktreeMergeResponses, WorktreeMessageData, WorktreeMessageErrors, WorktreeMessageResponses, WorktreeRemoveData, WorktreeRemoveErrors, WorktreeRemoveResponses, WorktreeStateData, WorktreeStateErrors, WorktreeStateResponses, WorktreeSyncData, WorktreeSyncErrors, WorktreeSyncResponses } from './types.gen';
+import type { AppSettingsSetSettingData, AppSettingsSetSettingErrors, AppSettingsSetSettingResponses, AppSettingsSettingsData, AppSettingsSettingsErrors, AppSettingsSettingsResponses, AttendantAcceptData, AttendantAcceptErrors, AttendantAcceptResponses, AttendantDismissData, AttendantDismissErrors, AttendantDismissResponses, AttendantPatchData, AttendantPatchErrors, AttendantPatchResponses, AttendantRunData, AttendantRunErrors, AttendantRunResponses, AttendantStatusData, AttendantStatusErrors, AttendantStatusResponses, BgAgentsAnswerData, BgAgentsAnswerErrors, BgAgentsAnswerResponses, BgAgentsListData, BgAgentsListErrors, BgAgentsListResponses, BgAgentsMessageData, BgAgentsMessageErrors, BgAgentsMessageResponses, BgAgentsRemoveData, BgAgentsRemoveErrors, BgAgentsRemoveResponses, BgAgentsResumeData, BgAgentsResumeErrors, BgAgentsResumeResponses, BgAgentsStopData, BgAgentsStopErrors, BgAgentsStopResponses, BrowserActionData, BrowserActionErrors, BrowserActionResponses, BrowserStateData, BrowserStateErrors, BrowserStateResponses, ChangesCommentsData, ChangesCommentsErrors, ChangesCommentsResponses, ChangesFileData, ChangesFileErrors, ChangesFileResponses, ChangesListData, ChangesListErrors, ChangesListResponses, ChangesPutCommentsData, ChangesPutCommentsErrors, ChangesPutCommentsResponses, ChangesRevertData, ChangesRevertErrors, ChangesRevertResponses, ChangesStageData, ChangesStageErrors, ChangesStageResponses, ComposerCompleteData, ComposerCompleteErrors, ComposerCompleteResponses, ComposerComposerData, ComposerComposerErrors, ComposerComposerResponses, ComputerUseOpenData, ComputerUseOpenErrors, ComputerUseOpenResponses, ComputerUseSetData, ComputerUseSetErrors, ComputerUseSetResponses, ComputerUseStateData, ComputerUseStateErrors, ComputerUseStateResponses, ConnectorsCatalogData, ConnectorsCatalogErrors, ConnectorsCatalogResponses, ConnectorsConnectData, ConnectorsConnectErrors, ConnectorsConnectResponses, ConnectorsDisconnectData, ConnectorsDisconnectErrors, ConnectorsDisconnectResponses, ConnectorsExposureData, ConnectorsExposureErrors, ConnectorsExposureResponses, CoordinationGetData, CoordinationGetErrors, CoordinationGetResponses, GenUiSandboxFrameData, GenUiSandboxFrameResponses, HealthHealthData, HealthHealthErrors, HealthHealthResponses, InstanceAccessData, InstanceAccessErrors, InstanceAccessResponses, InstanceDevicesData, InstanceDevicesErrors, InstanceDevicesResponses, InstanceEndpointData, InstanceEndpointErrors, InstanceEndpointResponses, InstanceIdentityData, InstanceIdentityErrors, InstanceIdentityResponses, InstanceRenameData, InstanceRenameErrors, InstanceRenameResponses, InstanceRevokeDeviceData, InstanceRevokeDeviceErrors, InstanceRevokeDeviceResponses, InstanceSaveDeviceData, InstanceSaveDeviceErrors, InstanceSaveDeviceResponses, InstanceSetAccessData, InstanceSetAccessErrors, InstanceSetAccessResponses, LearnApproveData, LearnApproveErrors, LearnApproveResponses, LearnDiscardData, LearnDiscardErrors, LearnDiscardResponses, LearnedSkillsGetData, LearnedSkillsGetErrors, LearnedSkillsGetResponses, LearnedSkillsListData, LearnedSkillsListErrors, LearnedSkillsListResponses, LearnedSkillsRetireData, LearnedSkillsRetireErrors, LearnedSkillsRetireResponses, LearnedSkillsReverifyData, LearnedSkillsReverifyErrors, LearnedSkillsReverifyResponses, LearnedSkillsSaveData, LearnedSkillsSaveErrors, LearnedSkillsSaveResponses, LearnedSkillsUnretireData, LearnedSkillsUnretireErrors, LearnedSkillsUnretireResponses, LearnForThreadData, LearnForThreadErrors, LearnForThreadResponses, LearnPendingData, LearnPendingErrors, LearnPendingResponses, LearnPlanData, LearnPlanErrors, LearnPlanResponses, LearnReopenData, LearnReopenErrors, LearnReopenResponses, LearnRequestData, LearnRequestErrors, LearnRequestResponses, LearnStartData, LearnStartErrors, LearnStartResponses, LearnStopData, LearnStopErrors, LearnStopResponses, LearnWorkspaceData, LearnWorkspaceErrors, LearnWorkspaceResponses, LiteLlmDiscoverData, LiteLlmDiscoverErrors, LiteLlmDiscoverResponses, LiteLlmSaveData, LiteLlmSaveErrors, LiteLlmSaveResponses, LiteLlmStatusData, LiteLlmStatusErrors, LiteLlmStatusResponses, LocalRuntimeAutostartData, LocalRuntimeAutostartErrors, LocalRuntimeAutostartResponses, LocalRuntimeCancelData, LocalRuntimeCancelErrors, LocalRuntimeCancelResponses, LocalRuntimeCleanupData, LocalRuntimeCleanupErrors, LocalRuntimeCleanupResponses, LocalRuntimeConfigFileData, LocalRuntimeConfigFileErrors, LocalRuntimeConfigFileResponses, LocalRuntimeDismissData, LocalRuntimeDismissErrors, LocalRuntimeDismissResponses, LocalRuntimeDoctorData, LocalRuntimeDoctorErrors, LocalRuntimeDoctorResponses, LocalRuntimeDownloadData, LocalRuntimeDownloadErrors, LocalRuntimeDownloadResponses, LocalRuntimeHardwareData, LocalRuntimeHardwareErrors, LocalRuntimeHardwareResponses, LocalRuntimeInstallData, LocalRuntimeInstallErrors, LocalRuntimeInstallResponses, LocalRuntimeModelOptionsData, LocalRuntimeModelOptionsErrors, LocalRuntimeModelOptionsResponses, LocalRuntimeModelsData, LocalRuntimeModelsErrors, LocalRuntimeModelsResponses, LocalRuntimeReadConfigData, LocalRuntimeReadConfigErrors, LocalRuntimeReadConfigResponses, LocalRuntimeRegisterData, LocalRuntimeRegisterErrors, LocalRuntimeRegisterResponses, LocalRuntimeReloadModelData, LocalRuntimeReloadModelErrors, LocalRuntimeReloadModelResponses, LocalRuntimeRemoveFileData, LocalRuntimeRemoveFileErrors, LocalRuntimeRemoveFileResponses, LocalRuntimeRemoveModelData, LocalRuntimeRemoveModelErrors, LocalRuntimeRemoveModelResponses, LocalRuntimeRepairData, LocalRuntimeRepairErrors, LocalRuntimeRepairResponses, LocalRuntimeRetryData, LocalRuntimeRetryErrors, LocalRuntimeRetryResponses, LocalRuntimeRuntimeUpdatesData, LocalRuntimeRuntimeUpdatesErrors, LocalRuntimeRuntimeUpdatesResponses, LocalRuntimeSaveConfigFileData, LocalRuntimeSaveConfigFileErrors, LocalRuntimeSaveConfigFileResponses, LocalRuntimeSaveModelOptionsData, LocalRuntimeSaveModelOptionsErrors, LocalRuntimeSaveModelOptionsResponses, LocalRuntimeStartData, LocalRuntimeStartErrors, LocalRuntimeStartResponses, LocalRuntimeStatusData, LocalRuntimeStatusErrors, LocalRuntimeStatusResponses, LocalRuntimeStopData, LocalRuntimeStopErrors, LocalRuntimeStopResponses, LocalRuntimeStorageData, LocalRuntimeStorageErrors, LocalRuntimeStorageResponses, McpCancelSignInData, McpCancelSignInErrors, McpCancelSignInResponses, McpChangeData, McpChangeErrors, McpChangeResponses, McpCheckData, McpCheckErrors, McpCheckResponses, McpCreateData, McpCreateErrors, McpCreateResponses, McpDetailData, McpDetailErrors, McpDetailResponses, McpEnabledData, McpEnabledErrors, McpEnabledResponses, McpFileData, McpFileErrors, McpFileResponses, McpLoginData, McpLoginErrors, McpLoginResponses, McpLogoutData, McpLogoutErrors, McpLogoutResponses, McpOpenFileData, McpOpenFileErrors, McpOpenFileResponses, McpOverviewData, McpOverviewErrors, McpOverviewResponses, McpPasteSignInData, McpPasteSignInErrors, McpPasteSignInResponses, McpReconnectData, McpReconnectErrors, McpReconnectResponses, McpReloadData, McpReloadErrors, McpReloadResponses, McpRemoveData, McpRemoveErrors, McpRemoveResponses, McpRevealFileData, McpRevealFileErrors, McpRevealFileResponses, McpSandboxProxyData, McpSandboxProxyResponses, McpSaveFileData, McpSaveFileErrors, McpSaveFileResponses, OpenApiDocumentData, OpenApiDocumentErrors, OpenApiDocumentResponses, OutcomesGetData, OutcomesGetErrors, OutcomesGetResponses, PackagesDetailData, PackagesDetailErrors, PackagesDetailResponses, PackagesEnabledData, PackagesEnabledErrors, PackagesEnabledResponses, PackagesInstallData, PackagesInstallErrors, PackagesInstallResponses, PackagesListData, PackagesListErrors, PackagesListResponses, PackagesOutdatedData, PackagesOutdatedErrors, PackagesOutdatedResponses, PackagesRemoveData, PackagesRemoveErrors, PackagesRemoveResponses, PackagesSearchData, PackagesSearchErrors, PackagesSearchResponses, PackagesUpdateData, PackagesUpdateErrors, PackagesUpdateResponses, PeersApproveData, PeersApproveErrors, PeersApproveResponses, PeersConnectData, PeersConnectErrors, PeersConnectResponses, PeersInviteData, PeersInviteErrors, PeersInviteResponses, PeersListData, PeersListErrors, PeersListResponses, PeersProjectsData, PeersProjectsErrors, PeersProjectsResponses, PeersRejectData, PeersRejectErrors, PeersRejectResponses, PeersRenameData, PeersRenameErrors, PeersRenameResponses, PeersUnpairData, PeersUnpairErrors, PeersUnpairResponses, ProjectFoldersListData, ProjectFoldersListErrors, ProjectFoldersListResponses, QueueClearData, QueueClearErrors, QueueClearResponses, QueueMergeData, QueueMergeErrors, QueueMergeResponses, QueuePromoteData, QueuePromoteErrors, QueuePromoteResponses, QueueQueueData, QueueQueueErrors, QueueQueueResponses, QueueRemoveData, QueueRemoveErrors, QueueRemoveResponses, ScoreGetData, ScoreGetErrors, ScoreGetResponses, ScoreOverviewData, ScoreOverviewErrors, ScoreOverviewResponses, ScoreRelabelData, ScoreRelabelErrors, ScoreRelabelResponses, ScoreRequestData, ScoreRequestErrors, ScoreRequestResponses, SecretsCredentialStorageData, SecretsCredentialStorageErrors, SecretsCredentialStorageResponses, SecretsInstallData, SecretsInstallErrors, SecretsInstallResponses, SecretsMoveData, SecretsMoveErrors, SecretsMoveResponses, SecretsProtectionData, SecretsProtectionErrors, SecretsProtectionResponses, SecretsRecoveryKeyData, SecretsRecoveryKeyErrors, SecretsRecoveryKeyResponses, SecretsRedactionConfigData, SecretsRedactionConfigErrors, SecretsRedactionConfigResponses, SecretsRetryData, SecretsRetryErrors, SecretsRetryResponses, SecretsSaveRedactionData, SecretsSaveRedactionErrors, SecretsSaveRedactionResponses, SecretsStatusData, SecretsStatusErrors, SecretsStatusResponses, SessionAbortBashData, SessionAbortBashErrors, SessionAbortBashResponses, SessionBashData, SessionBashErrors, SessionBashResponses, SessionChangelogData, SessionChangelogErrors, SessionChangelogResponses, SessionCompactData, SessionCompactErrors, SessionCompactResponses, SessionContextData, SessionContextErrors, SessionContextResponses, SessionCreateEntryData, SessionCreateEntryErrors, SessionCreateEntryResponses, SessionDeleteEntryData, SessionDeleteEntryErrors, SessionDeleteEntryResponses, SessionExportData, SessionExportErrors, SessionExportResponses, SessionListCommandsData, SessionListCommandsErrors, SessionListCommandsResponses, SessionModelsData, SessionModelsErrors, SessionModelsResponses, SessionOpenInEditorData, SessionOpenInEditorErrors, SessionOpenInEditorResponses, SessionReloadData, SessionReloadErrors, SessionReloadResponses, SessionRenameEntryData, SessionRenameEntryErrors, SessionRenameEntryResponses, SessionRevealInFileManagerData, SessionRevealInFileManagerErrors, SessionRevealInFileManagerResponses, SessionSetModelData, SessionSetModelErrors, SessionSetModelResponses, SessionStatsData, SessionStatsErrors, SessionStatsResponses, SessionUsageData, SessionUsageErrors, SessionUsageResponses, SessionWatchWorkspaceData, SessionWatchWorkspaceErrors, SessionWatchWorkspaceResponses, SessionWorkspaceFilesData, SessionWorkspaceFilesErrors, SessionWorkspaceFilesResponses, SessionWorkspaceTreeData, SessionWorkspaceTreeErrors, SessionWorkspaceTreeResponses, SettingsAboutData, SettingsAboutErrors, SettingsAboutResponses, SettingsAnswerData, SettingsAnswerErrors, SettingsAnswerResponses, SettingsCancelData, SettingsCancelErrors, SettingsCancelResponses, SettingsDecideData, SettingsDecideErrors, SettingsDecideResponses, SettingsDiagnoseData, SettingsDiagnoseErrors, SettingsDiagnoseResponses, SettingsEventsData, SettingsEventsErrors, SettingsEventsResponses, SettingsImportSessionData, SettingsImportSessionErrors, SettingsImportSessionResponses, SettingsKeybindingsData, SettingsKeybindingsErrors, SettingsKeybindingsResponses, SettingsListResourcesData, SettingsListResourcesErrors, SettingsListResourcesResponses, SettingsLogoutData, SettingsLogoutErrors, SettingsLogoutResponses, SettingsOverviewData, SettingsOverviewErrors, SettingsOverviewResponses, SettingsPatchData, SettingsPatchErrors, SettingsPatchResponses, SettingsPiUpdateData, SettingsPiUpdateErrors, SettingsPiUpdateResponses, SettingsRemoveProviderData, SettingsRemoveProviderErrors, SettingsRemoveProviderResponses, SettingsRevokeTrustData, SettingsRevokeTrustErrors, SettingsRevokeTrustResponses, SettingsSaveKeybindingsData, SettingsSaveKeybindingsErrors, SettingsSaveKeybindingsResponses, SettingsStartLoginData, SettingsStartLoginErrors, SettingsStartLoginResponses, SettingsToggleResourceData, SettingsToggleResourceErrors, SettingsToggleResourceResponses, SettingsTrustListData, SettingsTrustListErrors, SettingsTrustListResponses, SettingsTrustStateData, SettingsTrustStateErrors, SettingsTrustStateResponses, SettingsValidateData, SettingsValidateErrors, SettingsValidateResponses, SetupDetectData, SetupDetectErrors, SetupDetectResponses, SetupReadyData, SetupReadyErrors, SetupReadyResponses, SetupSaveLocalData, SetupSaveLocalErrors, SetupSaveLocalResponses, SetupScratchData, SetupScratchErrors, SetupScratchResponses, SetupStateData, SetupStateErrors, SetupStateResponses, SetupTestLocalData, SetupTestLocalErrors, SetupTestLocalResponses, SkillsDetailData, SkillsDetailErrors, SkillsDetailResponses, SkillsInstallData, SkillsInstallErrors, SkillsInstallResponses, SkillsReadData, SkillsReadErrors, SkillsReadResponses, SkillsRemoveData, SkillsRemoveErrors, SkillsRemoveResponses, SkillsSearchData, SkillsSearchErrors, SkillsSearchResponses, TerminalInputData, TerminalInputErrors, TerminalInputResponses, TerminalKillData, TerminalKillErrors, TerminalKillResponses, TerminalResizeData, TerminalResizeErrors, TerminalResizeResponses, TerminalStartData, TerminalStartErrors, TerminalStartResponses, TerminalStreamData, TerminalStreamErrors, TerminalStreamResponses, ThreadsCloneData, ThreadsCloneErrors, ThreadsCloneResponses, ThreadsCreateData, ThreadsCreateErrors, ThreadsCreateResponses, ThreadsEventsData, ThreadsEventsErrors, ThreadsEventsResponses, ThreadsForkData, ThreadsForkErrors, ThreadsForkResponses, ThreadsGetData, ThreadsGetErrors, ThreadsGetResponses, ThreadsListData, ThreadsListErrors, ThreadsListFeedbackData, ThreadsListFeedbackErrors, ThreadsListFeedbackResponses, ThreadsListResponses, ThreadsPatchData, ThreadsPatchErrors, ThreadsPatchResponses, ThreadsPlaceData, ThreadsPlaceErrors, ThreadsPlaceResponses, ThreadsPutFeedbackData, ThreadsPutFeedbackErrors, ThreadsPutFeedbackResponses, ThreadsRemoveData, ThreadsRemoveErrors, ThreadsRemoveResponses, ThreadsSeenData, ThreadsSeenErrors, ThreadsSeenResponses, TranscribeAbortData, TranscribeAbortErrors, TranscribeAbortResponses, TranscribeChunkData, TranscribeChunkErrors, TranscribeChunkResponses, TranscribeDownloadData, TranscribeDownloadErrors, TranscribeDownloadResponses, TranscribeEndData, TranscribeEndErrors, TranscribeEndResponses, TranscribeEventsData, TranscribeEventsErrors, TranscribeEventsResponse, TranscribeEventsResponses, TranscribeRecordingData, TranscribeRecordingErrors, TranscribeRecordingResponses, TranscribeRemoveData, TranscribeRemoveErrors, TranscribeRemoveResponses, TranscribeStartLiveData, TranscribeStartLiveErrors, TranscribeStartLiveResponses, TranscribeStatusData, TranscribeStatusErrors, TranscribeStatusResponses, TranscribeStreamData, TranscribeStreamErrors, TranscribeStreamResponse, TranscribeStreamResponses, TreeEntryData, TreeEntryErrors, TreeEntryResponses, TreeGetData, TreeGetErrors, TreeGetResponses, TreeLabelData, TreeLabelErrors, TreeLabelResponses, TreeNavigateData, TreeNavigateErrors, TreeNavigateResponses, TreeSummarizeData, TreeSummarizeErrors, TreeSummarizeResponses, UpdateAutoDownloadData, UpdateAutoDownloadErrors, UpdateAutoDownloadResponses, UpdateCancelData, UpdateCancelErrors, UpdateCancelResponses, UpdateCheckData, UpdateCheckErrors, UpdateCheckResponses, UpdateEventsData, UpdateEventsErrors, UpdateEventsResponses, UpdateInstallAppData, UpdateInstallAppErrors, UpdateInstallAppResponses, UpdateInstallCommandData, UpdateInstallCommandErrors, UpdateInstallCommandResponses, UpdatePinData, UpdatePinErrors, UpdatePinResponses, UpdateReleasesData, UpdateReleasesErrors, UpdateReleasesResponses, UpdateRestartData, UpdateRestartErrors, UpdateRestartResponses, UpdateStartData, UpdateStartErrors, UpdateStartResponses, UpdateStatusData, UpdateStatusErrors, UpdateStatusResponses, UsageGetData, UsageGetErrors, UsageGetResponses, WorkspacesAddWorkspaceData, WorkspacesAddWorkspaceErrors, WorkspacesAddWorkspaceResponses, WorkspacesDefaultsData, WorkspacesDefaultsErrors, WorkspacesDefaultsResponses, WorkspacesForgetWorkspaceData, WorkspacesForgetWorkspaceErrors, WorkspacesForgetWorkspaceResponses, WorkspacesGitData, WorkspacesGitErrors, WorkspacesGitResponses, WorkspacesOrderWorkspacesData, WorkspacesOrderWorkspacesErrors, WorkspacesOrderWorkspacesResponses, WorkspacesPatchDefaultsData, WorkspacesPatchDefaultsErrors, WorkspacesPatchDefaultsResponses, WorkspacesPatchWorkspaceData, WorkspacesPatchWorkspaceErrors, WorkspacesPatchWorkspaceResponses, WorkspaceStatusInitGitData, WorkspaceStatusInitGitErrors, WorkspaceStatusInitGitResponses, WorkspaceStatusStatusData, WorkspaceStatusStatusErrors, WorkspaceStatusStatusResponses, WorkspacesWorkspacesData, WorkspacesWorkspacesErrors, WorkspacesWorkspacesResponses, WorktreeAbortData, WorktreeAbortErrors, WorktreeAbortResponses, WorktreeBranchData, WorktreeBranchErrors, WorktreeBranchResponses, WorktreeHandoffData, WorktreeHandoffErrors, WorktreeHandoffResponses, WorktreeMergeData, WorktreeMergeErrors, WorktreeMergeResponses, WorktreeMessageData, WorktreeMessageErrors, WorktreeMessageResponses, WorktreeRemoveData, WorktreeRemoveErrors, WorktreeRemoveResponses, WorktreeStateData, WorktreeStateErrors, WorktreeStateResponses, WorktreeSyncData, WorktreeSyncErrors, WorktreeSyncResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -26,6 +26,110 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
 export const healthHealth = <ThrowOnError extends boolean = false>(options?: Options<HealthHealthData, ThrowOnError>): RequestResult<HealthHealthResponses, HealthHealthErrors, ThrowOnError> => (options?.client ?? client).get<HealthHealthResponses, HealthHealthErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/health',
+    ...options
+});
+
+/**
+ * Read this environment
+ *
+ * Stable owner identity and freely editable display name. Does not enable remote access.
+ */
+export const instanceIdentity = <ThrowOnError extends boolean = false>(options?: Options<InstanceIdentityData, ThrowOnError>): RequestResult<InstanceIdentityResponses, InstanceIdentityErrors, ThrowOnError> => (options?.client ?? client).get<InstanceIdentityResponses, InstanceIdentityErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instance',
+    ...options
+});
+
+/**
+ * Rename this environment
+ *
+ * Owner-only label change; identity, project paths, threads and publication are unchanged.
+ */
+export const instanceRename = <ThrowOnError extends boolean = false>(options: Options<InstanceRenameData, ThrowOnError>): RequestResult<InstanceRenameResponses, InstanceRenameErrors, ThrowOnError> => (options.client ?? client).patch<InstanceRenameResponses, InstanceRenameErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instance',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Read remembered access consent
+ *
+ * Private desktop-owner API; never proxied to a paired phone.
+ */
+export const instanceAccess = <ThrowOnError extends boolean = false>(options?: Options<InstanceAccessData, ThrowOnError>): RequestResult<InstanceAccessResponses, InstanceAccessErrors, ThrowOnError> => (options?.client ?? client).get<InstanceAccessResponses, InstanceAccessErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instance/access',
+    ...options
+});
+
+/**
+ * Remember explicit access consent
+ *
+ * Private desktop-owner API; shutdown is distinct from disabling access.
+ */
+export const instanceSetAccess = <ThrowOnError extends boolean = false>(options: Options<InstanceSetAccessData, ThrowOnError>): RequestResult<InstanceSetAccessResponses, InstanceSetAccessErrors, ThrowOnError> => (options.client ?? client).put<InstanceSetAccessResponses, InstanceSetAccessErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instance/access',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Remember the owned HTTPS endpoint
+ *
+ * Private desktop-owner callback after verifying Serve publication; never enables access itself.
+ */
+export const instanceEndpoint = <ThrowOnError extends boolean = false>(options: Options<InstanceEndpointData, ThrowOnError>): RequestResult<InstanceEndpointResponses, InstanceEndpointErrors, ThrowOnError> => (options.client ?? client).put<InstanceEndpointResponses, InstanceEndpointErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instance/endpoint',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Load private device grants
+ *
+ * Private desktop-owner persistence API. Contains credential hashes and CSRF state, never raw device cookies. Not available to phones.
+ */
+export const instanceDevices = <ThrowOnError extends boolean = false>(options?: Options<InstanceDevicesData, ThrowOnError>): RequestResult<InstanceDevicesResponses, InstanceDevicesErrors, ThrowOnError> => (options?.client ?? client).get<InstanceDevicesResponses, InstanceDevicesErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instance/devices',
+    ...options
+});
+
+/**
+ * Commit private device approval
+ *
+ * Private desktop-owner API; commit precedes issuing the device cookie. Revoked identities cannot be reactivated.
+ */
+export const instanceSaveDevice = <ThrowOnError extends boolean = false>(options: Options<InstanceSaveDeviceData, ThrowOnError>): RequestResult<InstanceSaveDeviceResponses, InstanceSaveDeviceErrors, ThrowOnError> => (options.client ?? client).put<InstanceSaveDeviceResponses, InstanceSaveDeviceErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instance/devices',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Persist device revocation
+ *
+ * Private desktop-owner API; retains a revocation tombstone across restarts.
+ */
+export const instanceRevokeDevice = <ThrowOnError extends boolean = false>(options: Options<InstanceRevokeDeviceData, ThrowOnError>): RequestResult<InstanceRevokeDeviceResponses, InstanceRevokeDeviceErrors, ThrowOnError> => (options.client ?? client).delete<InstanceRevokeDeviceResponses, InstanceRevokeDeviceErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instance/devices/{id}',
     ...options
 });
 
@@ -3021,5 +3125,116 @@ export const localRuntimeCancel = <ThrowOnError extends boolean = false>(options
 export const usageGet = <ThrowOnError extends boolean = false>(options: Options<UsageGetData, ThrowOnError>): RequestResult<UsageGetResponses, UsageGetErrors, ThrowOnError> => (options.client ?? client).get<UsageGetResponses, UsageGetErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/api/providers/{id}/usage',
+    ...options
+});
+
+/**
+ * List configured instances
+ *
+ * Self and reciprocal peers, filtered to the requesting device; this is not tailnet-wide discovery.
+ */
+export const peersList = <ThrowOnError extends boolean = false>(options?: Options<PeersListData, ThrowOnError>): RequestResult<PeersListResponses, PeersListErrors, ThrowOnError> => (options?.client ?? client).get<PeersListResponses, PeersListErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instances',
+    ...options
+});
+
+/**
+ * Invite an instance
+ *
+ * Owner-only, short-lived instance enrollment; creates an OS-protected key only on this explicit action.
+ */
+export const peersInvite = <ThrowOnError extends boolean = false>(options?: Options<PeersInviteData, ThrowOnError>): RequestResult<PeersInviteResponses, PeersInviteErrors, ThrowOnError> => (options?.client ?? client).post<PeersInviteResponses, PeersInviteErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instances/invitations',
+    ...options
+});
+
+/**
+ * Request reciprocal pairing
+ *
+ * Owner-initiated enrollment bound to the invitation identity; the other owner must approve the matching code.
+ */
+export const peersConnect = <ThrowOnError extends boolean = false>(options: Options<PeersConnectData, ThrowOnError>): RequestResult<PeersConnectResponses, PeersConnectErrors, ThrowOnError> => (options.client ?? client).post<PeersConnectResponses, PeersConnectErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instances/connect',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Approve reciprocal control
+ *
+ * Owner explicitly approves both directions and chooses whether approved phones may relay through the pair.
+ */
+export const peersApprove = <ThrowOnError extends boolean = false>(options: Options<PeersApproveData, ThrowOnError>): RequestResult<PeersApproveResponses, PeersApproveErrors, ThrowOnError> => (options.client ?? client).post<PeersApproveResponses, PeersApproveErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instances/requests/{pairId}/approve',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Reject an instance request
+ *
+ * Owner rejects pending enrollment without granting access or changing publication.
+ */
+export const peersReject = <ThrowOnError extends boolean = false>(options: Options<PeersRejectData, ThrowOnError>): RequestResult<PeersRejectResponses, PeersRejectErrors, ThrowOnError> => (options.client ?? client).delete<PeersRejectResponses, PeersRejectErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instances/requests/{pairId}',
+    ...options
+});
+
+/**
+ * Unpair an instance
+ *
+ * Local access stops immediately and a durable notification is retried if the peer is offline.
+ */
+export const peersUnpair = <ThrowOnError extends boolean = false>(options: Options<PeersUnpairData, ThrowOnError>): RequestResult<PeersUnpairResponses, PeersUnpairErrors, ThrowOnError> => (options.client ?? client).delete<PeersUnpairResponses, PeersUnpairErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instances/{peerId}',
+    ...options
+});
+
+/**
+ * Rename a peer locally
+ *
+ * Owner changes a display alias, never the peer identity, endpoint or project ownership.
+ */
+export const peersRename = <ThrowOnError extends boolean = false>(options: Options<PeersRenameData, ThrowOnError>): RequestResult<PeersRenameResponses, PeersRenameErrors, ThrowOnError> => (options.client ?? client).patch<PeersRenameResponses, PeersRenameErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instances/{peerId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * List projects on a paired instance
+ *
+ * Reads only the selected authorized peer; failures do not replace local projects or change chat targets.
+ */
+export const peersProjects = <ThrowOnError extends boolean = false>(options: Options<PeersProjectsData, ThrowOnError>): RequestResult<PeersProjectsResponses, PeersProjectsErrors, ThrowOnError> => (options.client ?? client).get<PeersProjectsResponses, PeersProjectsErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/instances/{peerId}/projects',
+    ...options
+});
+
+/**
+ * Browse project folders on this instance
+ *
+ * Lists directory names on the authenticated execution owner; never interprets a remote path on the controller machine or loads project resources.
+ */
+export const projectFoldersList = <ThrowOnError extends boolean = false>(options?: Options<ProjectFoldersListData, ThrowOnError>): RequestResult<ProjectFoldersListResponses, ProjectFoldersListErrors, ThrowOnError> => (options?.client ?? client).get<ProjectFoldersListResponses, ProjectFoldersListErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/api/project-folders',
     ...options
 });

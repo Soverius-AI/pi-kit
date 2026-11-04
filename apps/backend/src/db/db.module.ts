@@ -11,6 +11,8 @@ import { EventLogRepository } from './event-log.repository';
 import { FeedbackRepository } from './feedback.repository';
 import { LeasesRepository } from './leases.repository';
 import { MetaRepository } from './meta.repository';
+import { InstanceRepository } from './instance.repository';
+import { PeersRepository } from './peers.repository';
 import { OutcomesRepository } from './outcomes.repository';
 import { RedactionService } from './redaction.service';
 import { SignalsRepository } from './signals.repository';
@@ -36,6 +38,8 @@ import { ThreadsRepository } from './threads.repository';
     ThreadsRepository,
     EventLogRepository,
     MetaRepository,
+    InstanceRepository,
+    PeersRepository,
     ChangesRepository,
     FeedbackRepository,
     AttendantRepository,
@@ -54,6 +58,8 @@ import { ThreadsRepository } from './threads.repository';
     ThreadsRepository,
     EventLogRepository,
     MetaRepository,
+    InstanceRepository,
+    PeersRepository,
     ChangesRepository,
     FeedbackRepository,
     AttendantRepository,

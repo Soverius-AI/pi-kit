@@ -24,6 +24,7 @@ export * from './lib/score-histogram';
 export * from './lib/list-page';
 export * from './lib/tooltip';
 export * from './lib/viewport-menu';
+export * from './lib/safe-overlay';
 export * from './lib/code-tokens';
 export * from './lib/code-editor';
 export * from './lib/dialog-focus';

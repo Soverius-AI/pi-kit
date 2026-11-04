@@ -1005,7 +1005,8 @@
     } @empty {
       <p class="text-sm text-muted pt-3 px-2">
         @if (store.workspaces().length === 0) {
-          {{ 'threads.threadSidebar.noProjectYetStartTheBackendIn' | transloco }} <code>pi</code>
+          {{ 'threads.threadSidebar.noProjectYetStartTheBackendIn' | transloco }}
+          <code>pi</code>
           {{ 'threads.threadSidebar.there' | transloco }}
         } @else if (query()) {
           {{ 'threads.threadSidebar.noThreadMatches' | transloco: { value1: query() } }}
@@ -1015,12 +1016,60 @@
       </p>
     }
 
-    <!-- Add a project: a ghost row at the bottom of the list (the same folder picker). -->
+    <!-- Add/Open is a fresh local-first project choice; existing projects retain their owner. -->
     <button type="button" class="pk-add" data-testid="add-project" (click)="openFolder($event)">
       <pk-icon name="folder-plus" />
       {{ 'threads.threadSidebar.addAProject' | transloco }}
     </button>
   </div>
+
+  @if (environments.hasPeers() || environments.context.remote) {
+    <div class="pk-quick pk-env-switch" data-testid="environment-switch">
+      <details pkViewportMenu class="dropdown">
+        <summary
+          class="who list-none"
+          data-testid="active-environment"
+          [pkTip]="'environments.switch.label' | transloco"
+          [attr.aria-label]="'environments.switch.label' | transloco"
+        >
+          <span class="pk-env-dot" [attr.data-remote]="environments.context.remote" aria-hidden="true"></span>
+          <span class="nm">{{ environments.ownerName() ?? ('environments.projects.unknown' | transloco) }}</span>
+          <span class="br">{{ environments.ownerKind() | transloco }}</span>
+          <pk-icon name="chevron-down" class="chev" />
+        </summary>
+        <ul
+          class="dropdown-content menu menu-sm bg-base-100 rounded-box border border-base-300 shadow-lg w-64 p-1 z-40"
+          data-testid="environment-menu"
+        >
+          <li class="menu-title">{{ 'environments.switch.title' | transloco }}</li>
+          @for (group of environments.groups(); track group.instanceId) {
+            <li>
+              <button
+                type="button"
+                [attr.aria-current]="group.instanceId === environments.ownerId() ? 'true' : null"
+                (click)="switchEnvironment($event, group.instanceId)"
+              >
+                <span class="pk-env-dot" [attr.data-remote]="!group.local" aria-hidden="true"></span>
+                <span class="flex-1 text-left truncate">{{ group.name }}</span>
+                <span class="text-xs text-muted">{{ environments.kind(!group.local) | transloco }}</span>
+                @if (group.instanceId === environments.ownerId()) {
+                  <pk-icon name="check" size="14" />
+                }
+              </button>
+            </li>
+          }
+        </ul>
+      </details>
+    </div>
+    @if (environments.ownerMissing()) {
+      <div class="pk-env-missing" role="alert" data-testid="environment-missing">
+        <p>{{ 'environments.projects.ownerMissing' | transloco: { name: environments.entryName() } }}</p>
+        <button type="button" class="btn btn-sm" (click)="environments.backToEntry()">
+          {{ 'environments.projects.backToEntry' | transloco: { name: environments.entryName() } }}
+        </button>
+      </div>
+    }
+  }
 
   <div class="pk-side-foot">
     <span class="w-2 h-2 rounded-full shrink-0" [class]="dotClass()"></span>

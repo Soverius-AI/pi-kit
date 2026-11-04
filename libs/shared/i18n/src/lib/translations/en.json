@@ -1,4 +1,55 @@
 {
+  "environments": {
+    "projects": {
+      "title": "Choose a project",
+      "environment": "Environment",
+      "local": "Entry instance",
+      "inherited": "Chats inherit their project's environment. Local / Worktree chooses placement within that environment.",
+      "folder": "Folder on the selected environment",
+      "browse": "Browse",
+      "up": "Parent folder",
+      "loading": "Loading projects…",
+      "unavailable": "This environment or folder is unavailable. No local fallback was used.",
+      "cancel": "Cancel",
+      "open": "Open this folder",
+      "retry": "Unavailable — retry",
+      "other": "Projects on other environments…",
+      "draftReview": "Change environments? The unsent text and images in the composer will be lost.",
+      "changed": "The original chat changed. Choose the project again.",
+      "emptyRetained": "The original chat changed. The new empty chat was retained without moving or deleting existing work.",
+      "unknown": "Unknown environment",
+      "ownerMissing": "This environment is no longer paired with {{name}}.",
+      "backToEntry": "Back to {{name}}",
+      "remote": "Remote"
+    },
+    "pairing": {
+      "title": "Paired instances",
+      "trust": "Pairing permits reciprocal agent, file and terminal access as each instance's OS account. Pair only instances you fully trust. This does not publish access or change network policy.",
+      "keyPolicy": "Pairing uses a separate OS-protected service key for reconnect after login. Existing database and provider unlock requirements are unchanged. Enable private access below before creating an invitation.",
+      "phones": "Allow approved devices on both instances to use this pair",
+      "invite": "Create invitation (5 minutes)",
+      "copy": "Copy this one-use invitation to the other instance",
+      "paste": "Paste an invitation from the other instance",
+      "connect": "Request reciprocal pairing",
+      "compare": "Approve only if this same code appears on the other instance. Names alone do not prove identity.",
+      "approve": "Approve both directions",
+      "reject": "Reject",
+      "pending": "Waiting for reciprocal confirmation",
+      "active": "Paired",
+      "revoked": "Unpaired",
+      "unpairPending": "Access is blocked here. Notification will be retried when the other instance is reachable and the protected key is available.",
+      "rename": "Local display name",
+      "unpair": "Unpair",
+      "unpairQuestion": "Unpair this instance? Access here stops immediately. If the other instance is offline, its notification remains pending until it is reachable."
+    },
+    "switch": {
+      "title": "Environment",
+      "label": "Switch environment",
+      "thisComputer": "This computer",
+      "paired": "Paired computer",
+      "remote": "Remote"
+    }
+  },
   "shell": {
     "app": {
       "threads": "Threads",
@@ -36,7 +87,8 @@
       "sidebar": "{{value1}} sidebar ({{value2}})",
       "show": "Show",
       "hide": "Hide",
-      "sidePanels": "Side panels"
+      "sidePanels": "Side panels",
+      "noThreadIsOpenCompact": "No thread is open. Open the menu to pick one, or start a new one."
     },
     "toastHost": {
       "dismiss": "Dismiss"
@@ -458,6 +510,7 @@
   },
   "chat": {
     "composerField": {
+      "messagePiShort": "Message pi…",
       "messageToPi": "Message to pi"
     },
     "modelPicker": {
@@ -513,6 +566,7 @@
       "close": "close"
     },
     "composerToolbar": {
+      "messageSettings": "Message settings",
       "insert": "Insert",
       "stopEsc": "Stop (esc)",
       "stop": "Stop",
@@ -2100,7 +2154,9 @@
       "computerUseAppHint": "macOS gives these permissions to the app that runs pi, not to the package.",
       "grantedByMacOS": "Granted by macOS in System Settings › Privacy & Security, to the app, not stored by pi-kit.",
       "followUpPrompts": "Suggest my next prompt",
-      "followUpPromptsDescription": "Suggest an editable follow-up after a finished run, using the conversation and background-agent reports. Uses the attendant’s model and budget; never sends it for you."
+      "followUpPromptsDescription": "Suggest an editable follow-up after a finished run, using the conversation and background-agent reports. Uses the attendant’s model and budget; never sends it for you.",
+      "remoteAccess": "Remote access",
+      "remoteAccessIntro": "Securely pair your phone or another device over Tailscale to control this computer’s agent, files, and terminal."
     },
     "shortcuts": {
       "newThread": "New thread",
@@ -3069,7 +3125,8 @@
       "and": " and ",
       "signedIn": "{{value1}} signed in",
       "on": "{{value1}} on",
-      "clash": "{{value1}} clash"
+      "clash": "{{value1}} clash",
+      "environmentHint": "These settings belong to {{name}}."
     },
     "voiceSection": {
       "speechModel": "Speech model",
@@ -4130,6 +4187,93 @@
       "windowsNoPermissions": "Windows needs no permissions for computer use.",
       "linuxNoPermissions": "Linux needs no permissions for computer use. It needs a desktop session and the AT-SPI accessibility bus (at-spi2-core). On Hyprland, computer use is read-only.",
       "hyprlandReadOnly": "On Hyprland, computer use is read-only: pi can see your screen but cannot click or type. Cua Driver does not support input on Hyprland yet."
+    },
+    "environmentSection": {
+      "title": "This environment",
+      "hint": "Choose a name for this pi-kit instance. Renaming does not move its projects or chats.",
+      "name": "Environment name",
+      "invalid": "Use 1–80 visible characters without control characters.",
+      "save": "Save name"
+    },
+    "remoteAccessSection": {
+      "explanation": "Connect Tailscale on your Mac and iPhone, using the same tailnet.",
+      "safety": "An approved device can control the agent, files, and terminal using your account on this computer.",
+      "download": "Download Tailscale",
+      "httpsSettings": "Tailscale HTTPS settings",
+      "portLabel": "HTTPS port",
+      "portHint": "8443 by default. Use 443 for an address without a port number. Tailnet rules must allow your chosen port.",
+      "portLocked": "Disable remote access before changing its port.",
+      "portInvalid": "Enter a whole-number port from 1 to 65535.",
+      "httpsApprovedTitle": "HTTPS certificates are approved",
+      "httpsApprovedHelp": "Tailscale can issue and renew this computer’s certificate automatically. No further approval is needed.",
+      "desktopOnly": "Remote access is available only in the desktop app, not in the browser.",
+      "unavailable": "Tailscale is not installed or is unavailable.",
+      "disconnected": "Tailscale is installed but not connected. Connect Tailscale, then refresh.",
+      "available": "Tailscale is connected. Remote access is disabled.",
+      "starting": "Enabling remote access…",
+      "serving": "Remote access is enabled. Pair a device to connect.",
+      "error": "Remote access could not be checked or changed. Refresh to check its current state.",
+      "checking": "Checking Tailscale…",
+      "version": "Installed Tailscale version: {{value1}}",
+      "refresh": "Refresh",
+      "start": "Enable remote access",
+      "stop": "Disable remote access",
+      "pair": "Pair device",
+      "scan": "Scan this QR code with your iPhone to request pairing. Keep the code private.",
+      "qrAlt": "Private device pairing QR code",
+      "expires": "Expires:",
+      "expired": "Pairing code expired. Select Pair device to generate a new code.",
+      "requests": "Pending pairing requests",
+      "confirm": "Approve only if this confirmation code matches the one shown on your device.",
+      "approve": "Approve",
+      "deny": "Deny",
+      "noRequests": "No pending requests.",
+      "devices": "Approved devices",
+      "noDevices": "No approved devices.",
+      "created": "Paired:",
+      "lastSeen": "Last seen:",
+      "revoke": "Revoke access",
+      "title": "Connect your device",
+      "privateTailnet": "Private tailnet",
+      "safetyTitle": "Only approve devices you trust",
+      "lifetime": "Devices stay approved until you revoke them, including after restarts or disabling access. Keep this computer awake and the app running to connect. Clearing browser data may require pairing again.",
+      "connectTitle": "Connect Tailscale",
+      "completed": "Completed",
+      "connectedTitle": "Tailscale is connected on this computer",
+      "connectedHelp": "Make sure your iPhone is connected to the same tailnet too.",
+      "httpsTitle": "Approve HTTPS",
+      "httpsHelp": "In Tailscale’s DNS settings, find “HTTPS Certificates” and enable HTTPS. A tailnet administrator may need to approve this. Then choose Check again here.",
+      "enableTitle": "Enable access, then pair",
+      "enableHelp": "Once setup is ready, enable remote access. Then choose Pair device, scan the private QR code, and approve the matching code here.",
+      "details": "Technical details",
+      "retry": "Retry connection",
+      "setup": {
+        "tailscale": "Open Tailscale",
+        "https": "Configure HTTPS",
+        "authorize": "Approve HTTPS"
+      },
+      "statusTitle": {
+        "unavailable": "Tailscale needs setup",
+        "disconnected": "Connect to your tailnet",
+        "available": "Ready to connect",
+        "starting": "Starting your connection",
+        "serving": "Your private connection is active",
+        "error": "Connection needs attention",
+        "checking": "Checking your connection",
+        "setup": "Finish connection setup"
+      },
+      "chip": {
+        "unavailable": "Setup needed",
+        "disconnected": "Offline",
+        "available": "Off · Ready",
+        "starting": "Starting",
+        "serving": "Active",
+        "error": "Action needed",
+        "checking": "Checking",
+        "setup": "Setup needed"
+      },
+      "setupOpened": "Complete setup in the window that opened, then check again. Opening it does not enable remote access.",
+      "checkAgain": "Check again"
     }
   },
   "agents": {
@@ -4407,5 +4551,42 @@
       "emptyTooltip": "pi-kit · no active threads",
       "more": "{{count}} more…"
     }
+  },
+  "remoteSite": {
+    "language": "Language",
+    "title": "Use pi-kit from your phone",
+    "intro": "pi-kit runs on your computer. Your phone reaches it over your own private Tailscale network. Nothing goes through this website.",
+    "privacy": "This page only guides the setup. It never sees your computer, your chats or your pairing codes.",
+    "openTitle": "Open my pi-kit",
+    "openLabel": "Private address of your computer",
+    "openButton": "Open",
+    "openInvalid": "Enter the https://…ts.net address that pi-kit shows under Settings › Remote access.",
+    "s1Title": "Install pi-kit on your computer",
+    "s1Text": "Download pi-kit, open it and finish the first setup.",
+    "s2Title": "Install Tailscale on both devices",
+    "s2Text": "Sign in with the same account on your computer and on your phone, then connect both.",
+    "tsDesktop": "Tailscale for macOS, Windows and Linux",
+    "tsIos": "Tailscale for iPhone and iPad",
+    "tsAndroid": "Tailscale for Android",
+    "s3Title": "Enable remote access in pi-kit",
+    "s3Text": "On the computer open Settings › Remote access and choose Enable remote access. pi-kit then shows the private https://…ts.net address.",
+    "s3Note": "If Tailscale asks you to enable HTTPS certificates, do that in the Tailscale admin console and check again.",
+    "s4Title": "Pair this device",
+    "s4Text": "Choose Pair device on the computer and scan the QR code with Scan QR code above, or open the address ending in /phone and type the pairing code. Compare the six-digit confirmation code, then approve the request on the computer.",
+    "s4Note": "Only approve a request whose code matches what your phone shows.",
+    "scanButton": "Scan QR code",
+    "scanner": "QR scanner",
+    "cancelScan": "Cancel scanning",
+    "scanHint": "Point the camera at the QR code in pi-kit. The image stays on this phone.",
+    "scanWrong": "That QR code is not a pi-kit pairing link. Scan the one shown by pi-kit on your computer.",
+    "scanNoCamera": "Camera scanning is not available here. Scan with your camera app or type the address instead.",
+    "scanDenied": "Camera access was blocked. Allow it for this site, or scan with your camera app instead.",
+    "scanFailed": "The camera could not start. Scan with your camera app or type the address instead.",
+    "s5Title": "Add it to your Home Screen",
+    "s5Text": "In Safari, open the private address, tap Share and choose Add to Home Screen. Keep Open as Web App switched on.",
+    "s5Warn": "Add your private …ts.net address, not this page. This page is only the guide.",
+    "footer": "Your computer must be awake with pi-kit running and Tailscale connected on both devices.",
+    "download": "Download pi-kit",
+    "downloadNote": "The latest release for macOS, Windows and Linux is on GitHub."
   }
 }

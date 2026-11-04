@@ -18,7 +18,7 @@ import {
   type BgAgent,
   BgAgentSchema,
 } from '@pi-kit/protocol';
-import { Fails, Responds, ThreadIdParam } from '../contract';
+import { Fails, Responds, ThreadIdParam, Remote } from '../contract';
 import { BgAgentsService } from './bg-agents.service';
 
 /** The background agents of a thread: the list, a message to one, the user's answer to its question, stop, delete. */
@@ -28,6 +28,7 @@ import { BgAgentsService } from './bg-agents.service';
 export class BgAgentsController {
   constructor(private readonly agents: BgAgentsService) {}
 
+  @Remote()
   @Get()
   @ApiOperation({
     summary: "List a thread's background agents",
@@ -40,6 +41,7 @@ export class BgAgentsController {
     return this.agents.list(id).map((row) => this.agents.toAgent(row));
   }
 
+  @Remote()
   @Post(':agent/message')
   @HttpCode(200)
   @ApiParam({ name: 'agent', description: 'The agent id.' })
@@ -60,6 +62,7 @@ export class BgAgentsController {
     return this.agents.toAgent(this.find(id, agent));
   }
 
+  @Remote()
   @Post(':agent/answer')
   @HttpCode(200)
   @ApiParam({ name: 'agent', description: 'The agent id.' })
@@ -92,6 +95,7 @@ export class BgAgentsController {
     return this.agents.toAgent(this.find(id, agent));
   }
 
+  @Remote()
   @Post(':agent/resume')
   @HttpCode(200)
   @ApiParam({ name: 'agent', description: 'The agent id.' })
@@ -109,6 +113,7 @@ export class BgAgentsController {
     return this.agents.toAgent(this.find(id, agent));
   }
 
+  @Remote()
   @Post(':agent/stop')
   @HttpCode(200)
   @ApiParam({ name: 'agent', description: 'The agent id.' })

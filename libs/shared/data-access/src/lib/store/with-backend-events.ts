@@ -1,7 +1,7 @@
 import { InjectionToken, Injector, NgZone, inject } from '@angular/core';
 import { patchState, signalStoreFeature, withMethods, withProps, withState } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
-import { BackendStatus } from '@pi-kit/api';
+import { BackendStatus, isLocalExecution } from '@pi-kit/api';
 import { Observable, tap } from 'rxjs';
 
 /**
@@ -13,7 +13,9 @@ export const BACKEND_STATUS = new InjectionToken<Observable<BackendStatus>>('BAC
   factory: () => {
     const zone = inject(NgZone);
     return new Observable<BackendStatus>((subscriber) => {
-      const off = window.piKit?.onBackendStatus?.((status) => zone.run(() => subscriber.next(status)));
+      const off = isLocalExecution()
+        ? window.piKit?.onBackendStatus?.((status) => zone.run(() => subscriber.next(status)))
+        : undefined;
       return () => off?.();
     });
   },

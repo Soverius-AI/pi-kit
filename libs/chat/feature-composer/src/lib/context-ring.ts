@@ -1,7 +1,9 @@
 import { TranslocoPipe } from '@pi-kit/i18n';
-import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, untracked } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, effect, inject, untracked, viewChild } from '@angular/core';
+import { CdkConnectedOverlay, CdkOverlayOrigin, type ConnectedPosition } from '@angular/cdk/overlay';
 import { formatCost } from '@pi-kit/ui';
 import { ChatStore, ChatTree, UsageStore } from '@pi-kit/chat/data';
+import { PkSafeOverlay } from '@pi-kit/design-system';
 
 /**
  * The context ring of the composer toolbar (doc/docs/design-system.md, "Composer"): a 32px disc with a 20px gauge that is muted below 70 %, warning
@@ -10,7 +12,7 @@ import { ChatStore, ChatTree, UsageStore } from '@pi-kit/chat/data';
  * bar's test id (`context-meter`) and its `data-level`, which the e2e tests read.
  */
 @Component({
-  imports: [TranslocoPipe],
+  imports: [TranslocoPipe, PkSafeOverlay, CdkConnectedOverlay, CdkOverlayOrigin],
   selector: 'pk-context-ring',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
@@ -21,6 +23,9 @@ import { ChatStore, ChatTree, UsageStore } from '@pi-kit/chat/data';
   template: `
     @let m = chat.meter();
     <button
+      #trigger
+      cdkOverlayOrigin
+      #origin="cdkOverlayOrigin"
       type="button"
       class="pk-ring"
       data-testid="context-meter"
@@ -51,67 +56,85 @@ import { ChatStore, ChatTree, UsageStore } from '@pi-kit/chat/data';
       </svg>
       <span class="sr">{{ m?.text ?? ('chat.contextRing.contextSizeUnknown' | transloco) }}</span>
     </button>
-    @if (usage.open() && m) {
-      <div
-        class="pk-usage-pop"
-        role="dialog"
-        [attr.aria-label]="'chat.contextRing.contextWindow' | transloco"
-        data-testid="usage-popover"
+    @if (m) {
+      <ng-template
+        cdkConnectedOverlay
+        [cdkConnectedOverlayOrigin]="origin"
+        [cdkConnectedOverlayOpen]="usage.open()"
+        [cdkConnectedOverlayPositions]="positions"
+        [cdkConnectedOverlayViewportMargin]="16"
+        [cdkConnectedOverlayPush]="true"
+        [cdkConnectedOverlayHasBackdrop]="true"
+        [cdkConnectedOverlayDisableClose]="true"
+        cdkConnectedOverlayPanelClass="pk-composer-overlay"
+        cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+        (backdropClick)="usage.close()"
+        (overlayKeydown)="$event.key === 'Escape' && onEscape($event)"
+        (detach)="usage.close()"
       >
-        <div class="hd">
-          <b>{{ m.headline }}</b>
-          <span class="muted">{{ m.tokens }}</span>
+        <div
+          #popup
+          pkSafeOverlay
+          class="pk-usage-pop"
+          role="dialog"
+          [attr.aria-label]="'chat.contextRing.contextWindow' | transloco"
+          data-testid="usage-popover"
+        >
+          <div class="hd">
+            <b>{{ m.headline }}</b>
+            <span class="muted">{{ m.tokens }}</span>
+          </div>
+          <div class="bar">
+            <span class="fill" [style.width.%]="m.percent"></span>
+            @if (m.tick !== undefined) {
+              <span
+                class="tick"
+                [style.left.%]="m.tick"
+                [title]="('chat.contextRing.piCompactsAt' | transloco) + m.compactsAt"
+              ></span>
+            }
+          </div>
+          <dl class="kv">
+            <dt>{{ 'chat.contextRing.compactsAt' | transloco }}</dt>
+            <dd>{{ m.compactsAt ?? ('chat.contextRing.autoCompactionIsOff' | transloco) }}</dd>
+            <dt>{{ 'chat.contextRing.thisThread' | transloco }}</dt>
+            <dd>
+              {{ cost(chat.totalCost()) }}, {{ chat.totalTurns() }}
+              {{
+                chat.totalTurns() === 1 ? ('chat.contextRing.turn' | transloco) : ('chat.contextRing.turns' | transloco)
+              }}
+            </dd>
+            @for (row of usage.models(); track row.key) {
+              <dt class="sub">{{ row.model }}</dt>
+              <dd>{{ row.free ? ('chat.contextRing.free' | transloco) : cost(row.cost) }}</dd>
+            }
+            <dt>{{ 'chat.contextRing.cacheHit' | transloco }}</dt>
+            <dd>{{ usage.cacheHit() ?? (usage.loading() ? '…' : ('chat.contextRing.noneYet' | transloco)) }}</dd>
+          </dl>
+          <div class="flex items-center justify-between t-sm">
+            <button type="button" class="link link-hover" data-testid="usage-by-turn" (click)="usage.openDialog()">
+              {{ 'chat.contextRing.usageByTurn' | transloco }}
+            </button>
+            <button type="button" class="link link-hover" data-testid="inspect-context" (click)="inspect()">
+              {{ 'chat.contextRing.inspectContext' | transloco }}
+            </button>
+            <button
+              type="button"
+              class="link link-hover"
+              data-testid="compact-now"
+              [disabled]="chat.running()"
+              [title]="
+                chat.running()
+                  ? ('chat.contextRing.piCanCompactBetweenTurnsNotDuring' | transloco)
+                  : ('chat.contextRing.summariseTheOlderPartOfTheConversation' | transloco)
+              "
+              (click)="usage.compactNow()"
+            >
+              {{ 'chat.contextRing.compactNow' | transloco }}
+            </button>
+          </div>
         </div>
-        <div class="bar">
-          <span class="fill" [style.width.%]="m.percent"></span>
-          @if (m.tick !== undefined) {
-            <span
-              class="tick"
-              [style.left.%]="m.tick"
-              [title]="('chat.contextRing.piCompactsAt' | transloco) + m.compactsAt"
-            ></span>
-          }
-        </div>
-        <dl class="kv">
-          <dt>{{ 'chat.contextRing.compactsAt' | transloco }}</dt>
-          <dd>{{ m.compactsAt ?? ('chat.contextRing.autoCompactionIsOff' | transloco) }}</dd>
-          <dt>{{ 'chat.contextRing.thisThread' | transloco }}</dt>
-          <dd>
-            {{ cost(chat.totalCost()) }}, {{ chat.totalTurns() }}
-            {{
-              chat.totalTurns() === 1 ? ('chat.contextRing.turn' | transloco) : ('chat.contextRing.turns' | transloco)
-            }}
-          </dd>
-          @for (row of usage.models(); track row.key) {
-            <dt class="sub">{{ row.model }}</dt>
-            <dd>{{ row.free ? ('chat.contextRing.free' | transloco) : cost(row.cost) }}</dd>
-          }
-          <dt>{{ 'chat.contextRing.cacheHit' | transloco }}</dt>
-          <dd>{{ usage.cacheHit() ?? (usage.loading() ? '…' : ('chat.contextRing.noneYet' | transloco)) }}</dd>
-        </dl>
-        <div class="flex items-center justify-between t-sm">
-          <button type="button" class="link link-hover" data-testid="usage-by-turn" (click)="usage.openDialog()">
-            {{ 'chat.contextRing.usageByTurn' | transloco }}
-          </button>
-          <button type="button" class="link link-hover" data-testid="inspect-context" (click)="inspect()">
-            {{ 'chat.contextRing.inspectContext' | transloco }}
-          </button>
-          <button
-            type="button"
-            class="link link-hover"
-            data-testid="compact-now"
-            [disabled]="chat.running()"
-            [title]="
-              chat.running()
-                ? ('chat.contextRing.piCanCompactBetweenTurnsNotDuring' | transloco)
-                : ('chat.contextRing.summariseTheOlderPartOfTheConversation' | transloco)
-            "
-            (click)="usage.compactNow()"
-          >
-            {{ 'chat.contextRing.compactNow' | transloco }}
-          </button>
-        </div>
-      </div>
+      </ng-template>
     }
   `,
 })
@@ -120,6 +143,12 @@ export class ContextRing {
   protected readonly usage = inject(UsageStore);
   private readonly tree = inject(ChatTree);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly popup = viewChild<ElementRef<HTMLElement>>('popup');
+  private readonly trigger = viewChild<ElementRef<HTMLButtonElement>>('trigger');
+  protected readonly positions: ConnectedPosition[] = [
+    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -8 },
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 8 },
+  ];
 
   /** "Inspect the context": the Session panel's inspector, with the popover closed. */
   protected inspect(): void {
@@ -137,7 +166,12 @@ export class ContextRing {
   }
 
   protected onDocumentClick(event: Event): void {
-    if (this.usage.open() && !this.host.nativeElement.contains(event.target as Node)) this.usage.close();
+    if (
+      this.usage.open() &&
+      !this.host.nativeElement.contains(event.target as Node) &&
+      !this.popup()?.nativeElement.contains(event.target as Node)
+    )
+      this.usage.close();
   }
 
   protected onEscape(event: Event): void {
@@ -145,5 +179,6 @@ export class ContextRing {
     // The shell stops a run on Esc unless something else took the key.
     event.preventDefault();
     this.usage.close();
+    queueMicrotask(() => this.trigger()?.nativeElement.focus({ preventScroll: true }));
   }
 }

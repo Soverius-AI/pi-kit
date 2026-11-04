@@ -1,7 +1,7 @@
 import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { type Coordination, CoordinationSchema } from '@pi-kit/protocol';
-import { Fails, Responds, ThreadIdParam } from '../contract';
+import { Fails, Responds, ThreadIdParam, Remote } from '../contract';
 import { ThreadsRepository } from '../db/threads.repository';
 import { CoordinationService } from './coordination.service';
 
@@ -15,6 +15,7 @@ export class CoordinationController {
     private readonly threads: ThreadsRepository,
   ) {}
 
+  @Remote()
   @Get()
   @ApiOperation({
     summary: 'Get what runs next to a thread',

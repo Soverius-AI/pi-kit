@@ -1,4 +1,5 @@
 import type { Translate } from '@pi-kit/i18n';
+import { isLocalExecution } from '@pi-kit/api';
 import { type Message } from '@ag-ui/client';
 import {
   type Command,
@@ -165,7 +166,7 @@ export function lastUserTextOf(messages: readonly Message[]): string | undefined
 
 /** The desktop app can quit; a browser tab cannot close itself reliably. */
 export function adaptCommand(translate: Translate, command: Command): Command {
-  if (command.name === 'quit' && !window.piKit?.quit)
+  if (command.name === 'quit' && (!isLocalExecution() || !window.piKit?.quit))
     return { ...command, disabled: true, disabledReason: translate('chat.chatState.closeTheBrowserTabInstead') };
   return command;
 }

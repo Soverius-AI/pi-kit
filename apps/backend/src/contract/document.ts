@@ -74,6 +74,7 @@ type Operation = {
   parameters?: { in?: string }[];
   responses: Record<string, unknown>;
   'x-public'?: boolean;
+  'x-remote'?: boolean;
 };
 
 /**

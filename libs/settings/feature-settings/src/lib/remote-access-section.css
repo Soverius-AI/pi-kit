@@ -1,0 +1,34 @@
+:host {
+  display: grid;
+  gap: 20px;
+}
+.step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--color-base-300);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 600;
+}
+.step-number.is-complete {
+  border-color: color-mix(in srgb, var(--color-success) 40%, transparent);
+  color: var(--color-success);
+}
+.step-number.is-current {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+.pairing img {
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+  box-sizing: content-box;
+  max-width: calc(100% - 16px);
+  height: auto;
+}
+.pairing-code {
+  font-size: 18px;
+  letter-spacing: 0.14em;
+}
