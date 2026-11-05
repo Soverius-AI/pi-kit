@@ -38,7 +38,9 @@ describe('installable phone metadata', () => {
       expect(html).toContain('rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png"');
       expect(html).toContain('name="apple-mobile-web-app-capable" content="yes"');
       expect(html).toContain('name="apple-mobile-web-app-title" content="pi-kit"');
-      expect(html).toContain('viewport-fit=cover');
+      // Nothing is drawn under the status bar: iOS blurs whatever lies there.
+      expect(html).not.toContain('viewport-fit=cover');
+      expect(html).toContain('name="apple-mobile-web-app-status-bar-style" content="default"');
     }
   });
 });

@@ -1,343 +1,408 @@
-<section
-  class="pk-group"
-  data-testid="section-remote-access"
-  [attr.aria-busy]="busy()"
-  [attr.aria-label]="'settings.remoteAccessSection.title' | transloco"
->
-  <header>
-    <div>
-      <h4>{{ 'settings.remoteAccessSection.title' | transloco }}</h4>
-      <p>{{ 'settings.remoteAccessSection.lifetime' | transloco }}</p>
-    </div>
-    <span class="chip actions"
-      ><pk-icon name="lock" size="12" />{{ 'settings.remoteAccessSection.privateTailnet' | transloco }}</span
-    >
-  </header>
-  @if (!desktop) {
-    <p class="empty" role="status" data-testid="remote-access-desktop-only">
-      {{ 'settings.remoteAccessSection.desktopOnly' | transloco }}
-    </p>
-  } @else {
-    <div class="row" role="status" aria-live="polite" data-testid="remote-access-status">
-      <div class="min-w-0">
-        <div class="lbl">
-          {{ 'settings.remoteAccessSection.statusTitle.' + stateKey() | transloco }}
-          <span class="chip" [class.ok]="status()?.state === 'serving'">
-            @if (busy() || status()?.state === 'starting') {
-              <span
-                class="loading loading-spinner loading-xs"
-                aria-hidden="true"
-                data-testid="remote-access-spinner"
-              ></span>
-            }
-            {{ 'settings.remoteAccessSection.chip.' + stateKey() | transloco }}
-          </span>
-        </div>
-        @if (message(); as message) {
-          <div
-            class="sub"
-            [class.err]="failed()"
-            [attr.role]="failed() ? 'alert' : 'status'"
-            data-testid="remote-access-message"
-          >
-            {{ message }}
+<pk-tabs [label]="'settings.remoteAccessSection.title' | transloco" [(value)]="tab">
+  <pk-tab-panel value="connection" [label]="'settings.remoteAccessSection.tabConnection' | transloco">
+    <div class="tab">
+      <section
+        class="pk-group"
+        data-testid="section-remote-access"
+        [attr.aria-busy]="busy()"
+        [attr.aria-label]="'settings.remoteAccessSection.title' | transloco"
+      >
+        <header>
+          <div>
+            <h4>{{ 'settings.remoteAccessSection.title' | transloco }}</h4>
+            <p>{{ 'settings.remoteAccessSection.lifetime' | transloco }}</p>
           </div>
-        } @else {
-          <div class="hint">{{ 'settings.remoteAccessSection.' + (status()?.state ?? 'checking') | transloco }}</div>
-        }
-        @if (servingUrl(); as url) {
-          <a class="sub link" [href]="url" target="_blank" rel="noopener noreferrer" data-testid="remote-access-url">{{
-            url
-          }}</a>
-        }
-        @if (status()?.diagnostic || status()?.version) {
-          <details class="sub">
-            <summary>{{ 'settings.remoteAccessSection.details' | transloco }}</summary>
-            @if (status()?.version; as version) {
-              <p data-testid="remote-access-version">
-                {{ 'settings.remoteAccessSection.version' | transloco: { value1: version } }}
-              </p>
-            }
-            @if (status()?.diagnostic; as diagnostic) {
-              <pre class="mono">{{ diagnostic }}</pre>
-            }
-          </details>
-        }
-        @if (setupOpened()) {
-          <p class="sub" role="status" data-testid="remote-access-setup-opened">
-            {{ 'settings.remoteAccessSection.setupOpened' | transloco }}
+          <span class="chip actions"
+            ><pk-icon name="lock" size="12" />{{ 'settings.remoteAccessSection.privateTailnet' | transloco }}</span
+          >
+        </header>
+        @if (!desktop) {
+          <p class="empty" role="status" data-testid="remote-access-desktop-only">
+            {{ 'settings.remoteAccessSection.desktopOnly' | transloco }}
           </p>
-        }
-      </div>
-      <div class="ctl ctl-w wrap">
-        <button
-          type="button"
-          class="btn btn-sm btn-ghost"
-          data-testid="remote-access-refresh"
-          [disabled]="busy()"
-          (click)="refresh()"
-        >
-          <pk-icon name="refresh" />{{
-            (setupAction() || setupOpened()
-              ? 'settings.remoteAccessSection.checkAgain'
-              : 'settings.remoteAccessSection.refresh'
-            ) | transloco
-          }}
-        </button>
-        @if (status()?.state === 'serving' || status()?.state === 'starting') {
-          <button
-            type="button"
-            class="btn btn-sm"
-            data-testid="remote-access-stop"
-            [disabled]="busy()"
-            (click)="stop()"
-          >
-            {{ 'settings.remoteAccessSection.stop' | transloco }}
-          </button>
-        } @else if (setupAction(); as action) {
-          @if (canOpenSetup) {
-            <button
-              type="button"
-              class="btn btn-sm btn-primary"
-              data-testid="remote-access-setup"
-              [disabled]="busy()"
-              (click)="openSetup(action)"
-            >
-              {{ 'settings.remoteAccessSection.setup.' + action | transloco }}
-            </button>
-          }
-        } @else if (status()?.issue === 'status-failed') {
-          <button
-            type="button"
-            class="btn btn-sm btn-primary"
-            data-testid="remote-access-retry-status"
-            [disabled]="busy()"
-            (click)="refresh()"
-          >
-            {{ 'settings.remoteAccessSection.retry' | transloco }}
-          </button>
         } @else {
-          <button
-            type="button"
-            class="btn btn-sm btn-primary"
-            data-testid="remote-access-start"
-            [disabled]="busy() || !canEnable()"
-            (click)="start()"
-          >
-            {{
-              (status()?.state === 'error' || actionError()
-                ? 'settings.remoteAccessSection.retry'
-                : 'settings.remoteAccessSection.start'
-              ) | transloco
-            }}
-          </button>
-        }
-      </div>
-    </div>
-    <div pkSetting="remote-access-port">
-      @if (portLocked()) {
-        <p sub class="sub">{{ 'settings.remoteAccessSection.portLocked' | transloco }}</p>
-      }
-      @if (selectedPort() === undefined) {
-        <p sub class="sub err" role="alert" data-testid="remote-access-port-error">
-          {{ 'settings.remoteAccessSection.portInvalid' | transloco }}
-        </p>
-      }
-      <input
-        id="remote-access-port"
-        type="number"
-        min="1"
-        max="65535"
-        step="1"
-        inputmode="numeric"
-        class="input input-sm"
-        data-testid="remote-access-port"
-        aria-labelledby="lbl-remote-access-port"
-        aria-describedby="hint-remote-access-port"
-        [value]="port()"
-        [disabled]="portLocked()"
-        [attr.aria-invalid]="selectedPort() === undefined ? 'true' : null"
-        (input)="changePort($any($event.target).value)"
-      />
-    </div>
-  }
-</section>
-
-@if (status()?.state !== 'serving') {
-  <section class="pk-group" [attr.aria-label]="'settings.remoteAccessSection.statusTitle.setup' | transloco">
-    @for (step of steps(); track $index) {
-      <div class="row">
-        <div class="min-w-0">
-          <div class="lbl">
-            <span
-              class="step-number"
-              [class.is-complete]="step.done"
-              [class.is-current]="step.current"
-              [attr.aria-label]="step.done ? ('settings.remoteAccessSection.completed' | transloco) : null"
-            >
-              @if (step.done) {
-                <pk-icon name="check" size="12" />
+          <div class="row" role="status" aria-live="polite" data-testid="remote-access-status">
+            <div class="min-w-0">
+              <div class="lbl">
+                {{ 'settings.remoteAccessSection.statusTitle.' + stateKey() | transloco }}
+                <span class="chip" [class.ok]="status()?.state === 'serving'">
+                  @if (busy() || status()?.state === 'starting') {
+                    <span
+                      class="loading loading-spinner loading-xs"
+                      aria-hidden="true"
+                      data-testid="remote-access-spinner"
+                    ></span>
+                  }
+                  {{ 'settings.remoteAccessSection.chip.' + stateKey() | transloco }}
+                </span>
+              </div>
+              @if (message(); as message) {
+                <div
+                  class="sub"
+                  [class.err]="failed()"
+                  [attr.role]="failed() ? 'alert' : 'status'"
+                  data-testid="remote-access-message"
+                >
+                  {{ message }}
+                </div>
               } @else {
-                {{ $index + 1 }}
+                <div class="hint">
+                  {{ 'settings.remoteAccessSection.' + (status()?.state ?? 'checking') | transloco }}
+                </div>
               }
-            </span>
-            {{ 'settings.remoteAccessSection.' + step.title | transloco }}
-          </div>
-          <div class="hint">{{ 'settings.remoteAccessSection.' + step.help | transloco }}</div>
-        </div>
-        <div class="ctl ctl-w wrap">
-          @switch (step.actions) {
-            @case ('tailscale') {
-              <a
+              @if (servingUrl(); as url) {
+                <a
+                  class="sub link"
+                  [href]="url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="remote-access-url"
+                  >{{ url }}</a
+                >
+              }
+              @if (status()?.diagnostic || status()?.version) {
+                <details class="sub">
+                  <summary>{{ 'settings.remoteAccessSection.details' | transloco }}</summary>
+                  @if (status()?.version; as version) {
+                    <p data-testid="remote-access-version">
+                      {{ 'settings.remoteAccessSection.version' | transloco: { value1: version } }}
+                    </p>
+                  }
+                  @if (status()?.diagnostic; as diagnostic) {
+                    <pre class="mono">{{ diagnostic }}</pre>
+                  }
+                </details>
+              }
+              @if (setupOpened()) {
+                <p class="sub" role="status" data-testid="remote-access-setup-opened">
+                  {{ 'settings.remoteAccessSection.setupOpened' | transloco }}
+                </p>
+              }
+            </div>
+            <div class="ctl ctl-w wrap">
+              <button
+                type="button"
                 class="btn btn-sm btn-ghost"
-                href="https://tailscale.com/download"
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="remote-access-download"
+                data-testid="remote-access-refresh"
+                [disabled]="busy()"
+                (click)="refresh()"
               >
-                {{ 'settings.remoteAccessSection.download' | transloco }}
-              </a>
-              @if (desktop && canOpenSetup) {
+                <pk-icon name="refresh" />{{
+                  (setupAction() || setupOpened()
+                    ? 'settings.remoteAccessSection.checkAgain'
+                    : 'settings.remoteAccessSection.refresh'
+                  ) | transloco
+                }}
+              </button>
+              @if (status()?.state === 'serving' || status()?.state === 'starting') {
                 <button
                   type="button"
                   class="btn btn-sm"
+                  data-testid="remote-access-stop"
                   [disabled]="busy()"
-                  data-testid="remote-access-open-tailscale"
-                  (click)="openSetup('tailscale')"
+                  (click)="stop()"
                 >
-                  {{ 'settings.remoteAccessSection.setup.tailscale' | transloco }}
+                  {{ 'settings.remoteAccessSection.stop' | transloco }}
+                </button>
+              } @else if (setupAction(); as action) {
+                @if (canOpenSetup) {
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    data-testid="remote-access-setup"
+                    [disabled]="busy()"
+                    (click)="openSetup(action)"
+                  >
+                    {{ 'settings.remoteAccessSection.setup.' + action | transloco }}
+                  </button>
+                }
+              } @else if (status()?.issue === 'status-failed') {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  data-testid="remote-access-retry-status"
+                  [disabled]="busy()"
+                  (click)="refresh()"
+                >
+                  {{ 'settings.remoteAccessSection.retry' | transloco }}
+                </button>
+              } @else {
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  data-testid="remote-access-start"
+                  [disabled]="busy() || !canEnable()"
+                  (click)="start()"
+                >
+                  {{
+                    (status()?.state === 'error' || actionError()
+                      ? 'settings.remoteAccessSection.retry'
+                      : 'settings.remoteAccessSection.start'
+                    ) | transloco
+                  }}
                 </button>
               }
+            </div>
+          </div>
+          <div pkSetting="remote-access-port">
+            @if (portLocked()) {
+              <p sub class="sub">{{ 'settings.remoteAccessSection.portLocked' | transloco }}</p>
             }
-            @case ('https') {
-              <a
-                class="btn btn-sm btn-ghost"
-                href="https://login.tailscale.com/admin/dns"
-                target="_blank"
-                rel="noopener noreferrer"
-                data-testid="remote-access-https-settings"
-              >
-                {{ 'settings.remoteAccessSection.httpsSettings' | transloco }} <span aria-hidden="true">↗</span>
-              </a>
+            @if (selectedPort() === undefined) {
+              <p sub class="sub err" role="alert" data-testid="remote-access-port-error">
+                {{ 'settings.remoteAccessSection.portInvalid' | transloco }}
+              </p>
             }
-          }
-        </div>
-      </div>
-    }
-  </section>
-}
-
-<div class="alert alert-soft t-sm" role="note" data-testid="remote-access-safety">
-  <pk-icon name="lock" />
-  <div>
-    <b>{{ 'settings.remoteAccessSection.safetyTitle' | transloco }}</b>
-    <p class="muted">{{ 'settings.remoteAccessSection.safety' | transloco }}</p>
-  </div>
-</div>
-
-@if (desktop) {
-  <section class="pk-group" [attr.aria-label]="'settings.remoteAccessSection.devices' | transloco">
-    <header>
-      <div>
-        <h4>{{ 'settings.remoteAccessSection.devices' | transloco }}</h4>
-        <p>{{ 'settings.remoteAccessSection.confirm' | transloco }}</p>
-      </div>
-      @if (status()?.state === 'serving') {
-        <div class="actions">
-          <button
-            type="button"
-            class="btn btn-sm btn-primary"
-            data-testid="remote-access-pair"
-            [disabled]="busy()"
-            (click)="pair()"
-          >
-            {{ 'settings.remoteAccessSection.pair' | transloco }}
-          </button>
-        </div>
-      }
-    </header>
-    @if (status()?.state === 'serving') {
-      @if (activePairing(); as pairing) {
-        <div class="row stack pairing" data-testid="remote-access-pairing">
-          <p class="hint">{{ 'settings.remoteAccessSection.scan' | transloco }}</p>
-          @if (qr(); as image) {
-            <img
-              [src]="image"
-              [alt]="'settings.remoteAccessSection.qrAlt' | transloco"
-              width="240"
-              height="240"
-              data-testid="remote-access-qr"
+            <input
+              id="remote-access-port"
+              type="number"
+              min="1"
+              max="65535"
+              step="1"
+              inputmode="numeric"
+              class="input input-sm"
+              data-testid="remote-access-port"
+              aria-labelledby="lbl-remote-access-port"
+              aria-describedby="hint-remote-access-port"
+              [value]="port()"
+              [disabled]="portLocked()"
+              [attr.aria-invalid]="selectedPort() === undefined ? 'true' : null"
+              (input)="changePort($any($event.target).value)"
             />
+          </div>
+        }
+      </section>
+
+      @if (status()?.state !== 'serving') {
+        <section class="pk-group" [attr.aria-label]="'settings.remoteAccessSection.statusTitle.setup' | transloco">
+          @for (step of steps(); track $index) {
+            <div class="row">
+              <div class="min-w-0">
+                <div class="lbl">
+                  <span
+                    class="step-number"
+                    [class.is-complete]="step.done"
+                    [class.is-current]="step.current"
+                    [attr.aria-label]="step.done ? ('settings.remoteAccessSection.completed' | transloco) : null"
+                  >
+                    @if (step.done) {
+                      <pk-icon name="check" size="12" />
+                    } @else {
+                      {{ $index + 1 }}
+                    }
+                  </span>
+                  {{ 'settings.remoteAccessSection.' + step.title | transloco }}
+                </div>
+                <div class="hint">{{ 'settings.remoteAccessSection.' + step.help | transloco }}</div>
+              </div>
+              <div class="ctl ctl-w wrap">
+                @switch (step.actions) {
+                  @case ('tailscale') {
+                    <a
+                      class="btn btn-sm btn-ghost"
+                      href="https://tailscale.com/download"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="remote-access-download"
+                    >
+                      {{ 'settings.remoteAccessSection.download' | transloco }}
+                    </a>
+                    @if (desktop && canOpenSetup) {
+                      <button
+                        type="button"
+                        class="btn btn-sm"
+                        [disabled]="busy()"
+                        data-testid="remote-access-open-tailscale"
+                        (click)="openSetup('tailscale')"
+                      >
+                        {{ 'settings.remoteAccessSection.setup.tailscale' | transloco }}
+                      </button>
+                    }
+                  }
+                  @case ('https') {
+                    <a
+                      class="btn btn-sm btn-ghost"
+                      href="https://login.tailscale.com/admin/dns"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="remote-access-https-settings"
+                    >
+                      {{ 'settings.remoteAccessSection.httpsSettings' | transloco }} <span aria-hidden="true">↗</span>
+                    </a>
+                  }
+                }
+              </div>
+            </div>
           }
-          <p class="pairing-code mono" data-testid="remote-access-code">{{ pairing.code }}</p>
-          <p class="sub" data-testid="remote-access-expiry">
-            {{ 'settings.remoteAccessSection.expires' | transloco }} {{ pairing.expiresAt | date: 'medium' }}
-          </p>
-        </div>
-      } @else if (pairingRequested() && status()?.pairing) {
-        <p class="row sub" role="status" data-testid="remote-access-expired">
-          {{ 'settings.remoteAccessSection.expired' | transloco }}
-        </p>
+        </section>
       }
-      @for (request of status()?.requests ?? []; track request.id) {
-        <div class="row" role="group" [attr.aria-label]="request.name" data-testid="remote-access-request">
-          <div class="min-w-0">
-            <div class="lbl">
-              {{ request.name }}
-              <strong class="mono" data-testid="remote-access-confirmation-code">{{ request.confirmationCode }}</strong>
-            </div>
-            <div class="hint">
-              {{ 'settings.remoteAccessSection.expires' | transloco }} {{ request.expiresAt | date: 'medium' }}
-            </div>
-          </div>
-          <div class="ctl ctl-w wrap">
-            <button
-              type="button"
-              class="btn btn-sm btn-primary"
-              data-testid="remote-access-approve"
-              [disabled]="busy() || request.expiresAt <= now()"
-              (click)="approve(request.id)"
-            >
-              {{ 'settings.remoteAccessSection.approve' | transloco }}
-            </button>
-            <button
-              type="button"
-              class="btn btn-sm"
-              data-testid="remote-access-deny"
-              [disabled]="busy()"
-              (click)="reject(request.id)"
-            >
-              {{ 'settings.remoteAccessSection.deny' | transloco }}
-            </button>
-          </div>
-        </div>
-      } @empty {
-        <p class="row hint">{{ 'settings.remoteAccessSection.noRequests' | transloco }}</p>
-      }
-    }
-    @for (device of status()?.devices ?? []; track device.id) {
-      <div class="row" role="group" [attr.aria-label]="device.name" data-testid="remote-access-device">
-        <div class="min-w-0">
-          <div class="lbl">{{ device.name }}</div>
-          <div class="hint">
-            {{ 'settings.remoteAccessSection.created' | transloco }} {{ device.createdAt | date: 'medium' }} ·
-            {{ 'settings.remoteAccessSection.lastSeen' | transloco }} {{ device.lastSeenAt | date: 'medium' }}
-          </div>
-        </div>
-        <div class="ctl ctl-w">
-          <button
-            type="button"
-            class="btn btn-sm"
-            data-testid="remote-access-revoke"
-            [disabled]="busy()"
-            (click)="revoke(device.id)"
-          >
-            {{ 'settings.remoteAccessSection.revoke' | transloco }}
-          </button>
+
+      <div class="alert alert-soft t-sm" role="note" data-testid="remote-access-safety">
+        <pk-icon name="lock" />
+        <div>
+          <b>{{ 'settings.remoteAccessSection.safetyTitle' | transloco }}</b>
+          <p class="muted">{{ 'settings.remoteAccessSection.safety' | transloco }}</p>
         </div>
       </div>
-    } @empty {
-      <p class="row hint">{{ 'settings.remoteAccessSection.noDevices' | transloco }}</p>
-    }
-  </section>
-}
+    </div>
+  </pk-tab-panel>
+  @if (desktop) {
+    <pk-tab-panel value="devices" [label]="'settings.remoteAccessSection.devices' | transloco">
+      <div class="tab">
+        <section class="pk-group" [attr.aria-label]="'settings.remoteAccessSection.devices' | transloco">
+          <header>
+            <div>
+              <h4>{{ 'settings.remoteAccessSection.devices' | transloco }}</h4>
+              <p>{{ 'settings.remoteAccessSection.confirm' | transloco }}</p>
+            </div>
+            @if (status()?.state === 'serving') {
+              <div class="actions">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  data-testid="remote-access-pair"
+                  [disabled]="busy()"
+                  (click)="pair()"
+                >
+                  {{ 'settings.remoteAccessSection.pair' | transloco }}
+                </button>
+              </div>
+            }
+          </header>
+          @if (status()?.state === 'serving') {
+            @if (activePairing(); as pairing) {
+              <dialog
+                open
+                class="modal modal-open"
+                aria-labelledby="remote-access-pairing-title"
+                tabindex="-1"
+                data-testid="remote-access-pairing"
+                (keydown.escape)="closePairing()"
+              >
+                <div class="modal-box pairing" cdkTrapFocus [cdkTrapFocusAutoCapture]="true">
+                  <h2 id="remote-access-pairing-title">{{ 'settings.remoteAccessSection.pair' | transloco }}</h2>
+                  <p class="hint">{{ 'settings.remoteAccessSection.scan' | transloco }}</p>
+                  @if (qr(); as image) {
+                    <img
+                      [src]="image"
+                      [alt]="'settings.remoteAccessSection.qrAlt' | transloco"
+                      width="240"
+                      height="240"
+                      data-testid="remote-access-qr"
+                    />
+                  }
+                  <p class="pairing-code mono" data-testid="remote-access-code">{{ pairing.code }}</p>
+                  <p class="sub" data-testid="remote-access-expiry">
+                    {{ 'settings.remoteAccessSection.expires' | transloco }} {{ pairing.expiresAt | date: 'medium' }}
+                  </p>
+                  @for (request of status()?.requests ?? []; track request.id) {
+                    <div class="request" role="group" [attr.aria-label]="request.name">
+                      <div class="min-w-0">
+                        <div class="lbl">
+                          {{ request.name }}
+                          <strong class="mono">{{ request.confirmationCode }}</strong>
+                        </div>
+                        <div class="hint">{{ 'settings.remoteAccessSection.confirm' | transloco }}</div>
+                      </div>
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-primary"
+                        [disabled]="busy() || request.expiresAt <= now()"
+                        (click)="approve(request.id)"
+                      >
+                        {{ 'settings.remoteAccessSection.approve' | transloco }}
+                      </button>
+                      <button type="button" class="btn btn-sm" [disabled]="busy()" (click)="reject(request.id)">
+                        {{ 'settings.remoteAccessSection.deny' | transloco }}
+                      </button>
+                    </div>
+                  }
+                  <div class="modal-action">
+                    <button
+                      type="button"
+                      class="btn btn-sm"
+                      data-testid="remote-access-pairing-close"
+                      (click)="closePairing()"
+                    >
+                      {{ 'settings.remoteAccessSection.closePairing' | transloco }}
+                    </button>
+                  </div>
+                </div>
+              </dialog>
+            } @else if (pairingRequested() && status()?.pairing) {
+              <p class="row sub" role="status" data-testid="remote-access-expired">
+                {{ 'settings.remoteAccessSection.expired' | transloco }}
+              </p>
+            }
+            @for (request of status()?.requests ?? []; track request.id) {
+              <div class="row" role="group" [attr.aria-label]="request.name" data-testid="remote-access-request">
+                <div class="min-w-0">
+                  <div class="lbl">
+                    {{ request.name }}
+                    <strong class="mono" data-testid="remote-access-confirmation-code">{{
+                      request.confirmationCode
+                    }}</strong>
+                  </div>
+                  <div class="hint">
+                    {{ 'settings.remoteAccessSection.expires' | transloco }} {{ request.expiresAt | date: 'medium' }}
+                  </div>
+                </div>
+                <div class="ctl ctl-w wrap">
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    data-testid="remote-access-approve"
+                    [disabled]="busy() || request.expiresAt <= now()"
+                    (click)="approve(request.id)"
+                  >
+                    {{ 'settings.remoteAccessSection.approve' | transloco }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-sm"
+                    data-testid="remote-access-deny"
+                    [disabled]="busy()"
+                    (click)="reject(request.id)"
+                  >
+                    {{ 'settings.remoteAccessSection.deny' | transloco }}
+                  </button>
+                </div>
+              </div>
+            } @empty {
+              <p class="row hint">{{ 'settings.remoteAccessSection.noRequests' | transloco }}</p>
+            }
+          }
+          @for (device of status()?.devices ?? []; track device.id) {
+            <div class="row" role="group" [attr.aria-label]="device.name" data-testid="remote-access-device">
+              <div class="min-w-0">
+                <div class="lbl">{{ device.name }}</div>
+                <div class="hint">
+                  {{ 'settings.remoteAccessSection.created' | transloco }} {{ device.createdAt | date: 'medium' }} ·
+                  {{ 'settings.remoteAccessSection.lastSeen' | transloco }} {{ device.lastSeenAt | date: 'medium' }}
+                </div>
+              </div>
+              <div class="ctl ctl-w">
+                <button
+                  type="button"
+                  class="btn btn-sm"
+                  data-testid="remote-access-revoke"
+                  [disabled]="busy()"
+                  (click)="revoke(device.id)"
+                >
+                  {{ 'settings.remoteAccessSection.revoke' | transloco }}
+                </button>
+              </div>
+            </div>
+          } @empty {
+            <p class="row hint">{{ 'settings.remoteAccessSection.noDevices' | transloco }}</p>
+          }
+        </section>
+      </div>
+    </pk-tab-panel>
+  }
+  <pk-tab-panel value="environments" [label]="'settings.remoteAccessSection.tabEnvironments' | transloco">
+    <div class="tab">
+      <ng-content />
+    </div>
+  </pk-tab-panel>
+</pk-tabs>

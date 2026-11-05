@@ -49,7 +49,7 @@ There is no offline cache of conversations, files or pairing pages, on purpose: 
 
 ### What a phone can do
 
-Chat in existing and new threads, answer questions and approvals, pick models, browse files, review and edit changes, use the terminal and dictate with a configured voice model. Installing providers or models, credentials, app updates, trusting projects, computer use and other machine-level settings stay on the desktop; configure providers and voice models there first. This is trusted remote control of the owner's agent, files and shell. It is not a way to share an agent with someone else: tailnet membership alone grants nothing, and there is no per-user isolation behind an approved device.
+Chat in existing and new threads, answer questions and approvals, pick models, browse files, review and edit changes, use the terminal and dictate with a configured voice model. Installing providers or models, credentials, app updates, trusting projects, computer use and other machine-level settings stay on the desktop, and Settings on a phone does not list those sections at all; configure providers and voice models there first. This is trusted remote control of the owner's agent, files and shell. It is not a way to share an agent with someone else: tailnet membership alone grants nothing, and there is no per-user isolation behind an approved device.
 
 ## Environments and paired instances
 

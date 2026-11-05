@@ -29,6 +29,8 @@ export interface SettingsSection {
   group: SettingsNavGroup;
   /** The line under the section title. */
   intro: string;
+  /** Manages the computer itself, so a paired device shows a notice instead of the section. */
+  desktopOnly?: true;
 }
 
 export const settingsSections = (translate: Translate): readonly SettingsSection[] => [
@@ -49,6 +51,7 @@ export const settingsSections = (translate: Translate): readonly SettingsSection
     label: translate('shared.catalog.keybindings'),
     group: 'App',
     intro: translate('shared.catalog.piKitSShortcutsAndPiS'),
+    desktopOnly: true,
   },
   {
     id: 'remote-access',
@@ -67,60 +70,70 @@ export const settingsSections = (translate: Translate): readonly SettingsSection
     label: translate('settings.modelManagement.localModels'),
     group: 'pi',
     intro: translate('settings.modelManagement.yourDownloadedModelsDiskSpaceAndLlamaSwap'),
+    desktopOnly: true,
   },
   {
     id: 'providers',
     label: translate('shared.catalog.providers'),
     group: 'pi',
     intro: translate('shared.catalog.wherePiGetsItsModelsSubscriptionsAPI'),
+    desktopOnly: true,
   },
   {
     id: 'mcp',
     label: translate('shared.catalog.mCPServers'),
     group: 'pi',
     intro: translate('shared.catalog.toolsPiCanCallServicesYouConnect'),
+    desktopOnly: true,
   },
   {
     id: 'computer-use',
     label: translate('shared.catalog.computerUse'),
     group: 'pi',
     intro: translate('shared.catalog.computerUseIntro'),
+    desktopOnly: true,
   },
   {
     id: 'extensions',
     label: translate('settings.addPackageWizard.extensions'),
     group: 'pi',
     intro: translate('settings.modelManagement.installedPackagesExtensionsAndPromptTemplatesAndWhich'),
+    desktopOnly: true,
   },
   {
     id: 'skills',
     label: translate('shared.catalog.skills'),
     group: 'pi',
     intro: translate('settings.modelManagement.createEditAndEnableYourSkillsManageLearned'),
+    desktopOnly: true,
   },
   {
     id: 'projects',
     label: translate('shared.catalog.projects'),
     group: 'Workspace',
     intro: translate('shared.catalog.theFoldersInTheSidebarWhatThey'),
+    desktopOnly: true,
   },
   {
     id: 'attendant',
     label: translate('shared.catalog.attendant'),
     group: 'Workspace',
     intro: translate('shared.catalog.anOptionalSecondAgentThatKeepsAn'),
+    desktopOnly: true,
   },
   {
     id: 'advanced',
     label: translate('shared.catalog.advanced'),
     group: 'Workspace',
     intro: translate('shared.catalog.diagnosticsThePiReleaseInUseSaved'),
+    desktopOnly: true,
   },
   {
     id: 'voice',
     label: translate('shared.catalog.voice'),
     group: 'App',
     intro: translate('shared.catalog.dictateIntoTheComposerWhistleRunsOn'),
+    desktopOnly: true,
   },
 ];
 

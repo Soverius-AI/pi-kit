@@ -9,6 +9,7 @@ import {
   sectionById,
 } from '@pi-kit/ui';
 import { AttendantStore } from '@pi-kit/threads/api';
+import { isDeviceConnection } from '@pi-kit/api';
 import { EnvironmentsStore, UiStore } from '@pi-kit/data-access';
 import { keepFocusInside, PkIcon, type PkIconName, PkTip } from '@pi-kit/design-system';
 import { KeyWorkflow, LocalRuntimeWizard } from '@pi-kit/settings/api';
@@ -232,9 +233,10 @@ import { ComputerUseSection } from './computer-use-section';
                     <pk-voice-section />
                   }
                   @case ('remote-access') {
-                    <pk-environment-section />
-                    <pk-environment-peers-section />
-                    <pk-remote-access-section />
+                    <pk-remote-access-section>
+                      <pk-environment-section />
+                      <pk-environment-peers-section />
+                    </pk-remote-access-section>
                   }
                   @case ('computer-use') {
                     <pk-computer-use-section />
@@ -298,12 +300,13 @@ export class SettingsWindow {
   }
 
   protected sectionsOf(group: string): SettingsSection[] {
-    return settingsSections(this.i18n.t).filter((s) => s.group === group);
+    return settingsSections(this.i18n.t).filter((s) => s.group === group && !(this.device && s.desktopOnly));
   }
 
   protected title(id: SettingsSectionId): string {
     return sectionById(this.i18n.t, id).label;
   }
+  protected readonly device = isDeviceConnection();
   protected intro(id: SettingsSectionId): string {
     return sectionById(this.i18n.t, id).intro;
   }

@@ -2,7 +2,8 @@ import { TranslocoPipe } from '@pi-kit/i18n';
 import { NgComponentOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { CopilotChatAttachmentQueue, CopilotChatInput, injectChatState } from '@copilotkit/angular';
-import { PkAnsiText, PkComposerWell } from '@pi-kit/design-system';
+import { PkAnsiText, PkChangesPill, PkComposerWell } from '@pi-kit/design-system';
+import { ChangesStore } from '@pi-kit/review/api';
 import { GraphStore } from '@pi-kit/session-tree/api';
 import { ChatStore, NEW_THREAD_COMPOSER, type NewThreadComposerSlots, VoiceStore } from '@pi-kit/chat/data';
 import { SkillChip } from '@pi-kit/chat/ui';
@@ -36,6 +37,7 @@ import { VoiceHint } from './voice-hint';
     CopilotChatInput,
     NgComponentOutlet,
     PkAnsiText,
+    PkChangesPill,
     PkComposerWell,
     QueueBar,
     SkillChip,
@@ -127,6 +129,16 @@ import { VoiceHint } from './voice-hint';
             >
           }
           <span class="ml-auto pk-hide-sm">{{ 'chat.inputContainer.sendNewlineEscStop' | transloco }}</span>
+          @if (review.mode() === 'chat' && review.files().length) {
+            <span class="ml-auto pk-only-sm">
+              <pk-changes-pill
+                [added]="review.totals().added"
+                [removed]="review.totals().removed"
+                [title]="('shell.app.reviewChanges' | transloco) + ': ' + review.summary()"
+                (pressed)="review.open()"
+              />
+            </span>
+          }
         </div>
       </div>
     </div>
@@ -136,6 +148,7 @@ export class InputContainer {
   protected readonly chat = inject(ChatStore);
   protected readonly tree = inject(GraphStore);
   protected readonly voice = inject(VoiceStore);
+  protected readonly review = inject(ChangesStore);
   protected readonly state = injectChatState();
   protected readonly field = ComposerField;
   protected readonly toolbar = ComposerToolbar;

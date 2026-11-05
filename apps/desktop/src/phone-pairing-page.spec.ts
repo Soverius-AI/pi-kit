@@ -80,7 +80,7 @@ describe('on-device pairing camera', () => {
     expect(f.context.history.replaceState).toHaveBeenCalledWith(null, '', '/phone');
     const html = PairingPage.html('test-nonce');
     expect(html).toContain('playsinline');
-    expect(html).toContain('viewport-fit=cover');
+    expect(html).not.toContain('viewport-fit=cover');
     expect(html).toContain('safe-area-inset-bottom');
     expect(html).toContain('Camera images stay on this device');
     expect(html).toContain('nonce="test-nonce" src="/phone/jsQR.js"');

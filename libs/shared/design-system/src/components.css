@@ -2908,13 +2908,6 @@
     padding: 0;
     overflow: hidden;
   }
-  .pk-diff .rows {
-    width: auto;
-  }
-  .pk-diff .rows .ln .c {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
   .pk-diff.compact .ln {
     grid-template-columns: 0 36px minmax(0, 1fr);
   }
@@ -3448,7 +3441,7 @@
   color: var(--pk-muted);
   text-align: center;
 }
-.pk-group .row.stack {
+.pk-group .row.stacked {
   grid-template-columns: minmax(0, 1fr);
   row-gap: 12px;
 }
@@ -4187,16 +4180,22 @@ pk-onboarding-strip {
 }
 
 @media (max-width: 767px) {
+  /* A phone gets Settings as an opaque full screen page: pinned to all four edges, nothing of the app behind showing through. */
   .pk-settings {
-    padding: var(--pk-safe-top) var(--pk-safe-right) var(--pk-safe-bottom) var(--pk-safe-left);
+    padding: 0;
+    background: var(--color-base-100);
   }
   .pk-settings .win {
+    position: fixed;
+    inset: 0;
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 56px auto minmax(0, 1fr);
     border-radius: 0;
-    height: 100%;
+    box-shadow: none;
+    height: auto;
     min-height: 0;
-    width: 100%;
+    width: auto;
+    padding: var(--pk-safe-top) var(--pk-safe-right) var(--pk-safe-bottom) var(--pk-safe-left);
   }
   .pk-group > header {
     flex-wrap: wrap;
@@ -7490,4 +7489,18 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
   .pk-tab-list [role='tab'] {
     transition: none;
   }
+}
+
+/* A run error or notice in the transcript: the message wraps, even a long unbroken JSON body, and its buttons stay inside the box. */
+.pk-messages .alert {
+  display: flex;
+  align-items: flex-start;
+}
+.pk-messages .alert > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pk-messages .alert > .btn {
+  flex: none;
 }

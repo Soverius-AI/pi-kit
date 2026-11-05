@@ -4273,7 +4273,10 @@
         "setup": "Setup needed"
       },
       "setupOpened": "Complete setup in the window that opened, then check again. Opening it does not enable remote access.",
-      "checkAgain": "Check again"
+      "checkAgain": "Check again",
+      "closePairing": "Done",
+      "tabConnection": "Connection",
+      "tabEnvironments": "Environments"
     }
   },
   "agents": {

@@ -26,6 +26,7 @@ import {
   mcpSaveFile,
   settingsDecide,
   unwrap,
+  isDeviceConnection,
 } from '@pi-kit/api';
 import { ToastStore, withLatestRequest, withRequestStatus } from '@pi-kit/data-access';
 import {
@@ -558,6 +559,8 @@ export const ConnectorsStore = signalStore(
   }),
   withHooks({
     onInit(store) {
+      // Connectors are configured on the computer; a paired device never reads them.
+      if (isDeviceConnection()) return;
       const threads = inject(ThreadsStore);
       effect(() => {
         threads.selectedId();

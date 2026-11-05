@@ -1,4 +1,7 @@
 :host {
+  display: block;
+}
+.tab {
   display: grid;
   gap: 20px;
 }
@@ -20,6 +23,16 @@
   border-color: var(--color-primary);
   color: var(--color-primary);
 }
+.pairing {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+  text-align: center;
+}
+.pairing h2 {
+  font-size: 16px;
+  font-weight: 500;
+}
 .pairing img {
   background: #fff;
   border-radius: 8px;
@@ -29,6 +42,26 @@
   height: auto;
 }
 .pairing-code {
-  font-size: 18px;
+  font-size: 22px;
   letter-spacing: 0.14em;
+}
+.pairing .request {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: start;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-base-300);
+}
+.pairing .request .lbl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pairing .request .min-w-0 {
+  flex: 1;
+}
+.pairing .modal-action {
+  width: 100%;
 }

@@ -105,9 +105,6 @@
 .pk-header-actions {
   min-width: 0;
 }
-.pk-changes-row {
-  display: none;
-}
 .pk-crumbs {
   height: 28px;
   display: flex;
@@ -1286,13 +1283,6 @@ html[data-sidebar-drag] {
   }
   .pk-hide-sm {
     display: none !important;
-  }
-  .pk-changes-row {
-    display: flex;
-    align-items: center;
-    padding: 4px var(--pk-gutter);
-    background: var(--color-base-100);
-    border-bottom: 1px solid var(--color-base-300);
   }
 }
 

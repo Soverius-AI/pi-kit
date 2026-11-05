@@ -42,7 +42,7 @@ import type { PeerManager, PeerSummary } from '@pi-kit/protocol';
         }
       </header>
       @if (!readOnly) {
-        <div class="row stack">
+        <div class="row stacked">
           <p class="hint">{{ 'environments.pairing.keyPolicy' | transloco }}</p>
           <label class="flex items-center gap-2 t-sm">
             <input

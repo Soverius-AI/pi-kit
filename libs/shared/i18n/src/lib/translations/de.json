@@ -4273,7 +4273,10 @@
         "setup": "Einrichtung nötig"
       },
       "setupOpened": "Schließe die Einrichtung im geöffneten Fenster ab und prüfe dann erneut. Das Öffnen aktiviert noch keinen Smartphone-Zugriff.",
-      "checkAgain": "Erneut prüfen"
+      "checkAgain": "Erneut prüfen",
+      "closePairing": "Fertig",
+      "tabConnection": "Verbindung",
+      "tabEnvironments": "Umgebungen"
     }
   },
   "agents": {

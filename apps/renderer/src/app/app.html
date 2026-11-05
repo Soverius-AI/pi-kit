@@ -21,8 +21,9 @@
         for="t-threads"
         class="btn btn-ghost btn-sm btn-square pk-only-sm"
         [title]="'shell.app.threads' | transloco"
-        >☰</label
-      >
+        [attr.aria-label]="'shell.app.threads' | transloco"
+        ><pk-icon name="sidebar" size="16"
+      /></label>
       <!-- The wide window's sidebar switch (⌘B); below 1024px ☰ above opens the drawer instead. -->
       <button
         type="button"
@@ -63,17 +64,6 @@
         <pk-panel-switcher />
       </div>
     </header>
-    <!-- On a phone the changes tag gets its own row: in the header it pushed the panel switcher out of reach. -->
-    @if (changes()) {
-      <div class="pk-changes-row">
-        <pk-changes-pill
-          [added]="review.totals().added"
-          [removed]="review.totals().removed"
-          [title]="('shell.app.reviewChanges' | transloco) + ': ' + review.summary()"
-          (pressed)="review.open()"
-        />
-      </div>
-    }
     @if (review.mode() === 'review' && !threads.selected()?.learning) {
       <pk-review-toolbar />
     }

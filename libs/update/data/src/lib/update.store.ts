@@ -16,6 +16,7 @@ import {
   updateReleases,
   updateRestart,
   updateStart,
+  isDeviceConnection,
 } from '@pi-kit/api';
 import { ToastStore, withRequestStatus } from '@pi-kit/data-access';
 import type { PiResolution, UpdateRow, UpdateStatus, UpdateTarget } from '@pi-kit/protocol';
@@ -244,7 +245,8 @@ export const UpdateStore = signalStore(
   }),
   withHooks({
     onInit(store) {
-      store.connect();
+      // Updates belong to the computer; a paired device has no update feed to follow.
+      if (!isDeviceConnection()) store.connect();
     },
   }),
 );

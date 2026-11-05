@@ -1,6 +1,7 @@
 import { Language } from '@pi-kit/i18n';
 import { computed, inject } from '@angular/core';
 import { signalStoreFeature, withComputed, withProps, withState } from '@ngrx/signals';
+import { isDeviceConnection } from '@pi-kit/api';
 import { ViewPrefs, withLatestRequest, withRequestStatus } from '@pi-kit/data-access';
 import { groupProviders, type KeybindingInfo } from '@pi-kit/protocol';
 import { ThreadsStore } from '@pi-kit/threads/api';
@@ -37,6 +38,7 @@ export function withSettingsState() {
       const threads = inject(ThreadsStore);
       const mcp = inject(ConnectorsStore);
       const matches = computed(() => searchSettings(translate, store.search()));
+      const device = isDeviceConnection();
       const piBindings = computed<KeybindingInfo[]>(() => store.overview()?.keybindings ?? []);
       const kitCombos = computed(() => prefs.combos());
       return {
@@ -44,14 +46,15 @@ export function withSettingsState() {
         /** The ids of the settings the search matches (all of them while it is empty). */
         matches,
         searching: computed(() => store.search().trim() !== ''),
-        /** The sections to draw: the chosen one, or every section with a match while searching. */
-        visibleSections: computed(() =>
-          store.search().trim() === ''
-            ? [store.section()]
-            : settingsSections(translate)
-                .map((s) => s.id)
-                .filter((id) => matchCounts(translate, matches()).has(id)),
-        ),
+        /** The sections to draw: the chosen one, or every section with a match while searching. A paired device never sees the sections that manage the computer. */
+        visibleSections: computed(() => {
+          const shown = settingsSections(translate).filter((s) => !(device && s.desktopOnly));
+          return store.search().trim() === ''
+            ? shown.some((s) => s.id === store.section())
+              ? [store.section()]
+              : [shown[0].id]
+            : shown.map((s) => s.id).filter((id) => matchCounts(translate, matches()).has(id));
+        }),
         matchCounts: computed(() => matchCounts(translate, matches())),
         workspaces: computed(() => threads.workspaces()),
         piBindings,

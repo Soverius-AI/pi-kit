@@ -70,7 +70,7 @@ function size(bytes: number): string {
                 </div>
               </div>
               @if (store.diagnostics(); as d) {
-                <div class="row stack">
+                <div class="row stacked">
                   <dl class="kv">
                     <dt>{{ 'settings.advancedSection.backend' | transloco }}</dt>
                     <dd>
@@ -115,7 +115,7 @@ function size(bytes: number): string {
                     <dd class="mono break-all">{{ d.paths.logDir }}</dd>
                   </dl>
                 </div>
-                <div class="row stack" data-testid="log-files">
+                <div class="row stacked" data-testid="log-files">
                   <div class="min-w-0">
                     <div class="lbl">{{ 'settings.advancedSection.logFiles' | transloco }}</div>
                     @for (log of d.logs; track log.path) {
@@ -130,7 +130,7 @@ function size(bytes: number): string {
                   </div>
                 </div>
                 @if (d.flags.length > 0) {
-                  <div class="row stack">
+                  <div class="row stacked">
                     <div class="min-w-0">
                       <div class="lbl">{{ 'settings.advancedSection.switchesSet' | transloco }}</div>
                       <div class="hint mono break-all">

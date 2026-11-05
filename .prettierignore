@@ -8,3 +8,5 @@ libs/shared/api/src/generated/
 tmp/
 pnpm-lock.yaml
 *.md
+doc/.docusaurus/
+doc/build/

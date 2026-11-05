@@ -1,4 +1,5 @@
-import { PkIcon } from '@pi-kit/design-system';
+import { CdkTrapFocus } from '@angular/cdk/a11y';
+import { PkIcon, PkTabPanel, PkTabs } from '@pi-kit/design-system';
 import { PkSetting } from '@pi-kit/settings/api';
 import { readStorage, writeStorage } from '@pi-kit/data-access';
 import { DatePipe } from '@angular/common';
@@ -12,7 +13,7 @@ const PORT_STORAGE_KEY = 'pi-kit.remoteAccess.port';
 /** Desktop-owned, explicitly enabled remote access. Pairing secrets stay in memory. */
 @Component({
   selector: 'pk-remote-access-section',
-  imports: [TranslocoPipe, DatePipe, PkIcon, PkSetting],
+  imports: [TranslocoPipe, DatePipe, PkIcon, PkSetting, PkTabs, PkTabPanel, CdkTrapFocus],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './remote-access-section.html',
   styleUrl: './remote-access-section.css',
@@ -26,6 +27,7 @@ export class RemoteAccessSection implements OnInit {
   // A web renderer must not synthesize a desktop bridge or use backend APIs as a fallback.
   private readonly bridge = window.piKit;
   protected readonly desktop = typeof this.bridge?.getRemoteAccessStatus === 'function';
+  protected readonly tab = signal(this.desktop ? 'connection' : 'environments');
   private readonly destroyRef = inject(DestroyRef);
   private generation = 0;
   private pollPending = false;
@@ -135,6 +137,9 @@ export class RemoteAccessSection implements OnInit {
     if (this.status()?.state !== 'serving') return Promise.resolve();
     this.pairingRequested.set(true);
     return this.call((bridge) => bridge.beginRemotePairing?.());
+  }
+  protected closePairing(): void {
+    this.pairingRequested.set(false);
   }
   protected approve(id: string): Promise<void> {
     return this.call((bridge) => bridge.approveRemotePairing?.(id));

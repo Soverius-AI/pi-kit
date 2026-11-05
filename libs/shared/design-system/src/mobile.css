@@ -36,13 +36,42 @@
     gap: 4px;
     margin-left: 0;
   }
-  .pk-toolbar.compact .pk-tools .btn,
   .pk-toolbar.compact .pk-ghost,
   .pk-toolbar.compact .pk-send,
   .pk-toolbar.compact .pk-ring {
     width: 44px;
     height: 44px;
     min-height: 44px;
+  }
+  /* The tools pill matches the 40px settings chips below it instead of three 44px circles. */
+  .pk-toolbar.compact .pk-tools .btn {
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+  }
+  .pk-toolbar.compact .pk-composer-settings .pk-chip > .btn .chev {
+    margin-left: auto;
+  }
+  .pk-hint {
+    align-items: center;
+  }
+  /* The header's square buttons (threads, side panels) as 44px touch targets with 20px icons, like the composer's. */
+  .pk-header .btn-square {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+  /* Icons inside the 44px phone buttons (header, tools, voice, send): 20px, not the 14 to 16px of the desktop's 32px buttons. */
+  :is(.pk-header .btn-square, .pk-toolbar.compact :is(.pk-ghost, .pk-send, .pk-tools .btn))
+    :is(.pk-icon, copilot-icon, copilot-icon svg) {
+    --pk-icon-size: 20px !important;
+    width: 20px;
+    height: 20px;
+  }
+  /* No hover on a phone: an answer's buttons take their own row instead of floating over its usage line. */
+  .pk-messages .copilotKitAssistantMessage .pk-actions {
+    position: static;
+    margin-top: 4px;
   }
   .pk-toolbar.compact > .pk-ghost {
     order: 1;
@@ -56,11 +85,47 @@
   }
 }
 @media (max-width: 359px) {
-  .pk-toolbar.compact .pk-tools .btn,
   .pk-toolbar.compact .pk-ghost,
   .pk-toolbar.compact .pk-ring {
     width: 40px;
     height: 40px;
     min-height: 40px;
+  }
+}
+/* Phones: an idle, empty composer is one row (the tools button, the prompt, voice and send) and opens into the full composer as soon as the
+   prompt gets the focus or holds text. The toolbar and its slot dissolve into the input's row for that, so no markup changes. */
+@media (max-width: 767px) {
+  .pk-well:not(:focus-within):has(textarea:placeholder-shown) .copilotKitInput {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 6px;
+  }
+  .pk-well:not(:focus-within):has(textarea:placeholder-shown) .copilotKitInput > copilot-slot,
+  .pk-well:not(:focus-within):has(textarea:placeholder-shown) pk-composer-toolbar {
+    display: contents;
+  }
+  .pk-well:not(:focus-within):has(textarea:placeholder-shown) pk-composer-field {
+    order: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .pk-well:not(:focus-within):has(textarea:placeholder-shown) textarea {
+    height: 40px !important;
+    padding: 8px 4px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .pk-well:not(:focus-within):has(textarea:placeholder-shown) .pk-tools {
+    order: 0;
+  }
+  .pk-well:not(:focus-within):has(textarea:placeholder-shown) .end {
+    order: 2;
+    margin-left: auto;
+  }
+  .pk-well:not(:focus-within):has(textarea:placeholder-shown)
+    :is(.pk-tools .btn[data-action], .pk-composer-settings, .grow, pk-composer-toolbar > .pk-ghost, pk-context-ring) {
+    display: none;
   }
 }
