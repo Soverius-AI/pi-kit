@@ -209,9 +209,9 @@ describe('ChatGPT subscription model catalog', () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it('filters API-only and retired models from both providers, including cycling snapshots and direct selection', async () => {
+  it('filters API-only and retired models, including cycling snapshots and direct selection', async () => {
     const { runtime } = await world();
-    for (const provider of ['openai', 'openai-codex']) {
+    for (const provider of ['openai']) {
       const ids = (await runtime.getAvailable(provider)).map((m) => m.id);
       expect(ids).toEqual(expect.arrayContaining(['gpt-6.1-sol', 'gpt-6-luna', 'gpt-5.6-sol']));
       for (const id of [
@@ -232,6 +232,18 @@ describe('ChatGPT subscription model catalog', () => {
       }
     }
     expect((await runtime.getAvailable()).some((m) => m.id === 'gpt-5.5')).toBe(false);
+  });
+
+  it('removes the legacy Codex provider even when it has saved credentials', async () => {
+    const { runtime } = await world();
+    expect(runtime.getProvider('openai-codex')).toBeUndefined();
+    expect(runtime.getProviders().some((p) => p.id === 'openai-codex')).toBe(false);
+    expect(await runtime.getAvailable('openai-codex')).toEqual([]);
+    expect(runtime.getModels('openai-codex')).toEqual([]);
+    expect(runtime.getAvailableSnapshot().some((m) => m.provider === 'openai-codex')).toBe(false);
+    await runtime.refresh({ allowNetwork: false });
+    expect(runtime.getProvider('openai-codex')).toBeUndefined();
+    expect(runtime.getProvider('openai')).toBeDefined();
   });
 
   it('preserves the OpenAI API-key catalog while filtering the legacy Codex subscription', async () => {

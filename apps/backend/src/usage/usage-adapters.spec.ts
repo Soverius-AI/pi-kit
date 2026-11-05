@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   type Fetcher,
-  anthropicUsage,
+  USAGE_ADAPTERS,
   openaiCodexUsage,
   parseOpenAICodexUsage,
   openrouterUsage,
-  parseAnthropicUsage,
   parseOpenRouterCredits,
   parseOpenRouterKey,
   parseRadiusBilling,
@@ -14,17 +13,8 @@ import {
 
 /**
  * The bodies below are the shapes the providers answer with, written from their documentation and from the open-source clients that read the same endpoints: they are NOT
- * recordings of a live account (the suite never touches one). Anthropic's endpoint is the one Claude Code's `/usage` reads and is not a documented API, so the adapter
- * takes only what it recognises.
+ * recordings of a live account (the suite never touches one).
  */
-const ANTHROPIC_BODY = {
-  five_hour: { utilization: 38.0, resets_at: '2026-10-17T14:30:00.000000+00:00' },
-  seven_day: { utilization: 12.0, resets_at: '2026-10-22T09:00:00.000000+00:00' },
-  seven_day_oauth_apps: null,
-  seven_day_opus: null,
-  seven_day_sonnet: { utilization: 4.0, resets_at: '2026-10-22T09:00:00.000000+00:00' },
-  extra_usage: { is_enabled: false, monthly_limit: null, used_credits: null, utilization: null },
-};
 const OPENROUTER_CREDITS = { data: { total_credits: 100.5, total_usage: 59.3 } };
 const OPENROUTER_KEY = {
   data: { label: 'pi-kit', limit: 50, limit_reset: 'monthly', limit_remaining: 41.2, usage: 8.8, is_free_tier: false },
@@ -37,6 +27,10 @@ const answer = (status: number, body: unknown): Awaited<ReturnType<Fetcher>> => 
 });
 const signal = new AbortController().signal;
 afterEach(() => vi.unstubAllEnvs());
+
+it('does not register subscription usage polling for Anthropic', () => {
+  expect(USAGE_ADAPTERS.some((adapter) => adapter.providers.includes('anthropic'))).toBe(false);
+});
 
 describe('Radius credit', () => {
   const billing = { ok: true, currency: 'USD', balance: { credit_balance: 50, reserved: 8.8, available: 41.2 } };
@@ -84,46 +78,6 @@ describe('Radius credit', () => {
       .mockResolvedValueOnce(answer(200, { ok: true, organization: { id: 'org' } }))
       .mockResolvedValueOnce(answer(403, {}));
     expect(await radiusUsage.fetch('radius-token', refused, signal)).toBeNull();
-  });
-});
-
-describe('Anthropic subscription usage', () => {
-  it('turns the 5 h and week windows into percentages with their reset times, leaving out windows that are null or unused', () => {
-    expect(parseAnthropicUsage(ANTHROPIC_BODY)).toEqual({
-      windows: [
-        { name: '5 h', used: 38, resets: '2026-10-17T14:30:00.000000+00:00' },
-        { name: 'week', used: 12, resets: '2026-10-22T09:00:00.000000+00:00' },
-        { name: 'Sonnet week', used: 4, resets: '2026-10-22T09:00:00.000000+00:00' },
-      ],
-    });
-    expect(
-      parseAnthropicUsage({ ...ANTHROPIC_BODY, seven_day_sonnet: { utilization: 0, resets_at: null } })?.windows.map(
-        (w) => w.name,
-      ),
-    ).toEqual(['5 h', 'week']);
-  });
-
-  it('clamps to 0..100 and answers null for a body it does not recognise', () => {
-    expect(parseAnthropicUsage({ five_hour: { utilization: 140, resets_at: null } })).toEqual({
-      windows: [{ name: '5 h', used: 100 }],
-    });
-    expect(parseAnthropicUsage({ error: { type: 'authentication_error' } })).toBeNull();
-    expect(parseAnthropicUsage('nope')).toBeNull();
-    expect(parseAnthropicUsage(null)).toBeNull();
-  });
-
-  it('asks the OAuth usage endpoint with the bearer token and the OAuth beta header, and answers null when it refuses', async () => {
-    const calls: Array<{ url: string; headers: Record<string, string> }> = [];
-    const ok: Fetcher = (url, init) => {
-      calls.push({ url, headers: init.headers });
-      return Promise.resolve(answer(200, ANTHROPIC_BODY));
-    };
-    expect((await anthropicUsage.fetch('tok-123', ok, signal))?.windows).toHaveLength(3);
-    expect(calls[0].url).toBe('https://api.anthropic.com/api/oauth/usage');
-    expect(calls[0].headers).toMatchObject({ authorization: 'Bearer tok-123', 'anthropic-beta': 'oauth-2025-04-20' });
-    expect(
-      await anthropicUsage.fetch('tok-123', () => Promise.resolve(answer(429, { error: 'rate_limit_error' })), signal),
-    ).toBeNull();
   });
 });
 

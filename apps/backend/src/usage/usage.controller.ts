@@ -21,7 +21,7 @@ export class UsageController {
   @ApiOperation({
     summary: "Get a provider's usage",
     description:
-      'Returns how much of a subscription window is used or how much credit is left, where the provider offers it (Anthropic subscriptions, OpenRouter, Radius), and `null` where it does not. Cached for one minute unless refresh is enabled; concurrent reads share one request. The credential is never part of the answer.',
+      'Returns how much of a subscription window is used or how much credit is left, where the provider offers it (OpenAI subscriptions, OpenRouter, Radius), and `null` where it does not. Cached for one minute unless refresh is enabled; concurrent reads share one request. The credential is never part of the answer.',
   })
   @Responds(ProviderUsageSchema.nullable())
   async get(

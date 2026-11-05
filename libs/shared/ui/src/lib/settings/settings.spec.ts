@@ -199,6 +199,17 @@ describe('the API key helpers', () => {
     );
   });
 
+  it('rejects Anthropic subscription tokens and explains separate API billing', () => {
+    for (const prefix of ['sk-ant-oat01-', 'sk-ant-ort01-']) {
+      const token = `${prefix}${'x'.repeat(40)}`;
+      const shape = checkKeyShape(english, 'anthropic', 'Anthropic', token);
+      expect(shape.state).toBe('mismatch');
+      expect(shape.message).toContain('billed separately');
+      expect(shape.message).not.toContain(token);
+    }
+    expect(checkKeyShape(english, 'anthropic', 'Anthropic', `sk-ant-api03-${'x'.repeat(40)}`).state).toBe('ok');
+  });
+
   it('never puts the text in its message', () => {
     const secret = `sk-or-v1-${'q9Zk'.repeat(10)}`;
     for (const shape of [

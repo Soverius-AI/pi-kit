@@ -23,6 +23,7 @@ import { removeConfiguredProvider } from '../setup/local-models';
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent' with { 'resolution-mode': 'import' };
 import { loadPi } from './load-pi';
 import { createModelRuntime } from './model-runtime';
+import { assertAnthropicApiKey, createApiKeyOnlyRuntime } from './anthropic-api-key-policy';
 import { piKeybindings, savePiKeybindings } from './pi-keybindings';
 import { PiSessionService } from './pi-session.service';
 
@@ -230,9 +231,11 @@ export class PiConfigService {
     onSignedIn?: () => void,
     withRuntime?: ModelRuntime,
   ): Promise<LoginRun> {
+    if (provider === 'anthropic' && type !== 'api_key')
+      throw new Error('Anthropic requires a paid Claude Console API key. Claude subscription login is not supported.');
     const pi = await loadPi();
     // `withRuntime` is for tests: a runtime that has a provider registered whose sign-in talks to a mock server.
-    const runtime = withRuntime ?? (await pi.ModelRuntime.create());
+    const runtime = withRuntime ?? (await createApiKeyOnlyRuntime(pi));
     const known = runtime.getProvider(provider);
     if (!known) throw new Error(`Unknown provider "${provider}".`);
     const method = type === 'oauth' ? known.auth.oauth : known.auth.apiKey;
@@ -243,6 +246,7 @@ export class PiConfigService {
     if (type === 'api_key' && this.secrets) {
       const secrets = this.secrets;
       run.secretFilter = async (value) => {
+        if (provider === 'anthropic') assertAnthropicApiKey(value);
         const kept = await secrets.keep(provider, value.trim());
         if (kept.storage === 'auth.json')
           run.push({
@@ -295,7 +299,7 @@ export class PiConfigService {
 
   async logout(provider: string): Promise<void> {
     const pi = await loadPi();
-    const runtime = await pi.ModelRuntime.create();
+    const runtime = await createApiKeyOnlyRuntime(pi);
     // A key that pi-kit keeps in the credential store goes with the sign-out (what `auth.json` holds is only the command that printed it).
     let kept: boolean;
     try {
@@ -347,7 +351,7 @@ export class PiConfigService {
     for (const provider of runtime.getProviders()) {
       const methods: ProviderInfo['methods'] = [];
       if (provider.auth.apiKey?.login) methods.push('api_key');
-      if (provider.auth.oauth) methods.push('oauth');
+      if (provider.id !== 'anthropic' && provider.auth.oauth) methods.push('oauth');
       const status = runtime.getProviderAuthStatus(provider.id);
       const storedType = stored.get(provider.id);
       // Providers with no way to sign in and nothing configured are noise (ambient-only cloud providers, say).
@@ -356,7 +360,7 @@ export class PiConfigService {
         id: provider.id,
         name: provider.name,
         methods,
-        ...(provider.auth.oauth?.isSubscription ? { subscription: true } : {}),
+        ...(provider.id !== 'anthropic' && provider.auth.oauth?.isSubscription ? { subscription: true } : {}),
         configured: status.configured,
         ...(status.configured && status.source ? { source: status.source } : {}),
         ...(status.configured && 'label' in status && status.label ? { label: status.label } : {}),
@@ -420,7 +424,7 @@ export class PiConfigService {
     if (!secrets.credentialsEnabled())
       throw new Error('Credential-store storage is disabled. Enable it before moving keys.');
     const pi = await loadPi();
-    const runtime = await pi.ModelRuntime.create();
+    const runtime = await createApiKeyOnlyRuntime(pi);
     const authPath = join(pi.getAgentDir(), 'auth.json');
     const result: MoveKeysResult = { moved: [], failed: [] };
     const answering = (value: string): Interaction & { signal: AbortSignal } => ({
@@ -541,7 +545,7 @@ export class PiConfigService {
    */
   async usageCredential(provider: string): Promise<{ type: 'oauth' | 'api_key'; token: string } | undefined> {
     const pi = await loadPi();
-    const runtime = await pi.ModelRuntime.create();
+    const runtime = await createApiKeyOnlyRuntime(pi);
     if (!runtime.getProvider(provider)) return undefined;
     const token = (await runtime.getAuth(provider))?.auth.apiKey;
     return token ? { type: runtime.isUsingOAuth(provider) ? 'oauth' : 'api_key', token } : undefined;

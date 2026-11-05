@@ -3146,7 +3146,7 @@ export const localRuntimeCancel = <ThrowOnError extends boolean = false>(options
 /**
  * Get a provider's usage
  *
- * Returns how much of a subscription window is used or how much credit is left, where the provider offers it (Anthropic subscriptions, OpenRouter, Radius), and `null` where it does not. Cached for one minute unless refresh is enabled; concurrent reads share one request. The credential is never part of the answer.
+ * Returns how much of a subscription window is used or how much credit is left, where the provider offers it (OpenAI subscriptions, OpenRouter, Radius), and `null` where it does not. Cached for one minute unless refresh is enabled; concurrent reads share one request. The credential is never part of the answer.
  */
 export const usageGet = <ThrowOnError extends boolean = false>(options: Options<UsageGetData, ThrowOnError>): RequestResult<UsageGetResponses, UsageGetErrors, ThrowOnError> => (options.client ?? client).get<UsageGetResponses, UsageGetErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

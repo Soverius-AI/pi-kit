@@ -39,7 +39,6 @@ const providerMarks = new Map<string, string>([
   ['z-ai', 'zai'],
   ['zai-coding-plan', 'zai'],
   ['openai', 'openai'],
-  ['openai-codex', 'openai'],
   ['mistral', 'mistral'],
   ['groq', 'groq'],
   ['github-copilot', 'githubcopilot'],

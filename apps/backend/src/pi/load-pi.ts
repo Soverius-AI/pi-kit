@@ -2,12 +2,14 @@ export type PiModule = typeof import('@earendil-works/pi-coding-agent', { with: 
 export type PiMcpModule = typeof import('@earendil-works/pi-mcp', { with: { 'resolution-mode': 'import' } });
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { PiResolution, PiSdkRange } from '@pi-kit/protocol';
 // eslint-disable-next-line @nx/enforce-module-boundaries -- The supported SDK range is declared in the workspace build manifest.
 import rootPackage from '../../../../package.json';
 import { agentDirOf, bundledPiDir, piMcpEntry, resolvePi } from './pi-resolution';
+import { createApiKeyOnlyRuntime } from './anthropic-api-key-policy';
 
 /**
  * `@earendil-works/pi-coding-agent` is ESM-only (its `exports` map has no `require` condition) and
@@ -23,6 +25,21 @@ const nativeImport = new Function('specifier', 'return import(specifier)') as <T
 let piModule: Promise<PiModule> | undefined;
 let piMcpModule: Promise<PiMcpModule> | undefined;
 let resolution: PiResolution | undefined;
+
+/** Preserve the SDK's per-session credential/model paths when supplying our runtime. */
+export function sessionRuntimeOptions(agentDir?: string): Parameters<PiModule['ModelRuntime']['create']>[0] {
+  if (!agentDir) return {};
+  const expanded =
+    agentDir === '~'
+      ? homedir()
+      : agentDir.startsWith('~/') || (process.platform === 'win32' && agentDir.startsWith('~\\'))
+        ? join(homedir(), agentDir.slice(2))
+        : agentDir.startsWith('file://')
+          ? fileURLToPath(agentDir)
+          : agentDir;
+  const dir = resolve(expanded);
+  return { authPath: join(dir, 'auth.json'), modelsPath: join(dir, 'models.json') };
+}
 
 /** The SDK range this pi-kit was built against: `piSdk` of the root `package.json`. */
 export const PI_SDK_RANGE: PiSdkRange = (rootPackage as { piSdk: PiSdkRange }).piSdk;
@@ -85,7 +102,22 @@ export function loadPi(): Promise<PiModule> {
       } catch {
         // No theme means `ctx.ui.theme` throws for an extension that uses it; nothing else depends on it.
       }
-      return pi;
+      // ESM namespaces are immutable. Expose an app-owned facade rather than
+      // mutating the installed SDK; direct runtime creation must obey the same
+      // policy as session-lifecycle's createModelRuntime helper.
+      const PolicyModelRuntime = Object.assign(Object.create(pi.ModelRuntime) as PiModule['ModelRuntime'], {
+        create: (options?: Parameters<PiModule['ModelRuntime']['create']>[0]) => createApiKeyOnlyRuntime(pi, options),
+      });
+      return {
+        ...pi,
+        ModelRuntime: PolicyModelRuntime,
+        createAgentSession: async (options: Parameters<PiModule['createAgentSession']>[0] = {}) =>
+          pi.createAgentSession({
+            ...options,
+            modelRuntime:
+              options.modelRuntime ?? (await createApiKeyOnlyRuntime(pi, sessionRuntimeOptions(options.agentDir))),
+          }),
+      } as PiModule;
     },
   );
   return piModule;

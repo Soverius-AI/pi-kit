@@ -3,9 +3,10 @@ import { THINKING_LEVELS } from '@pi-kit/protocol';
 import type { ModelRuntime } from '@earendil-works/pi-coding-agent' with { 'resolution-mode': 'import' };
 import type { PiModule } from './load-pi';
 import { chatGptModels, type ChatGptModel } from './chatgpt-model-catalog';
+import { createApiKeyOnlyRuntime } from './anthropic-api-key-policy';
 
 type Model = NonNullable<ReturnType<ModelRuntime['getModel']>>;
-const PROVIDERS = ['openai', 'openai-codex'];
+const PROVIDERS = ['openai'];
 const logger = new Logger('ChatGptModelCatalog');
 
 function liveModel(provider: string, entry: ChatGptModel, known?: Model): Model {
@@ -21,8 +22,8 @@ function liveModel(provider: string, entry: ChatGptModel, known?: Model): Model 
     id: entry.slug,
     name: entry.display_name,
     provider,
-    api: provider === 'openai-codex' ? 'openai-codex-responses' : 'openai-responses',
-    baseUrl: provider === 'openai-codex' ? 'https://chatgpt.com/backend-api' : 'https://api.openai.com/v1',
+    api: 'openai-responses',
+    baseUrl: 'https://api.openai.com/v1',
     input: input?.length ? input : (known?.input ?? ['text']),
     // New models can be selected before an SDK catalog update. Unknown limits/prices stay unknown.
     cost: known?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -143,7 +144,7 @@ export async function createModelRuntime(
   pi: PiModule,
   options?: Parameters<PiModule['ModelRuntime']['create']>[0],
 ): Promise<ModelRuntime> {
-  const runtime = withLiveSubscriptionModels(await pi.ModelRuntime.create(options));
+  const runtime = withLiveSubscriptionModels(await createApiKeyOnlyRuntime(pi, options));
   await runtime.getAvailable(undefined, { signal: options?.signal });
   return runtime;
 }

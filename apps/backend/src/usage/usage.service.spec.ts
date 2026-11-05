@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type Fetcher, type UsageAdapter } from './usage-adapters';
 import { USAGE_TTL_MS, UsageService } from './usage.service';
 
-const SECRET = 'sk-ant-oat-SECRET-TOKEN';
+const SECRET = 'SECRET-TOKEN';
 
 function setup(options: { type?: 'oauth' | 'api_key'; fail?: boolean } = {}) {
   let clock = 1_000;
   const asked: string[] = [];
   const adapter: UsageAdapter = {
-    providers: ['anthropic'],
+    providers: ['openai'],
     credential: 'oauth',
     fetch: (token) => {
       asked.push(token);
@@ -45,6 +45,15 @@ describe('UsageService', () => {
     },
   );
 
+  it('does not poll Anthropic usage or request its credentials', async () => {
+    const credentials = { usageCredential: vi.fn() };
+    const fetcher = vi.fn<Fetcher>();
+    const service = new UsageService(credentials, { fetcher });
+    expect(await service.usage('anthropic')).toBeNull();
+    expect(credentials.usageCredential).not.toHaveBeenCalled();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it('bypasses a fresh cache on refresh and makes concurrent cached readers wait for the new balance', async () => {
     let complete!: (value: { windows: []; credit: string }) => void;
     const fetch = vi
@@ -74,18 +83,18 @@ describe('UsageService', () => {
   });
   it('asks the provider once a minute and serves the rest from the cache', async () => {
     const { service, asked, advance } = setup();
-    expect(await service.usage('anthropic')).toEqual({ windows: [{ name: '5 h', used: 38 }] });
+    expect(await service.usage('openai')).toEqual({ windows: [{ name: '5 h', used: 38 }] });
     advance(USAGE_TTL_MS - 1);
-    await service.usage('anthropic');
+    await service.usage('openai');
     expect(asked).toHaveLength(1);
     advance(2);
-    await service.usage('anthropic');
+    await service.usage('openai');
     expect(asked).toHaveLength(2);
   });
 
   it('shares one request between callers that ask at the same time', async () => {
     const { service, asked } = setup();
-    await Promise.all([service.usage('anthropic'), service.usage('anthropic'), service.usage('anthropic')]);
+    await Promise.all([service.usage('openai'), service.usage('openai'), service.usage('openai')]);
     expect(asked).toHaveLength(1);
   });
 
@@ -98,19 +107,19 @@ describe('UsageService', () => {
 
   it('answers null when the sign-in is not the kind the source needs (an API key for the subscription endpoint)', async () => {
     const { service, asked } = setup({ type: 'api_key' });
-    expect(await service.usage('anthropic')).toBeNull();
+    expect(await service.usage('openai')).toBeNull();
     expect(asked).toHaveLength(0);
   });
 
   it('remembers a failure for the minute and never writes the token to the log', async () => {
     const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const { service, asked } = setup({ fail: true });
-    expect(await service.usage('anthropic')).toBeNull();
-    expect(await service.usage('anthropic')).toBeNull();
+    expect(await service.usage('openai')).toBeNull();
+    expect(await service.usage('openai')).toBeNull();
     expect(asked).toHaveLength(1);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(warn.mock.calls)).not.toContain(SECRET);
-    expect(JSON.stringify(warn.mock.calls)).toContain('anthropic');
+    expect(JSON.stringify(warn.mock.calls)).toContain('openai');
   });
 });
 
@@ -122,7 +131,7 @@ it.each(['openai', 'openai-codex'])('never sends a Platform API key to %s subscr
   expect(fetcher).not.toHaveBeenCalled();
 });
 
-it.each(['openai', 'openai-codex'])('registers %s OAuth usage with the shared cache and timeout', async (provider) => {
+it.each(['openai'])('registers %s OAuth usage with the shared cache and timeout', async (provider) => {
   const token = `test.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'example' } })).toString('base64url')}.signature`;
   const fetcher = vi.fn<Fetcher>().mockResolvedValue({
     ok: true,

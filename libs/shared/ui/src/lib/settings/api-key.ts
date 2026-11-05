@@ -24,7 +24,7 @@ const providerKeyHelp = (translate: Translate): Record<string, KeyHelp> => ({
     minLength: 30,
   },
   anthropic: {
-    url: 'https://console.anthropic.com/settings/keys',
+    url: 'https://platform.claude.com/settings/keys',
     needs: translate('shared.apiKey.aKeyFromTheAnthropicConsoleWith'),
     prefix: 'sk-ant-',
     minLength: 30,
@@ -117,6 +117,8 @@ export function checkKeyShape(translate: Translate, providerId: string, provider
         }
       : { state: 'mismatch', message: translate('shared.apiKey.thatIsTooShortToBeA') };
   }
+  if (providerId === 'anthropic' && /^sk-ant-(?:oat|ort)/i.test(text))
+    return { state: 'mismatch', message: help.needs };
   if (help.prefix && !text.startsWith(help.prefix))
     return {
       state: 'mismatch',

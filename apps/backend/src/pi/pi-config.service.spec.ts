@@ -66,6 +66,16 @@ describe('provider status', () => {
     expect(JSON.stringify(overview)).not.toContain('op://vault');
   });
 
+  it('offers Anthropic only through a paid API key, not a subscription', async () => {
+    const overview = await service().overview(agent);
+    const anthropic = overview.providers.find((p) => p.id === 'anthropic');
+    expect(anthropic?.methods).toEqual(['api_key']);
+    expect(anthropic?.subscription).toBeUndefined();
+    expect(overview.providers.some((p) => p.id === 'openai-codex')).toBe(false);
+    await expect(service().startLogin('openai-codex', 'oauth')).rejects.toThrow();
+    await expect(service().startLogin('anthropic', 'oauth')).rejects.toThrow('paid Claude Console API key');
+  });
+
   it('counts a provider with a usable model: the keyed local server from models.json, and every provider that has a stored credential', async () => {
     const usable = await service().usableProviders();
     const local = usable.find((p) => p.id === 'llama-swap');

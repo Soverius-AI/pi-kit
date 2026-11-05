@@ -20,8 +20,6 @@ export interface UsageAdapter {
 /**
  * The endpoints, each overridable by an environment variable so that the end-to-end tests ask a fake server instead of the provider (the tests never touch a real account). Nothing else sets them.
  */
-const ANTHROPIC_URL = (): string =>
-  process.env['PI_KIT_USAGE_ANTHROPIC_URL'] || 'https://api.anthropic.com/api/oauth/usage';
 const OPENAI_CODEX_URL = (): string =>
   process.env['PI_KIT_USAGE_OPENAI_CODEX_URL'] || 'https://chatgpt.com/backend-api/wham/usage';
 const OPENROUTER_BASE = (): string => process.env['PI_KIT_USAGE_OPENROUTER_BASE'] || 'https://openrouter.ai/api/v1';
@@ -35,52 +33,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const percent = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : undefined;
 const usd = (value: number): string => `$${(Math.round(value * 100) / 100).toFixed(2)}`;
-
-/** The windows of the answer of `GET https://api.anthropic.com/api/oauth/usage`, in the order a person reads them. */
-const ANTHROPIC_WINDOWS: ReadonlyArray<readonly [key: string, name: string]> = [
-  ['five_hour', '5 h'],
-  ['seven_day', 'week'],
-  ['seven_day_opus', 'Opus week'],
-  ['seven_day_sonnet', 'Sonnet week'],
-];
-
-/**
- * Anthropic subscriptions (Claude Pro and Max): the endpoint Claude Code's `/usage` reads, with the OAuth token pi stores. Not a documented API, so the parser takes only what it
- * recognises: a window is `{ utilization: 0..100, resets_at: ISO time | null }`, and a window that is `null` (a plan without an Opus limit) is left out.
- */
-export const anthropicUsage: UsageAdapter = {
-  providers: ['anthropic'],
-  credential: 'oauth',
-  async fetch(token, fetcher, signal) {
-    const response = await fetcher(ANTHROPIC_URL(), {
-      headers: {
-        authorization: `Bearer ${token}`,
-        'anthropic-beta': 'oauth-2025-04-20',
-        accept: 'application/json',
-        'user-agent': 'pi-kit',
-      },
-      signal,
-    });
-    if (!response.ok) return null;
-    return parseAnthropicUsage(await response.json());
-  },
-};
-
-export function parseAnthropicUsage(body: unknown): ProviderUsage | null {
-  if (!isRecord(body)) return null;
-  const windows: ProviderUsage['windows'] = [];
-  for (const [key, name] of ANTHROPIC_WINDOWS) {
-    const window = body[key];
-    if (!isRecord(window)) continue;
-    const used = percent(window['utilization']);
-    if (used === undefined) continue;
-    // The per-model windows only matter once they are used; an unused Opus window is noise next to "5 h" and "week".
-    if (key !== 'five_hour' && key !== 'seven_day' && used === 0) continue;
-    const resets = typeof window['resets_at'] === 'string' ? window['resets_at'] : undefined;
-    windows.push({ name, used, ...(resets ? { resets } : {}) });
-  }
-  return windows.length > 0 ? { windows } : null;
-}
 
 /**
  * OpenRouter: the credit left. `GET /api/v1/credits` answers the account's total (it needs a management key and says 403 to an ordinary one); `GET /api/v1/key` answers what the key
@@ -147,7 +99,7 @@ export function parseRadiusBilling(body: unknown): ProviderUsage | null {
 }
 
 /**
- * ChatGPT subscription usage, not Platform API billing. Both current `openai` OAuth and legacy `openai-codex`
+ * ChatGPT subscription usage, not Platform API billing. Current `openai` OAuth credentials
  * resolve to a raw access JWT in pi 1.x; pi derives the account id from this same claim for inference.
  * Decode only for routing (not authentication); the server validates the bearer token. Refuse an unknown
  * credential shape rather than silently requesting the default account. API keys never reach this adapter.
@@ -155,7 +107,7 @@ export function parseRadiusBilling(body: unknown): ProviderUsage | null {
  * https://github.com/inouemoby/pi-codex-usage (fetchUsage).
  */
 export const openaiCodexUsage: UsageAdapter = {
-  providers: ['openai', 'openai-codex'],
+  providers: ['openai'],
   credential: 'oauth',
   async fetch(token, fetcher, signal) {
     const accountId = codexAccountId(token);
@@ -213,4 +165,4 @@ export function parseOpenAICodexUsage(body: unknown): ProviderUsage | null {
   return windows.length ? { windows } : null;
 }
 
-export const USAGE_ADAPTERS: readonly UsageAdapter[] = [anthropicUsage, openrouterUsage, radiusUsage, openaiCodexUsage];
+export const USAGE_ADAPTERS: readonly UsageAdapter[] = [openrouterUsage, radiusUsage, openaiCodexUsage];
