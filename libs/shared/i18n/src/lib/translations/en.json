@@ -87,15 +87,20 @@
       "artifactsBrowserOnThisComputer": "Artifacts · browser on this computer; localhost opens on the other computer",
       "changedFiles": "Changed files",
       "ofViewed": "{{value1}} of {{value2}} viewed",
-      "noThreadIsOpenPickOneOn": "No thread is open. Pick one on the left, or start a new one with ⌘N.",
+      "emptyTitle": "No thread open",
+      "emptyHint": "Start a new thread to work with pi on a project.",
+      "emptyHintRecent": "Start a new thread, or pick up where you left off.",
+      "emptyNew": "New thread",
+      "emptyShow": "Show threads",
+      "emptyRecent": "Recent threads",
+      "emptyUntitled": "Untitled thread",
       "resizeSidePanel": "Resize side panel",
       "autoCompactionOn": "Auto-compaction on",
       "usageByModelAndByTurn": "Usage by model and by turn",
       "sidebar": "{{value1}} sidebar ({{value2}})",
       "show": "Show",
       "hide": "Hide",
-      "sidePanels": "Side panels",
-      "noThreadIsOpenCompact": "No thread is open. Open the menu to pick one, or start a new one."
+      "sidePanels": "Side panels"
     },
     "toastHost": {
       "dismiss": "Dismiss"

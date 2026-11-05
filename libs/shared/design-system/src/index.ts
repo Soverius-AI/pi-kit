@@ -14,6 +14,7 @@ export * from './lib/graph-geometry';
 export * from './lib/graph-row';
 export * from './lib/file-icon';
 export * from './lib/icon';
+export * from './lib/empty-state';
 export * from './lib/logo';
 export * from './lib/outcome-badge';
 export * from './lib/changes-pill';

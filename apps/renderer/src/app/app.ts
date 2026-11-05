@@ -17,7 +17,7 @@ import {
   UiStore,
   ViewPrefs,
 } from '@pi-kit/data-access';
-import { PkAnsiText, PkChangesPill, PkDiffTotals, PkIcon, PkLightbox } from '@pi-kit/design-system';
+import { PkAnsiText, PkChangesPill, PkDiffTotals, PkEmptyState, PkIcon, PkLightbox } from '@pi-kit/design-system';
 import { FilesPanel } from '@pi-kit/files/feature-files';
 import { OnboardingLaunch } from '@pi-kit/onboarding/data';
 import { OnboardingStrip, OnboardingWindow } from '@pi-kit/onboarding/feature-onboarding';
@@ -71,6 +71,7 @@ import { ShellStore } from './shell.store';
     TrustDialog,
     WorktreeDialog,
     TranslocoPipe,
+    PkEmptyState,
     PkIcon,
   ],
   templateUrl: './app.html',
@@ -124,6 +125,19 @@ export class App {
       value1: this.prefs.sidebarCollapsed() ? this.i18n.t('shell.app.show') : this.i18n.t('shell.app.hide'),
       value2: formatCombo(this.prefs.combos()['toggle-sidebar'] ?? '', this.isMac),
     }),
+  );
+  protected readonly newThreadCombo = computed(() => formatCombo(this.prefs.combos()['new-thread'] ?? '', this.isMac));
+  protected readonly recent = computed(() =>
+    this.threads
+      .threads()
+      .filter((thread) => !thread.archived)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, 5)
+      .map((thread) => ({
+        id: thread.id,
+        label: thread.title || thread.preview || this.i18n.t('shell.app.emptyUntitled'),
+        project: this.threads.workspaces().find((workspace) => workspace.cwd === thread.cwd)?.name ?? '',
+      })),
   );
   // The theme applies as soon as the shell exists (data-theme on <html>).
   private readonly theme = inject(ThemeStore);

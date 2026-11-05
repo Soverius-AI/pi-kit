@@ -87,15 +87,20 @@
       "artifactsBrowserOnThisComputer": "Artifacts · Browser auf diesem Computer; localhost öffnet auf dem anderen Computer",
       "changedFiles": "Geänderte Dateien",
       "ofViewed": "{{value1}} von {{value2}} angesehen",
-      "noThreadIsOpenPickOneOn": "Kein Chat geöffnet. Wähle einen links aus oder starte einen neuen mit ⌘N.",
+      "emptyTitle": "Kein Chat geöffnet",
+      "emptyHint": "Starte einen neuen Chat, um mit pi an einem Projekt zu arbeiten.",
+      "emptyHintRecent": "Starte einen neuen Chat oder mach dort weiter, wo du aufgehört hast.",
+      "emptyNew": "Neuer Chat",
+      "emptyShow": "Chats anzeigen",
+      "emptyRecent": "Letzte Chats",
+      "emptyUntitled": "Chat ohne Titel",
       "resizeSidePanel": "Seitenleiste skalieren",
       "autoCompactionOn": "Automatische Komprimierung an",
       "usageByModelAndByTurn": "Nutzung nach Modell und Turn",
       "sidebar": "{{value1}}-Seitenleiste ({{value2}})",
       "show": "Anzeigen",
       "hide": "Ausblenden",
-      "sidePanels": "Seitenleisten",
-      "noThreadIsOpenCompact": "Kein Chat geöffnet. Öffne das Menü, um einen auszuwählen, oder starte einen neuen."
+      "sidePanels": "Seitenleisten"
     },
     "toastHost": {
       "dismiss": "Schließen"
