@@ -1,5 +1,4 @@
 import { Language } from '@pi-kit/i18n';
-import { isLocalExecution } from '@pi-kit/api';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import {
   ChangeDetectionStrategy,
@@ -196,7 +195,7 @@ export class ArtifactsPanel {
   protected readonly store = inject(BrowserStore);
   protected readonly bus = inject(UiStore);
   protected readonly expanded = signal(false);
-  protected readonly desktop = isLocalExecution() && !!window.piKit?.setBrowserViewport;
+  protected readonly desktop = !!window.piKit?.setBrowserViewport;
   private readonly pageUrl = computed(() => this.store.page()?.url ?? '');
   protected readonly address = linkedSignal(() => this.pageUrl());
   private readonly showBrowser = computed(() => !!this.store.page()?.open && !this.suspended() && !this.resizing());
@@ -212,7 +211,7 @@ export class ArtifactsPanel {
       untracked(() => this.zone.runOutsideAngular(() => this.store.watch(id, interval)));
     });
     effect((onCleanup) => {
-      const bridge = isLocalExecution() ? window.piKit?.setBrowserViewport : undefined;
+      const bridge = window.piKit?.setBrowserViewport;
       const threadId = this.store.threadId();
       const element = this.viewport()?.nativeElement;
       const show = this.showBrowser();

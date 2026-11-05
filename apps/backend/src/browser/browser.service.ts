@@ -10,11 +10,13 @@ import {
   ScreenshotQualitySchema,
   DEFAULT_SCREENSHOT_FORMAT,
   DEFAULT_SCREENSHOT_QUALITY,
+  LoopbackUrl,
   type BrowserAction,
   type BrowserResult,
   type BrowserState,
 } from '@pi-kit/protocol';
 import { MetaRepository } from '../db/meta.repository';
+import { PeersRepository, type PeerRecord } from '../db/peers.repository';
 import { ThreadsRepository } from '../db/threads.repository';
 import { DesktopBridge } from '../desktop/desktop-bridge';
 import { PiSessionService } from '../pi/pi-session.service';
@@ -30,6 +32,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly desktop: DesktopBridge,
     private readonly threads: ThreadsRepository,
+    private readonly peers: PeersRepository,
     private readonly sessions: PiSessionService,
     private readonly meta: MetaRepository,
   ) {}
@@ -52,6 +55,23 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
   async run(threadId: string, action: BrowserAction, signal?: AbortSignal): Promise<BrowserResult> {
     this.requireThread(threadId);
+    return this.drive(threadId, action, signal);
+  }
+
+  /** The page this desktop shows for a thread of a paired instance. The thread lives there; the page lives here. */
+  async peerState(peerId: string, threadId: string): Promise<BrowserState> {
+    this.requirePeer(peerId);
+    return (await this.desktop.browser(threadId)).state;
+  }
+
+  /** Drives that page. A loopback address means the paired computer, so it is opened at that computer's tailnet name. */
+  async peerRun(peerId: string, threadId: string, action: BrowserAction, signal?: AbortSignal): Promise<BrowserResult> {
+    const host = new URL(this.requirePeer(peerId).identity.origin).hostname;
+    const url = action.action === 'navigate' && action.url ? LoopbackUrl.toHost(action.url, host) : undefined;
+    return this.drive(threadId, url ? { ...action, url } : action, signal);
+  }
+
+  private async drive(threadId: string, action: BrowserAction, signal?: AbortSignal): Promise<BrowserResult> {
     if (!this.available)
       throw new ServiceUnavailableException('Browser artifacts are available in the pi-kit desktop app.');
     if (action.action === 'screenshot') {
@@ -72,5 +92,11 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
   private requireThread(id: string): void {
     if (!this.threads.get(id)) throw new NotFoundException('There is no such thread.');
+  }
+
+  private requirePeer(id: string): PeerRecord {
+    const peer = this.peers.get(id);
+    if (peer?.state !== 'active') throw new NotFoundException('There is no such paired instance.');
+    return peer;
   }
 }

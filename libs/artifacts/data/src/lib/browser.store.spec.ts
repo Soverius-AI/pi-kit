@@ -1,5 +1,15 @@
+import { inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { browserAction, browserState, provideMockApi } from '@pi-kit/api';
+import {
+  ApiClient,
+  EntryApiClient,
+  WORKBENCH,
+  browserAction,
+  browserState,
+  peerBrowserAction,
+  peerBrowserState,
+  provideMockApi,
+} from '@pi-kit/api';
 import { emptyBrowserState } from '@pi-kit/protocol';
 import { BrowserStore } from './browser.store';
 
@@ -151,5 +161,42 @@ describe('BrowserStore ownership', () => {
     expect(store.page()?.inspecting).toBe(false);
     expect(store.error()).toContain('Picker unavailable');
     expect(store.busy()).toBe(false);
+  });
+});
+
+describe("BrowserStore in a paired computer's environment", () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('serves the page from this desktop through the entry, addressed by the owner and thread', async () => {
+    const peerId = 'f1a77d38-aa39-45b9-ac63-60a662a9737d';
+    const proxied = vi.fn(async () => emptyBrowserState('t', true));
+    const read = vi.fn(async (_peer: string, id: string) => ({
+      ...emptyBrowserState(id, true),
+      url: 'http://mini:5173/',
+    }));
+    const write = vi.fn(async (_peer: string, id: string) => ({
+      state: { ...emptyBrowserState(id, true), open: true },
+    }));
+    TestBed.configureTestingModule({
+      providers: [
+        BrowserStore,
+        ...provideMockApi([
+          [browserState, proxied, () => []],
+          [browserAction, proxied, () => []],
+          [peerBrowserState, read, (o) => [o.path?.['peerId'], o.path?.['id']]],
+          [peerBrowserAction, write, (o) => [o.path?.['peerId'], o.path?.['id']]],
+        ]),
+        { provide: WORKBENCH, useValue: { remote: true, ownerId: peerId } },
+        { provide: EntryApiClient, useFactory: () => ({ client: inject(ApiClient).client }) },
+      ],
+    });
+    const store = TestBed.inject(BrowserStore);
+    store.watch('remote-thread', 60_000);
+    await vi.waitFor(() => expect(store.page()?.url).toBe('http://mini:5173/'));
+    await store.act({ action: 'navigate', url: 'http://localhost:5173/' });
+    expect(read).toHaveBeenCalledWith(peerId, 'remote-thread');
+    expect(write).toHaveBeenCalledWith(peerId, 'remote-thread');
+    expect(proxied).not.toHaveBeenCalled();
+    store.watch(undefined, 60_000);
   });
 });

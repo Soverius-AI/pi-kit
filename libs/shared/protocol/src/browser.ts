@@ -168,3 +168,21 @@ export function emptyBrowserState(threadId: string, available: boolean): Browser
     canGoForward: false,
   };
 }
+
+/** Loopback addresses (`localhost:5173`, `127.0.0.1`, `[::1]`, `0.0.0.0`, `*.localhost`) belong to the computer that runs an environment. */
+export class LoopbackUrl {
+  private static readonly HOST = /^(localhost|127(?:\.\d{1,3}){3}|\[::1\]|0\.0\.0\.0)$|\.localhost$/i;
+
+  /** `href` with its loopback host replaced by `host`, port and path kept; undefined when it is not a loopback http(s) address. */
+  static toHost(href: string, host: string): string | undefined {
+    let url: URL;
+    try {
+      url = new URL(/^(\[[^\]]+\]|[^\s/:@[]+)(:\d+)?([/?#]|$)/.test(href) ? `http://${href}` : href);
+    } catch {
+      return undefined;
+    }
+    if (!/^https?:$/.test(url.protocol) || !LoopbackUrl.HOST.test(url.hostname)) return undefined;
+    url.hostname = host;
+    return url.href;
+  }
+}

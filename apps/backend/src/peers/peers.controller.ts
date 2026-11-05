@@ -53,7 +53,7 @@ export class PeersController {
     return id;
   }
 
-  private static owner(req: Request): void {
+  static owner(req: Request): void {
     if (PeersController.device(req) || req.headers['x-pi-peer-session'])
       throw new ForbiddenException('Instance management requires the trusted owner.');
   }

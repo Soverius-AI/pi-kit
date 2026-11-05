@@ -1,5 +1,4 @@
 import { Language } from '@pi-kit/i18n';
-import { isLocalExecution } from '@pi-kit/api';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, linkedSignal, signal } from '@angular/core';
@@ -438,7 +437,7 @@ export class BrowserTools {
   private readonly destroyRef = inject(DestroyRef);
   private readonly owner = computed(() => `${this.store.threadId()}/${this.store.page()?.documentId}`);
   protected readonly optionsOpen = signal(false);
-  protected readonly localCertificatesSupported = isLocalExecution() && !!window.piKit?.setBrowserLocalCertificates;
+  protected readonly localCertificatesSupported = !!window.piKit?.setBrowserLocalCertificates;
   protected readonly consoleOpen = signal(false);
   protected readonly captureOpen = signal(false);
   protected readonly scope = signal<'viewport' | 'fullpage'>('viewport');

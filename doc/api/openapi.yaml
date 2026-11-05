@@ -446,6 +446,155 @@ paths:
       summary: Use the browser artifact
       tags:
         - browser
+  /api/instances/{peerId}/threads/{id}/browser:
+    get:
+      description: The page this desktop shows for that thread. Available only when the desktop app hosts the backend.
+      operationId: PeerBrowser_state
+      parameters:
+        - name: peerId
+          required: true
+          in: path
+          description: The paired instance that owns the thread.
+          schema:
+            type: string
+        - name: id
+          required: true
+          in: path
+          description: The thread id (the pi session id).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrowserState'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Get the browser artifact of a paired instance's thread
+      tags:
+        - browser
+  /api/instances/{peerId}/threads/{id}/browser/action:
+    post:
+      description: Navigate or inspect that page. A loopback address opens at the paired computer's tailnet name; the server must listen there.
+      operationId: PeerBrowser_action
+      parameters:
+        - name: peerId
+          required: true
+          in: path
+          description: The paired instance that owns the thread.
+          schema:
+            type: string
+        - name: id
+          required: true
+          in: path
+          description: The thread id (the pi session id).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                action:
+                  type: string
+                  enum:
+                    - navigate
+                    - snapshot
+                    - click
+                    - fill
+                    - press
+                    - scroll
+                    - evaluate
+                    - screenshot
+                    - inspect
+                    - console
+                    - clear-console
+                    - back
+                    - forward
+                    - reload
+                    - close
+                url:
+                  description: HTTP(S) URL for navigate, including localhost dev servers.
+                  type: string
+                  maxLength: 8192
+                ref:
+                  description: Element reference from the most recent snapshot, required for click and fill.
+                  type: string
+                  maxLength: 80
+                text:
+                  description: Text for fill.
+                  type: string
+                  maxLength: 100000
+                key:
+                  description: 'Key for press: Enter, Tab, Escape, ArrowDown, etc.'
+                  type: string
+                  maxLength: 80
+                deltaY:
+                  description: Vertical pixels for scroll.
+                  type: number
+                  minimum: -100000
+                  maximum: 100000
+                code:
+                  description: JavaScript expression for evaluate; executes only inside this browser page.
+                  type: string
+                  maxLength: 100000
+                enabled:
+                  description: Start or cancel native element picking for inspect without a ref.
+                  type: boolean
+                scope:
+                  description: Screenshot area; selection requires a current inspected element.
+                  type: string
+                  enum:
+                    - viewport
+                    - fullpage
+                    - selection
+                format:
+                  description: Screenshot format. Defaults to the saved inspector preference, or JPEG. PNG is lossless.
+                  type: string
+                  enum:
+                    - jpeg
+                    - png
+                quality:
+                  description: JPEG quality, 0–100. Defaults to the saved inspector preference, or 80. Ignored for PNG.
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                documentId:
+                  description: Reject context requests if navigation has changed the document.
+                  type: string
+                  maxLength: 80
+              required:
+                - action
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrowserResult'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Use the browser artifact of a paired instance's thread
+      tags:
+        - browser
   /api/threads:
     get:
       description: Lists the threads of one project folder, or of every project without `workspace`. Archived threads come with `archived=1`.

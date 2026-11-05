@@ -7,7 +7,16 @@ import { ChatStore, CommandRegistry } from '@pi-kit/chat/api';
 import { ChatPage } from '@pi-kit/chat/feature-chat';
 import { Palette } from '@pi-kit/chat/feature-composer';
 import { DialogHost } from '@pi-kit/chat/feature-composer/dialogs';
-import { DialogStore, IS_MAC, PANEL_WIDTH, RedactionStore, ThemeStore, UiStore, ViewPrefs } from '@pi-kit/data-access';
+import {
+  DialogStore,
+  IS_MAC,
+  PANEL_WIDTH,
+  RedactionStore,
+  TailnetLinks,
+  ThemeStore,
+  UiStore,
+  ViewPrefs,
+} from '@pi-kit/data-access';
 import { PkAnsiText, PkChangesPill, PkDiffTotals, PkIcon, PkLightbox } from '@pi-kit/design-system';
 import { FilesPanel } from '@pi-kit/files/feature-files';
 import { OnboardingLaunch } from '@pi-kit/onboarding/data';
@@ -133,6 +142,7 @@ export class App {
     void inject(OnboardingLaunch).check();
     // The redaction settings (user patterns, folders where the pass is off) for the transcript.
     void inject(RedactionStore).load();
+    inject(TailnetLinks).install();
   }
 
   /** A thread picked in the sidebar: it opens, and on a phone the drawer that held the list closes. */

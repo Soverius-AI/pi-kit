@@ -3373,6 +3373,124 @@ export type BrowserActionResponses = {
 
 export type BrowserActionResponse = BrowserActionResponses[keyof BrowserActionResponses];
 
+export type PeerBrowserStateData = {
+    body?: never;
+    path: {
+        /**
+         * The paired instance that owns the thread.
+         */
+        peerId: string;
+        /**
+         * The thread id (the pi session id).
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/instances/{peerId}/threads/{id}/browser';
+};
+
+export type PeerBrowserStateErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type PeerBrowserStateError = PeerBrowserStateErrors[keyof PeerBrowserStateErrors];
+
+export type PeerBrowserStateResponses = {
+    /**
+     * OK
+     */
+    200: BrowserState;
+};
+
+export type PeerBrowserStateResponse = PeerBrowserStateResponses[keyof PeerBrowserStateResponses];
+
+export type PeerBrowserActionData = {
+    body: {
+        action: 'navigate' | 'snapshot' | 'click' | 'fill' | 'press' | 'scroll' | 'evaluate' | 'screenshot' | 'inspect' | 'console' | 'clear-console' | 'back' | 'forward' | 'reload' | 'close';
+        /**
+         * HTTP(S) URL for navigate, including localhost dev servers.
+         */
+        url?: string;
+        /**
+         * Element reference from the most recent snapshot, required for click and fill.
+         */
+        ref?: string;
+        /**
+         * Text for fill.
+         */
+        text?: string;
+        /**
+         * Key for press: Enter, Tab, Escape, ArrowDown, etc.
+         */
+        key?: string;
+        /**
+         * Vertical pixels for scroll.
+         */
+        deltaY?: number;
+        /**
+         * JavaScript expression for evaluate; executes only inside this browser page.
+         */
+        code?: string;
+        /**
+         * Start or cancel native element picking for inspect without a ref.
+         */
+        enabled?: boolean;
+        /**
+         * Screenshot area; selection requires a current inspected element.
+         */
+        scope?: 'viewport' | 'fullpage' | 'selection';
+        /**
+         * Screenshot format. Defaults to the saved inspector preference, or JPEG. PNG is lossless.
+         */
+        format?: 'jpeg' | 'png';
+        /**
+         * JPEG quality, 0–100. Defaults to the saved inspector preference, or 80. Ignored for PNG.
+         */
+        quality?: number;
+        /**
+         * Reject context requests if navigation has changed the document.
+         */
+        documentId?: string;
+    };
+    path: {
+        /**
+         * The paired instance that owns the thread.
+         */
+        peerId: string;
+        /**
+         * The thread id (the pi session id).
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/instances/{peerId}/threads/{id}/browser/action';
+};
+
+export type PeerBrowserActionErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type PeerBrowserActionError = PeerBrowserActionErrors[keyof PeerBrowserActionErrors];
+
+export type PeerBrowserActionResponses = {
+    /**
+     * Created
+     */
+    201: BrowserResult;
+};
+
+export type PeerBrowserActionResponse = PeerBrowserActionResponses[keyof PeerBrowserActionResponses];
+
 export type ThreadsListData = {
     body?: never;
     path?: never;

@@ -7,6 +7,7 @@ export * from './lib/health.store';
 export * from './lib/platform';
 export * from './lib/provider-usage.store';
 export * from './lib/redaction.store';
+export * from './lib/tailnet-links';
 export * from './lib/renderer-policy';
 export * from './lib/store';
 export * from './lib/theme.store';

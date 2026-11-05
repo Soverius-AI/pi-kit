@@ -1,6 +1,16 @@
 import { DestroyRef, inject } from '@angular/core';
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
-import { ApiClient, browserAction, browserState, errorMessage, unwrap } from '@pi-kit/api';
+import {
+  ApiClient,
+  EntryApiClient,
+  WORKBENCH,
+  browserAction,
+  browserState,
+  errorMessage,
+  peerBrowserAction,
+  peerBrowserState,
+  unwrap,
+} from '@pi-kit/api';
 import { withLatestRequest, withPolling } from '@pi-kit/data-access';
 import type { BrowserAction, BrowserResult, BrowserState } from '@pi-kit/protocol';
 
@@ -17,6 +27,22 @@ export const BrowserStore = signalStore(
   withMethods((store) => {
     const api = inject(ApiClient);
     const destroyRef = inject(DestroyRef);
+    // The page is a native view of this desktop. In another computer's environment it is still served here, by the entry, never by the peer.
+    const workbench = inject(WORKBENCH);
+    const peerId = workbench.remote ? workbench.ownerId : undefined;
+    const entry = peerId ? inject(EntryApiClient).client : undefined;
+    const readState = (threadId: string, signal?: AbortSignal) =>
+      unwrap(
+        peerId && entry
+          ? peerBrowserState({ client: entry, path: { peerId, id: threadId }, signal })
+          : browserState({ client: api.client, path: { id: threadId }, signal }),
+      );
+    const runAction = (threadId: string, body: BrowserAction) =>
+      unwrap(
+        peerId && entry
+          ? peerBrowserAction({ client: entry, path: { peerId, id: threadId }, body })
+          : browserAction({ client: api.client, path: { id: threadId }, body }),
+      );
     let revision = 0;
     let epoch = 0;
     let actionSettled = Promise.resolve();
@@ -25,11 +51,9 @@ export const BrowserStore = signalStore(
       async confirmDocument(threadId: string, documentId: string): Promise<boolean> {
         const mine = epoch;
         if (store.threadId() !== threadId || destroyRef.destroyed) return false;
-        const page = await store._request(
-          'browser-context',
-          (signal) => unwrap(browserState({ client: api.client, path: { id: threadId }, signal })),
-          { valid: () => mine === epoch && !destroyRef.destroyed },
-        );
+        const page = await store._request('browser-context', (signal) => readState(threadId, signal), {
+          valid: () => mine === epoch && !destroyRef.destroyed,
+        });
         if (mine !== epoch || destroyRef.destroyed) return false;
         return !!page?.open && page.documentId === documentId;
       },
@@ -45,16 +69,12 @@ export const BrowserStore = signalStore(
           run: async (signal) => {
             if (store.busy()) return;
             const before = revision;
-            await store._request(
-              'browser',
-              (signal) => unwrap(browserState({ client: api.client, path: { id: threadId }, signal })),
-              {
-                signal,
-                valid: () => store.threadId() === threadId && revision === before && !store.busy(),
-                next: (page) => patchState(store, { page, error: undefined }),
-                error: (error) => patchState(store, { error: errorMessage(error) }),
-              },
-            );
+            await store._request('browser', (signal) => readState(threadId, signal), {
+              signal,
+              valid: () => store.threadId() === threadId && revision === before && !store.busy(),
+              next: (page) => patchState(store, { page, error: undefined }),
+              error: (error) => patchState(store, { error: errorMessage(error) }),
+            });
           },
         });
       },
@@ -81,7 +101,7 @@ export const BrowserStore = signalStore(
         patchState(store, { busy: true, error: undefined });
         if (startingInspection && page) patchState(store, { page: { ...page, inspecting: true } });
         try {
-          const result = await unwrap(browserAction({ client: api.client, path: { id: threadId }, body: action }));
+          const result = await runAction(threadId, action);
           if (!destroyRef.destroyed && mine === epoch) {
             patchState(store, { page: result.state });
             return result;

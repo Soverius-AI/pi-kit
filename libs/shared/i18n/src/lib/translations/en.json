@@ -78,6 +78,7 @@
       "agentsBackgroundAgentsOfThisChat": "Agents · background agents of this chat",
       "openAChatToSeeItsAgents": "Open a chat to see its agents",
       "artifactsBrowserSharedWithTheAgent": "Artifacts · browser shared with the agent",
+      "artifactsBrowserOnThisComputer": "Artifacts · browser on this computer; localhost opens on the other computer",
       "changedFiles": "Changed files",
       "ofViewed": "{{value1}} of {{value2}} viewed",
       "noThreadIsOpenPickOneOn": "No thread is open. Pick one on the left, or start a new one with ⌘N.",

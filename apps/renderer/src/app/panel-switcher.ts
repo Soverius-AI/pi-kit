@@ -122,7 +122,7 @@ export class PanelSwitcher {
   protected readonly bus = inject(UiStore);
   private readonly shell = inject(ShellStore);
   private readonly threads = inject(ThreadsStore);
-  private readonly browserAvailable = isLocalExecution() && !!window.piKit?.setBrowserViewport;
+  private readonly browserAvailable = !!window.piKit?.setBrowserViewport;
   protected readonly actions = computed(() => [
     {
       id: 'tree' as const,
@@ -168,7 +168,11 @@ export class PanelSwitcher {
       id: 'artifacts' as const,
       icon: 'browser' as const,
       label: this.i18n.t('shell.app.artifacts'),
-      tip: this.i18n.t('shell.app.artifactsBrowserSharedWithTheAgent'),
+      tip: this.i18n.t(
+        isLocalExecution()
+          ? 'shell.app.artifactsBrowserSharedWithTheAgent'
+          : 'shell.app.artifactsBrowserOnThisComputer',
+      ),
       disabled: !this.threads.selectedId() || !this.browserAvailable,
       unavailable: this.browserAvailable
         ? this.i18n.t('shell.app.openAChatToUseItsBrowser')
