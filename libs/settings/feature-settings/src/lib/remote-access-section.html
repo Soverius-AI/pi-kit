@@ -270,7 +270,7 @@
             }
           </header>
           @if (status()?.state === 'serving') {
-            @if (activePairing(); as pairing) {
+            @if (pairingRequested() && (activePairing() || status()?.requests?.length)) {
               <dialog
                 open
                 class="modal modal-open"
@@ -281,20 +281,26 @@
               >
                 <div class="modal-box pairing" cdkTrapFocus [cdkTrapFocusAutoCapture]="true">
                   <h2 id="remote-access-pairing-title">{{ 'settings.remoteAccessSection.pair' | transloco }}</h2>
-                  <p class="hint">{{ 'settings.remoteAccessSection.scan' | transloco }}</p>
-                  @if (qr(); as image) {
-                    <img
-                      [src]="image"
-                      [alt]="'settings.remoteAccessSection.qrAlt' | transloco"
-                      width="240"
-                      height="240"
-                      data-testid="remote-access-qr"
-                    />
+                  @if (activePairing(); as pairing) {
+                    <p class="hint">{{ 'settings.remoteAccessSection.scan' | transloco }}</p>
+                    @if (qr(); as image) {
+                      <img
+                        [src]="image"
+                        [alt]="'settings.remoteAccessSection.qrAlt' | transloco"
+                        width="240"
+                        height="240"
+                        data-testid="remote-access-qr"
+                      />
+                    }
+                    <p class="pairing-code mono" data-testid="remote-access-code">{{ pairing.code }}</p>
+                    <p class="sub" data-testid="remote-access-expiry">
+                      {{ 'settings.remoteAccessSection.expires' | transloco }} {{ pairing.expiresAt | date: 'medium' }}
+                    </p>
+                  } @else if (status()?.pairing) {
+                    <p class="sub" role="status" data-testid="remote-access-expired">
+                      {{ 'settings.remoteAccessSection.expired' | transloco }}
+                    </p>
                   }
-                  <p class="pairing-code mono" data-testid="remote-access-code">{{ pairing.code }}</p>
-                  <p class="sub" data-testid="remote-access-expiry">
-                    {{ 'settings.remoteAccessSection.expires' | transloco }} {{ pairing.expiresAt | date: 'medium' }}
-                  </p>
                   @for (request of status()?.requests ?? []; track request.id) {
                     <div class="request" role="group" [attr.aria-label]="request.name">
                       <div class="min-w-0">

@@ -76,7 +76,7 @@ import type { PeerManager, PeerSummary } from '@pi-kit/protocol';
               data-testid="instance-paste"
             ></textarea>
           </label>
-          <div class="ctl ctl-w wrap">
+          <div class="ctl wrap">
             <button
               type="button"
               class="btn btn-sm"

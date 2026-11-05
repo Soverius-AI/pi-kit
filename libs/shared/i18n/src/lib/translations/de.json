@@ -25,7 +25,7 @@
     "pairing": {
       "title": "Gekoppelte Instanzen",
       "trust": "Die Kopplung erlaubt gegenseitigen Agenten-, Datei- und Terminalzugriff mit dem Betriebssystemkonto der jeweiligen Instanz. Nur vollständig vertrauenswürdige Instanzen koppeln. Dadurch werden weder Zugriff veröffentlicht noch Netzwerkrichtlinien geändert.",
-      "keyPolicy": "Die Kopplung verwendet einen separaten, vom Betriebssystem geschützten Dienstschlüssel zur Wiederverbindung nach der Anmeldung. Bestehende Entsperranforderungen für Datenbanken und Anbieter bleiben unverändert. Vor einer Einladung den privaten Zugriff unten aktivieren.",
+      "keyPolicy": "Die Kopplung verwendet einen separaten, vom Betriebssystem geschützten Dienstschlüssel zur Wiederverbindung nach der Anmeldung. Bestehende Entsperranforderungen für Datenbanken und Anbieter bleiben unverändert. Vor einer Einladung den Smartphone-Zugriff im Tab „Verbindung“ aktivieren.",
       "phones": "Genehmigten Geräten beider Instanzen die Nutzung dieser Kopplung erlauben",
       "invite": "Einladung erstellen (5 Minuten)",
       "copy": "Diese einmalige Einladung zur anderen Instanz kopieren",

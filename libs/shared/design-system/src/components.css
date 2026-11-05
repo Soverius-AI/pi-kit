@@ -3103,9 +3103,14 @@
   line-height: 20px;
   font-weight: 500;
 }
+.pk-group > header > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .pk-group > header p {
   margin: 0;
   font-size: 12px;
+  line-height: 16px;
   color: var(--pk-muted);
 }
 .pk-group .row {
@@ -3465,6 +3470,7 @@
 }
 .pk-group > header .actions {
   margin-left: auto;
+  flex: none;
   display: flex;
   gap: 8px;
   align-items: center;

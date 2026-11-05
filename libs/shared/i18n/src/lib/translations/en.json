@@ -25,7 +25,7 @@
     "pairing": {
       "title": "Paired instances",
       "trust": "Pairing permits reciprocal agent, file and terminal access as each instance's OS account. Pair only instances you fully trust. This does not publish access or change network policy.",
-      "keyPolicy": "Pairing uses a separate OS-protected service key for reconnect after login. Existing database and provider unlock requirements are unchanged. Enable private access below before creating an invitation.",
+      "keyPolicy": "Pairing uses a separate OS-protected service key for reconnect after login. Existing database and provider unlock requirements are unchanged. Turn on remote access in the Connection tab before creating an invitation.",
       "phones": "Allow approved devices on both instances to use this pair",
       "invite": "Create invitation (5 minutes)",
       "copy": "Copy this one-use invitation to the other instance",
