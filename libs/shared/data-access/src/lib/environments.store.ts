@@ -75,9 +75,13 @@ export class EnvironmentsStore {
   private refreshing?: Promise<void>;
   private readonly loads = new Map<string, Promise<void>>();
   private stopped = false;
+  private recheck: ReturnType<typeof setTimeout> | undefined;
+  private retry: ReturnType<typeof setTimeout> | undefined;
   constructor() {
     inject(DestroyRef).onDestroy(() => {
       this.stopped = true;
+      clearTimeout(this.recheck);
+      clearTimeout(this.retry);
     });
   }
   refresh(): Promise<void> {
@@ -102,6 +106,10 @@ export class EnvironmentsStore {
           })),
         );
         for (const group of this.groups()) void this.load(group.instanceId);
+        // A pairing finishes when the other instance confirms, which nothing announces here: look again until none is in flight.
+        clearTimeout(this.recheck);
+        if (manager.requests.length || manager.peers.some((peer) => peer.state === 'pending' || peer.unpairPending))
+          this.recheck = setTimeout(() => void this.refresh(), 3000);
       } catch {
         /* A legacy/offline entry keeps the existing local workflow usable. */
       }
@@ -132,6 +140,11 @@ export class EnvironmentsStore {
         patch({ projects, loading: false });
       } catch {
         patch({ loading: false, error: 'unavailable' });
+        // An instance that restarts, sleeps or waits for its keychain answers again later: look again until it does.
+        this.retry ??= setTimeout(() => {
+          this.retry = undefined;
+          for (const value of this.groups()) if (value.error) void this.load(value.instanceId);
+        }, 10000);
       }
     })().finally(() => this.loads.delete(instanceId));
     this.loads.set(instanceId, pending);

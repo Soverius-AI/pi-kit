@@ -180,12 +180,8 @@ export class EnvironmentPeersSection implements OnInit {
     void this.loadPeers();
     const timer = setInterval(() => {
       if (this.invitationExpiry <= Date.now()) this.invitation.set('');
-      if (
-        this.invitation() ||
-        this.peers()?.requests.length ||
-        this.peers()?.peers.some((peer) => peer.state === 'pending' || peer.unpairPending)
-      )
-        void this.loadPeers();
+      // Requests, confirmations and unpairs also arrive from the other instance, so the open list keeps reading.
+      void this.loadPeers();
     }, 2000);
     this.destroyRef.onDestroy(() => {
       clearInterval(timer);
@@ -197,10 +193,19 @@ export class EnvironmentPeersSection implements OnInit {
   private async loadPeers(): Promise<void> {
     try {
       const value = await unwrap(peersList({ client: this.api.client }));
-      if (!this.destroyRef.destroyed) this.peers.set(value);
+      if (this.destroyRef.destroyed) return;
+      this.peers.set(value);
+      if (this.activePeers(value) !== this.activePeers(this.environments.manager())) void this.environments.refresh();
     } catch {
       /* Naming/local use remains available when remote enrollment is unavailable. */
     }
+  }
+  /** The paired instances the sidebar's environment switch lists, as one comparable string. */
+  private activePeers(manager?: PeerManager): string {
+    return (manager?.peers ?? [])
+      .filter((peer) => peer.state === 'active')
+      .map((peer) => `${peer.peerId}:${peer.name}`)
+      .join();
   }
   private async peerAction(work: () => Promise<unknown>): Promise<void> {
     if (this.readOnly || this.peerBusy()) return;

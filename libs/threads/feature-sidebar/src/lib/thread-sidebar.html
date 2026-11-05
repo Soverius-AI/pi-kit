@@ -1025,7 +1025,7 @@
 
   @if (environments.hasPeers() || environments.context.remote) {
     <div class="pk-quick pk-env-switch" data-testid="environment-switch">
-      <details pkViewportMenu class="dropdown">
+      <details pkViewportMenu class="dropdown" (toggle)="onEnvironmentMenu($event)">
         <summary
           class="who list-none"
           data-testid="active-environment"

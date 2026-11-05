@@ -945,6 +945,10 @@ export class ThreadSidebar {
     if (picked) await this.store.openWorkspace(picked).catch(() => undefined); // the store shows the error in the footer
   }
 
+  protected onEnvironmentMenu(event: Event): void {
+    if ((event.target as HTMLDetailsElement).open) void this.environments.refresh();
+  }
+
   protected async switchEnvironment(event: Event, instanceId: string): Promise<void> {
     closeMenu(event);
     if (instanceId !== this.environments.ownerId()) await this.environments.navigate({ instanceId });
