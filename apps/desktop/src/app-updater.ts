@@ -61,8 +61,19 @@ function releaseNotes(info: UpdateInfo): ReleaseNote[] {
 export class AppUpdater {
   private latest: string | undefined;
   private downloaded = false;
+  private configured = false;
 
-  constructor(private readonly emit: (event: AppUpdateEvent) => void) {
+  constructor(private readonly emit: (event: AppUpdateEvent) => void) {}
+
+  /**
+   * electron-updater is configured on first use, not in the constructor: reading `autoUpdater` creates the platform updater, which
+   * reads the app version and throws in a development build (no package.json, so Electron reports "0.0"). `run` returns before
+   * that for a build that cannot update itself.
+   */
+  private updater(): typeof autoUpdater {
+    if (this.configured) return autoUpdater;
+    this.configured = true;
+    const emit = this.emit;
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.allowPrerelease = false;
@@ -89,6 +100,7 @@ export class AppUpdater {
     autoUpdater.on('error', (error) =>
       emit({ kind: 'error', message: unavailableFeed(error) ?? error?.message ?? String(error) }),
     );
+    return autoUpdater;
   }
 
   async run(action: AppUpdateAction): Promise<AppUpdateResult> {
@@ -99,13 +111,14 @@ export class AppUpdater {
         unavailable: 'The portable build does not update itself: download the new one from the GitHub releases page.',
       };
     // On Linux only a running AppImage can replace itself; any other copy's check resolves null, which would read as "up to date".
-    if (!autoUpdater.isUpdaterActive())
+    const updater = this.updater();
+    if (!updater.isUpdaterActive())
       return { unavailable: 'Only the AppImage updates itself: download the new one from the GitHub releases page.' };
     switch (action) {
       case 'check': {
         let result;
         try {
-          result = await autoUpdater.checkForUpdates();
+          result = await updater.checkForUpdates();
         } catch (error) {
           const unavailable = unavailableFeed(error);
           if (unavailable) return { unavailable };
@@ -121,13 +134,13 @@ export class AppUpdater {
         };
       }
       case 'download': {
-        if (!this.downloaded) await autoUpdater.downloadUpdate();
+        if (!this.downloaded) await updater.downloadUpdate();
         return { available: true, ...(this.latest ? { version: this.latest } : {}), downloaded: true };
       }
       case 'install': {
         if (!this.downloaded) return { available: !!this.latest, downloaded: false };
         // Quits the app, installs, restarts it. Called after the reply went out, so the backend hears "ok" first.
-        setTimeout(() => autoUpdater.quitAndInstall(false, true), 300);
+        setTimeout(() => updater.quitAndInstall(false, true), 300);
         return { available: true, downloaded: true, ...(this.latest ? { version: this.latest } : {}) };
       }
     }
