@@ -7513,13 +7513,22 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
   flex: none;
 }
 
-/* Empty state: a mark, a heading, a line of text, the actions, then whatever the caller projects (a short list to continue from) */
+/* Empty state: a mark, a heading, a line of text, the actions, then whatever the caller projects (a short list to continue from).
+   Fluid: type and mark scale with the width of the nearest container (.pk-ambient), and every track is minmax(0, 1fr) so a long,
+   unwrapped title can never widen it past its area. */
 .pk-empty-state {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   justify-items: center;
-  gap: 8px;
+  gap: clamp(6px, 1.5cqi, 10px);
   width: min(100%, 26rem);
+  min-width: 0;
+  max-width: 100%;
   text-align: center;
+}
+.pk-empty-state > * {
+  min-width: 0;
+  max-width: 100%;
 }
 .pk-empty-state > .mark {
   display: grid;
@@ -7532,32 +7541,51 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
   color: var(--color-primary);
 }
 .pk-empty-state > .brand {
-  margin-bottom: 8px;
+  margin-bottom: clamp(4px, 1.5cqi, 10px);
   filter: drop-shadow(0 6px 18px color-mix(in srgb, var(--color-primary) 35%, transparent));
+}
+.pk-empty-state > .brand svg {
+  width: clamp(52px, 8cqi + 32px, 76px);
+  height: auto;
 }
 .pk-empty-state > h2 {
   margin: 0;
-  font-size: 16px;
-  line-height: 22px;
+  font-size: clamp(16px, 1.6cqi + 11px, 22px);
+  line-height: 1.3;
   font-weight: 600;
   color: var(--color-base-content);
+  overflow-wrap: anywhere;
 }
 .pk-empty-state > p {
   margin: 0;
-  max-width: 22rem;
-  font-size: 13px;
-  line-height: 19px;
+  max-width: 24rem;
+  font-size: clamp(13px, 0.8cqi + 10.5px, 16px);
+  line-height: 1.45;
   color: var(--pk-muted);
+  overflow-wrap: anywhere;
 }
 .pk-empty-state > .actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
+  width: 100%;
   margin-top: 8px;
 }
 .pk-empty-state > .actions:empty {
   display: none;
+}
+.pk-empty-state > .actions > * {
+  flex: 1 1 10rem;
+  min-width: 0;
+  max-width: 16rem;
+  min-height: 44px;
+  font-size: 15px;
+}
+.pk-empty-state > .actions .pk-icon {
+  --pk-icon-size: 18px;
+  width: 18px;
+  height: 18px;
 }
 .pk-empty-state > .actions .pk-keycap {
   min-height: 18px;
@@ -7568,6 +7596,7 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
 }
 .pk-empty-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   margin: 16px 0 0;
   padding: 4px;
@@ -7576,6 +7605,9 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
   border-radius: 10px;
   background: color-mix(in srgb, var(--color-base-100) 85%, transparent);
   text-align: start;
+}
+.pk-empty-list > li {
+  min-width: 0;
 }
 .pk-empty-list > .head {
   padding: 6px 8px 4px;
@@ -7587,13 +7619,14 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
 }
 .pk-empty-list button {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   width: 100%;
   min-width: 0;
-  padding: 7px 8px;
+  min-height: 44px;
+  padding: 6px 8px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: clamp(13px, 0.6cqi + 11.5px, 15px);
   text-align: start;
 }
 .pk-empty-list button:hover,
@@ -7601,7 +7634,7 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
   background: var(--color-base-200);
 }
 .pk-empty-list .nm {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -7613,7 +7646,7 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 0.86em;
   color: var(--pk-muted);
 }
 
@@ -7625,6 +7658,7 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
   overflow: hidden;
   overflow: clip;
   contain: paint;
+  container-type: inline-size;
 }
 .pk-ambient::before,
 .pk-ambient::after {

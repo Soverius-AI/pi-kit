@@ -94,6 +94,23 @@ async function main() {
           ),
         );
       if (action === 'pair' && target) return answer(200, (await target.access.beginPairing()).pairing);
+      if (action === 'reset' && target) {
+        const devices = (await target.access.status()).devices ?? [];
+        for (const device of devices) await target.access.revokeDevice(device.id);
+        return answer(200, { revoked: devices.length });
+      }
+      if (action === 'demo' && target) {
+        const titles = [
+          'Investigate why the mac notarization staple drops the network and retry it with backoff',
+          'Folder tree picker',
+          'Remote access guide with redacted screenshots for the site',
+          'Empty state component',
+          'An older thread that should not be listed',
+        ];
+        for (const title of titles) await target.owner('/api/threads', 'POST', { cwd: target.project, title });
+        await target.owner('/api/settings/thread', 'PUT', { value: null });
+        return answer(200, { threads: titles.length });
+      }
       if (action === 'approve' && target) {
         for (const request of (await target.access.status()).requests ?? [])
           await target.access.approvePairing(request.id);
