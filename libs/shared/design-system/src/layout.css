@@ -1294,7 +1294,7 @@ html[data-sidebar-drag] {
   margin: 0 2px;
   border-radius: 50%;
   flex: none;
-  background: var(--color-primary);
+  background: var(--pk-muted);
 }
 .pk-env-switch {
   border-bottom: 0;
@@ -1303,8 +1303,14 @@ html[data-sidebar-drag] {
 .pk-env-switch .who .chev {
   margin-left: auto;
 }
-.pk-env-dot[data-remote='true'] {
-  background: var(--pk-muted);
+.pk-env-dot[data-status='online'] {
+  background: var(--color-success);
+}
+.pk-env-dot[data-status='offline'] {
+  background: var(--color-error);
+}
+.pk-env-switch .text-muted[data-status='offline'] {
+  color: var(--color-error);
 }
 .pk-env-missing {
   display: grid;

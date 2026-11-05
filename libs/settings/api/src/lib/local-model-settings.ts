@@ -19,7 +19,7 @@ import { NgTemplateOutlet } from '@angular/common';
 import { errorMessage } from '@pi-kit/api';
 import { LocalModelOptionValuesSchema, type LocalModelOptionValues, type LocalModelOptions } from '@pi-kit/protocol';
 import { LocalModelCatalogStore, LocalRuntimeStore } from '@pi-kit/settings/data';
-import { PkTabs, PkTabPanel, keepFocusInside } from '@pi-kit/design-system';
+import { PkIcon, PkTabs, PkTabPanel, keepFocusInside } from '@pi-kit/design-system';
 
 const modelMessages: Readonly<Record<string, string>> = {
   'MTP support could not be verified for this model and engine.': 'settings.modelManagement.mtp.activationError',
@@ -181,7 +181,7 @@ const speculative: Field[] = [
 /** A form over the existing config; sends changed fields only, with the loaded content version. */
 @Component({
   selector: 'pk-local-model-settings',
-  imports: [PkTabs, PkTabPanel, CdkTrapFocus, NgTemplateOutlet, TranslocoPipe],
+  imports: [PkTabs, PkTabPanel, PkIcon, CdkTrapFocus, NgTemplateOutlet, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="pk-wf" data-testid="model-settings">
@@ -215,7 +215,7 @@ const speculative: Field[] = [
             [disabled]="saving()"
             (click)="requestClose()"
           >
-            ✕
+            <pk-icon name="close" />
           </button>
         </header>
         <div class="body flex flex-col gap-4">

@@ -14,6 +14,7 @@ import {
 import type { PeerManager, ProjectRef, Workspace } from '@pi-kit/protocol';
 import { writeStorage } from './store';
 
+export type EnvironmentStatus = 'online' | 'checking' | 'offline';
 export interface EnvironmentProjects {
   instanceId: string;
   name: string;
@@ -67,6 +68,11 @@ export class EnvironmentsStore {
         : 'environments.switch.thisComputer';
   }
   readonly ownerKind = computed(() => this.kind());
+  /** Reachability, not locality: a failed load stays offline until a retry answers, so the dot does not flicker while it retries. */
+  status(instanceId = this.ownerId()): EnvironmentStatus {
+    const group = this.groups().find((value) => value.instanceId === instanceId);
+    return group?.error ? 'offline' : !group || group.loading ? 'checking' : 'online';
+  }
   readonly ownerMissing = computed(() => this.context.remote && !!this.manager() && this.ownerName() === undefined);
   backToEntry(): Promise<void> {
     const instanceId = this.manager()?.self.instanceId ?? this.context.entryId;
@@ -129,7 +135,7 @@ export class EnvironmentsStore {
           values.map((value) => (value.instanceId === instanceId ? { ...value, ...change } : value)),
         );
     };
-    patch({ loading: true, error: undefined });
+    patch({ loading: true });
     const pending = (async () => {
       try {
         const projects = group.local
@@ -137,7 +143,7 @@ export class EnvironmentsStore {
           : await unwrap(peersProjects({ client: this.api.client, path: { peerId: instanceId } }));
         if (projects.some((project) => project.instanceId && project.instanceId !== instanceId))
           throw new Error('Project owner mismatch.');
-        patch({ projects, loading: false });
+        patch({ projects, loading: false, error: undefined });
       } catch {
         patch({ loading: false, error: 'unavailable' });
         // An instance that restarts, sleeps or waits for its keychain answers again later: look again until it does.

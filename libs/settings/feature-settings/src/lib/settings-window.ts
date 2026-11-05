@@ -174,7 +174,7 @@ import { ComputerUseSection } from './computer-use-section';
           <main id="settings-page" role="tabpanel" tabindex="-1">
             @if (environments.hasPeers() || environments.context.remote) {
               <p class="env-row" data-testid="settings-environment">
-                <span class="pk-env-dot" [attr.data-remote]="environments.context.remote" aria-hidden="true"></span>
+                <span class="pk-env-dot" [attr.data-status]="environments.status()" aria-hidden="true"></span>
                 <span>{{ 'settings.settingsWindow.environmentHint' | transloco: { name: environmentName() } }}</span>
                 <span class="kind">{{ environments.ownerKind() | transloco }}</span>
               </p>

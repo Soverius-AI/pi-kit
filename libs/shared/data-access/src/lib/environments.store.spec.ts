@@ -64,6 +64,28 @@ describe('EnvironmentsStore', () => {
     expect(projects.mock.calls.length).toBe(calls);
   });
 
+  it('reports whether each environment answers, and keeps an unreachable one offline while it retries', async () => {
+    answer = manager('active');
+    let fail!: (error: Error) => void;
+    projects.mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)));
+    const store = TestBed.inject(EnvironmentsStore);
+    expect(store.status(peerId)).toBe('checking');
+    await store.refresh();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.status(self.instanceId)).toBe('online');
+    expect(store.status(peerId)).toBe('checking');
+    fail(new Error('offline'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.status(peerId)).toBe('offline');
+    let answerRetry!: (value: unknown[]) => void;
+    projects.mockImplementationOnce(() => new Promise((resolve) => (answerRetry = resolve)));
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(store.status(peerId)).toBe('offline');
+    answerRetry([]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.status(peerId)).toBe('online');
+  });
+
   it('does not poll when nothing is in flight', async () => {
     answer = manager();
     const store = TestBed.inject(EnvironmentsStore);

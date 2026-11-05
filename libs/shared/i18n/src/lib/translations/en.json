@@ -6,7 +6,12 @@
       "local": "Entry instance",
       "inherited": "Chats inherit their project's environment. Local / Worktree chooses placement within that environment.",
       "folder": "Folder on the selected environment",
-      "browse": "Browse",
+      "go": "Go to folder",
+      "hidden": "Show hidden folders",
+      "folders": "Folders",
+      "empty": "No folders here.",
+      "opens": "Opens {{path}}",
+      "loadingFolders": "Loading folders…",
       "up": "Parent folder",
       "loading": "Loading projects…",
       "unavailable": "This environment or folder is unavailable. No local fallback was used.",
@@ -47,7 +52,8 @@
       "label": "Switch environment",
       "thisComputer": "This computer",
       "paired": "Paired computer",
-      "remote": "Remote"
+      "remote": "Remote",
+      "offline": "Unreachable"
     }
   },
   "shell": {

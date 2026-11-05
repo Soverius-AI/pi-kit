@@ -1032,7 +1032,7 @@
           [pkTip]="'environments.switch.label' | transloco"
           [attr.aria-label]="'environments.switch.label' | transloco"
         >
-          <span class="pk-env-dot" [attr.data-remote]="environments.context.remote" aria-hidden="true"></span>
+          <span class="pk-env-dot" [attr.data-status]="environments.status()" aria-hidden="true"></span>
           <span class="nm">{{ environments.ownerName() ?? ('environments.projects.unknown' | transloco) }}</span>
           <span class="br">{{ environments.ownerKind() | transloco }}</span>
           <pk-icon name="chevron-down" class="chev" />
@@ -1049,9 +1049,12 @@
                 [attr.aria-current]="group.instanceId === environments.ownerId() ? 'true' : null"
                 (click)="switchEnvironment($event, group.instanceId)"
               >
-                <span class="pk-env-dot" [attr.data-remote]="!group.local" aria-hidden="true"></span>
+                @let status = environments.status(group.instanceId);
+                <span class="pk-env-dot" [attr.data-status]="status" aria-hidden="true"></span>
                 <span class="flex-1 text-left truncate">{{ group.name }}</span>
-                <span class="text-xs text-muted">{{ environments.kind(!group.local) | transloco }}</span>
+                <span class="text-xs text-muted" [attr.data-status]="status">{{
+                  (status === 'offline' ? 'environments.switch.offline' : environments.kind(!group.local)) | transloco
+                }}</span>
                 @if (group.instanceId === environments.ownerId()) {
                   <pk-icon name="check" size="14" />
                 }

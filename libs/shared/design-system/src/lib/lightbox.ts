@@ -1,4 +1,5 @@
 import { TranslocoPipe } from '@pi-kit/i18n';
+import { PkIcon } from './icon';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -46,7 +47,7 @@ export class PkLightboxService {
  */
 @Component({
   selector: 'pk-lightbox',
-  imports: [TranslocoPipe],
+  imports: [PkIcon, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'contents', '(document:keydown.escape)': 'onEscape($event)' },
   template: `
@@ -69,7 +70,7 @@ export class PkLightboxService {
           [attr.aria-label]="'shared.lightbox.close' | transloco"
           (click)="service.close()"
         >
-          ✕
+          <pk-icon name="close" size="20" />
         </button>
         <figure>
           <img [src]="image.src" [alt]="image.caption" />

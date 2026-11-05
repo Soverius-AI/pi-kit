@@ -15,6 +15,7 @@ import {
   viewChild,
 } from '@angular/core';
 import type { ThinkingLevel } from '@pi-kit/protocol';
+import { PkIcon } from '@pi-kit/design-system';
 import { FlaskIcon } from './flask-icon';
 
 const descriptions = (translate: Translate): Record<ThinkingLevel, string> => ({
@@ -34,7 +35,7 @@ const descriptions = (translate: Translate): Record<ThinkingLevel, string> => ({
  */
 @Component({
   selector: 'pk-effort-panel',
-  imports: [TranslocoPipe, FlaskIcon, CdkTrapFocus, TranslocoPipe],
+  imports: [TranslocoPipe, FlaskIcon, PkIcon, CdkTrapFocus],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section
@@ -53,12 +54,12 @@ const descriptions = (translate: Translate): Record<ThinkingLevel, string> => ({
         </div>
         <button
           type="button"
-          class="btn btn-ghost btn-xs btn-square"
+          class="pk-close"
           [attr.aria-label]="'chat.effortPanel.closeThinkingEffort' | transloco"
           [attr.cdkFocusInitial]="adjustable() ? null : ''"
           (click)="dismiss.emit()"
         >
-          ✕
+          <pk-icon name="close" />
         </button>
       </header>
       <div class="choice">

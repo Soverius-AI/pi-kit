@@ -6,7 +6,12 @@
       "local": "Einstiegsinstanz",
       "inherited": "Chats übernehmen die Umgebung ihres Projekts. Lokal / Worktree bestimmt die Ablage innerhalb dieser Umgebung.",
       "folder": "Ordner auf der ausgewählten Umgebung",
-      "browse": "Durchsuchen",
+      "go": "Zum Ordner wechseln",
+      "hidden": "Versteckte Ordner zeigen",
+      "folders": "Ordner",
+      "empty": "Hier gibt es keine Ordner.",
+      "opens": "Öffnet {{path}}",
+      "loadingFolders": "Ordner werden geladen…",
       "up": "Übergeordneter Ordner",
       "loading": "Projekte werden geladen…",
       "unavailable": "Diese Umgebung oder dieser Ordner ist nicht erreichbar. Es wurde nicht auf lokal ausgewichen.",
@@ -47,7 +52,8 @@
       "label": "Umgebung wechseln",
       "thisComputer": "Dieser Computer",
       "paired": "Gekoppelter Computer",
-      "remote": "Entfernt"
+      "remote": "Entfernt",
+      "offline": "Nicht erreichbar"
     }
   },
   "shell": {

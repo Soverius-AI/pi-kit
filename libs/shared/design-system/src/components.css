@@ -323,7 +323,8 @@
   border: 0;
   background: rgb(255 255 255 / 0.12);
   color: white;
-  font-size: 16px;
+  display: grid;
+  place-items: center;
   cursor: pointer;
 }
 .pk-lightbox .close:hover {
@@ -3066,8 +3067,8 @@
 
 /* Close button for dialogs and panels: a round 32px ghost target with an SVG X, never a text glyph. */
 .pk-close {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: 9999px;
   display: grid;
   place-items: center;
@@ -3079,8 +3080,9 @@
   color: var(--color-base-content);
 }
 .pk-close .pk-icon {
-  width: 16px;
-  height: 16px;
+  --pk-icon-size: 20px;
+  width: 20px;
+  height: 20px;
 }
 
 /* Settings groups and the Versions block: a bordered group of rows, label and hint left, controls right */
