@@ -91,6 +91,7 @@ export async function openApp({
   microphone,
   backend,
   scrollbars = false,
+  touch = false,
 } = {}) {
   if (!env.project)
     throw new Error('Run the tests with `pnpm run e2e`: they need the scratch project and agent folder it creates.');
@@ -99,6 +100,7 @@ export async function openApp({
   const context = await browser.newContext({
     viewport,
     deviceScaleFactor: 1,
+    ...(touch ? { hasTouch: true } : {}),
     ...(clipboard ? { permissions: ['clipboard-read', 'clipboard-write'] } : {}),
   });
   // Every wait of the page uses the suite's one limit (support/timeouts.mjs).

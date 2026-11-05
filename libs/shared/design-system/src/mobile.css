@@ -13,8 +13,12 @@
   /* The inline picker's legacy --shift correction must not fight the overlay. */
   translate: none;
   width: min(680px, calc(100vw - var(--pk-safe-left) - var(--pk-safe-right) - 32px));
-  max-height: min(560px, calc(100dvh - var(--pk-safe-top) - var(--pk-safe-bottom) - 32px));
+  max-height: var(--pk-overlay-height, min(560px, calc(100dvh - var(--pk-safe-top) - var(--pk-safe-bottom) - 32px)));
   margin: 0;
+}
+.pk-model-overlay .pk-picker .models {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .dropdown-content.pk-viewport-menu-fallback {
   visibility: visible;
@@ -28,7 +32,7 @@
   inset: auto;
   margin: 0;
   width: min(320px, calc(100vw - var(--pk-safe-left) - var(--pk-safe-right) - 32px));
-  max-height: calc(100dvh - var(--pk-safe-top) - var(--pk-safe-bottom) - 32px);
+  max-height: var(--pk-overlay-height, calc(100dvh - var(--pk-safe-top) - var(--pk-safe-bottom) - 32px));
   overflow-y: auto;
 }
 @media (max-width: 767px) {

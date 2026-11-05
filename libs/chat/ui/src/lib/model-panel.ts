@@ -46,6 +46,7 @@ let panelCount = 0;
     <div
       class="pk-picker"
       [class.down]="placement() === 'down'"
+      tabindex="-1"
       role="dialog"
       [attr.aria-label]="'chat.modelPanel.chooseAModel' | transloco"
       data-testid="model-picker"
@@ -152,7 +153,7 @@ let panelCount = 0;
                       model.id +
                       ('chat.modelPanel.mCyclesPinnedModels' | transloco)
                 "
-                (click)="$event.stopPropagation(); togglePin.emit(model); focusSearch()"
+                (click)="$event.stopPropagation(); togglePin.emit(model); focusStart()"
               >
                 <pk-icon [name]="isPinned(model) ? 'pin-filled' : 'pin'" />
               </button>
@@ -296,7 +297,7 @@ export class ModelPanel {
         const shift = over > 0 ? -Math.min(over, Math.max(0, box.left - (left + 8))) : under > 0 ? under : 0;
         if (shift !== 0) panel.style.setProperty('--shift', `${shift}px`);
       }
-      root.querySelector<HTMLInputElement>('input[type="search"]')?.focus();
+      this.focusStart();
     });
     // The highlighted row stays in view while ↑↓ walk a long list.
     effect(() => {
@@ -341,9 +342,14 @@ export class ModelPanel {
     ].join(' · ');
   }
 
-  /** A pin moves a row to another section, which replaces its element and drops the focus; the field gets it back so typing and Escape keep working. */
-  protected focusSearch(): void {
-    this.host.nativeElement.querySelector<HTMLInputElement>('input[type="search"]')?.focus();
+  /** A pin moves a row to another section, which replaces its element and drops the focus; the field gets it back so typing and Escape keep working.
+   * On a touch screen the panel takes it instead, so opening the picker closes the on-screen keyboard rather than keeping it over the list. */
+  protected focusStart(): void {
+    const root = this.host.nativeElement;
+    const target = matchMedia('(pointer: coarse)').matches
+      ? root.querySelector<HTMLElement>('.pk-picker')
+      : root.querySelector<HTMLInputElement>('input[type="search"]');
+    target?.focus({ preventScroll: true });
   }
 
   protected onQuery(value: string): void {

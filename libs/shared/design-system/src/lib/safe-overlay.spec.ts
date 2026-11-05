@@ -21,6 +21,10 @@ describe('safe visual-viewport overlays', () => {
       offsetLeft: 0,
       scale: 1,
     });
+    Object.defineProperties(viewport, {
+      pageTop: { get: () => viewport.offsetTop + scrollY },
+      pageLeft: { get: () => viewport.offsetLeft + scrollX },
+    });
     let frame: FrameRequestCallback | undefined;
     const raf = vi.fn((callback: FrameRequestCallback) => {
       frame = callback;
@@ -55,6 +59,15 @@ describe('safe visual-viewport overlays', () => {
     f.viewport.height = 260;
     f.place();
     expect(f.popup.style.maxHeight).toBe('179px');
+  });
+  it('measures the visible area in the box coordinates when iOS scrolls the window for the keyboard', async () => {
+    vi.stubGlobal('scrollY', 200);
+    const f = await draw();
+    f.viewport.offsetTop = 0;
+    f.place();
+    expect(f.popup.style.maxHeight).toBe('219px');
+    expect(f.popup.style.translate).toBe('6px -53px');
+    expect(f.popup.style.getPropertyValue('--pk-overlay-height')).toBe('219px');
   });
   it('does not fight pinch zoom, and restores constraints when returning to desktop', async () => {
     const f = await draw();

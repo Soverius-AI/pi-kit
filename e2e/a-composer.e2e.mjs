@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { VIEWPORTS } from '../scripts/screenshots.mjs';
 import { api, env, openApp } from './support/app.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
@@ -218,6 +219,37 @@ describe('the compact composer toolbar', () => {
     assert.ok(await chip.isVisible(), 'the composer collapsed under the open tools menu');
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 1440, height: 900 });
+  });
+
+  it('on a touch screen, opens the model picker with the focus in it so the keyboard closes, and fits the picker on screen', async () => {
+    const phone = await openApp({ viewport: VIEWPORTS.phone, touch: true });
+    try {
+      const { page, h } = phone;
+      await h.newThread();
+      await page.getByLabel('Message to pi').click();
+      await page.getByTestId('model-chip').click();
+      const picker = page.getByTestId('model-picker');
+      await picker.waitFor();
+      await h.settle(300);
+      assert.equal(
+        await page.evaluate(() => document.activeElement?.getAttribute('data-testid')),
+        'model-picker',
+        'the prompt or the search field kept the focus, so the on-screen keyboard stays over the picker',
+      );
+      const box = await picker.boundingBox();
+      assert.ok(
+        box.y >= 0 && box.y + box.height <= VIEWPORTS.phone.height,
+        `the picker (${box.y}..${box.y + box.height}) leaves the screen`,
+      );
+      const fitted = await picker.evaluate((element) =>
+        getComputedStyle(element.closest('[pkSafeOverlay], .cdk-overlay-pane > div') ?? element).getPropertyValue(
+          '--pk-overlay-height',
+        ),
+      );
+      assert.match(fitted.trim(), /^\d+(\.\d+)?px$/, 'the picker is not sized to the visible area');
+    } finally {
+      await phone.close();
+    }
   });
 
   it('gives close buttons a 44px touch target with a 20px icon on a phone', async () => {

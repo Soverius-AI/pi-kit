@@ -280,7 +280,9 @@ function createSplash(): BrowserWindow {
     splashState.shown = true;
   });
   void splash
-    .loadFile(join(__dirname, 'splash.html'))
+    .loadFile(join(__dirname, 'splash.html'), {
+      query: { version: app.isPackaged ? `Version ${app.getVersion()}` : 'Development build' },
+    })
     .then(() => {
       splashState.loaded = true;
     })

@@ -59,6 +59,14 @@
         letter-spacing: 0.01em;
         position: relative;
       }
+      .version {
+        color: #6f7581;
+        font-size: 11px;
+        line-height: 16px;
+        margin-top: -10px;
+        position: relative;
+        min-height: 16px;
+      }
       .status {
         color: #9aa0ab;
         margin-top: -6px;
@@ -137,11 +145,13 @@
       </g>
     </svg>
     <div class="name">pi-kit</div>
+    <div class="version" id="version"></div>
     <div class="status" id="status" role="status" aria-live="polite">Starting…</div>
     <div class="credit">Built by Soverius.AI GmbH</div>
     <div class="bar"><i></i></div>
     <script>
       // main.ts calls this through executeJavaScript as the boot moves on.
+      document.getElementById('version').textContent = new URLSearchParams(location.search).get('version') ?? '';
       window.setStatus = (text) => {
         document.getElementById('status').textContent = String(text);
       };
