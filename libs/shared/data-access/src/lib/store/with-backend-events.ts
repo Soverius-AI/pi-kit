@@ -5,7 +5,7 @@ import { BackendStatus, isLocalExecution } from '@pi-kit/api';
 import { Observable, tap } from 'rxjs';
 
 /**
- * The backend watchdog's status channel (apps/desktop/src/watchdog.ts over the preload): an observable of its states. A browser
+ * The backend watchdog's status channel (the service host's watchdog, relayed by the desktop over the preload): an observable of its states. A browser
  * (`npm run dev:web`) has no channel, so it never emits. Tests provide their own.
  */
 export const BACKEND_STATUS = new InjectionToken<Observable<BackendStatus>>('BACKEND_STATUS', {

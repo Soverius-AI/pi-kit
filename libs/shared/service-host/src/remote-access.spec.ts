@@ -1,4 +1,4 @@
-import { RemoteAccessSetup } from './remote-access-setup';
+import { tailscaleApprovalUrl } from './tailscale-approval';
 import { RemoteStorageError } from './remote-access-store';
 import { RemoteAccessCommandError } from './tailscale-cli';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -570,7 +570,7 @@ describe('guided prerequisites and sanitized diagnostics', () => {
     'https://login.tailscale.com/other',
     'https://login.tailscale.com/f/serve#secret',
   ])('rejects untrusted consent URLs: %s', (url) => {
-    expect(RemoteAccessSetup.approvalUrl(url)).toBeUndefined();
+    expect(tailscaleApprovalUrl(url)).toBeUndefined();
   });
 
   it.each([

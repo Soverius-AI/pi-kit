@@ -2168,7 +2168,11 @@
       "followUpPrompts": "Meinen nächsten Prompt vorschlagen",
       "followUpPromptsDescription": "Nach einem abgeschlossenen Lauf einen bearbeitbaren Folgeprompt aus dem Gespräch und den Berichten der Hintergrundagenten vorschlagen. Nutzt Modell und Budget des Attendant; sendet nichts für dich.",
       "remoteAccess": "Smartphone-Zugriff",
-      "remoteAccessIntro": "Kopple dein Smartphone oder ein anderes Gerät sicher über Tailscale, um Agent, Dateien und Terminal dieses Computers zu steuern."
+      "remoteAccessIntro": "Kopple dein Smartphone oder ein anderes Gerät sicher über Tailscale, um Agent, Dateien und Terminal dieses Computers zu steuern.",
+      "keepRunningWhenClosed": "Weiterlaufen, wenn pi-kit geschlossen ist",
+      "keepRunningWhenClosedHint": "Das Backend von pi-kit startet bei der Anmeldung und läuft weiter, wenn du das Fenster schließt, sodass Agenten und der Zugriff vom Telefon weiterarbeiten (und weiter deine Modelle nutzen). Umschalten startet pi-kit neu.",
+      "signInItems": "Anmeldeobjekte",
+      "registeredToStartAtSignIn": "Als Dienst eingetragen, den dein Computer bei der Anmeldung startet"
     },
     "shortcuts": {
       "newThread": "Neuer Chat",
@@ -4289,6 +4293,19 @@
       "closePairing": "Fertig",
       "tabConnection": "Verbindung",
       "tabEnvironments": "Umgebungen"
+    },
+    "background": {
+      "heading": "Hintergrund",
+      "restarting": "pi-kit startet neu…",
+      "command": "Aus einem Terminal oder über SSH steuern: pi-kit service status, start, stop, install…",
+      "installCommand": "Befehl pi-kit installieren",
+      "commandOnPath": "pi-kit ist im PATH",
+      "commandNotOnPath": "Installiert in {{dir}}; füge diesen Ordner zu deinem PATH hinzu.",
+      "writesTo": "Schreibt einen Starter nach {{dir}}",
+      "unattendedName": "Schlüssel lesen, während ich weg bin",
+      "unattendedHint": "Legt von jedem Schlüssel eine Kopie in deinem Schlüsselbund ab, die nur pi-kit ohne Touch ID lesen kann, damit der Hintergrunddienst nicht auf deinen Fingerabdruck wartet. Einschalten fragt einmal pro Schlüssel nach Touch ID; Ausschalten entfernt die Kopien.",
+      "unattendedBusy": "Schlüsselkopien werden aktualisiert…",
+      "unattendedFailed": "„Schlüssel lesen, während ich weg bin“ konnte nicht geändert werden: {{value1}}"
     }
   },
   "agents": {
@@ -4564,7 +4581,8 @@
       "quit": "Beenden",
       "tooltip": "pi-kit · aktiv: {{running}}, wartend: {{waiting}}",
       "emptyTooltip": "pi-kit · keine aktiven Chats",
-      "more": "{{count}} weitere…"
+      "more": "{{count}} weitere…",
+      "quitAndStop": "Beenden und Hintergrunddienst stoppen"
     }
   },
   "remoteSite": {

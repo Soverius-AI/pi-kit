@@ -327,12 +327,17 @@ async function main() {
   stopQuit();
   check(result !== undefined, 'the app quit within 30 s of the quit request', 'still running');
   check(result.code === 0, 'the app exited with code 0', JSON.stringify(result));
-  let backendGone = false;
-  for (let i = 0; i < 40 && !backendGone; i++) {
-    backendGone = !alive(report.backendPid);
-    if (!backendGone) await sleep(250);
+  let gone = false;
+  for (let i = 0; i < 40 && !gone; i++) {
+    gone = !alive(report.backendPid) && !alive(report.hostPid);
+    if (!gone) await sleep(250);
   }
-  check(backendGone, `the backend (pid ${report.backendPid}) is gone after the app quit`, 'still running');
+  check(!alive(report.hostPid), `the service host (pid ${report.hostPid}) is gone after the app quit`, 'still running');
+  check(
+    !alive(report.backendPid),
+    `the backend (pid ${report.backendPid}) is gone after the app quit`,
+    'still running',
+  );
   check(
     !(await fetch(`${report.url}/api/health`, { headers: authed }).then(
       () => true,

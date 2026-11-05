@@ -1,7 +1,7 @@
 import type { RemoteAccessPairing, RemoteAccessSetupAction, RemoteAccessStatus } from '@pi-kit/protocol';
 import { RemoteGateway } from './remote-gateway';
 import type { Backend } from './remote-gateway-proxy';
-import { RemoteAccessSetup } from './remote-access-setup';
+import { tailscaleApprovalUrl } from './tailscale-approval';
 import {
   RemoteAccessStores,
   RemoteStorageError,
@@ -451,7 +451,7 @@ export class RemoteAccess {
 
   private processGuidance(output: string): RemoteAccessStatus | undefined {
     for (const candidate of output.match(/https:\/\/[^\s<>"']+/g) ?? []) {
-      const url = RemoteAccessSetup.approvalUrl(candidate);
+      const url = tailscaleApprovalUrl(candidate);
       if (url) {
         this.consentUrl = url;
         return this.fail(

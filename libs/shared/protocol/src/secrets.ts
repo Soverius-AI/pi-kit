@@ -113,11 +113,15 @@ export const SecretsStatusSchema = z
     cliInstallDir: z.string().optional(),
     /** The command the pi CLI needs on PATH, when the resolver uses it and it is missing. */
     cliNeeded: z.boolean(),
+    /** macOS Touch ID storage only: whether keys have copies readable without Touch ID; absent elsewhere. */
+    unattended: z.boolean().optional(),
   })
   .meta({ id: 'SecretsStatus' });
 export type SecretsStatus = z.infer<typeof SecretsStatusSchema>;
 
 export const CredentialStorageSchema = z.object({ enabled: z.boolean() }).strict().meta({ id: 'CredentialStorage' });
+
+export const UnattendedKeysSchema = z.object({ enabled: z.boolean() }).strict().meta({ id: 'UnattendedKeys' });
 
 /** What the Advanced section shows about the database file. */
 export const DatabaseProtectionSchema = z

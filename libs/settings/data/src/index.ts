@@ -9,4 +9,5 @@ export * from './lib/settings.store';
 export * from './lib/local-model-catalog.store';
 export * from './lib/local-runtime.store';
 export * from './lib/litellm.store';
+export * from './lib/background-service.store';
 export * from './lib/computer-use.store';

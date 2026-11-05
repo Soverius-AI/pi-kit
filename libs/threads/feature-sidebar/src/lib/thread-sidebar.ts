@@ -224,6 +224,7 @@ export class ThreadSidebar {
         noActiveThreads: this.i18n.t('desktop.tray.noActiveThreads'),
         showApp: this.i18n.t('desktop.tray.showApp'),
         quit: this.i18n.t('desktop.tray.quit'),
+        quitAndStop: this.i18n.t('desktop.tray.quitAndStop'),
         tooltip: threads.length
           ? this.i18n.t('desktop.tray.tooltip', { running, waiting })
           : this.i18n.t('desktop.tray.emptyTooltip'),

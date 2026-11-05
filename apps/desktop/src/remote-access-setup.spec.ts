@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { tailscaleApprovalUrl } from '@pi-kit/service-host';
 import { RemoteAccessSetup } from './remote-access-setup';
 
 const shell = () => ({ openPath: vi.fn(async () => ''), openExternal: vi.fn(async () => undefined) });
@@ -47,6 +48,6 @@ describe('remote access setup actions', () => {
     'https://login.tailscale.com/f/serve#fragment',
     'https://login.tailscale.com/f/serve' + 'a'.repeat(2050),
   ])('rejects untrusted approval input %s', (value) => {
-    expect(RemoteAccessSetup.approvalUrl(value)).toBeUndefined();
+    expect(tailscaleApprovalUrl(value)).toBeUndefined();
   });
 });

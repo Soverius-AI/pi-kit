@@ -37,6 +37,10 @@ contextBridge.exposeInMainWorld('piKit', {
     return () => ipcRenderer.removeListener('pi-kit:backend-status', listener);
   },
   quit: (): Promise<void> => ipcRenderer.invoke('pi-kit:quit'),
+  getBackgroundService: (): Promise<unknown> => ipcRenderer.invoke('pi-kit:background-service-get'),
+  setBackgroundService: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('pi-kit:background-service-set', enabled),
+  installCommand: (): Promise<unknown> => ipcRenderer.invoke('pi-kit:cli-install'),
   /** Quits and starts the app again (Settings › Computer use, after a new macOS permission). */
   relaunch: (): Promise<void> => ipcRenderer.invoke('pi-kit:relaunch'),
   /** The folder picker; `undefined` if cancelled. */

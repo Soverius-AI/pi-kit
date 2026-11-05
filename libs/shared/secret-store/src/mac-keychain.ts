@@ -14,7 +14,7 @@ interface NativeEntry {
 export interface MacKeychainModule {
   openKeychainStore(options: {
     keychainService: string;
-    authentication: { accessControl: 'user-presence' };
+    authentication: { accessControl: 'user-presence' } | 'none';
     iCloudSync: false;
     mutableAccounts: string[];
   }): NativeEntry;
@@ -22,10 +22,12 @@ export interface MacKeychainModule {
 
 const validAccount = (account: string): boolean => account === DB_KEY_ACCOUNT || isProviderAccount(account);
 
-/** Data Protection Keychain. Touch ID (or the Mac password) is enforced on each item by macOS. */
+/** Account prefix of the unattended copies: separate items, because an item's access control is fixed when it is made. */
+const UNATTENDED = 'unattended/';
+
+/** Data Protection Keychain. Touch ID (or the Mac password) is enforced on each item by macOS; unattended copies are the opt-in exception. */
 export class MacKeychainSecretStore implements SecretStore {
   readonly kind = 'keychain' as const;
-  readonly label = 'macOS Keychain (Touch ID)';
   readonly helperResolver = true;
   readonly protected = true;
   private native: MacKeychainModule | null | undefined;
@@ -35,10 +37,12 @@ export class MacKeychainSecretStore implements SecretStore {
   private readonly registry: string;
   private readonly service: string;
 
+  /** `unattended`: read keys from their copies, without Touch ID (see `setUnattended`). */
   constructor(
     env: NodeJS.ProcessEnv = process.env,
     private readonly legacy: SecretStore = new KeyringSecretStore(),
     private readonly load: () => MacKeychainModule = () => require('keychain-store') as MacKeychainModule,
+    private unattended = false,
   ) {
     this.registry = join(
       env['PI_CODING_AGENT_DIR'] || join(homedir(), '.pi', 'agent'),
@@ -72,15 +76,61 @@ export class MacKeychainSecretStore implements SecretStore {
     this.accessed = false;
   }
 
-  private entry(account: string): NativeEntry {
+  get label(): string {
+    return this.unattended ? 'macOS Keychain (Touch ID, readable while you are away)' : 'macOS Keychain (Touch ID)';
+  }
+
+  get unattendedKeys(): boolean {
+    return this.unattended;
+  }
+
+  private entry(account: string, unattended = false): NativeEntry {
     if (!validAccount(account)) throw new Error('Invalid credential account.');
     if (!this.available() || !this.native) throw new Error('Touch ID storage is unavailable.');
     return this.native.openKeychainStore({
       keychainService: this.service,
-      authentication: { accessControl: 'user-presence' },
+      authentication: unattended ? 'none' : { accessControl: 'user-presence' },
       iCloudSync: false,
-      mutableAccounts: [account],
+      mutableAccounts: [unattended ? UNATTENDED + account : account],
     });
+  }
+
+  private readCopy(account: string): Promise<string | undefined> {
+    return this.operate(
+      account,
+      async () => (await this.entry(account, true).get(UNATTENDED + account, 'string')) ?? undefined,
+    );
+  }
+
+  private writeCopy(account: string, value: string): Promise<void> {
+    return this.operate(account, () => this.entry(account, true).set(UNATTENDED + account, value));
+  }
+
+  private removeCopy(account: string): Promise<boolean> {
+    return this.operate(account, () => this.entry(account, true).remove(UNATTENDED + account));
+  }
+
+  /** Copies every key (one Touch ID read each), or removes the copies; a failure part-way removes the copies already made. */
+  async setUnattended(enabled: boolean): Promise<void> {
+    const accounts = await this.list();
+    if (!enabled) {
+      this.unattended = false;
+      for (const account of accounts) await this.removeCopy(account);
+      return;
+    }
+    const made: string[] = [];
+    try {
+      for (const account of accounts) {
+        const value = await this.protectedGet(account);
+        if (value === undefined) continue;
+        await this.writeCopy(account, value);
+        made.push(account);
+      }
+    } catch (error) {
+      for (const account of made) await this.removeCopy(account).catch(() => undefined);
+      throw error;
+    }
+    this.unattended = true;
   }
 
   private operate<T>(account: string, action: () => Promise<T>): Promise<T> {
@@ -136,7 +186,17 @@ export class MacKeychainSecretStore implements SecretStore {
     return [...accounts].sort();
   }
 
-  get(account: string): Promise<string | undefined> {
+  async get(account: string): Promise<string | undefined> {
+    if (!this.unattended) return this.protectedGet(account);
+    const copied = await this.readCopy(account);
+    if (copied !== undefined) return copied;
+    // No copy yet: read it once with Touch ID and copy it.
+    const value = await this.protectedGet(account);
+    if (value !== undefined) await this.writeCopy(account, value);
+    return value;
+  }
+
+  private protectedGet(account: string): Promise<string | undefined> {
     return this.operate(account, async () => {
       const entry = this.entry(account);
       const status = await entry.status(account);
@@ -161,21 +221,25 @@ export class MacKeychainSecretStore implements SecretStore {
     return this.operate(account, () => this.copyVerified(this.entry(account), account, value));
   }
 
-  set(account: string, value: string): Promise<void> {
-    return this.operate(account, async () => {
+  async set(account: string, value: string): Promise<void> {
+    await this.operate(account, async () => {
       await this.entry(account).set(account, value);
       this.record(account, true);
     });
+    if (this.unattended) await this.writeCopy(account, value);
   }
 
-  delete(account: string): Promise<boolean> {
+  async delete(account: string): Promise<boolean> {
+    // Remove the unattended copy first, so a signed-out key is never readable without Touch ID. Whatever this store's
+    // mode, a copy left by an unattended store must not outlive the key.
+    const copied = await this.removeCopy(account);
     return this.operate(account, async () => {
       const entry = this.entry(account);
-      // Remove the old copy first, so a later read cannot resurrect a signed-out credential.
+      // Remove the legacy entry first, so a later read cannot resurrect a signed-out credential.
       const old = await this.legacy.delete(account);
       const removed = await entry.remove(account);
       this.record(account, false);
-      return old || removed;
+      return old || removed || copied;
     });
   }
 

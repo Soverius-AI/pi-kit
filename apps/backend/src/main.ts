@@ -21,7 +21,11 @@ function scratchHome(env: NodeJS.ProcessEnv = process.env): void {
 async function bootstrap() {
   scratchHome();
   const config = loadConfig();
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { abortOnError: false });
+  // A stopping backend ends the open event streams of windows and phones instead of waiting out its grace period for them.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    abortOnError: false,
+    forceCloseConnections: true,
+  });
   configureJsonBody(app);
   app.enableShutdownHooks(['SIGINT', 'SIGTERM']);
   app.setGlobalPrefix('api');

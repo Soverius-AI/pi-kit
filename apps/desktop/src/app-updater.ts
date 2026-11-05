@@ -65,6 +65,11 @@ export class AppUpdater {
 
   constructor(private readonly emit: (event: AppUpdateEvent) => void) {}
 
+  /** A downloaded update waits: it installs on "Restart to update" or when the app quits. */
+  get pending(): boolean {
+    return this.downloaded;
+  }
+
   /**
    * electron-updater is configured on first use, not in the constructor: reading `autoUpdater` creates the platform updater, which
    * reads the app version and throws in a development build (no package.json, so Electron reports "0.0"). `run` returns before

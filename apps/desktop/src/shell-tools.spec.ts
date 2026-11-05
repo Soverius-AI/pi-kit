@@ -3,7 +3,7 @@ import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync }
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loginShellPath } from './shell-env';
+import { loginShellPath } from '@pi-kit/service-host';
 
 describe.skipIf(process.platform === 'win32')('desktop tool discovery', () => {
   let home: string;

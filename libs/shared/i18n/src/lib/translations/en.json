@@ -2168,7 +2168,11 @@
       "followUpPrompts": "Suggest my next prompt",
       "followUpPromptsDescription": "Suggest an editable follow-up after a finished run, using the conversation and background-agent reports. Uses the attendant’s model and budget; never sends it for you.",
       "remoteAccess": "Remote access",
-      "remoteAccessIntro": "Securely pair your phone or another device over Tailscale to control this computer’s agent, files, and terminal."
+      "remoteAccessIntro": "Securely pair your phone or another device over Tailscale to control this computer’s agent, files, and terminal.",
+      "keepRunningWhenClosed": "Keep running when pi-kit is closed",
+      "keepRunningWhenClosedHint": "pi-kit’s backend starts when you sign in and keeps running after you close the window, so agents and phone access keep working (and keep using your models). Switching restarts pi-kit.",
+      "signInItems": "sign-in items",
+      "registeredToStartAtSignIn": "Registered as a service your computer starts when you sign in"
     },
     "shortcuts": {
       "newThread": "New thread",
@@ -4289,6 +4293,19 @@
       "closePairing": "Done",
       "tabConnection": "Connection",
       "tabEnvironments": "Environments"
+    },
+    "background": {
+      "heading": "Background",
+      "restarting": "Restarting pi-kit…",
+      "command": "Manage it from a terminal or over SSH: pi-kit service status, start, stop, install…",
+      "installCommand": "Install the pi-kit command",
+      "commandOnPath": "pi-kit is on PATH",
+      "commandNotOnPath": "Installed in {{dir}}; add that folder to your PATH.",
+      "writesTo": "Writes a launcher to {{dir}}",
+      "unattendedName": "Read keys while I’m away",
+      "unattendedHint": "Keeps a copy of each key in your Keychain that only pi-kit can read without Touch ID, so the background service doesn’t wait for your fingerprint. Turning it on asks for Touch ID once per key; turning it off removes the copies.",
+      "unattendedBusy": "Updating key copies…",
+      "unattendedFailed": "Could not change “Read keys while I’m away”: {{value1}}"
     }
   },
   "agents": {
@@ -4564,7 +4581,8 @@
       "quit": "Quit",
       "tooltip": "pi-kit · {{running}} running, {{waiting}} waiting",
       "emptyTooltip": "pi-kit · no active threads",
-      "more": "{{count}} more…"
+      "more": "{{count}} more…",
+      "quitAndStop": "Quit and stop the background service"
     }
   },
   "remoteSite": {

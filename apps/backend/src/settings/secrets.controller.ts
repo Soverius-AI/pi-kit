@@ -15,6 +15,7 @@ import {
   SecretsProtectionSchema,
   type SecretsStatus,
   SecretsStatusSchema,
+  UnattendedKeysSchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
 import { Fails, Responds, Remote } from '../contract';
@@ -58,6 +59,24 @@ export class SecretsController {
     @Body({ schema: CredentialStorageSchema }) body: z.infer<typeof CredentialStorageSchema>,
   ): Promise<MoveKeysResult> {
     return this.secrets.setCredentialStorage(body.enabled);
+  }
+
+  @Put('secrets/unattended')
+  @ApiOperation({
+    summary: 'Keep keys readable while away',
+    description:
+      'macOS Touch ID storage only: copies every key to a Keychain item this app reads without Touch ID (one Touch ID prompt per key), or removes the copies. Never returns a key.',
+  })
+  @Responds(SecretsStatusSchema)
+  @Fails({ 400: 'There is no Touch ID storage, or Touch ID was cancelled.' })
+  async unattended(
+    @Body({ schema: UnattendedKeysSchema }) body: z.infer<typeof UnattendedKeysSchema>,
+  ): Promise<SecretsStatus> {
+    try {
+      return await this.secrets.setUnattended(body.enabled);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : String(error));
+    }
   }
 
   @Post('secrets/retry')

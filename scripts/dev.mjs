@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-// HTTPS_PROXY for the backend's own requests (the same rule as apps/desktop/src/proxy-env.ts): Node 24 honours the variables with NODE_USE_ENV_PROXY=1.
+// HTTPS_PROXY for the backend's own requests (the same rule as libs/shared/service-host/src/proxy-env.ts): Node 24 honours the variables with NODE_USE_ENV_PROXY=1.
 const proxied = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'].some(
   (name) => process.env[name],
 );

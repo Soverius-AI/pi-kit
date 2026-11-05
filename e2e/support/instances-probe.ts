@@ -5,9 +5,9 @@ import { request, type Server } from 'node:http';
 import { createServer as createTlsServer } from 'node:https';
 import { join } from 'node:path';
 import { app, BrowserWindow } from 'electron';
-import { RemoteGateway } from '../../apps/desktop/src/remote-gateway';
-import { RemoteAccessStores } from '../../apps/desktop/src/remote-access-store';
-import { InstanceKeyStore } from '../../apps/desktop/src/instance-key';
+import { RemoteGateway } from '../../libs/shared/service-host/src/remote-gateway';
+import { RemoteAccessStores } from '../../libs/shared/service-host/src/remote-access-store';
+import { InstanceKeyStore } from '../../libs/shared/service-host/src/instance-key';
 import { fixtureEncryption, startBackend, until, type Backend } from './instance';
 
 const root = process.env['PI_KIT_INSTANCE_TEST_ROOT']!,

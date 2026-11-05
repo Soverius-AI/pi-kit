@@ -31,6 +31,10 @@ export interface SecretStore {
   delete(account: string): StoreResult<boolean>;
   /** Account names only, never values. */
   list(): StoreResult<string[]>;
+  /** Touch ID storage only: whether copies readable without Touch ID are kept, for a service nobody attends. */
+  readonly unattendedKeys?: boolean;
+  /** Makes or removes those copies; making them reads every key once with Touch ID. */
+  setUnattended?(enabled: boolean): Promise<void>;
 }
 
 /** The operating system's name for its credential store. */
@@ -273,7 +277,7 @@ let selected: SecretStore | undefined;
 let selectedFor: string | undefined;
 
 /**
- * The store this process uses. `PI_KIT_SECRET_STORE` decides: `macos`, `legacy`, `memory`, `file:<path>`, or `none`. Unset disables storage on macOS;
+ * The store this process uses. `PI_KIT_SECRET_STORE` decides: `macos`, `macos-unattended`, `legacy`, `memory`, `file:<path>`, or `none`. Unset disables storage on macOS;
  * other platforms use the operating system credential store when available. Tests and e2e runs set it so nothing reaches a real keychain. The choice is made once per distinct setting.
  */
 export function selectSecretStore(env: NodeJS.ProcessEnv = process.env, fresh = false): SecretStore {
@@ -285,8 +289,11 @@ export function selectSecretStore(env: NodeJS.ProcessEnv = process.env, fresh = 
   else if (setting.startsWith('file:')) store = new FileSecretStore(setting.slice('file:'.length));
   else if (setting === 'legacy') store = new KeyringSecretStore();
   else if (setting === 'macos') store = new MacKeychainSecretStore(env);
+  else if (setting === 'macos-unattended') store = new MacKeychainSecretStore(env, undefined, undefined, true);
   else if (setting !== '')
-    throw new Error('Unknown PI_KIT_SECRET_STORE setting. Use macos, legacy, memory, file:<path>, or none.');
+    throw new Error(
+      'Unknown PI_KIT_SECRET_STORE setting. Use macos, macos-unattended, legacy, memory, file:<path>, or none.',
+    );
   else if (process.platform === 'darwin') store = new NoSecretStore();
   else {
     const keyring = new KeyringSecretStore();

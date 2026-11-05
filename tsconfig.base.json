@@ -21,6 +21,7 @@
       "better-sqlite3-multiple-ciphers": ["./node_modules/better-sqlite3-multiple-ciphers/index"],
       "better-sqlite3": ["./node_modules/better-sqlite3-multiple-ciphers/index"],
       "@pi-kit/secret-store": ["./libs/shared/secret-store/src/index.ts"],
+      "@pi-kit/service-host": ["./libs/shared/service-host/src/index.ts"],
       "@pi-kit/ui": ["./libs/shared/ui/src/index.ts"],
       "@pi-kit/design-system": ["./libs/shared/design-system/src/index.ts"],
       "@pi-kit/testing": ["./libs/shared/testing/src/index.ts"],

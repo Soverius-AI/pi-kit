@@ -68,7 +68,7 @@ const started = Date.now();
 if (!values['skip-build']) {
   const t0 = Date.now();
   run([join(root, 'scripts/package-stage.mjs'), '--build-only']);
-  timings.push({ step: 'build (renderer, backend, desktop, secret-cli)', seconds: seconds(t0) });
+  timings.push({ step: 'build (renderer, backend, desktop, secret-cli, cli)', seconds: seconds(t0) });
 }
 
 // The Windows archs share one electron-builder run (and so one latest.yml).

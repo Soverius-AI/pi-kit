@@ -1,6 +1,6 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type { RemoteAccessSetupAction } from '@pi-kit/protocol';
-import type { RemoteAccess } from './remote-access';
+import { isRemoteDeviceId, isRemotePort, type RemoteAccess } from '@pi-kit/service-host';
 
 type RemoteAccessController = Pick<
   RemoteAccess,
@@ -33,9 +33,8 @@ export class RemoteAccessIpc {
       ipc.handle(channel, (event, port: unknown) => {
         if (!this.fromRenderer(event) || (action !== 'status' && this.shuttingDown())) throw new Error('forbidden');
         if (action === 'start') {
-          if (port !== undefined && (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535))
-            throw new Error('Invalid remote access port');
-          return this.controller.start(port as number | undefined);
+          if (!isRemotePort(port)) throw new Error('Invalid remote access port');
+          return this.controller.start(port);
         }
         return this.controller[action]();
       });
@@ -47,7 +46,7 @@ export class RemoteAccessIpc {
     ] as const) {
       ipc.handle(channel, (event, id: unknown) => {
         if (!this.fromRenderer(event) || this.shuttingDown()) throw new Error('forbidden');
-        if (typeof id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(id)) throw new Error('Invalid remote access ID');
+        if (!isRemoteDeviceId(id)) throw new Error('Invalid remote access ID');
         return this.controller[action](id);
       });
     }

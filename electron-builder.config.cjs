@@ -4,7 +4,8 @@
 //
 // Layout of the packed app:
 //   Resources/app.asar        desktop/{main,preload}.cjs, splash.html, icon.png and renderer/browser (the shell)
-//   Resources/backend/        main.js (Nest + CopilotKit bundled), migrations/, packages/, assets/{pi,needle}, pi-kit-secret.cjs
+//   Resources/backend/        main.js (Nest + CopilotKit bundled), service-host.cjs (runs main.js), migrations/, packages/,
+//                             assets/{pi,needle}, pi-kit-secret.cjs, pi-kit.cjs (the `pi-kit service` command)
 //                             and node_modules/ (built native loaders + binaries for the target's architecture), staged from
 //                             Nx production outputs and copied by scripts/builder-after-pack.cjs
 // The backend is an extra resource, not part of the asar: it is started with ELECTRON_RUN_AS_NODE from there, and the native

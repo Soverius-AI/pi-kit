@@ -61,11 +61,11 @@ if (!values['skip-build']) {
     '-t',
     'build',
     '-p',
-    'renderer,backend,desktop,secret-cli',
+    'renderer,backend,desktop,secret-cli,cli',
     '--configuration=production',
     '--skip-nx-cache',
   ]);
-  console.log(`built renderer, backend, desktop and secret-cli in ${seconds(started)}`);
+  console.log(`built renderer, backend, desktop, secret-cli and cli in ${seconds(started)}`);
 }
 if (values['build-only']) process.exit(0);
 
@@ -131,6 +131,10 @@ for (const name of runtime.nativePackages) {
 
 // `pi-kit-secret`: the CLI bundle sits next to the backend, where the launcher the backend writes looks for it. It loads @napi-rs/keyring from the backend's node_modules.
 cpSync(join(dist, 'apps/secret-cli/pi-kit-secret.cjs'), join(backendOut, 'pi-kit-secret.cjs'));
+// The service host (ADR-0036) is a real file beside the backend, not in the asar, so a service manager can start it.
+cpSync(join(dist, 'apps/desktop/service-host.cjs'), join(backendOut, 'service-host.cjs'));
+// The `pi-kit` command finds the host beside itself; Settings › General › Background installs its launcher on PATH.
+cpSync(join(dist, 'apps/cli/pi-kit.cjs'), join(backendOut, 'pi-kit.cjs'));
 
 // ---- one backend per target: the base plus that triple's natives
 const mb = (n) => `${(n / 1e6).toFixed(1)} MB`;

@@ -57,7 +57,7 @@ export interface SpawnOptions {
 export function spawnBackend(endpoint: BackendEndpoint, options: SpawnOptions): RunningBackend {
   const child = spawn(process.execPath, [options.entry], {
     cwd: join(options.entry, '..'),
-    // The fourth channel is an IPC pipe: the backend asks the main process for things only Electron can do.
+    // The fourth channel is an IPC pipe: the backend asks the host for what only the desktop can do.
     stdio: ['ignore', options.onOutput ? 'pipe' : 'inherit', options.onOutput ? 'pipe' : 'inherit', 'ipc'],
     env: {
       ...process.env,
@@ -110,7 +110,7 @@ export async function pingHealth(endpoint: BackendEndpoint, timeoutMs = 4000): P
 
 /**
  * Polls GET /api/health with the token until it answers 200, or rejects when the process dies or, with a finite `timeoutMs`, after it.
- * The app waits without a limit (`Infinity`): a slow machine, a long migration or a Keychain prompt must not have the backend killed under it.
+ * The host waits without a limit (`Infinity`): a slow machine, a long migration or a Keychain prompt must not have the backend killed under it.
  */
 export async function waitForHealth(backend: RunningBackend, timeoutMs = Infinity): Promise<Health> {
   let died = false;

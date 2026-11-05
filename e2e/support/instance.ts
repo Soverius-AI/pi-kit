@@ -3,7 +3,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
-import type { InstanceKeyEncryption, InstanceKeyStore } from '../../apps/desktop/src/instance-key';
+import type { InstanceKeyEncryption, InstanceKeyStore } from '../../libs/shared/service-host/src/instance-key';
 import { InstanceKeyRequestSchema } from '../../libs/shared/protocol/src/peers';
 
 /** Test-only OS sealing: real encrypted identity files and proofs without touching the user's keychain. */
