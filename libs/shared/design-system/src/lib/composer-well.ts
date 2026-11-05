@@ -10,9 +10,20 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 @Component({
   selector: 'pk-composer-well',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { class: 'pk-well block', '[attr.data-mode]': 'mode()' },
+  host: { class: 'pk-well block', '[attr.data-mode]': 'mode()', '(mousedown)': 'keepFocus($event)' },
   template: `<ng-content />`,
 })
 export class PkComposerWell {
   readonly mode = input<'prompt' | 'shell'>('prompt');
+
+  protected keepFocus(event: MouseEvent): void {
+    const well = event.currentTarget as HTMLElement;
+    const pressed = (event.target as Element).closest('button');
+    if (
+      pressed &&
+      document.activeElement === well.querySelector('textarea') &&
+      matchMedia('(max-width: 767px)').matches
+    )
+      event.preventDefault();
+  }
 }

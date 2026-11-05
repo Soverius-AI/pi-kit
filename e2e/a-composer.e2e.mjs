@@ -181,6 +181,61 @@ describe('the compact composer toolbar', () => {
     await page.getByRole('button', { name: 'Send', exact: true }).waitFor();
   });
 
+  it('stays open on a phone while its model picker or tools menu is open', async () => {
+    const { page, h } = app;
+    await h.newThread();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await h.settle(300);
+    const chip = page.getByTestId('model-chip');
+    const prompt = page.getByLabel('Message to pi');
+    await page.mouse.click(195, 200);
+    await h.settle(200);
+    assert.equal(await chip.isVisible(), false, 'an idle, empty composer is one row');
+    await prompt.click();
+    await chip.waitFor();
+    await chip.click();
+    const picker = page.getByTestId('model-picker');
+    await picker.waitFor();
+    await h.settle(300);
+    assert.ok(await picker.isVisible(), 'the model picker closed as the composer collapsed');
+    assert.ok(await chip.isVisible(), 'the composer collapsed under the open model picker');
+    await page.keyboard.press('Escape');
+    await picker.waitFor({ state: 'detached' });
+    await prompt.click();
+    const tools = page.locator('.pk-tools copilot-chat-tools-menu button').first();
+    const box = await tools.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.tagName),
+      'TEXTAREA',
+      'pressing a composer button takes the focus from the prompt, which collapses it on iOS',
+    );
+    await page.mouse.up();
+    await page.getByRole('menu').first().waitFor();
+    await h.settle(300);
+    assert.equal(await tools.getAttribute('aria-expanded'), 'true');
+    assert.ok(await chip.isVisible(), 'the composer collapsed under the open tools menu');
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 1440, height: 900 });
+  });
+
+  it('gives close buttons a 44px touch target with a 20px icon on a phone', async () => {
+    const { page, h } = app;
+    await h.openSettings();
+    await page.setViewportSize({ width: 390, height: 844 });
+    await h.settle(300);
+    const close = page.getByRole('dialog', { name: 'Settings' }).locator('button.pk-close');
+    const sizes = await close.evaluate((button) => {
+      const icon = button.querySelector('.pk-icon').getBoundingClientRect();
+      const box = button.getBoundingClientRect();
+      return { button: [box.width, box.height], icon: [icon.width, icon.height] };
+    });
+    assert.deepEqual(sizes, { button: [44, 44], icon: [20, 20] });
+    await close.click();
+    await page.setViewportSize({ width: 1440, height: 900 });
+  });
+
   it('opens the usage popover from the ring, with the numbers and the two links', async () => {
     const { page } = app;
     const ring = page.getByTestId('context-meter');

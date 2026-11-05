@@ -68,6 +68,17 @@
     width: 20px;
     height: 20px;
   }
+  /* Close buttons of dialogs, panels and the queue: 44px touch targets with 20px icons. */
+  :is(.pk-close, .btn-square:has(> pk-icon[name='close'])) {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+  :is(.pk-close, .btn-square:has(> pk-icon[name='close'])) .pk-icon {
+    --pk-icon-size: 20px !important;
+    width: 20px;
+    height: 20px;
+  }
   /* No hover on a phone: an answer's buttons take their own row instead of floating over its usage line. */
   .pk-messages .copilotKitAssistantMessage .pk-actions {
     position: static;
@@ -93,38 +104,40 @@
   }
 }
 /* Phones: an idle, empty composer is one row (the tools button, the prompt, voice and send) and opens into the full composer as soon as the
-   prompt gets the focus or holds text. The toolbar and its slot dissolve into the input's row for that, so no markup changes. */
+   prompt gets the focus or holds text, and stays open while one of its menus (model, tools) is open. The toolbar and its slot dissolve into the input's row for that, so no markup changes. */
 @media (max-width: 767px) {
-  .pk-well:not(:focus-within):has(textarea:placeholder-shown) .copilotKitInput {
+  .pk-well:not(:focus-within, :has([aria-expanded='true'])):has(textarea:placeholder-shown) .copilotKitInput {
     display: flex;
     flex-direction: row;
     align-items: center;
     gap: 4px;
     padding: 4px 6px;
   }
-  .pk-well:not(:focus-within):has(textarea:placeholder-shown) .copilotKitInput > copilot-slot,
-  .pk-well:not(:focus-within):has(textarea:placeholder-shown) pk-composer-toolbar {
+  .pk-well:not(:focus-within, :has([aria-expanded='true'])):has(textarea:placeholder-shown)
+    .copilotKitInput
+    > copilot-slot,
+  .pk-well:not(:focus-within, :has([aria-expanded='true'])):has(textarea:placeholder-shown) pk-composer-toolbar {
     display: contents;
   }
-  .pk-well:not(:focus-within):has(textarea:placeholder-shown) pk-composer-field {
+  .pk-well:not(:focus-within, :has([aria-expanded='true'])):has(textarea:placeholder-shown) pk-composer-field {
     order: 1;
     flex: 1 1 auto;
     min-width: 0;
   }
-  .pk-well:not(:focus-within):has(textarea:placeholder-shown) textarea {
+  .pk-well:not(:focus-within, :has([aria-expanded='true'])):has(textarea:placeholder-shown) textarea {
     height: 40px !important;
     padding: 8px 4px;
     overflow: hidden;
     white-space: nowrap;
   }
-  .pk-well:not(:focus-within):has(textarea:placeholder-shown) .pk-tools {
+  .pk-well:not(:focus-within, :has([aria-expanded='true'])):has(textarea:placeholder-shown) .pk-tools {
     order: 0;
   }
-  .pk-well:not(:focus-within):has(textarea:placeholder-shown) .end {
+  .pk-well:not(:focus-within, :has([aria-expanded='true'])):has(textarea:placeholder-shown) .end {
     order: 2;
     margin-left: auto;
   }
-  .pk-well:not(:focus-within):has(textarea:placeholder-shown)
+  .pk-well:not(:focus-within, :has([aria-expanded='true'])):has(textarea:placeholder-shown)
     :is(.pk-tools .btn[data-action], .pk-composer-settings, .grow, pk-composer-toolbar > .pk-ghost, pk-context-ring) {
     display: none;
   }
