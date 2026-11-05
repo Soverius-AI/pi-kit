@@ -122,7 +122,67 @@ test('transient status failures and ticket propagation delays recover after acce
       ['stapler', 'staple'],
     ],
   );
-  assert.deepEqual(harness.delays, [5_000, 15_000, 5_000]);
+  assert.deepEqual(harness.delays, [5_000, 15_000, 10_000]);
+});
+
+const lostStaple = `Failed to staple your application with code: 68
+
+Processing: /build/pi-kit.app
+CloudKit query for pi-kit.app (2/abcd) failed due to "Network Error".
+Could not establish secure connection to api.apple-cloudkit.com
+error is Error Domain=NSURLErrorDomain Code=-1005 "The network connection was lost."
+The staple and validate action failed! Error 68.`;
+const lost = {
+  code: 68,
+  output: 'error is Error Domain=NSURLErrorDomain Code=-1005 "The network connection was lost."',
+};
+
+test('an accepted app whose staple loses the network is stapled again with backoff, without re-uploading', async () => {
+  const harness = recoveryHarness([lost, lost, stapled]);
+  await withNotarizationRecovery(
+    async () => {
+      throw new Error(lostStaple);
+    },
+    '/build/pi-kit.app',
+    profileEnv,
+    harness.options,
+  );
+  assert.deepEqual(
+    harness.calls.map((args) => args.join(' ')),
+    ['stapler staple /build/pi-kit.app', 'stapler staple /build/pi-kit.app', 'stapler staple /build/pi-kit.app'],
+  );
+  assert.deepEqual(harness.delays, [10_000, 20_000]);
+  assert.ok(harness.logs.some((line) => /stapled after retrying/.test(line)));
+});
+
+test('a staple that keeps losing the network still fails the build, and other staple failures are not retried', async () => {
+  const harness = recoveryHarness([lost, lost, lost, lost, lost]);
+  await assert.rejects(
+    withNotarizationRecovery(
+      async () => {
+        throw new Error(lostStaple);
+      },
+      '/build/pi-kit.app',
+      profileEnv,
+      harness.options,
+    ),
+    /Could not staple the accepted notarization ticket of \/build\/pi-kit\.app/,
+  );
+  assert.equal(harness.calls.length, 5);
+  assert.deepEqual(harness.delays, [10_000, 20_000, 30_000, 40_000]);
+  const invalid = recoveryHarness([]);
+  await assert.rejects(
+    withNotarizationRecovery(
+      async () => {
+        throw new Error('Failed to staple your application with code: 1\n\nThe signature of the binary is invalid.');
+      },
+      '/build/pi-kit.app',
+      profileEnv,
+      invalid.options,
+    ),
+    /signature of the binary is invalid/,
+  );
+  assert.equal(invalid.calls.length, 0);
 });
 
 test('successful notarization and unrelated failures do not start recovery', async () => {

@@ -59,9 +59,28 @@ function runNotaryCommand(args, timeout) {
   });
 }
 
-/** A failed --wait does not cancel Apple's submission. Resume its status check without uploading again. */
+/** Accepted tickets reach CloudKit with a delay, and the lookup can drop on CI networks: staple again with backoff, never re-upload. */
+async function stapleTicket(file, command, delay, attempts) {
+  for (let attempt = 1; ; attempt++) {
+    const stapled = await command(['stapler', 'staple', file]);
+    if (stapled.code === 0) return;
+    if (
+      attempt === attempts ||
+      (!transientNetworkFailure(stapled.output) &&
+        !/Record not found|Error 65|Could not find.*ticket/i.test(stapled.output))
+    )
+      return stapled;
+    await delay(10_000 * attempt);
+  }
+}
+
+/**
+ * A failed --wait does not cancel Apple's submission: resume its status check without uploading again. A staple that fails on the
+ * network after an accepted notarization is retried on its own, since @electron/notarize gives it only a few seconds.
+ */
 async function withNotarizationRecovery(notarize, file, env = process.env, overrides = {}) {
   let submission;
+  let stapleOnly;
   try {
     return await notarize();
   } catch (error) {
@@ -70,7 +89,8 @@ async function withNotarizationRecovery(notarize, file, env = process.env, overr
     submission =
       new RegExp(`/notary/v2/submissions/(${uuid})`, 'i').exec(message)?.[1] ||
       new RegExp(`"id"\\s*:\\s*"(${uuid})"`, 'i').exec(message)?.[1];
-    if (!submission || !transientNetworkFailure(message)) throw error;
+    stapleOnly = /Failed to staple your application/.test(message) && transientNetworkFailure(message);
+    if (!stapleOnly && (!submission || !transientNetworkFailure(message))) throw error;
   }
   const run = overrides.run || runNotaryCommand;
   const pause = overrides.sleep || sleep;
@@ -91,6 +111,13 @@ async function withNotarizationRecovery(notarize, file, env = process.env, overr
     if (!remaining()) throw timedOut();
     await pause(Math.min(ms, remaining()));
   };
+  if (stapleOnly) {
+    log('  • stapling again after a temporary network failure; the notarization itself was accepted');
+    const failed = await stapleTicket(file, command, delay, 5);
+    if (failed) throw new Error(`Could not staple the accepted notarization ticket of ${file}.`);
+    log('  • notarization ticket stapled after retrying');
+    return;
+  }
   log(`  • resuming notarization status for submission ${submission} after a temporary network failure`);
   let networkFailures = 0;
   while (remaining()) {
@@ -117,21 +144,10 @@ async function withNotarizationRecovery(notarize, file, env = process.env, overr
       throw new Error(
         `Notarization submission ${submission} was not accepted (status: ${status}). Inspect its notarytool log.`,
       );
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const stapled = await command(['stapler', 'staple', file]);
-      if (stapled.code === 0) {
-        log(`  • notarization recovered and ticket stapled (submission ${submission})`);
-        return;
-      }
-      // Accepted tickets can take a moment to reach CloudKit.
-      if (
-        attempt === 3 ||
-        (!transientNetworkFailure(stapled.output) &&
-          !/Record not found|Error 65|Could not find.*ticket/i.test(stapled.output))
-      )
-        throw new Error(`Could not staple the accepted notarization ticket for submission ${submission}.`);
-      await delay(5_000 * attempt);
-    }
+    if (await stapleTicket(file, command, delay, 3))
+      throw new Error(`Could not staple the accepted notarization ticket for submission ${submission}.`);
+    log(`  • notarization recovered and ticket stapled (submission ${submission})`);
+    return;
   }
   throw timedOut();
 }
