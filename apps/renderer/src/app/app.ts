@@ -132,7 +132,7 @@ export class App {
       .threads()
       .filter((thread) => !thread.archived)
       .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, 5)
+      .slice(0, 4)
       .map((thread) => ({
         id: thread.id,
         label: thread.title || thread.preview || this.i18n.t('shell.app.emptyUntitled'),

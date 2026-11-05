@@ -7623,6 +7623,8 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
   position: relative;
   isolation: isolate;
   overflow: hidden;
+  overflow: clip;
+  contain: paint;
 }
 .pk-ambient::before,
 .pk-ambient::after {

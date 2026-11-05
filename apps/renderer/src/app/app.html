@@ -82,42 +82,45 @@
         <pk-chat />
       }
     } @else {
-      <div class="pk-ambient row-start-3 row-span-2 grid place-items-center overflow-auto p-6" data-testid="no-thread">
-        <pk-empty-state
-          [heading]="'shell.app.emptyTitle' | transloco"
-          [text]="(recent().length ? 'shell.app.emptyHintRecent' : 'shell.app.emptyHint') | transloco"
-        >
-          <button actions type="button" class="btn btn-primary btn-sm" (click)="registry.newThread()">
-            <pk-icon name="plus" />
-            {{ 'shell.app.emptyNew' | transloco }}
-            @if (newThreadCombo()) {
-              <kbd class="pk-keycap pk-hide-sm">{{ newThreadCombo() }}</kbd>
-            }
-          </button>
-          <label actions for="t-threads" class="btn btn-ghost btn-sm pk-only-sm">
-            <pk-icon name="sidebar" />
-            {{ 'shell.app.emptyShow' | transloco }}
-          </label>
-          @if (prefs.sidebarCollapsed()) {
-            <button actions type="button" class="btn btn-ghost btn-sm pk-only-wide" (click)="shell.toggleSidebar()">
+      <div class="pk-ambient row-start-3 row-span-2 min-h-0" data-testid="no-thread">
+        <div class="flex h-full overflow-y-auto overscroll-contain p-6">
+          <pk-empty-state
+            class="m-auto"
+            [heading]="'shell.app.emptyTitle' | transloco"
+            [text]="(recent().length ? 'shell.app.emptyHintRecent' : 'shell.app.emptyHint') | transloco"
+          >
+            <button actions type="button" class="btn btn-primary btn-sm" (click)="registry.newThread()">
+              <pk-icon name="plus" />
+              {{ 'shell.app.emptyNew' | transloco }}
+              @if (newThreadCombo()) {
+                <kbd class="pk-keycap pk-hide-sm">{{ newThreadCombo() }}</kbd>
+              }
+            </button>
+            <label actions for="t-threads" class="btn btn-ghost btn-sm pk-only-sm">
               <pk-icon name="sidebar" />
               {{ 'shell.app.emptyShow' | transloco }}
-            </button>
-          }
-          @if (recent().length) {
-            <ul class="pk-empty-list" [attr.aria-label]="'shell.app.emptyRecent' | transloco">
-              <li class="head" aria-hidden="true">{{ 'shell.app.emptyRecent' | transloco }}</li>
-              @for (thread of recent(); track thread.id) {
-                <li>
-                  <button type="button" (click)="open(thread.id, drawer)" data-testid="recent-thread">
-                    <span class="nm">{{ thread.label }}</span>
-                    <span class="sub">{{ thread.project }}</span>
-                  </button>
-                </li>
-              }
-            </ul>
-          }
-        </pk-empty-state>
+            </label>
+            @if (prefs.sidebarCollapsed()) {
+              <button actions type="button" class="btn btn-ghost btn-sm pk-only-wide" (click)="shell.toggleSidebar()">
+                <pk-icon name="sidebar" />
+                {{ 'shell.app.emptyShow' | transloco }}
+              </button>
+            }
+            @if (recent().length) {
+              <ul class="pk-empty-list" [attr.aria-label]="'shell.app.emptyRecent' | transloco">
+                <li class="head" aria-hidden="true">{{ 'shell.app.emptyRecent' | transloco }}</li>
+                @for (thread of recent(); track thread.id) {
+                  <li>
+                    <button type="button" (click)="open(thread.id, drawer)" data-testid="recent-thread">
+                      <span class="nm">{{ thread.label }}</span>
+                      <span class="sub">{{ thread.project }}</span>
+                    </button>
+                  </li>
+                }
+              </ul>
+            }
+          </pk-empty-state>
+        </div>
       </div>
     }
   </main>
