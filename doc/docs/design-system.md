@@ -37,20 +37,36 @@ green and red are the saturated versions that stay legible on near-black.
 | error           | `#F85149`      | `#B5362E`        | failures, removed lines, abort             |
 
 Each theme is a daisyUI theme, so daisyUI components inherit it. The standard themes remain
-`pi-dark` and `pi-light`. Appearance also offers two brand-inspired skins:
+`pi-dark` and `pi-light`. Appearance also offers three brand-inspired skins:
 
 - `pi-soverius`: dark navy surfaces, blue primary/selection states, orange secondary/accent,
   system sans-serif and monospace fonts.
 - `pi-copilotkit`: light lavender surfaces, purple interactive states, Plus Jakarta Sans UI/prose
   and Spline Sans Mono code. The transcript has soft green/cyan radial gradients; the header
   has a subtle lilac gradient. Font files are self-hosted with SIL OFL licenses.
+- `pi-omarchy`: the approved **Last Horizon** mono-first skin: warm near-black `#0c0b0c`
+  window, `#171416` panels, `#090809` chrome/sunken surfaces, dusty rose `#b59790`
+  primary, `#fafcfb` text and `#a9a5a6` muted text. Shared `base-300` stays dark at
+  `#3a3234` so hover fills preserve text contrast; the theme-only `--pk-omarchy-border`
+  supplies stronger `#584e51` frame/component outlines without changing border geometry.
+  Info and secondary are warm `#cbb6b1`, success is sage `#a9c28a`, warning `#d5b382`
+  and error `#ed9ba4`; filled actions use `#0c0e10` ink. Primary hover brightens the rose,
+  while disabled buttons keep an opaque neutral fill and readable dimmed icons, even over
+  coloured parents. All text, including prose and user messages, uses JetBrains Mono.
+  Four local normal/italic Latin/Latin Extended WOFF2 subsets are self-hosted under SIL OFL.
+  This is an unendorsed Omarchy-inspired pi-kit skin, not an official Omarchy product;
+  its palette follows the approved Last Horizon mock, not the website's Tokyo Night palette.
 
-These skins change only color, background paint, and font families. They retain the same markup,
-spacing, sizes, weights, corners, borders, and layout. Theme roles are defined in `tokens.css`;
-shade with opacity rather than introducing component-specific colors. `ThemeStore.isDark()`
+These skins change color, background paint, and font families (plus the scoped motion and decorative field below). They retain the same content markup,
+spacing, sizes, weights, corners, borders, and layout. Omarchy alone mounts one non-interactive, aria-hidden canvas behind the main grid area
+on empty/new-thread screens. It is removed once a conversation starts, not just hidden; it is an absolute grid item, never an extra layout track or content wrapper.
+Shared theme roles and geometry are defined in `tokens.css`; Omarchy's palette, font faces, styling, motion and backdrop placement are concentrated in
+`libs/shared/design-system/src/omarchy.css`. Its canvas component, pure painter and regression tests live together in `src/lib/omarchy/`;
+the shell only supplies the empty-state condition and modal suspension. Shade with opacity rather than introducing component-specific colors. `ThemeStore.isDark()`
 classifies skins for native chrome, sidebar switching, and embedded MCP apps. System follows
 the OS using the standard dark/light themes; the quick toggle switches to the opposite standard
 theme. Named skins are selected in Settings → Appearance and persist like the standard themes.
+The theme picker uses the standard select, keeping all six options inside the existing 320px control column.
 
 ### Type
 
@@ -199,7 +215,7 @@ Only what the app needs, all built from daisyUI classes plus the tokens:
   a merge glyph for `merged`, a commit dot (a ring on a line) for `committed`, a pull-request glyph for `pr`. It is not a colour signal: nothing about an outcome is urgent, so no amber, no edge bar and no unread dot. The tooltip says what and when ("Merged into main as a1b2c3d, 2 h ago",
   "Committed as a1b2c3d, 12 min ago", "Pull request opened for a1b2c3d, just now") and is the accessible name. The same badge ends the breadcrumb strip (the `crumbEnd` slot, visible on phones too). Pressing it opens the **context menu** under the badge ("Show the outcome", and for a pull request
   "Open the pull request"); pressing the badge never opens the row's thread, the menu item does.
-- **Run ring** (`pk-run-ring`, CSS `.pk-run-ring`) the small gauge that says "running" without a word: a 16px track in the current colour, the context arc filled to `percent` when the context size is known (warning from 70 %, error from 90 %), and while `running` a dot that orbits the ring with a slow pulse of the whole (the one thing that turns on its own; still under reduced motion). The sidebar's running rows and the Agents panel's running agents show it, and the sidebar's context gauges (a thread's, a collapsed project's, 13px beside the percentage) are the same ring at rest; `label` is its accessible name ("Running, context 73% full"), and without one the ring is decorative, the element around it carrying the name.
+- **Run ring** (`pk-run-ring`, CSS `.pk-run-ring`) the small gauge that says "running" without a word: a 16px track in the current colour, the context arc filled to `percent` when the context size is known (warning from 70 %, error from 90 %), and while `running` a dot that orbits the ring with a slow pulse of the whole (the running-state motion; still under reduced motion). The sidebar's running rows and the Agents panel's running agents show it, and the sidebar's context gauges (a thread's, a collapsed project's, 13px beside the percentage) are the same ring at rest; `label` is its accessible name ("Running, context 73% full"), and without one the ring is decorative, the element around it carrying the name.
 - **Agent card** ([ADR-0033](adr/0033-durable-background-agents.md) §8; `.pk-agent-card` in the Agents panel) one background agent: the agents glyph, its name over its role, the permission as an outlined tag (info-tinted for edit, warning for isolated), a muted "pi-durable" tag for the runtime it survives restarts on, then the state (a held agent gets a warning-tinted block under its numbers with why it waits and "Discard and resume" or "Resume"; a History card is folded to this header and one muted line of its report, a chevron at the left opens its numbers and the whole report): the run ring with the context fill while it generates or runs a tool (its name and tooltip say which, and how full the context is), the text badge while it waits, an icon once it ended (green check done, red X failed, grey square stopped, the words as tooltip and accessible name), and icon actions at the right (eye opens the transcript, square stops, trash deletes a finished one; each with a tooltip and an accessible name). Below, one line of numbers in muted 11px: model (a long one, over 28 characters, takes its line and the numbers follow on the next), ⏱ running time (live while it runs), turns, tokens "12.3k in · 1.2k out", spend. The open view (`.pk-agent-context`) puts the brief (folded under its role), the same numbers and the tools the permission allows above the transcript, with the thread composer's well and field below it (`copilot-chat-view-input-container` of `chat/feature-composer` on the agent's own store, through the `AGENT_INPUT_VIEW` token): the Deliver chip, shown only while the agent works, says whether a message is a follow-up or a steer; the round button sends; Stop is in the panel's bar. A done agent keeps its composer (a message puts it back to work); a stopped or failed one has none. The transcript there is the thread's at the panel's density (`.pk-agent-transcript`): 12px between turns, 8px inside one, 14/20 prose, the person's messages as slim base-200 bubbles, no turn captions.
 - **Context inspector** (the Session panel's third view, "Context"; CSS `.pk-context`; also "Inspect the context" in the context ring's popover) what the model sees right now, piece by piece: a head line with the model's own count against the window and the estimate ("48.2k of 200k tokens in context (estimate 46.9k)"), a progress bar, and one folded line per kind (system prompt sections, tool definitions, compaction summaries, skills in messages, your messages, model text, model thinking, tool calls, tool results, extension notes) with the count, a share bar and the tokens; opening a kind lists its pieces largest first, each a `<details>` with its label, turn, source and tokens, and the text (up to 4,000 characters, in a 320px scroll box) under it. The estimates are pi's own (characters over four, an image as 4,800 characters), so they agree with when pi compacts.
 - **Lightbox** (`pk-lightbox`, `PkLightboxService`, CSS `.pk-lightbox`) the one image preview of the window, mounted once in the shell: `open({ src, caption })` from wherever an image is drawn small (a sent message's images, the composer's attachment queue; the small image is a `.pk-thumb` button with a zoom-in cursor), and the overlay shows it at the size the window allows over a dimmed backdrop, the caption under it in 12px, a round close button at the top right. Esc, a click beside the image and the button close it, and the element that opened it gets the focus back; the fade is 140ms and off under reduced motion.
@@ -536,7 +552,9 @@ Only what the app needs, all built from daisyUI classes plus the tokens:
 ## Motion
 
 Only in response to an action: menus and drawers 120ms ease-out (the model picker pops in 120ms: 4px rise and fade), expanding
-rows 160ms. The streaming caret blinks, and the run ring's dot orbits while a run goes; nothing else animates on its own. The
+rows 160ms. The streaming caret blinks, and the run ring's dot orbits while a run goes. Empty-area ambient decoration, Omarchy's pixel field and its thin header-edge signal are the decorative exceptions to
+this action-driven rule. The field exists only on empty/new-thread screens; no canvas, particle loop or pointer listener remains during a conversation.
+Welcome copy, wells and controls remain opaque reading surfaces. The
 Where row: the values of its three slots open over 160ms when the mode changes, its menus over 120ms (a 4px rise). The sidebar:
 a "Needs you" item slides in from the left and out to the right in 160ms; a band's chevron turns 120ms; a row's background
 eases 120ms. `prefers-reduced-motion` turns it all off.
@@ -545,6 +563,48 @@ The Settings transitions, all in response to the click that causes them: a **sec
 from .98, 120ms (`pk-fade-in`, `pk-win-in`, on `.pk-settings` and `.pk-wf`); a **wizard step** slides 24px in the direction of travel, 160ms (`.wstep`, with `.back` going back); an **expanding row** (a form opening under a radio, the
 tool list, the redirect-URL field) 160ms (`.pk-expand`); a **detail page** slides in from the right, 160ms (`pk-detail-in`), and out again on Back (`pk-detail-out`); the "Saved" tick fades in 120ms; a **tooltip** fades 120ms after its 400ms wait (see Tooltips). `prefers-reduced-motion: reduce` removes
 every animation and transition listed here.
+
+The Omarchy skin keeps geometry unchanged and gates all added motion behind
+`prefers-reduced-motion: no-preference`. Its motion is deliberately more visible than the standard themes:
+
+- **Theme change:** entering or leaving Omarchy uses a 520ms stepped-band reveal of native View Transition snapshots.
+  The temporary `data-pk-theme-transition="omarchy"` marker scopes those pseudo-element styles, including when the destination
+  is another theme. Unsupported browsers, reduced motion and initial restoration apply immediately; no backend request is held
+  inside the snapshot callback. Rapid changes cancel stale transitions and cleanup the marker.
+- **Header edge:** a 2px-high rose signal sweeps along the existing header edge in 5s, 32 steps; only background position changes,
+  never header text or layout. It remains during conversations; the pixel field does not.
+- **Pixel field:** `PkPixelField` is loaded on demand only for `pi-omarchy` on the no-thread or genuinely empty-thread screen.
+  `ShellStore.emptyChat` checks the matching zero-message summary and live transcript, excluding replay, running, review and learning views.
+  The first optimistic message removes the component even before its summary count catches up. Existing conversations never mount it.
+  The visual follows the website's **fixed, ordered-dither lattice**, not floating particles: uniform 16px tiles form, brighten and dissolve
+  in spatially coherent waves. Advected noise at multiple scales and wandering highlights change the field's coverage and tonal bands;
+  tile positions never drift. This is an original implementation of that visual approach, without the site's branding, audio or glyph stamps.
+  `--pk-pixel-color` (the active primary), `--pk-pixel-mid` (a theme-derived mix) and `--pk-pixel-dim` (base-300) supply three tonal levels.
+  `--pk-pixel-cell` is 16 CSS px, `--pk-pixel-opacity` is .85 and `--pk-pixel-speed` is 1.4, all scoped to the named theme.
+  Edges are strongest and fade inwards; the central rectangle keeps a faint floor (a quarter of the edge strength), so waves visibly cross behind the welcome copy.
+  Welcome copy, recent-thread cards and the composer keep opaque paints. No padding, boxes or transcript-surface overrides are added.
+  The canvas is aria-hidden, does not receive focus or pointer input, and occupies the main grid area without consuming a layout cell.
+  Its ambient loop is capped at 20 FPS outside Angular with a bounded backing buffer. Styles and cell geometry are cached, not read per frame.
+  Document visibility and modal suspension stop pending timers and animation frames; reduced motion renders one static field.
+  Resize and theme-attribute changes refresh dimensions/palette. Starting/opening a conversation, entering review/learning or switching themes
+  destroys the canvas and its listeners rather than merely hiding the loop.
+  **Pointer response:** a passive mouse listener caches coordinates relative to the field; no event-driven drawing or per-event layout/style reads.
+  The same capped loop eases a local highlight within `--pk-pixel-pointer-radius` (160 CSS px), with `--pk-pixel-pointer-gain` (.85)
+  raising the local density and brightness. The mouse lights tiles rather than pushing them off the grid; final painting always respects
+  the edge mask and its faint central floor. The highlight settles as the pointer becomes idle (600ms)
+  or leaves the main area/window. Touch, reduced motion, hidden/offscreen and suspended states disable and clear the reaction;
+  changing themes/destroying the field removes the mouse/leave/blur listeners too. The canvas remains non-interactive and never moves UI content.
+- **Empty area:** the old 6s stepped CSS layer remains a no-canvas fallback, disabled once the canvas has painted so there are never two moving fields.
+  Welcome children enter in 450ms with a 75ms stagger.
+- **Menus:** model, usage and Where popovers rise 8px and scale from .98 in 260ms. Dialog windows rise 12px and scale from .96
+  in 320ms; their backdrops fade in 240ms, Settings sections in 220ms.
+- **Panels:** standard side panels enter from 18px to the right in 300ms. Native browser and terminal hosts are not transformed;
+  only their header bars enter, preserving native surface bounds and canvas rendering.
+- **Press:** buttons, including Send, scale to .94 with a 140ms transition. Disabled controls never receive it.
+
+Reduced motion leaves the decoration static and removes the reveals, entrances and press transitions. Theme reveals animate
+frozen snapshots only in response to the explicit theme change; there is no transcript, streaming-text or virtual-row entrance
+animation and no layout, size, spacing or radius changes.
 
 ## Secrets
 

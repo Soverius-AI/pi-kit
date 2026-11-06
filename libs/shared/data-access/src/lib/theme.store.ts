@@ -1,8 +1,9 @@
-import { computed, effect } from '@angular/core';
+import { computed, DestroyRef, effect, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
 import { readStorage, withPersistence, writeStorage } from './store';
+import { createThemeTransition } from './theme-transition';
 
-export type PiTheme = 'pi-dark' | 'pi-light' | 'pi-soverius' | 'pi-copilotkit';
+export type PiTheme = 'pi-dark' | 'pi-light' | 'pi-soverius' | 'pi-copilotkit' | 'pi-omarchy';
 /** What the user chose: a theme, or "System" (follow the OS). */
 export type ThemePreference = 'system' | PiTheme;
 
@@ -19,7 +20,8 @@ const isPreference = (value: unknown): value is ThemePreference =>
   value === 'pi-dark' ||
   value === 'pi-light' ||
   value === 'pi-soverius' ||
-  value === 'pi-copilotkit';
+  value === 'pi-copilotkit' ||
+  value === 'pi-omarchy';
 
 /**
  * Sets `data-theme` on <html> to a registered theme. The choice is `System` (follow the OS)
@@ -48,7 +50,7 @@ export const ThemeStore = signalStore(
     theme: computed<PiTheme>(() => (preference() === 'system' ? os() : (preference() as PiTheme))),
     isDark: computed(() => {
       const theme = preference() === 'system' ? os() : preference();
-      return theme === 'pi-dark' || theme === 'pi-soverius';
+      return theme === 'pi-dark' || theme === 'pi-soverius' || theme === 'pi-omarchy';
     }),
   })),
   withMethods((store) => ({
@@ -67,9 +69,16 @@ export const ThemeStore = signalStore(
     onInit(store) {
       const media = matchMedia('(prefers-color-scheme: light)');
       patchState(store, { os: media.matches ? 'pi-light' : 'pi-dark' });
-      media.addEventListener('change', (event) => patchState(store, { os: event.matches ? 'pi-light' : 'pi-dark' }));
+      const onSchemeChange = (event: MediaQueryListEvent): void =>
+        patchState(store, { os: event.matches ? 'pi-light' : 'pi-dark' });
+      media.addEventListener('change', onSchemeChange);
+      const transition = createThemeTransition(document);
+      inject(DestroyRef).onDestroy(() => {
+        transition.destroy();
+        media.removeEventListener('change', onSchemeChange);
+      });
       const apply = (): void => {
-        document.documentElement.setAttribute('data-theme', store.theme());
+        transition.apply(store.theme());
         // Electron: pin or release the window's colour scheme so `prefers-color-scheme` (and native chrome) agree.
         const source = store.preference() === 'system' ? 'system' : store.isDark() ? 'dark' : 'light';
         void window.piKit?.setThemeSource?.(source);

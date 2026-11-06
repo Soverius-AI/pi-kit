@@ -5,13 +5,15 @@ import { ChatStore, CommandRegistry } from '@pi-kit/chat/api';
 import { DialogStore, HealthStore, ToastStore, UiStore, ViewPrefs } from '@pi-kit/data-access';
 import { ChangesStore } from '@pi-kit/review/api';
 import { GraphStore } from '@pi-kit/session-tree/api';
-import { fakeThreads, thread } from '@pi-kit/testing';
+import { fakeThreads, idleState, thread } from '@pi-kit/testing';
 import { AttendantStore, ThreadsStore } from '@pi-kit/threads/api';
 import { ShellStore } from './shell.store';
 
 describe('ShellStore', () => {
   const chat = {
     running: signal(false),
+    connecting: signal(false),
+    messages: signal<{ id: string; role: string; content: string }[]>([]),
     waitingForAnswer: signal(false),
     compacting: signal(false),
     stats: signal<{ sessionId: string } | undefined>(undefined),
@@ -29,7 +31,12 @@ describe('ShellStore', () => {
   const toasts = { show: vi.fn() };
   const registry = { newThread: vi.fn(async () => undefined) };
   const graph = { branch: signal<unknown>(undefined), cancelBranch: vi.fn() };
-  const review = { threadId: signal<string | undefined>('t1'), setSource: vi.fn(), open: vi.fn() };
+  const review = {
+    threadId: signal<string | undefined>('t1'),
+    mode: signal<'chat' | 'review'>('chat'),
+    setSource: vi.fn(),
+    open: vi.fn(),
+  };
   const health = { state: signal<'checking' | 'ok' | 'error'>('ok'), epoch: signal(0) };
   let threads: ReturnType<typeof fakeThreads> & { init: ReturnType<typeof vi.fn> };
 
@@ -47,12 +54,15 @@ describe('ShellStore', () => {
   beforeEach(() => {
     localStorage.clear();
     chat.running.set(false);
+    chat.connecting.set(false);
+    chat.messages.set([]);
     chat.waitingForAnswer.set(false);
     chat.compacting.set(false);
     chat.stats.set(undefined);
     graph.branch.set(undefined);
     health.state.set('ok');
     review.threadId.set('t1');
+    review.mode.set('chat');
     chat.interrupt.interrupts.set([]);
     for (const fn of [threadsApi.answerDialog, attendant.accept, toasts.show, chat.interrupt.resolve]) fn.mockReset();
     threadsApi.answerDialog.mockResolvedValue(undefined);
@@ -106,6 +116,92 @@ describe('ShellStore', () => {
     });
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  describe('emptyChat', () => {
+    it('allows no selection and a confirmed empty chat, including CLI and worktree threads', () => {
+      const shell = make();
+      threads.open(undefined);
+      expect(shell.emptyChat()).toBe(true);
+      threads.open(thread('empty', { messageCount: 0 }));
+      expect(shell.emptyChat()).toBe(true);
+      threads.open(thread('cli', { messageCount: 0, origin: 'cli' }));
+      expect(shell.emptyChat()).toBe(true);
+      threads.open(
+        thread('worktree', {
+          messageCount: 0,
+          worktree: { path: '/a/worktree', branch: 'feature', base: 'main', exists: true },
+        }),
+      );
+      expect(shell.emptyChat()).toBe(true);
+    });
+
+    it('rejects a missing, mismatched or unknown-count summary while selection catches up', () => {
+      const selectedId = vi.spyOn(threads, 'selectedId').mockReturnValue('selected');
+      const shell = make();
+      threads.open(undefined);
+      expect(shell.emptyChat()).toBe(false);
+      threads.open(thread('other', { messageCount: 0 }));
+      expect(shell.emptyChat()).toBe(false);
+      threads.open(thread('selected'));
+      expect(shell.emptyChat()).toBe(false);
+      selectedId.mockRestore();
+    });
+
+    it('rejects history replay, a live run and a summary reporting a background run', () => {
+      threads.open(thread('empty', { messageCount: 0 }));
+      const shell = make();
+      chat.connecting.set(true);
+      expect(shell.emptyChat()).toBe(false);
+      chat.connecting.set(false);
+      expect(shell.emptyChat()).toBe(true);
+      chat.running.set(true);
+      expect(shell.emptyChat()).toBe(false);
+      chat.running.set(false);
+      threads.open(thread('empty', { messageCount: 0, state: idleState({ activity: 'running' }) }));
+      expect(shell.emptyChat()).toBe(false);
+    });
+
+    it('hides immediately for an optimistic first message even before the summary count changes', () => {
+      threads.open(thread('empty', { messageCount: 0 }));
+      const shell = make();
+      expect(shell.emptyChat()).toBe(true);
+      chat.messages.set([{ id: 'first', role: 'user', content: 'Hello' }]);
+      expect(shell.emptyChat()).toBe(false);
+    });
+
+    it('rejects a nonempty summary even with an empty transcript, without reading live messages', () => {
+      threads.open(thread('existing', { messageCount: 0 }));
+      const liveMessages = chat.messages;
+      const messages = vi.spyOn(chat, 'messages');
+      try {
+        const shell = make();
+        expect(shell.emptyChat()).toBe(true);
+        threads.open(thread('existing', { messageCount: 1 }));
+        messages.mockClear();
+        expect(shell.emptyChat()).toBe(false);
+        expect(messages).not.toHaveBeenCalled();
+        liveMessages.set([{ id: 'streaming', role: 'assistant', content: 'Hello' }]);
+        expect(shell.emptyChat()).toBe(false);
+        expect(messages).not.toHaveBeenCalled();
+      } finally {
+        messages.mockRestore();
+      }
+    });
+
+    it('rejects learning workspaces and review mode, even review without a selection', () => {
+      const shell = make();
+      threads.open(thread('learning', { messageCount: 0, learning: { sourceThreadId: 'source' } }));
+      expect(shell.emptyChat()).toBe(false);
+      threads.open(thread('empty', { messageCount: 0 }));
+      expect(shell.emptyChat()).toBe(true);
+      review.mode.set('review');
+      expect(shell.emptyChat()).toBe(false);
+      threads.open(undefined);
+      expect(shell.emptyChat()).toBe(false);
+      review.mode.set('chat');
+      expect(shell.emptyChat()).toBe(true);
+    });
+  });
 
   it('⌘[ and ⌘] step through the threads of the project, ⌘1 to ⌘9 jump to a project (and not ⌘0)', () => {
     make();

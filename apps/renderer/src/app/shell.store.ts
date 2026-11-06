@@ -33,7 +33,25 @@ export const ShellStore = signalStore(
     const health = inject(HealthStore);
     const threads = inject(ThreadsStore);
     const chat = inject(ChatStore);
+    const review = inject(ChangesStore);
     return {
+      /** Only a genuinely empty chat may show the backdrop, never a replay or an optimistic first message. */
+      emptyChat: computed(() => {
+        if (review.mode() !== 'chat') return false;
+        const selectedId = threads.selectedId();
+        if (!selectedId) return true;
+        const thread = threads.selected();
+        if (
+          !thread ||
+          thread.id !== selectedId ||
+          thread.learning ||
+          thread.messageCount !== 0 ||
+          thread.state.activity === 'running'
+        )
+          return false;
+        // Once the summary has messages, do not subscribe to streaming transcript changes.
+        return !chat.connecting() && !chat.running() && chat.messages().length === 0;
+      }),
       backendLabel: computed(() => {
         switch (health.state()) {
           case 'ok':

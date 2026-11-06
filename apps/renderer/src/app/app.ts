@@ -17,7 +17,15 @@ import {
   UiStore,
   ViewPrefs,
 } from '@pi-kit/data-access';
-import { PkAnsiText, PkChangesPill, PkDiffTotals, PkEmptyState, PkIcon, PkLightbox } from '@pi-kit/design-system';
+import {
+  PkAnsiText,
+  PkChangesPill,
+  PkDiffTotals,
+  PkEmptyState,
+  PkIcon,
+  PkLightbox,
+  PkPixelField,
+} from '@pi-kit/design-system';
 import { FilesPanel } from '@pi-kit/files/feature-files';
 import { OnboardingLaunch } from '@pi-kit/onboarding/data';
 import { OnboardingStrip, OnboardingWindow } from '@pi-kit/onboarding/feature-onboarding';
@@ -73,6 +81,7 @@ import { ShellStore } from './shell.store';
     TranslocoPipe,
     PkEmptyState,
     PkIcon,
+    PkPixelField,
   ],
   templateUrl: './app.html',
   host: {
@@ -141,6 +150,8 @@ export class App {
   );
   // The theme applies as soon as the shell exists (data-theme on <html>).
   private readonly theme = inject(ThemeStore);
+  /** No canvas or pointer listener once a conversation starts, including replay and optimistic sends. */
+  protected readonly showPixelField = computed(() => this.theme.theme() === 'pi-omarchy' && this.shell.emptyChat());
   // List refreshes replace summaries; only changing the source may resume a learning workspace.
   private readonly learningSource = computed(() => this.threads.selected()?.learning?.sourceThreadId);
 

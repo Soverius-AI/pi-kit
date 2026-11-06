@@ -1,6 +1,11 @@
 <input #drawer type="checkbox" id="t-threads" class="pk-toggle" />
 
-<div class="pk-shell" [attr.data-panel]="bus.panel() ? 'open' : 'closed'">
+<div class="pk-shell" [class.pk-has-pixel-field]="showPixelField()" [attr.data-panel]="bus.panel() ? 'open' : 'closed'">
+  @if (showPixelField()) {
+    @defer (on immediate) {
+      <pk-pixel-field class="pk-theme-backdrop" [suspended]="browserSuspended()" />
+    }
+  }
   <!-- Sidebar: the only left column (layout). Projects, their threads, the backend status. -->
   <pk-thread-sidebar (opened)="open($event, drawer)" />
   <pk-environment-project-picker />

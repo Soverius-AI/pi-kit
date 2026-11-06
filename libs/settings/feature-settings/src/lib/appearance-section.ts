@@ -13,6 +13,7 @@ const themeOptions = (translate: Translate): { id: ThemePreference; label: strin
   { id: 'pi-light', label: translate('settings.appearanceSection.light') },
   { id: 'pi-soverius', label: 'Soverius' },
   { id: 'pi-copilotkit', label: 'CopilotKit' },
+  { id: 'pi-omarchy', label: 'Omarchy' },
 ];
 
 /** Settings › Appearance: theme, text sizes, density and what the transcript shows. All of it is pi-kit’s own (its database), applied to the page at once. */
@@ -33,17 +34,17 @@ const themeOptions = (translate: Translate): { id: ThemePreference; label: strin
                 </div>
               </header>
               <div pkSetting="theme">
-                <div class="pk-seg" role="radiogroup" aria-labelledby="lbl-theme">
+                <select
+                  class="select select-sm"
+                  aria-labelledby="lbl-theme"
+                  (change)="setTheme($any($event.target).value)"
+                >
                   @for (theme of themes; track theme.id) {
-                    <input
-                      type="radio"
-                      name="theme"
-                      [attr.aria-label]="theme.label"
-                      [checked]="themeService.preference() === theme.id"
-                      (change)="store.setTheme(theme.id)"
-                    />
+                    <option [value]="theme.id" [selected]="themeService.preference() === theme.id">
+                      {{ theme.label }}
+                    </option>
                   }
-                </div>
+                </select>
               </div>
               <div pkSetting="prose-size">
                 <select
@@ -146,6 +147,10 @@ export class AppearanceSection {
   protected readonly themeService = inject(ThemeStore);
   protected get themes() {
     return themeOptions(this.i18n.t);
+  }
+  protected setTheme(value: string): void {
+    const theme = this.themes.find((option) => option.id === value);
+    if (theme) void this.store.setTheme(theme.id);
   }
   protected readonly proseSizes = PROSE_SIZES;
   protected readonly codeSizes = CODE_SIZES;

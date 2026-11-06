@@ -5,6 +5,7 @@
 @import '../../../libs/shared/design-system/src/icons.css';
 @import '../../../libs/shared/design-system/src/layout.css';
 @import '../../../libs/shared/design-system/src/components.css';
+@import '../../../libs/shared/design-system/src/omarchy.css';
 @import '../../../node_modules/@xterm/xterm/css/xterm.css';
 @import '../../../node_modules/@angular/cdk/overlay-prebuilt.css';
 @import '../../../libs/shared/design-system/src/mobile.css';

@@ -43,6 +43,49 @@ describe('ThemeStore', () => {
     expect(api.set).toHaveBeenCalledWith('theme', 'pi-light');
   });
 
+  it('commits an Omarchy transition without waiting for backend persistence and cleans up on destroy', async () => {
+    let finish!: () => void;
+    let update!: () => void;
+    let persisted!: () => void;
+    const finished = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const skipTransition = vi.fn();
+    const startViewTransition = vi.fn((callback: () => void) => {
+      update = callback;
+      return { finished, ready: Promise.resolve(), updateCallbackDone: Promise.resolve(), skipTransition };
+    });
+    Object.defineProperty(document, 'startViewTransition', { configurable: true, value: startViewTransition });
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
+    try {
+      const theme = TestBed.inject(ThemeStore);
+      TestBed.tick();
+      expect(startViewTransition).not.toHaveBeenCalled();
+      api.set.mockImplementationOnce(
+        () =>
+          new Promise<undefined>((resolve) => {
+            persisted = () => resolve(undefined);
+          }),
+      );
+      const saving = theme.set('pi-omarchy');
+      TestBed.tick();
+      expect(startViewTransition).toHaveBeenCalledOnce();
+      expect(document.documentElement.getAttribute('data-theme')).toBe('pi-dark');
+      update();
+      expect(document.documentElement.getAttribute('data-theme')).toBe('pi-omarchy');
+      expect(document.documentElement.getAttribute('data-pk-theme-transition')).toBe('omarchy');
+      TestBed.resetTestingModule();
+      expect(skipTransition).toHaveBeenCalledOnce();
+      expect(document.documentElement.hasAttribute('data-pk-theme-transition')).toBe(false);
+      persisted();
+      finish();
+      await saving;
+    } finally {
+      Reflect.deleteProperty(document, 'startViewTransition');
+      vi.restoreAllMocks();
+    }
+  });
+
   it('toggle flips between dark and light', async () => {
     const theme = TestBed.inject(ThemeStore);
     theme.toggle();
@@ -56,6 +99,7 @@ describe('ThemeStore', () => {
   it.each([
     ['pi-soverius', true],
     ['pi-copilotkit', false],
+    ['pi-omarchy', true],
   ] as const)('restores %s locally and applies its color scheme', (preference, isDark) => {
     localStorage.setItem('pi-kit.theme', preference);
     const theme = TestBed.inject(ThemeStore);
@@ -68,6 +112,7 @@ describe('ThemeStore', () => {
   it.each([
     ['pi-soverius', 'dark'],
     ['pi-copilotkit', 'light'],
+    ['pi-omarchy', 'dark'],
   ] as const)('sets native chrome to %s’s %s scheme', async (preference, scheme) => {
     const setThemeSource = vi.fn();
     vi.stubGlobal('piKit', { setThemeSource });
@@ -84,7 +129,7 @@ describe('ThemeStore', () => {
     }
   });
 
-  it.each(['pi-soverius', 'pi-copilotkit'] as const)(
+  it.each(['pi-soverius', 'pi-copilotkit', 'pi-omarchy'] as const)(
     'persists and restores %s through the backend',
     async (preference) => {
       const theme = TestBed.inject(ThemeStore);
@@ -103,6 +148,7 @@ describe('ThemeStore', () => {
   it.each([
     ['pi-soverius', 'pi-light'],
     ['pi-copilotkit', 'pi-dark'],
+    ['pi-omarchy', 'pi-light'],
   ] as const)('toggles %s to the opposite standard color scheme', async (preference, opposite) => {
     const theme = TestBed.inject(ThemeStore);
     await theme.set(preference);

@@ -8,7 +8,8 @@
         : matchMedia('(prefers-color-scheme: light)').matches
           ? 'pi-light'
           : 'pi-dark';
-    if (/^pi-(dark|light|soverius|copilotkit)$/.test(theme)) document.documentElement.setAttribute('data-theme', theme);
+    if (/^pi-(dark|light|soverius|copilotkit|omarchy)$/.test(theme))
+      document.documentElement.setAttribute('data-theme', theme);
   } catch {
     /* Storage is blocked: the default theme stays until the app applies the saved one. */
   }

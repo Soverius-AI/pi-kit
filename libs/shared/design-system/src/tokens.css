@@ -71,9 +71,10 @@
   --pk-shadow: 0 8px 24px rgb(20 24 32 / 0.12);
 }
 
-/* Brand-inspired themes change colors and font families only. Geometry stays identical. */
+/* Named themes share the standard geometry. Their paint, fonts and optional scoped motion may differ. */
 [data-theme='pi-soverius'],
-[data-theme='pi-copilotkit'] {
+[data-theme='pi-copilotkit'],
+[data-theme='pi-omarchy'] {
   --radius-selector: 9999px;
   --radius-field: 0.5rem;
   --radius-box: 0.625rem;

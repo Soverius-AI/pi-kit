@@ -367,11 +367,81 @@ describe('review mode', () => {
 describe('settings', () => {
   const authFile = () => join(env.agentDir, 'auth.json');
 
+  it('binds the decorative pixel field to empty Omarchy screens and respects motion preferences', async () => {
+    const { page, h } = app;
+    const field = page.locator('pk-pixel-field');
+    const settings = page.getByRole('dialog', { name: 'Settings' });
+    const appearance = async () => {
+      if (!(await settings.isVisible())) await h.openSettings('Appearance');
+      else await settings.getByRole('tab', { name: 'Appearance', exact: true }).click();
+      return settings.getByRole('combobox', { name: 'Theme', exact: true });
+    };
+    // Theme is controller-scoped; the unscoped settings API can report a different default.
+    const previous = await (await appearance()).inputValue();
+    await page.keyboard.press('Escape');
+    try {
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await h.newThread();
+      await page.getByTestId('new-thread-page').waitFor();
+      await (await appearance()).selectOption('pi-omarchy');
+      await page.locator('pk-pixel-field[data-ready="true"]').waitFor();
+      assert.equal(await field.count(), 1);
+      assert.equal(await field.getAttribute('aria-hidden'), 'true');
+      assert.equal(await field.locator('canvas').count(), 1);
+      const bounds = await field.evaluate((element) => {
+        const field = element.getBoundingClientRect();
+        const main = document.querySelector('.pk-main').getBoundingClientRect();
+        return {
+          aligned: ['x', 'y', 'width', 'height'].every((key) => Math.abs(field[key] - main[key]) < 1),
+          pointerEvents: getComputedStyle(element).pointerEvents,
+        };
+      });
+      assert.equal(bounds.aligned, true, 'the field stays in the main grid area without taking a layout cell');
+      assert.equal(bounds.pointerEvents, 'none');
+      await page.keyboard.press('Escape');
+      await page.locator('pk-pixel-field[data-motion="running"]').waitFor();
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.locator('pk-pixel-field[data-motion="static"]').waitFor();
+      const staticPixels = await field.locator('canvas').evaluate((canvas) => canvas.toDataURL());
+      const fieldBounds = await field.boundingBox();
+      await page.mouse.move(fieldBounds.x + 12, fieldBounds.y + 120);
+      await h.settle(350);
+      assert.equal(
+        await field.locator('canvas').evaluate((canvas) => canvas.toDataURL()),
+        staticPixels,
+        'reduced motion also disables mouse reactions',
+      );
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.locator('pk-pixel-field[data-motion="running"]').waitFor();
+      const populated = (await api('/api/threads')).find(
+        (thread) => thread.cwd === env.project && thread.messageCount > 0 && !thread.archived && !thread.learning,
+      );
+      assert.ok(populated, 'the fixture has a conversation to check field suppression');
+      await page.locator(`.pk-thread[data-thread="${populated.id}"]`).click();
+      await field.waitFor({ state: 'detached' });
+      await page.locator('pk-transcript .pk-user').first().waitFor({ state: 'attached' });
+      await h.settle(250);
+      assert.equal(await field.count(), 0, 'no canvas while replaying or reading a conversation');
+      await h.newThread();
+      await page.getByTestId('new-thread-page').waitFor();
+      await page.locator('pk-pixel-field[data-ready="true"][data-motion="running"]').waitFor();
+      await appearance();
+      await page.locator('pk-pixel-field[data-motion="paused"]').waitFor();
+      await settings.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('pi-dark');
+      await field.waitFor({ state: 'detached' });
+    } finally {
+      await (await appearance()).selectOption(previous);
+      await page.waitForFunction(() => !document.documentElement.hasAttribute('data-pk-theme-transition'));
+      await page.keyboard.press('Escape');
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+    }
+  });
+
   it('keeps three settings across a reload and a backend restart, each in its own store', async () => {
     const { page, h } = app;
     const dialog = await h.openSettings('Appearance');
     // 1. the theme, in pi-kit's database
-    await dialog.getByRole('radio', { name: 'Light' }).check();
+    await dialog.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('pi-light');
     await page.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'pi-light');
     await dialog.getByTestId('saved').getByText('Saved').waitFor();
     // 2. compaction, in pi's settings.json
@@ -419,7 +489,7 @@ describe('settings', () => {
     await again.getByRole('tab', { name: 'Chat models' }).click();
     await again.getByTestId('default-effort').selectOption('off');
     await again.getByRole('tab', { name: 'Appearance' }).click();
-    await again.getByRole('radio', { name: 'Dark' }).check();
+    await again.getByRole('combobox', { name: 'Theme', exact: true }).selectOption('pi-dark');
     await page.waitForFunction(() => document.documentElement.getAttribute('data-theme') === 'pi-dark');
     await h.settle(800);
     assert.equal(readPiSettings().defaultThinkingLevel, 'off');

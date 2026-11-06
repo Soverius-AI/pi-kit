@@ -1,0 +1,426 @@
+/* Omarchy / Last Horizon: palette, typography, paint, motion and backdrop integration.
+   Shared dimensions stay unchanged; only the backdrop's existing stacking context is set here.
+   Live content never animates: transcript turns, streamed text, virtual rows and native surfaces stay still. */
+:root[data-theme='pi-omarchy'] {
+  color-scheme: dark;
+  --color-base-100: #171416;
+  --color-base-200: #0c0b0c;
+  --color-base-300: #3a3234;
+  --color-base-content: #fafcfb;
+  --color-primary: #b59790;
+  --color-primary-content: #0c0e10;
+  --color-secondary: #cbb6b1;
+  --color-secondary-content: #0c0e10;
+  --color-accent: #b59790;
+  --color-accent-content: #0c0e10;
+  --color-neutral: #090809;
+  --color-neutral-content: #fafcfb;
+  --color-info: #cbb6b1;
+  --color-info-content: #0c0e10;
+  --color-success: #a9c28a;
+  --color-success-content: #0c0e10;
+  --color-warning: #d5b382;
+  --color-warning-content: #0c0e10;
+  --color-error: #ed9ba4;
+  --color-error-content: #0c0e10;
+  --pk-muted: #a9a5a6;
+  --pk-sunken: #090809;
+  --pk-omarchy-border: #584e51;
+  --pk-pixel-color: var(--color-primary);
+  --pk-pixel-dim: var(--color-base-300);
+  --pk-pixel-mid: color-mix(in srgb, var(--color-primary) 50%, var(--color-base-300));
+  --pk-pixel-cell: 16;
+  --pk-pixel-opacity: 0.85;
+  --pk-pixel-speed: 1.4;
+  --pk-pixel-pointer-radius: 160;
+  --pk-pixel-pointer-gain: 0.85;
+  --pk-shadow: 0 12px 32px rgb(0 0 0 / 0.6);
+  --pk-font-sans: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --pk-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Local SIL OFL subsets load only when this theme needs them. Licenses are in fonts/. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./fonts/jetbrains-mono-latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./fonts/jetbrains-mono-latin-ext.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./fonts/jetbrains-mono-latin-italic.woff2') format('woff2');
+  font-style: italic;
+  font-weight: 100 800;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC,
+    U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('./fonts/jetbrains-mono-latin-ext-italic.woff2') format('woff2');
+  font-style: italic;
+  font-weight: 100 800;
+  font-display: swap;
+  unicode-range:
+    U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* The absolute backdrop shares main's grid area without consuming a layout cell.
+   These are the same stacking/placement rules as the shell previously supplied. */
+[data-theme='pi-omarchy'] .pk-shell.pk-has-pixel-field {
+  position: relative;
+  isolation: isolate;
+}
+[data-theme='pi-omarchy'] .pk-theme-backdrop {
+  grid-area: main;
+}
+
+/* Paint and motion only below; component spacing, sizes and shapes stay shared. */
+[data-theme='pi-omarchy'] ::selection {
+  background: var(--pk-omarchy-border);
+  color: var(--color-base-content);
+}
+
+/* The approved mock has nearly black chrome, warm raised wells and crisp grey-rose
+   frames. The border token must never become a text background: shared hover fills
+   keep the darker base-300, so muted labels remain readable. */
+[data-theme='pi-omarchy'] :is(.pk-threads, .pk-header, .pk-status, .pk-crumbs) {
+  background-color: var(--color-neutral);
+}
+[data-theme='pi-omarchy']
+  :is(
+    .pk-threads,
+    .pk-header,
+    .pk-status,
+    .pk-crumbs,
+    .pk-panel,
+    .pk-user,
+    .pk-picker,
+    .pk-popover,
+    .pk-empty-list,
+    .pk-diff
+  ),
+[data-theme='pi-omarchy'] .pk-well:not(:focus-within) {
+  border-color: var(--pk-omarchy-border);
+}
+
+/* Filled actions use dark ink, never white-on-rose. Outline/ghost controls retain
+   their design-system treatment. Disabled controls get an opaque neutral fill so
+   faint glyphs do not disappear over the split button's colored parent. */
+[data-theme='pi-omarchy']
+  .btn-primary:not(
+    .btn-ghost,
+    .btn-outline,
+    .btn-soft,
+    .btn-dash,
+    .btn-link,
+    :disabled,
+    [aria-disabled='true'],
+    .btn-disabled
+  ),
+[data-theme='pi-omarchy'] .pk-send:not(:disabled, .stop) {
+  color: var(--color-primary-content);
+}
+[data-theme='pi-omarchy']
+  .btn-primary:is(:disabled, [aria-disabled='true'], .btn-disabled):not(
+    .btn-ghost,
+    .btn-outline,
+    .btn-soft,
+    .btn-dash,
+    .btn-link
+  ),
+[data-theme='pi-omarchy'] .pk-send:disabled {
+  background-color: var(--color-base-300);
+  color: var(--pk-muted);
+}
+@media (hover: hover) {
+  [data-theme='pi-omarchy']
+    .btn-primary:hover:not(
+      .btn-ghost,
+      .btn-outline,
+      .btn-soft,
+      .btn-dash,
+      .btn-link,
+      :disabled,
+      [aria-disabled='true'],
+      .btn-disabled
+    ),
+  [data-theme='pi-omarchy'] .pk-send:hover:not(:disabled, .stop) {
+    background-color: color-mix(in srgb, var(--color-primary) 86%, var(--color-base-content));
+  }
+}
+[data-theme='pi-omarchy']
+  .btn-primary:active:not(
+    .btn-ghost,
+    .btn-outline,
+    .btn-soft,
+    .btn-dash,
+    .btn-link,
+    :disabled,
+    [aria-disabled='true'],
+    .btn-disabled
+  ),
+[data-theme='pi-omarchy'] .pk-send:active:not(:disabled, .stop) {
+  background-color: color-mix(in srgb, var(--color-primary) 90%, var(--color-primary-content));
+}
+
+/* A tiny terminal-like signal lives on the header edge, not behind the transcript.
+   It paints only the existing header and never moves its text or changes its bounds. */
+[data-theme='pi-omarchy'] .pk-header {
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-primary) 70%, transparent),
+    transparent
+  );
+  background-size: 22% 2px;
+  background-repeat: no-repeat;
+  background-position: -30% 100%;
+}
+
+/* Only the empty/new-thread screen has a field. Keep its welcome copy opaque,
+   without adding boxes, padding or changing any transcript surface. */
+[data-theme='pi-omarchy'] .pk-start > :is(h2, p),
+[data-theme='pi-omarchy'] .pk-empty-state > :is(h2, p) {
+  background-color: var(--color-base-200);
+}
+[data-theme='pi-omarchy'] .pk-empty-list {
+  background-color: var(--color-base-100);
+}
+
+/* Keep the CSS empty-state field as a no-canvas fallback, not a second moving layer. */
+[data-theme='pi-omarchy'] .pk-shell:has(> pk-pixel-field[data-ready='true']) .pk-ambient::before,
+[data-theme='pi-omarchy'] .pk-shell:has(> pk-pixel-field[data-ready='true']) .pk-ambient::after {
+  background: none;
+  animation: none;
+}
+
+/* Repaint the existing empty-area layers when the canvas field is unavailable. */
+[data-theme='pi-omarchy'] .pk-ambient::before {
+  background-image: conic-gradient(
+    at 8px 8px,
+    transparent 0deg 270deg,
+    color-mix(in srgb, var(--color-base-content) 8%, transparent) 270deg 360deg
+  );
+  background-size: 48px 48px;
+}
+[data-theme='pi-omarchy'] .pk-ambient::after {
+  background-image:
+    conic-gradient(
+      at 12px 12px,
+      transparent 0deg 270deg,
+      color-mix(in srgb, var(--color-primary) 30%, transparent) 270deg 360deg
+    ),
+    radial-gradient(closest-side, color-mix(in srgb, var(--color-info) 12%, transparent), transparent);
+  background-size:
+    48px 48px,
+    65% 65%;
+  background-repeat: repeat, no-repeat;
+  background-position:
+    0 0,
+    50% 50%;
+  mask-image: radial-gradient(ellipse at center, #000 15%, transparent 72%);
+  /* Replace the default drift even when reduced motion is requested. */
+  animation: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-theme='pi-omarchy'] .pk-header {
+    animation: pk-omarchy-signal 5s steps(32, end) infinite;
+  }
+  [data-theme='pi-omarchy'] .pk-ambient::after {
+    animation: pk-omarchy-pixels 6s steps(18, end) infinite alternate;
+  }
+  [data-theme='pi-omarchy'] .pk-empty-state > * {
+    animation: pk-omarchy-welcome 450ms cubic-bezier(0.21, 0.47, 0.32, 0.98) both;
+  }
+  [data-theme='pi-omarchy'] .pk-empty-state > :nth-child(2) {
+    animation-delay: 75ms;
+  }
+  [data-theme='pi-omarchy'] .pk-empty-state > :nth-child(3) {
+    animation-delay: 150ms;
+  }
+  [data-theme='pi-omarchy'] .pk-empty-state > :nth-child(4) {
+    animation-delay: 225ms;
+  }
+  [data-theme='pi-omarchy'] .pk-empty-state > :nth-child(n + 5) {
+    animation-delay: 300ms;
+  }
+
+  [data-theme='pi-omarchy'] :is(.pk-picker, .pk-popover, .pk-usage-pop, .pk-where-menu) {
+    animation: pk-omarchy-pop 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  [data-theme='pi-omarchy'] :is(.pk-settings, .pk-wf) {
+    animation-duration: 240ms;
+  }
+  [data-theme='pi-omarchy'] :is(.pk-settings, .pk-wf) > .win {
+    animation: pk-omarchy-window 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  [data-theme='pi-omarchy'] .pk-settings .page {
+    animation-duration: 220ms;
+  }
+  /* Native browser surfaces and terminal canvases must not acquire transformed ancestors. */
+  [data-theme='pi-omarchy'] .pk-shell[data-panel='open'] > .pk-panel:not(pk-artifacts-panel, pk-terminal-panel) {
+    animation: pk-omarchy-panel 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  [data-theme='pi-omarchy'] .pk-shell[data-panel='open'] > :is(pk-artifacts-panel, pk-terminal-panel) > .pk-bar {
+    animation: pk-omarchy-pop 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  [data-theme='pi-omarchy'] :is(.btn, .pk-send) {
+    transition:
+      background-color 150ms ease-out,
+      border-color 150ms ease-out,
+      color 150ms ease-out,
+      scale 140ms ease-out;
+  }
+  [data-theme='pi-omarchy'] :is(.btn, .pk-send):active:not(:disabled, [aria-disabled='true']) {
+    scale: 0.94;
+  }
+}
+
+/* The marker is set only while crossing the Omarchy theme boundary. These are native
+   frozen snapshots, not DOM overlays: no layout shift, input interception or streamed-text animation. */
+:root[data-pk-theme-transition='omarchy']::view-transition-group(root) {
+  animation: none;
+}
+:root[data-pk-theme-transition='omarchy']::view-transition-old(root),
+:root[data-pk-theme-transition='omarchy']::view-transition-new(root) {
+  mix-blend-mode: normal;
+}
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-pk-theme-transition='omarchy']::view-transition-old(root) {
+    animation: pk-omarchy-screen-out 520ms ease-out both;
+  }
+  :root[data-pk-theme-transition='omarchy']::view-transition-new(root) {
+    animation: pk-omarchy-screen-in 520ms steps(12, end) both;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-pk-theme-transition='omarchy']::view-transition-old(root),
+  :root[data-pk-theme-transition='omarchy']::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+@keyframes pk-omarchy-pixels {
+  from {
+    opacity: 0.45;
+    transform: translate3d(-24px, -16px, 0);
+  }
+  to {
+    opacity: 0.9;
+    transform: translate3d(24px, 16px, 0);
+  }
+}
+@keyframes pk-omarchy-welcome {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pk-omarchy-signal {
+  0% {
+    background-position: -30% 100%;
+  }
+  80%,
+  100% {
+    background-position: 130% 100%;
+  }
+}
+@keyframes pk-omarchy-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pk-omarchy-window {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pk-omarchy-panel {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pk-omarchy-screen-out {
+  0%,
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes pk-omarchy-screen-in {
+  from {
+    clip-path: polygon(0 0, 0 0, 0 20%, 0 20%, 0 40%, 0 40%, 0 60%, 0 60%, 0 80%, 0 80%, 0 100%, 0 100%);
+  }
+  50% {
+    clip-path: polygon(
+      0 0,
+      55% 0,
+      55% 20%,
+      65% 20%,
+      65% 40%,
+      45% 40%,
+      45% 60%,
+      60% 60%,
+      60% 80%,
+      50% 80%,
+      50% 100%,
+      0 100%
+    );
+  }
+  to {
+    clip-path: polygon(
+      0 0,
+      100% 0,
+      100% 20%,
+      100% 20%,
+      100% 40%,
+      100% 40%,
+      100% 60%,
+      100% 60%,
+      100% 80%,
+      100% 80%,
+      100% 100%,
+      0 100%
+    );
+  }
+}
