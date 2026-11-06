@@ -14,6 +14,7 @@ interface AnsiSegment {
   style: AnsiStyle;
 }
 
+/** The roles the sixteen terminal colours fall back to; a theme with a terminal palette of its own sets `--pk-ansi-0`…`15`. */
 const PALETTE = [
   '--pk-sunken',
   '--color-error',
@@ -36,7 +37,7 @@ const CUBE = [0, 95, 135, 175, 215, 255];
 
 function indexedColor(index: number): string | undefined {
   if (!Number.isInteger(index) || index < 0 || index > 255) return undefined;
-  if (index < 16) return `var(${PALETTE[index]})`;
+  if (index < 16) return `var(--pk-ansi-${index}, var(${PALETTE[index]}))`;
   if (index >= 232)
     return `rgb(${Array(3)
       .fill(8 + (index - 232) * 10)

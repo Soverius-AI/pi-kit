@@ -75,8 +75,23 @@ export interface PiKitBridge {
   /** `system` follows the OS, `light` and `dark` pin the window's colour scheme. */
   setThemeSource?(source: 'system' | 'light' | 'dark'): Promise<void>;
   systemTheme?(): Promise<'pi-dark' | 'pi-light'>;
+  /** Omarchy desktops only: the desktop's theme as it was when the window was created, known before the first paint. */
+  omarchyTheme?: OmarchyTheme;
+  /** The Omarchy theme now; `undefined` on any other desktop and for a theme without colours. */
+  getOmarchyTheme?(): Promise<OmarchyTheme | undefined>;
+  /** Called when the user switches the Omarchy theme; returns the unsubscribe function. */
+  onOmarchyTheme?(callback: (theme: OmarchyTheme | undefined) => void): () => void;
   /** Voice input: macOS asks the user for microphone access the first time; `granted: false` carries a sentence that says what to do. */
   requestMicrophone?(): Promise<MicrophoneAccess>;
+}
+
+/** The Omarchy desktop's theme in pi-kit's tokens (apps/desktop/src/omarchy-theme.ts). */
+export interface OmarchyTheme {
+  /** The theme's slug, as `omarchy theme set` takes it. */
+  name: string;
+  mode: 'dark' | 'light';
+  /** CSS custom properties for <html>; every value is a `#rrggbb` colour. */
+  tokens: Record<string, string>;
 }
 
 export interface MicrophoneAccess {

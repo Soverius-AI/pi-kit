@@ -1990,7 +1990,7 @@
       "versionsAndUpdates": "Versions and updates",
       "piKitPiTheInstalledPackagesAnd": "pi-kit, pi, the installed packages and the model catalogs: what is installed and whether anything has an update.",
       "theme": "Theme",
-      "systemFollowsYourOperatingSystemSLight": "System follows your operating system’s light or dark setting.",
+      "systemFollowsYourOperatingSystemSLight": "System follows your operating system’s light or dark setting. On an Omarchy desktop it follows the desktop’s theme.",
       "textSize": "Text size",
       "theSizeOfProseInTheTranscript": "The size of prose in the transcript and the composer.",
       "codeSize": "Code size",

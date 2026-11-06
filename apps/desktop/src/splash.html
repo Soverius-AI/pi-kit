@@ -10,12 +10,21 @@
     <style>
       /* The splash window (apps/desktop/src/main.ts): shown while the backend and pi start, closed when the main window is ready.
      Self-contained on purpose: no fonts or stylesheets to load, so it is on screen within the first frame. */
+      /* main.ts passes an Omarchy desktop's colours in the query (the script below); these are pi-kit's own. */
+      :root {
+        --bg: #141414;
+        --glow: #262626;
+        --edge: #0a0a0a;
+        --fg: #ededed;
+        --dim: #9aa0ab;
+        --track: #2a2d35;
+      }
       html,
       body {
         margin: 0;
         height: 100%;
-        background: #141414;
-        color: #ededed;
+        background: var(--bg);
+        color: var(--fg);
         font:
           13px/18px 'IBM Plex Sans',
           system-ui,
@@ -32,7 +41,7 @@
         align-content: center;
         gap: 12px;
         position: relative;
-        background: radial-gradient(120% 80% at 50% 0%, #262626 0%, #141414 55%, #0a0a0a 100%);
+        background: radial-gradient(120% 80% at 50% 0%, var(--glow) 0%, var(--bg) 55%, var(--edge) 100%);
         -webkit-app-region: drag;
       }
       body::before {
@@ -60,7 +69,8 @@
         position: relative;
       }
       .version {
-        color: #6f7581;
+        color: var(--dim);
+        opacity: 0.72;
         font-size: 11px;
         line-height: 16px;
         margin-top: -10px;
@@ -68,7 +78,7 @@
         min-height: 16px;
       }
       .status {
-        color: #9aa0ab;
+        color: var(--dim);
         margin-top: -6px;
         position: relative;
         min-height: 18px;
@@ -81,7 +91,8 @@
         text-align: center;
         font-size: 11px;
         line-height: 16px;
-        color: #6f7581;
+        color: var(--dim);
+        opacity: 0.72;
         letter-spacing: 0.02em;
       }
       .bar {
@@ -90,7 +101,7 @@
         right: 0;
         bottom: 0;
         height: 2px;
-        background: #2a2d35;
+        background: var(--track);
         overflow: hidden;
       }
       .bar i {
@@ -151,7 +162,12 @@
     <div class="bar"><i></i></div>
     <script>
       // main.ts calls this through executeJavaScript as the boot moves on.
-      document.getElementById('version').textContent = new URLSearchParams(location.search).get('version') ?? '';
+      const query = new URLSearchParams(location.search);
+      document.getElementById('version').textContent = query.get('version') ?? '';
+      for (const name of ['bg', 'glow', 'edge', 'fg', 'dim', 'track']) {
+        const color = query.get(name);
+        if (color && /^#[0-9a-f]{6}$/.test(color)) document.documentElement.style.setProperty('--' + name, color);
+      }
       window.setStatus = (text) => {
         document.getElementById('status').textContent = String(text);
       };

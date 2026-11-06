@@ -74,7 +74,8 @@
 /* Named themes share the standard geometry. Their paint, fonts and optional scoped motion may differ. */
 [data-theme='pi-soverius'],
 [data-theme='pi-copilotkit'],
-[data-theme='pi-omarchy'] {
+[data-theme='pi-omarchy'],
+[data-theme='pi-desktop'] {
   --radius-selector: 9999px;
   --radius-field: 0.5rem;
   --radius-box: 0.625rem;
@@ -140,6 +141,19 @@
   --pk-shadow: 0 8px 24px rgb(20 24 32 / 0.12);
   --pk-font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   --pk-font-mono: 'Spline Sans Mono', ui-monospace, monospace;
+}
+
+/* The Omarchy desktop's own theme ("System" in the desktop app on Omarchy; not the fixed `pi-omarchy` skin in omarchy.css).
+   Its colours are not here: the desktop app derives every colour token from the desktop's palette and ThemeStore writes them
+   to <html>'s style, again on each switch of the desktop's theme. `data-scheme` says whether that palette is dark or light.
+   Fonts stay the standard ones. */
+[data-theme='pi-desktop'] {
+  color-scheme: dark;
+  --pk-shadow: 0 12px 32px rgb(0 0 0 / 0.6);
+}
+[data-theme='pi-desktop'][data-scheme='light'] {
+  color-scheme: light;
+  --pk-shadow: 0 8px 24px rgb(20 24 32 / 0.12);
 }
 
 /* Background paint only: no extra elements, dimensions, or component shape changes. */

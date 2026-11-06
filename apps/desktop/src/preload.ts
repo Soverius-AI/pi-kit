@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { RemoteAccessSetupAction } from '@pi-kit/protocol';
+import { asOmarchyTheme, omarchyThemeFromArguments } from './omarchy-theme-handoff';
 
 /** The only surface the renderer gets from Electron. Keep it minimal. */
 contextBridge.exposeInMainWorld('piKit', {
@@ -45,6 +46,16 @@ contextBridge.exposeInMainWorld('piKit', {
     ipcRenderer.invoke('pi-kit:theme-source', source),
   /** The theme the OS asks for right now. */
   systemTheme: (): Promise<'pi-dark' | 'pi-light'> => ipcRenderer.invoke('pi-kit:system-theme'),
+  /** Omarchy desktops only: the desktop's theme as this window was created with it, there before the first paint. */
+  omarchyTheme: omarchyThemeFromArguments(process.argv),
+  /** The Omarchy theme now; `undefined` on any other desktop. */
+  getOmarchyTheme: async (): Promise<unknown> => asOmarchyTheme(await ipcRenderer.invoke('pi-kit:omarchy-theme')),
+  /** Called when the user switches the Omarchy theme. */
+  onOmarchyTheme: (callback: (theme: unknown) => void): (() => void) => {
+    const listener = (_event: unknown, theme: unknown) => callback(asOmarchyTheme(theme));
+    ipcRenderer.on('pi-kit:omarchy-theme-changed', listener);
+    return () => ipcRenderer.removeListener('pi-kit:omarchy-theme-changed', listener);
+  },
   /** Voice input: on macOS the system's microphone prompt the first time; `granted: false` carries what to do. */
   requestMicrophone: (): Promise<{ granted: boolean; status: string; message?: string }> =>
     ipcRenderer.invoke('pi-kit:microphone-access'),

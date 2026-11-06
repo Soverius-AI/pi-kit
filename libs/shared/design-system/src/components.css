@@ -732,7 +732,8 @@
 }
 .pk-out.term {
   background: var(--pk-sunken);
-  color: #d9dce2;
+  /* The sunken surface is dark in every built-in theme; a theme where it is not names its text. */
+  color: var(--pk-sunken-content, #d9dce2);
 }
 .pk-out pre {
   margin: 0;

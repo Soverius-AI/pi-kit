@@ -260,11 +260,13 @@ describe('Omarchy skin safety', () => {
 
 describe('first-paint theme restoration', () => {
   const script = source('../../../../../../apps/renderer/public/theme.js');
-  function restore(choice: string | null, light = false, blocked = false) {
+  function paint(choice: string | null, light = false, blocked = false, piKit?: object) {
     const attributes: Record<string, string> = {};
+    const style: Record<string, string> = {};
     runInNewContext(
       script,
       {
+        piKit,
         localStorage: {
           getItem: (key: string) => {
             expect(key).toBe('pi-kit.theme');
@@ -281,13 +283,20 @@ describe('first-paint theme restoration', () => {
             setAttribute: (key: string, value: string) => {
               attributes[key] = value;
             },
+            style: {
+              setProperty: (name: string, value: string) => {
+                style[name] = value;
+              },
+            },
           },
         },
       },
       { timeout: 1000, contextCodeGeneration: { strings: false, wasm: false } },
     );
-    return attributes['data-theme'];
+    return { attributes, style };
   }
+  const restore = (choice: string | null, light = false, blocked = false) =>
+    paint(choice, light, blocked).attributes['data-theme'];
 
   it.each(['pi-omarchy', 'pi-dark', 'pi-light', 'pi-soverius', 'pi-copilotkit'])(
     'restores %s before app bootstrap',
@@ -298,6 +307,16 @@ describe('first-paint theme restoration', () => {
   it('resolves system and missing choices using the OS preference', () => {
     expect(restore('system', true)).toBe('pi-light');
     expect(restore(null)).toBe('pi-dark');
+  });
+  it('paints System in the desktop’s own colours when the desktop app names them', () => {
+    const piKit = {
+      omarchyTheme: { name: 'catppuccin-latte', mode: 'light', tokens: { '--color-primary': '#1e66f5' } },
+    };
+    expect(paint('system', false, false, piKit)).toEqual({
+      attributes: { 'data-theme': 'pi-desktop', 'data-scheme': 'light' },
+      style: { '--color-primary': '#1e66f5' },
+    });
+    expect(paint('pi-omarchy', false, false, piKit)).toEqual({ attributes: { 'data-theme': 'pi-omarchy' }, style: {} });
   });
   it('leaves the default alone for unknown choices or blocked storage', () => {
     expect(restore('pi-unrecognized')).toBeUndefined();

@@ -179,7 +179,7 @@ export class PkMcpApp implements ActivityRenderer<MCPAppsSnapshotContent> {
 
     // The theme follows the app's: a changed theme is announced to an app that has started.
     effect(() => {
-      this.theme.theme();
+      this.theme.palette();
       const frame = untracked(() => this.frame()?.nativeElement);
       if (frame && this.initialized) this.notify(frame, 'ui/notifications/host-context-changed', this.hostContext());
     });
