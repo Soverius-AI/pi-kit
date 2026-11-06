@@ -68,6 +68,33 @@ the OS using the standard dark/light themes; the quick toggle switches to the op
 theme. Named skins are selected in Settings → Appearance and persist like the standard themes.
 The theme picker uses the standard select, keeping all six options inside the existing 320px control column.
 
+**The Omarchy desktop's theme.** In the desktop app on an [Omarchy](https://omarchy.org) desktop, System is the
+desktop's own theme (`pi-desktop`, applied but never saved or offered in the picker) and changes with it, live.
+It is not the `pi-omarchy` skin above, which is one fixed palette on every desktop and keeps its font, motion
+and pixel field to itself. Nothing is installed on the Omarchy side: the app reads
+`~/.local/state/omarchy/current/theme/colors.toml` and watches that `current` folder, which
+`omarchy theme set` rewrites on every switch (`apps/desktop/src/omarchy-theme.ts`). The palette becomes
+the roles above and reaches the page as tokens on `<html>`'s style, so no component knows about it:
+
+| Role                        | Omarchy colour                                                    |
+| --------------------------- | ----------------------------------------------------------------- |
+| base-100                    | `background`                                                      |
+| base-200                    | `dark_background`                                                 |
+| base-300                    | `background` with 20 % `foreground`                               |
+| base-content                | `foreground`                                                      |
+| content-muted               | `foreground` faded towards `background`, kept at 4.5:1 or better  |
+| sunken, and its text        | `darker_background`, `foreground` (light in a light theme)        |
+| primary, accent             | `accent`                                                          |
+| secondary                   | `magenta`                                                         |
+| info, success, warning, error | `blue`, `green`, `yellow`, `red`                                |
+| text on a filled control    | the palette's end with the most contrast on the fill; black or white if neither reaches 4.5:1        |
+
+The terminal and ANSI-coloured tool output take the theme's sixteen terminal colours (`--pk-ansi-0`…`15`);
+the other themes leave those unset and fall back to the roles. `data-scheme` on `<html>` is `dark` or
+`light` for every theme: a rule that depends on the scheme reads it, never a theme's name. Fonts,
+geometry and the brand mark stay pi-kit's. The saved choice stays `system`, so a browser or a paired
+phone, which have no Omarchy palette, follow their own OS.
+
 ### Type
 
 The standard themes use **IBM Plex Sans** for UI and prose, **IBM Plex Mono** for code, paths,

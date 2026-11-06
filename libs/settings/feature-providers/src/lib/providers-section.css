@@ -4,8 +4,7 @@
   object-fit: contain;
   filter: invert(1);
 }
-:host-context([data-theme='pi-light']) .provider-logo,
-:host-context([data-theme='pi-copilotkit']) .provider-logo {
+:host-context([data-scheme='light']) .provider-logo {
   filter: none;
 }
 .llama-group {

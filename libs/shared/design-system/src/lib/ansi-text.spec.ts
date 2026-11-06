@@ -16,7 +16,12 @@ describe('extension status ANSI rendering', () => {
     expect(segments).toEqual([
       {
         text: 'red',
-        style: { color: 'var(--color-error)', backgroundColor: 'rgb(10, 20, 30)', fontWeight: 'bold', opacity: '0.6' },
+        style: {
+          color: 'var(--pk-ansi-1, var(--color-error))',
+          backgroundColor: 'rgb(10, 20, 30)',
+          fontWeight: 'bold',
+          opacity: '0.6',
+        },
       },
       { text: 'plain', style: { backgroundColor: 'rgb(10, 20, 30)' } },
       { text: 'gray', style: { color: 'rgb(238, 238, 238)', backgroundColor: 'rgb(10, 20, 30)' } },

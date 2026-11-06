@@ -19,30 +19,43 @@ function xtermTheme(): Record<string, string> {
   const css = getComputedStyle(document.documentElement);
   const token = (name: string): string => css.getPropertyValue(name).trim();
   const background = token('--pk-sunken');
-  const foreground = token('--color-neutral-content');
-  const muted = token('--pk-muted');
+  const foreground = token('--pk-sunken-content') || token('--color-neutral-content');
+  // A theme with a terminal palette of its own (the Omarchy desktop's) names all sixteen; the others give the roles.
+  const ansi = (index: number, role: string): string => token(`--pk-ansi-${index}`) || role;
+  const hues = [
+    '--color-error',
+    '--color-success',
+    '--color-warning',
+    '--color-info',
+    '--color-primary',
+    '--color-info',
+  ];
+  const [red, green, yellow, blue, magenta, cyan] = hues.map((role, index) => ansi(index + 1, token(role)));
+  const [brightRed, brightGreen, brightYellow, brightBlue, brightMagenta, brightCyan] = hues.map((role, index) =>
+    ansi(index + 9, token(role)),
+  );
   return {
     background,
     foreground,
     cursor: token('--color-primary'),
     cursorAccent: background,
     selectionBackground: `color-mix(in srgb, ${token('--color-primary')} 35%, transparent)`,
-    black: background,
-    red: token('--color-error'),
-    green: token('--color-success'),
-    yellow: token('--color-warning'),
-    blue: token('--color-info'),
-    magenta: token('--color-primary'),
-    cyan: token('--color-info'),
-    white: foreground,
-    brightBlack: muted,
-    brightRed: token('--color-error'),
-    brightGreen: token('--color-success'),
-    brightYellow: token('--color-warning'),
-    brightBlue: token('--color-info'),
-    brightMagenta: token('--color-primary'),
-    brightCyan: token('--color-info'),
-    brightWhite: foreground,
+    black: ansi(0, background),
+    red,
+    green,
+    yellow,
+    blue,
+    magenta,
+    cyan,
+    white: ansi(7, foreground),
+    brightBlack: ansi(8, token('--pk-muted')),
+    brightRed,
+    brightGreen,
+    brightYellow,
+    brightBlue,
+    brightMagenta,
+    brightCyan,
+    brightWhite: ansi(15, foreground),
   };
 }
 
@@ -172,7 +185,7 @@ export class TerminalPanel implements OnDestroy {
   constructor() {
     this.store.mount(this.terminalHost);
     effect(() => {
-      this.theme.theme();
+      this.theme.palette();
       untracked(() => {
         if (this.term) {
           this.term.options.theme = xtermTheme();

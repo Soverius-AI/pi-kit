@@ -35,6 +35,8 @@ import {
   InstanceKeyRequestSchema,
 } from '@pi-kit/protocol';
 import { MICROPHONE_SETTINGS_URL, requestMicrophone } from './microphone';
+import { omarchyCurrentDir, type OmarchyTheme, OmarchyThemeWatcher } from './omarchy-theme';
+import { omarchyThemeArgument, startingOmarchyTheme } from './omarchy-theme-handoff';
 import { loginShellPath } from './shell-env';
 import { SMOKE, smokeDataDir, writeSmokeReport } from './smoke';
 import { BackendWatchdog, DEFAULT_WATCHDOG_OPTIONS, type WatchdogStatus } from './watchdog';
@@ -75,6 +77,8 @@ interface StartupFailure {
 let startupFailure: StartupFailure | undefined;
 let tray: Tray | undefined;
 let uiStorage: UiStorage | undefined;
+/** Set on an Omarchy desktop only: its theme, followed while the app runs. */
+let omarchy: OmarchyThemeWatcher | undefined;
 interface TrayThread {
   id: string;
   title: string;
@@ -254,6 +258,51 @@ function createTray(): void {
 }
 
 /**
+ * The Omarchy theme a window opens in: none once the user has chosen an explicit theme. The splash opens before the preferences
+ * are read and takes the desktop's colours.
+ */
+function startingTheme(): OmarchyTheme | undefined {
+  return startingOmarchyTheme(omarchy?.value, uiStorage?.snapshot()['pi-kit.theme']);
+}
+
+/** What a window shows before its page has painted: the window colour of the theme in effect. */
+function windowBackground(): string {
+  return startingTheme()?.tokens['--color-base-200'] ?? '#141414';
+}
+
+/** The splash in the Omarchy theme's colours; without one it keeps its own. */
+function splashColors(): Record<string, string> {
+  const tokens = startingTheme()?.tokens;
+  if (!tokens) return {};
+  return {
+    bg: tokens['--color-base-200'],
+    glow: tokens['--color-base-100'],
+    edge: tokens['--pk-sunken'],
+    fg: tokens['--color-base-content'],
+    dim: tokens['--pk-muted'],
+    track: tokens['--color-base-300'],
+  };
+}
+
+/** Starts following the Omarchy theme; a no-op on any other desktop. */
+function followOmarchyTheme(): void {
+  const current = omarchyCurrentDir();
+  if (!current) return;
+  omarchy = new OmarchyThemeWatcher(current, (theme: OmarchyTheme | undefined) => {
+    mainLog?.line(`Omarchy theme: ${theme ? `${theme.name} (${theme.mode})` : 'none with colours'}`);
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (win.isDestroyed()) continue;
+      win.setBackgroundColor(windowBackground());
+      win.webContents.send('pi-kit:omarchy-theme-changed', theme);
+    }
+  });
+  omarchy.start();
+  mainLog?.line(
+    `Omarchy theme: ${omarchy.value ? `${omarchy.value.name} (${omarchy.value.mode})` : 'none with colours'}`,
+  );
+}
+
+/**
  * The splash: a small frameless window with the mark, shown the moment the app starts and closed once the main window has
  * painted, so the seconds the backend and pi need to come up are not a blank desktop. `setStatus` names the step.
  */
@@ -269,7 +318,7 @@ function createSplash(): BrowserWindow {
     fullscreenable: false,
     skipTaskbar: true,
     show: false,
-    backgroundColor: '#141414',
+    backgroundColor: windowBackground(),
     title: 'pi-kit',
     icon: APP_ICON,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
@@ -281,7 +330,7 @@ function createSplash(): BrowserWindow {
   });
   void splash
     .loadFile(join(__dirname, 'splash.html'), {
-      query: { version: app.isPackaged ? `Version ${app.getVersion()}` : 'Development build' },
+      query: { version: app.isPackaged ? `Version ${app.getVersion()}` : 'Development build', ...splashColors() },
     })
     .then(() => {
       splashState.loaded = true;
@@ -296,6 +345,7 @@ function setSplashStatus(splash: BrowserWindow | undefined, text: string): void 
 }
 
 function createWindow(): BrowserWindow {
+  const theme = startingTheme();
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -303,13 +353,15 @@ function createWindow(): BrowserWindow {
     minHeight: 480,
     title: 'pi-kit',
     show: false,
-    backgroundColor: '#141414',
+    backgroundColor: windowBackground(),
     icon: APP_ICON,
     webPreferences: {
       preload: join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // The preload hands this to the page before its first paint, so the window never opens in other colours.
+      additionalArguments: theme ? [omarchyThemeArgument(theme)] : [],
     },
   });
   // A link that wants a new window (an OAuth sign-in page, an MCP server's login) opens in the user's browser, never in the app.
@@ -550,6 +602,7 @@ async function boot(): Promise<void> {
     iconPath: APP_ICON,
   });
   if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(APP_ICON);
+  followOmarchyTheme();
   const splash = createSplash();
   setSplashStatus(splash, 'Starting the backend…');
 
@@ -665,6 +718,11 @@ async function boot(): Promise<void> {
   ipcMain.handle('pi-kit:system-theme', (event) => {
     if (!fromRenderer(event)) throw new Error('forbidden');
     return nativeTheme.shouldUseDarkColors ? 'pi-dark' : 'pi-light';
+  });
+  // On an Omarchy desktop "System" is the Omarchy theme; `undefined` anywhere else and for a theme without colours.
+  ipcMain.handle('pi-kit:omarchy-theme', (event) => {
+    if (!fromRenderer(event)) throw new Error('forbidden');
+    return omarchy?.value;
   });
   // Voice input: macOS asks the user for the microphone itself the first time; a refusal is explained and the right pane offered.
   ipcMain.handle('pi-kit:microphone-access', (event) => {
@@ -787,6 +845,7 @@ app.on('before-quit', (event) => {
   }
   tray?.destroy();
   tray = undefined;
+  omarchy?.stop();
   watchdog?.stop();
   backend?.stop();
 });
