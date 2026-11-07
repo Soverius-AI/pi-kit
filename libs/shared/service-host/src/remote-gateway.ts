@@ -1,5 +1,4 @@
 import {
-  hasControlCharacter,
   InstanceIdSchema,
   isRemoteApiPath,
   isReviewedRemoteApi,
@@ -177,14 +176,7 @@ export class RemoteGateway implements RemoteAccessGateway {
     return device;
   }
   private async handle(req: IncomingMessage, res: ServerResponse) {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader(
-      'Content-Security-Policy',
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
-    );
+    Http.secure(res);
     if (
       req.headers.host !== this.host ||
       !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '')
@@ -198,22 +190,8 @@ export class RemoteGateway implements RemoteAccessGateway {
       return Http.json(res, 403, { error: 'Invalid origin' });
     if (!peerRequest && !['GET', 'HEAD'].includes(req.method ?? '') && req.headers.origin !== this.origin)
       return Http.json(res, 403, { error: 'Origin required' });
-    // Match the raw API path, exactly as the backend router does. Only parameter
-    // segments may contain escapes: SDK IDs can be encoded absolute filesystem paths.
-    // Never decode before routing (encoded slashes must not create route segments).
-    const path = raw.split('?')[0];
-    if (!raw.startsWith('/') || raw.startsWith('//') || path.includes('\\') || hasControlCharacter(path, true))
-      return Http.json(res, 400, { error: 'Invalid path' });
-    if (path.includes('%')) {
-      if (!path.startsWith('/api/') && !path.startsWith('/peer/api/api/'))
-        return Http.json(res, 400, { error: 'Invalid path' });
-      try {
-        if (hasControlCharacter(decodeURIComponent(path))) throw new Error();
-      } catch {
-        return Http.json(res, 400, { error: 'Invalid path' });
-      }
-    }
-    if (path.split('/').some((s) => s === '.' || s === '..')) return Http.json(res, 400, { error: 'Invalid path' });
+    const path = Http.path(raw, ['/api/', '/peer/api/api/']);
+    if (path === undefined) return Http.json(res, 400, { error: 'Invalid path' });
     this.expire();
     if (peerRequest) return this.peers.handle(req, res, path);
     if (path === '/phone/pair' && req.method === 'POST') return this.pair(req, res);

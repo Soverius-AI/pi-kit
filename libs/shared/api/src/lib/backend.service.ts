@@ -3,9 +3,10 @@ import './pi-kit-bridge';
 
 const URL_KEY = 'pi-kit.backendUrl';
 const TOKEN_KEY = 'pi-kit.token';
+const OWNER_TOKEN_KEY = 'pi-kit.owner';
 export interface BackendConnection {
-  /** Phone sessions use same-origin cookies and a CSRF nonce, never the private desktop token. */
-  readonly mode?: 'phone';
+  /** Phones use same-origin cookies and a CSRF nonce, an owner's browser its own bearer token; never the private desktop token. */
+  readonly mode?: 'phone' | 'owner';
   url(): Promise<string>;
   token(): Promise<string>;
   /** Revalidate an approved device after suspension without resending user operations. */
@@ -34,15 +35,46 @@ function writeStorage(key: string, value: string): void {
   }
 }
 
+/** `device` or `owner` in the production index the host's gateways serve. */
+const servedAs = (): string | null | undefined =>
+  window.piKit ? undefined : document.querySelector('meta[name="pi-kit-connection"]')?.getAttribute('content');
+
 /** Present only in the production index served by the private device gateway. */
 export function isDeviceConnection(): boolean {
-  return (
-    !window.piKit && document.querySelector('meta[name="pi-kit-connection"]')?.getAttribute('content') === 'device'
-  );
+  return servedAs() === 'device';
 }
 
-/** Electron resolves through preload; paired phones use their own same-origin session. */
+/** A browser the owner signed in with `pi-kit open`: a one-time code in the fragment buys a token kept in this origin's storage. */
+function ownerConnection(): BackendConnection {
+  let token: Promise<string> | undefined;
+  const signIn = async (): Promise<string> => {
+    const code = /^#owner=([A-Za-z0-9_-]{43})$/.exec(location.hash)?.[1];
+    if (code) {
+      history.replaceState(null, '', location.pathname + location.search);
+      const response = await fetch('/owner/session', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ code }),
+        cache: 'no-store',
+        redirect: 'error',
+      });
+      const issued = response.ok ? ((await response.json()) as { token?: unknown }).token : undefined;
+      if (typeof issued === 'string') {
+        writeStorage(OWNER_TOKEN_KEY, issued);
+        return issued;
+      }
+    }
+    const stored = readStorage(OWNER_TOKEN_KEY);
+    if (stored) return stored;
+    location.replace('/owner');
+    throw new Error('Sign in with "pi-kit open" on this computer.');
+  };
+  return { mode: 'owner', url: async () => location.origin, token: () => (token ??= signIn()) };
+}
+
+/** Electron resolves through preload; paired phones and the owner's browser use the gateway that served them. */
 export function createBackendConnection(devWebUrl = 'http://127.0.0.1:4300'): BackendConnection {
+  if (servedAs() === 'owner') return ownerConnection();
   if (isDeviceConnection()) {
     let nonce: Promise<string> | undefined;
     let generation = 0;
@@ -139,6 +171,15 @@ export class BackendService implements BackendConnection {
       // A target's 401 is not proof that entry-device approval was lost. Revalidate only; never replay the operation.
       if (this.connection.resume) await this.connection.resume().catch(() => undefined);
       else window.location.replace('/phone');
+    } else if (res.status === 401 && this.connection.mode === 'owner') {
+      if (res.headers.get('www-authenticate')?.includes('pi-kit-owner')) {
+        try {
+          localStorage.removeItem(OWNER_TOKEN_KEY);
+        } catch {
+          // ignore
+        }
+        window.location.replace('/owner');
+      }
     } else if (res.status === 401 && !window.piKit) {
       try {
         localStorage.removeItem(TOKEN_KEY);

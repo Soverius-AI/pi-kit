@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -75,6 +76,24 @@ async function readLine(prompt: string): Promise<string | undefined> {
   }
 }
 
+/** This computer's browser, unless the command runs over SSH or without a display. */
+function openUrl(url: string): boolean {
+  if (process.env['SSH_CONNECTION'] || process.env['SSH_TTY']) return false;
+  const opener: [string, string[]] | undefined =
+    process.platform === 'darwin'
+      ? ['open', [url]]
+      : process.platform === 'win32'
+        ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
+        : process.env['DISPLAY'] || process.env['WAYLAND_DISPLAY']
+          ? ['xdg-open', [url]]
+          : undefined;
+  if (!opener) return false;
+  spawn(opener[0], opener[1], { detached: true, stdio: 'ignore' })
+    .on('error', () => undefined)
+    .unref();
+  return true;
+}
+
 void runCli(
   args,
   { out: (text) => void process.stdout.write(text), err: (text) => void process.stderr.write(text), readLine },
@@ -95,5 +114,6 @@ void runCli(
         .join('\n');
     },
     sleep,
+    openUrl,
   },
 ).then((code) => process.exit(code));

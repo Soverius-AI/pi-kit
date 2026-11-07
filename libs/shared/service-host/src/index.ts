@@ -6,6 +6,7 @@ export * from './host-protocol';
 export * from './instance-key';
 export * from './instance-key-sealing';
 export * from './log';
+export * from './owner-gateway';
 export * from './proxy-env';
 export * from './remote-access';
 export * from './remote-access-store';

@@ -1,6 +1,7 @@
 import type { HostDiscovery } from './discovery';
 import type { RpcPeer } from './host-channel';
 import type { HostStatus } from './host-protocol';
+import { OPEN_USAGE, runOpenCli } from './open-cli';
 import { PEERS_USAGE, runPeersCli } from './peers-cli';
 import type { ServiceManager } from './service-registration';
 
@@ -23,13 +24,20 @@ export interface CliContext {
   /** The last `lines` lines of a log file, or undefined when there is none. */
   tail(file: string, lines: number): string | undefined;
   sleep(ms: number): Promise<void>;
+  /** Opens a URL in this computer's browser; false where there is none to open (SSH, no display). */
+  openUrl?(url: string): boolean;
 }
+
+const GROUPS: Record<string, (args: string[], io: CliIo, ctx: CliContext) => Promise<number>> = {
+  open: runOpenCli,
+  peers: runPeersCli,
+};
 
 /** `status` exits with 3 when nothing runs, like `systemctl is-active` and LSB init scripts, so scripts can tell. */
 export const NOT_RUNNING = 3;
 const WAIT_MS = 60_000;
 
-const USAGE = `Usage: pi-kit service <command>, pi-kit peers <command>
+const USAGE = `Usage: pi-kit service <command>, pi-kit open, pi-kit peers <command>
 
 Service commands (include "service" before the command):
   pi-kit service status     Whether the background service is installed and running (exit code 3: not running)
@@ -42,6 +50,7 @@ Service commands (include "service" before the command):
 
 For example, use "pi-kit service logs", not "pi-kit logs".
 
+${OPEN_USAGE}
 ${PEERS_USAGE}
 pi-kit's backend runs as a service of this computer, so background agents and phone access keep working when the
 pi-kit window is closed. Settings › General › Background in the app does the same as install and uninstall.
@@ -55,21 +64,22 @@ export async function runCli(args: string[], io: CliIo, ctx: CliContext): Promis
     return 0;
   }
   const asked = (word: string | undefined) => word === 'help' || word === '--help';
+  const run = group !== undefined && Object.hasOwn(GROUPS, group) ? GROUPS[group] : undefined;
   if (
     group === undefined ||
     asked(group) ||
     (group === 'service' && (command === undefined || asked(command))) ||
-    (group === 'peers' && asked(command))
+    (run && asked(command))
   ) {
     io.out(USAGE);
     return 0;
   }
-  if (group !== 'peers' && (group !== 'service' || rest.length > 0)) {
+  if (!run && (group !== 'service' || rest.length > 0)) {
     io.err(USAGE);
     return 2;
   }
   try {
-    if (group === 'peers') return await runPeersCli(args.slice(1), io, ctx);
+    if (run) return await run(args.slice(1), io, ctx);
     switch (command) {
       case 'status':
         return await status(io, ctx);

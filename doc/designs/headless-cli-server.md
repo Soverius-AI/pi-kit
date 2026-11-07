@@ -99,15 +99,16 @@ folder, so a service unit carries only the data folder, the log folder and PATH,
   `Host: localhost` or `127.0.0.1`, which stops DNS rebinding. The **device** listener is today's, behind
   `tailscale serve`.
 - **Owner sessions.** A connection that holds the host token (the owner-only discovery file and socket, ADR-0036 §2)
-  asks the host for a one-time link. Opening it on the owner listener sets an `HttpOnly`, `SameSite=Strict` cookie.
-  Owner sessions are grants with scope `owner`, stored like device grants, valid only on the owner listener, and
-  listed and revoked with `pi-kit devices`. They pass every backend route. Device sessions keep the `@Remote()`
-  allowlist, and an owner cookie is refused on the device listener.
-- **Two renderer transports, as today.** The desktop transport calls the backend directly and no longer reads a token.
-  Browsers and devices use the transport phones use today: a same-origin cookie and the CSRF token from the session
-  route (`createBackendConnection` in `libs/shared/api/src/lib/backend.service.ts`). The page marker the gateway
-  injects (`pi-kit-connection`) gains `owner` beside `device`, so the UI shows owner screens such as provider sign-in.
-  Every client gets the web app from the running server, so UI and backend cannot drift apart.
+  asks the host for a one-time link, `http://127.0.0.1:<port>/#owner=<code>`. The page trades the code once for a
+  bearer token kept in its own origin's storage. A cookie would not do: cookies are not scoped by port, so one for
+  127.0.0.1 would reach every other local server the browser visits. The host keeps only the tokens' hashes, in an
+  owner-only `owner.json`, and `pi-kit open --revoke` signs every browser out. An owner token passes every backend
+  route and means nothing on the device listener, which keeps the `@Remote()` allowlist.
+- **Three renderer transports.** The desktop transport calls the backend directly and no longer reads a token. Phones
+  keep their same-origin cookie and CSRF token; the owner's browser sends its bearer token
+  (`createBackendConnection` in `libs/shared/api/src/lib/backend.service.ts`). The page marker the gateways inject
+  (`pi-kit-connection`) gains `owner` beside `device`, so the owner's browser gets the full UI, provider sign-in
+  included. Every client gets the web app from the running server, so UI and backend cannot drift apart.
 - **`pi-kit open`** starts the desktop app when it is installed and focuses it when it runs; otherwise it opens the
   default browser on a fresh link. Over SSH it prints the link with an `ssh -L` forward for the owner port.
 
@@ -206,9 +207,9 @@ The CLI is a client of two existing interfaces and repeats no business rule.
 
 ### §7 Security
 
-- ADR-0007's threats are other users and web pages. Another user can reach the owner port but cannot mint a cookie
-  without the owner-only host token. A web page is stopped by the `Host` check, `SameSite=Strict`, the per-load CSRF
-  token and the gateway's existing Origin checks.
+- ADR-0007's threats are other users and web pages. Another user can reach the owner port but cannot get a token
+  without the owner-only host token. A web page is stopped by the `Host` and `Origin` checks and by a token it cannot
+  read from another origin's storage.
 - The backend token never reaches page JavaScript, a browser or a device; only the host, Electron main and the CLI hold
   it.
 - ADR-0035 is unchanged for devices: the `@Remote()` allowlist, expiring pairing codes, confirmation codes, and
@@ -218,7 +219,7 @@ The CLI is a client of two existing interfaces and repeats no business rule.
 
 - **ADR-0007**: the desktop page no longer holds the backend token; Electron adds it to the window's requests. A browser
   on the machine reaches the backend through the gateway with an owner session.
-- **ADR-0035**: the gateway gains the owner listener and owner grants; the instance key is sealed by the host.
+- **ADR-0035**: the host gains an owner listener beside the device gateway; the instance key is sealed by the host.
 - **ADR-0036**: the desktop becomes a client of the server; the renderer moves out of `app.asar` into the server
   folder, which Electron serves from the running server; the newest installed server runs, and an older shell updates
   itself before attaching; adds the `backend` RPC, the `serve` level, and npm registration on macOS and Windows;
@@ -237,7 +238,7 @@ The CLI is a client of two existing interfaces and repeats no business rule.
 ## Order of work
 
 1. Host-side instance-key sealing with migration, and `pi-kit peers`. Instance pairing works headless.
-2. The owner listener, owner grants, one-time links and `pi-kit open`. A local browser works against today's server.
+2. The owner listener, owner sessions, one-time links and `pi-kit open`. A local browser works against today's server.
 3. Electron serves the running server's web app and adds the token in its network layer instead of handing it to the
    page; single-instance lock; the version rule of §3 and bridge capabilities.
 4. The server folder as the one artifact: the renderer leaves `app.asar`, the desktop bundles the folder, the npm
@@ -259,7 +260,7 @@ machines:
 2. `pi-kit login --local` against a local model server; `pi-kit login` with a dummy API key (masked, says where the key
    went, fails the key check cleanly).
 3. `pi-kit open`: the full UI in a local browser, provider settings included. A page from another origin, a wrong
-   `Host` and a missing CSRF token are all refused.
+   `Host` and a missing token are all refused.
 4. The desktop app installed beside it, in three cases:
    - At the same version, it attaches to the running npm server.
    - Newer than the npm server, it restarts the host onto its own server and takes over the registration; a later
@@ -270,8 +271,8 @@ machines:
    In every case its requests go straight to the backend, page JavaScript holds no token, an MCP app or GenUI sandbox
    frame gets 401 from the backend, and closing the window leaves the server running. The e2e suite, its
    `*.desktop.e2e.mjs` specs included, passes unchanged: the desktop keeps every feature it has today.
-5. `remote enable` and `pair` a phone: it reaches only `@Remote()` routes, and an owner cookie fails on the device
-   listener.
+5. `remote enable` and `pair` a phone: it reaches only `@Remote()` routes, and an owner token means nothing on the
+   device listener.
 6. Two servers with no desktop attached (the Linux container and a Mac) pair through `pi-kit peers`; one opens a
    project on the other; both restart and still sign.
 7. Restart or reboot per platform: the service, publication, devices and peers come back.

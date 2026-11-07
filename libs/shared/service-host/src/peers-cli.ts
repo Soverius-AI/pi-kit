@@ -8,6 +8,7 @@ import {
   peersUnpair,
 } from '@pi-kit/api/generated';
 import type { BackendEndpoint } from './backend';
+import { callHost } from './cli-host';
 import { FileWrappingKeys, instanceKeyFile } from './instance-key-sealing';
 import type { CliContext, CliIo } from './service-cli';
 
@@ -40,7 +41,7 @@ export async function runPeersCli(args: string[], io: CliIo, ctx: CliContext): P
     return 2;
   }
   const id = target ?? '';
-  const auth = await backend(ctx);
+  const auth = await callHost<BackendEndpoint>(ctx, 'backend');
   const call = { baseUrl: auth.url, auth: auth.token, throwOnError: true } as const;
   switch (command) {
     case 'list':
@@ -78,17 +79,6 @@ export async function runPeersCli(args: string[], io: CliIo, ctx: CliContext): P
 }
 
 const COMMANDS = ['list', 'invite', 'connect', 'approve', 'reject', 'unpair'];
-
-async function backend(ctx: CliContext): Promise<BackendEndpoint> {
-  const host = ctx.discover();
-  if (!host) throw new Error('the service is not running here; start it with "pi-kit service start".');
-  const peer = await ctx.connect(host);
-  try {
-    return await peer.call<BackendEndpoint>('backend');
-  } finally {
-    peer.close();
-  }
-}
 
 async function keyFile(io: CliIo, ctx: CliContext, consent: boolean): Promise<number> {
   const path = instanceKeyFile(ctx.dataDir);

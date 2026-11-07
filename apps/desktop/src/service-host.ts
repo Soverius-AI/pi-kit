@@ -1,8 +1,10 @@
 // The service host: plain Node on the Electron binary (ELECTRON_RUN_AS_NODE), never Electron's own APIs (ADR-0036).
 import { randomBytes } from 'node:crypto';
 import { unlinkSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import {
   allocateEndpoint,
+  appFolders,
   FileLog,
   HOST_ALREADY_RUNNING,
   HostAlreadyRunningError,
@@ -16,6 +18,9 @@ import {
   HostSealing,
   instanceKeyFile,
   KeyringWrappingKeys,
+  OWNER_PORT,
+  OwnerGateway,
+  OwnerStateFile,
   RemoteAccess,
   RemoteAccessStores,
   removeDiscovery,
@@ -44,7 +49,14 @@ const remote = new RemoteAccess(
     cookieScope: stores.cookieScope,
   },
 );
+const owner = new OwnerGateway({
+  rendererRoot,
+  backend: () => host.backend,
+  state: new OwnerStateFile(join(config.dataDir, 'owner.json')),
+  preferredPort: resolve(config.dataDir) === resolve(appFolders().dataDir) ? OWNER_PORT : 0,
+});
 const host: ServiceHost = new ServiceHost(config, {
+  owner,
   allocate: allocateEndpoint,
   spawn: spawnBackend,
   launch: launchForWatchdog,

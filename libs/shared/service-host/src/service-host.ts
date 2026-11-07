@@ -19,6 +19,7 @@ import {
 } from './host-protocol';
 import { InstanceKeyError, type InstanceKeyEncryption, InstanceKeyStore } from './instance-key';
 import { MigratingSealing } from './instance-key-sealing';
+import type { OwnerAccess } from './owner-gateway';
 import type { RemoteAccess } from './remote-access';
 import { BackendActivity, type SleepGuard } from './sleep-guard';
 import {
@@ -66,6 +67,8 @@ export interface ServiceHostDeps {
   sleepGuard?: SleepGuard;
   /** Seals the instance key in this process; without it only an attached desktop can. */
   hostSealing?: InstanceKeyEncryption;
+  /** The owner's browser door, open while the host is. */
+  owner?: OwnerAccess;
 }
 
 /** Longer than the backend's own shutdown grace (15 s), so a clean shutdown is never cut short. */
@@ -134,6 +137,10 @@ export class ServiceHost {
 
   async open(): Promise<void> {
     this.endpoint = await this.deps.allocate();
+    // A build without the renderer (development) has no browser door; the rest of the host does not depend on it.
+    await this.deps.owner
+      ?.listen()
+      .catch((error: Error) => this.deps.log(`browser access unavailable: ${error.message}`));
   }
 
   /**
@@ -170,6 +177,11 @@ export class ServiceHost {
       if (!this.endpoint || !this.watchdog) throw new RpcError('The backend is not running.');
       return { ...this.endpoint };
     });
+    peer.handle('owner.link', () => {
+      if (!this.deps.owner) throw new RpcError('This pi-kit has no browser access.');
+      return this.deps.owner.link();
+    });
+    peer.handle('owner.revoke', () => this.deps.owner?.revokeAll());
     peer.handle('start', () => this.start());
     peer.handle('retry', () => this.watchdog?.retry());
     peer.handle('stop', () => void this.stop());
@@ -197,6 +209,7 @@ export class ServiceHost {
     this.deps.log('service host stopping');
     this.activity?.stop();
     await this.deps.remote?.dispose().catch(() => this.deps.log('Remote access could not shut down cleanly.'));
+    await this.deps.owner?.close();
     const running = this.current;
     this.watchdog?.stop();
     running?.stop();
