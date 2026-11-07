@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
 import { createInterface } from 'node:readline';
 import {
   appFolders,
@@ -34,6 +35,16 @@ const version = packaged
 const name = serviceName(dataDir, packaged && !scratch && !process.env['PI_KIT_SMOKE']);
 const path = (packaged ? loginShellPath() : undefined) ?? process.env['PATH'];
 
+// A checkout names what a packaged host finds beside itself; a development desktop started by `pnpm dev` names its dev server as the origin instead.
+const devEnv: Record<string, string> | undefined = packaged
+  ? undefined
+  : {
+      PI_KIT_BACKEND_ENTRY: join(__dirname, '..', 'backend', 'main.js'),
+      PI_KIT_ORIGIN: 'app://pi-kit',
+      PI_KIT_VERSION: process.versions['electron'] ?? 'development',
+      PI_KIT_RENDERER_ROOT: join(__dirname, '..', 'renderer', 'browser'),
+    };
+
 const discover = (): HostDiscovery | undefined => liveDiscovery(dataDir);
 const connect = (host: HostDiscovery) => connectHostChannel(host.socket, host.token);
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -50,17 +61,7 @@ const manager =
         logDir,
         ...(path ? { path } : {}),
         ...(process.env['APPIMAGE'] ? { appImage: process.env['APPIMAGE'] } : {}),
-        ...(packaged
-          ? {}
-          : {
-              // A development desktop started by `pnpm dev` names its dev server as the origin instead.
-              devEnv: {
-                PI_KIT_BACKEND_ENTRY: join(__dirname, '..', 'backend', 'main.js'),
-                PI_KIT_ORIGIN: 'app://pi-kit',
-                PI_KIT_VERSION: process.versions['electron'] ?? 'development',
-                PI_KIT_RENDERER_ROOT: join(__dirname, '..', 'renderer', 'browser'),
-              },
-            }),
+        ...(devEnv ? { devEnv } : {}),
         supervisorArgs: packaged ? [SUPERVISOR_FLAG] : [join(__dirname, '..', 'desktop', 'main.cjs'), SUPERVISOR_FLAG],
         stopHost: async () => {
           const host = discover();
@@ -78,6 +79,47 @@ async function readLine(prompt: string): Promise<string | undefined> {
   } finally {
     reader.close();
   }
+}
+
+/** A line typed without echo, for keys and pasted codes; Ctrl+C gives none. Piped stdin is read as a plain line. */
+async function readSecret(prompt: string): Promise<string | undefined> {
+  const stdin = process.stdin;
+  if (!stdin.isTTY) return readLine(prompt);
+  process.stderr.write(prompt);
+  return new Promise((resolve) => {
+    let value = '';
+    const done = (result: string | undefined) => {
+      stdin.off('data', typed);
+      stdin.setRawMode(false);
+      stdin.pause();
+      process.stderr.write('\n');
+      resolve(result);
+    };
+    const typed = (chunk: string) => {
+      for (const char of chunk) {
+        if (char === '\r' || char === '\n') return done(value);
+        if (char === '\u0003') return done(undefined);
+        value = char === '\u007f' || char === '\b' ? value.slice(0, -1) : value + char;
+      }
+    };
+    stdin.setEncoding('utf8');
+    stdin.setRawMode(true);
+    stdin.on('data', typed);
+    stdin.resume();
+  });
+}
+
+/** `pi-kit serve`: the host in this process, with the environment a registered service gives it; it stops on SIGINT or SIGTERM. */
+function serve(): Promise<number> {
+  Object.assign(process.env, {
+    PI_KIT_DATA_DIR: dataDir,
+    PI_KIT_LOG_DIR: logDir,
+    PI_KIT_SERVICE_LEVEL: 'serve',
+    ...(path ? { PATH: path } : {}),
+    ...devEnv,
+  });
+  createRequire(__filename)(hostEntry);
+  return new Promise<number>(() => undefined);
 }
 
 /** This computer's browser, unless the command runs over SSH or without a display. */
@@ -100,7 +142,13 @@ function openUrl(url: string): boolean {
 
 void runCli(
   args,
-  { out: (text) => void process.stdout.write(text), err: (text) => void process.stderr.write(text), readLine },
+  {
+    out: (text) => void process.stdout.write(text),
+    err: (text) => void process.stderr.write(text),
+    readLine,
+    readSecret,
+    interactive: !!process.stdin.isTTY,
+  },
   {
     version,
     serviceName: name,
@@ -119,5 +167,6 @@ void runCli(
     },
     sleep,
     openUrl,
+    serve,
   },
 ).then((code) => process.exit(code));

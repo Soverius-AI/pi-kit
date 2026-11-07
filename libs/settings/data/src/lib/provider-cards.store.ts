@@ -2,7 +2,7 @@ import { Language } from '@pi-kit/i18n';
 import { computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import { ApiClient, errorMessage, setupDetect, setupSaveLocal, setupTestLocal, unwrap } from '@pi-kit/api';
-import type { LocalServer, LocalTestResult, SetupInfo } from '@pi-kit/protocol';
+import { localProviderId, type LocalServer, type LocalTestResult, type SetupInfo } from '@pi-kit/protocol';
 import { cardStatuses } from '@pi-kit/ui';
 import { SettingsStore } from './settings.store';
 
@@ -125,8 +125,9 @@ export const ProviderCardsStore = signalStore(
           const ids = models ?? (await unwrap(setupTestLocal({ client: api.client, body: { baseUrl } }))).models;
           if (ids.length === 0) throw new Error(translate('settings.providerCardsStore.theServerListsNoModelLoadOne'));
           const kind = store.servers().find((s) => s.baseUrl === baseUrl)?.kind ?? store.local().result?.kind;
-          const provider = kind === 'ollama' ? 'ollama' : kind === 'llama-swap' ? 'llama-swap' : 'local';
-          const saved = await unwrap(setupSaveLocal({ client: api.client, body: { provider, baseUrl, models: ids } }));
+          const saved = await unwrap(
+            setupSaveLocal({ client: api.client, body: { provider: localProviderId(kind), baseUrl, models: ids } }),
+          );
           patchLocal({ phase: 'idle', saved: { provider: saved.provider, models: saved.models } });
           await Promise.all([settings.load(), methods.detect()]);
         } catch (error) {

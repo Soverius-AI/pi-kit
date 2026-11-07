@@ -15,8 +15,8 @@ assert.match(paths.name, /^dev\.pi-kit\.app\.service\.[a-f0-9]{8}$/);
 const env = { ...process.env, PI_KIT_DATA_DIR: paths.dataDir };
 const discovery = () => JSON.parse(readFileSync(join(paths.dataDir, 'service.json'), 'utf8'));
 const cli = (...args) => spawnSync(paths.launcher, ['service', ...args], { encoding: 'utf8', timeout: 75_000 });
-const rpc = (method) =>
-  JSON.parse(execFileSync(process.execPath, ['scripts/headless-test/host-rpc.mjs', method], { env, encoding: 'utf8' }));
+const hostStatus = () =>
+  JSON.parse(execFileSync(paths.launcher, ['service', 'status', '--json'], { env, encoding: 'utf8' }));
 const checkCli = (...args) => {
   const result = cli(...args);
   assert.equal(result.status, 0, `${args.join(' ')}: ${result.stderr || result.stdout}`);
@@ -37,7 +37,7 @@ async function until(label, predicate, timeout = 45_000) {
 }
 const ready = () =>
   until('healthy detached backend', () => {
-    const status = rpc('status');
+    const status = hostStatus();
     assert.equal(status.desktopAttached, false);
     return status.status.state === 'running' && status;
   });
@@ -98,10 +98,10 @@ await new Promise((resolve, reject) => {
 report('invalid local RPC authentication rejected');
 for (const path of ['/api/health', '/api/threads']) assert.equal((await fetch(first.backendUrl + path)).status, 401);
 report('unauthenticated backend APIs rejected');
-const previousBackend = rpc('status').backendPid;
+const previousBackend = hostStatus().backendPid;
 process.kill(previousBackend, 'SIGKILL');
 const recovered = await until('watchdog recovers crashed backend', () => {
-  const status = rpc('status');
+  const status = hostStatus();
   return status.status.state === 'running' && status.backendPid !== previousBackend && status;
 });
 assert.equal(discovery().pid, originalHost);

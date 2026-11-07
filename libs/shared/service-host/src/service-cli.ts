@@ -1,15 +1,22 @@
 import type { HostDiscovery } from './discovery';
 import type { RpcPeer } from './host-channel';
+import { HOST_ALREADY_RUNNING } from './host-process';
 import type { HostStatus } from './host-protocol';
 import { OPEN_USAGE, runOpenCli } from './open-cli';
 import { PEERS_USAGE, runPeersCli } from './peers-cli';
+import { REMOTE_USAGE, runDevicesCli, runPairCli, runRemoteCli } from './remote-cli';
 import type { ServiceManager } from './service-registration';
+import { runLoginCli, runLogoutCli, runModelCli, SETTINGS_USAGE } from './settings-cli';
 
 export interface CliIo {
   out(text: string): void;
   err(text: string): void;
   /** One line from the terminal or stdin, for input that must not be a command argument. */
   readLine?(prompt: string): Promise<string | undefined>;
+  /** One line from the terminal without echo, for keys and pasted codes. */
+  readSecret?(prompt: string): Promise<string | undefined>;
+  /** A person at a terminal can answer questions; otherwise commands print what to run instead of asking. */
+  interactive?: boolean;
 }
 
 export interface CliContext {
@@ -26,31 +33,44 @@ export interface CliContext {
   sleep(ms: number): Promise<void>;
   /** Opens a URL in this computer's browser; false where there is none to open (SSH, no display). */
   openUrl?(url: string): boolean;
+  /** Runs the host in this process until it stops (`pi-kit serve`). */
+  serve?(): Promise<number>;
 }
 
 const GROUPS: Record<string, (args: string[], io: CliIo, ctx: CliContext) => Promise<number>> = {
+  devices: runDevicesCli,
+  login: runLoginCli,
+  logout: runLogoutCli,
+  model: runModelCli,
   open: runOpenCli,
+  pair: runPairCli,
   peers: runPeersCli,
+  remote: runRemoteCli,
+  serve,
 };
 
 /** `status` exits with 3 when nothing runs, like `systemctl is-active` and LSB init scripts, so scripts can tell. */
 export const NOT_RUNNING = 3;
 const WAIT_MS = 60_000;
 
-const USAGE = `Usage: pi-kit service <command>, pi-kit open, pi-kit peers <command>
+const USAGE = `Usage: pi-kit <command>. On a server, the setup is: service install (or serve), login, remote enable, pair.
 
 Service commands (include "service" before the command):
-  pi-kit service status     Whether the background service is installed and running (exit code 3: not running)
+  pi-kit service status     Whether the background service is installed and running (exit code 3: not running;
+                            --json for scripts)
   pi-kit service install    Start pi-kit's backend at sign-in, and now
   pi-kit service uninstall  Stop it and no longer start it at sign-in
   pi-kit service start      Start it now
   pi-kit service stop       Stop it until the next sign-in or start
   pi-kit service restart    Stop it and start it again
   pi-kit service logs       Print the end of service.log and where the logs are
+  pi-kit serve              Run it in this terminal instead, for a container or another supervisor
 
 For example, use "pi-kit service logs", not "pi-kit logs".
 
+${SETTINGS_USAGE}
 ${OPEN_USAGE}
+${REMOTE_USAGE}
 ${PEERS_USAGE}
 pi-kit's backend runs as a service of this computer, so background agents and phone access keep working when the
 pi-kit window is closed. Settings › General › Background in the app does the same as install and uninstall.
@@ -74,7 +94,8 @@ export async function runCli(args: string[], io: CliIo, ctx: CliContext): Promis
     io.out(USAGE);
     return 0;
   }
-  if (!run && (group !== 'service' || rest.length > 0)) {
+  const json = group === 'service' && command === 'status' && rest.length === 1 && rest[0] === '--json';
+  if (!run && (group !== 'service' || (rest.length > 0 && !json))) {
     io.err(USAGE);
     return 2;
   }
@@ -82,7 +103,7 @@ export async function runCli(args: string[], io: CliIo, ctx: CliContext): Promis
     if (run) return await run(args.slice(1), io, ctx);
     switch (command) {
       case 'status':
-        return await status(io, ctx);
+        return await status(io, ctx, json);
       case 'install':
         return await install(io, ctx);
       case 'uninstall':
@@ -147,15 +168,24 @@ async function hostStatus(ctx: CliContext, host: HostDiscovery): Promise<HostSta
   }
 }
 
-async function status(io: CliIo, ctx: CliContext): Promise<number> {
+/** With `json`, one object for scripts: `installed`, the `host` discovery without its token, and the host's own status. */
+async function status(io: CliIo, ctx: CliContext, json = false): Promise<number> {
   const installed = ctx.manager?.installed() ?? false;
+  if (json) {
+    const host = ctx.discover();
+    const state = host && (await hostStatus(ctx, host));
+    const { token: _token, ...running } = host ?? { token: '' };
+    io.out(`${JSON.stringify({ installed, ...(host ? { host: running } : {}), ...state })}\n`);
+    return !host ? NOT_RUNNING : state ? 0 : 1;
+  }
   io.out(`Background service: ${installed ? `installed (${ctx.serviceName})` : 'not installed'}\n`);
   const host = ctx.discover();
   if (!host) {
     io.out('Host: not running\n');
     return NOT_RUNNING;
   }
-  const owner = host.level === 'login' ? 'the background service' : 'the pi-kit app';
+  const owner =
+    host.level === 'login' ? 'the background service' : host.level === 'serve' ? '"pi-kit serve"' : 'the pi-kit app';
   io.out(`Host: running, pid ${host.pid}, run by ${owner}, version ${host.version}, since ${host.startedAt}\n`);
   const state = await hostStatus(ctx, host);
   if (!state) {
@@ -277,4 +307,18 @@ function logs(io: CliIo, ctx: CliContext): number {
   else io.out('No service.log yet.\n');
   io.out(`\nLogs are in ${ctx.logDir} (service.log, backend.log, main.log).\n`);
   return 0;
+}
+
+/** `pi-kit serve`: the host in this terminal, which stops it; refused while another host owns the data folder. */
+async function serve(args: string[], io: CliIo, ctx: CliContext): Promise<number> {
+  if (args.length > 0 || !ctx.serve) {
+    io.err(USAGE);
+    return 2;
+  }
+  const running = ctx.discover();
+  if (running) {
+    io.err(`pi-kit: a host already runs this profile (pid ${running.pid}, version ${running.version}).\n`);
+    return HOST_ALREADY_RUNNING;
+  }
+  return ctx.serve();
 }

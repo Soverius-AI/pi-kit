@@ -40,7 +40,6 @@ C=pi-kit-headless-test-9ef77b2
 docker exec "$C" systemctl is-system-running
 docker exec "$C" systemctl status user@1001.service --no-pager
 docker cp dist/release/linux-arm64-unpacked/. "$C":/opt/pi-kit/
-docker cp scripts/headless-test/host-rpc.mjs "$C":/opt/host-rpc.mjs
 docker cp scripts/headless-test/lifecycle.mjs "$C":/opt/lifecycle.mjs
 ```
 
@@ -83,15 +82,14 @@ docker exec "$C" tailscale up --hostname=pi-kit-headless-test \
 Authorize the generated URL on the same test tailnet as the remote browser's machine. Tailscale Serve requires tailnet HTTPS support and permitted node access. The daemon uses userspace networking, not a host TUN device.
 
 ```sh
-testuser node /opt/host-rpc.mjs remote.start
-testuser node /opt/host-rpc.mjs remote.beginPairing
-# Open the returned pairing URL in a fresh browser context.
-testuser node /opt/host-rpc.mjs remote.status
-# Compare the confirmation code shown in the browser with the pending request.
-testuser node /opt/host-rpc.mjs remote.approvePairing '"REQUEST_ID"'
+testuser pi-kit remote enable
+testuser pi-kit pair
+# Open the printed pairing link in a fresh browser context. Without a terminal, pair prints the request and its
+# confirmation code; compare it with the browser's, then approve it:
+testuser pi-kit devices approve REQUEST_ID
 ```
 
-`host-rpc.mjs` is an allowlisted **local administrative test helper** because the shipped CLI lacks remote/pairing commands. It reads the existing owner-only discovery file, authenticates over the Unix socket, and never calls `attach`, returns a backend token, or emulates desktop encryption. Keep output private: pairing responses contain short-lived pairing codes. Using this helper demonstrates the host RPC, not a complete shipped headless onboarding UX.
+These are the shipped commands. They use the owner-only discovery file and socket, never call `attach`, and never print the backend token. Keep their output private: the pairing link carries a short-lived code.
 
 After pairing, verify the actual renderer, remote thread operations, streaming updates, persistence across backend/host/container restarts, and revocation. Instance-to-instance signed pairing is distinct from browser-device pairing and currently requires desktop-backed instance-key sealing.
 

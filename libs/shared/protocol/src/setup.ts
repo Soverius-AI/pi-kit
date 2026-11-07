@@ -69,6 +69,10 @@ export type SetupInfo = z.infer<typeof SetupInfoSchema>;
 
 // ---- local models
 
+/** The provider id a local model server is saved under in pi's `models.json`, by the kind of server it answered as. */
+export const localProviderId = (kind: LocalTestResult['kind']): string =>
+  kind === 'ollama' ? 'ollama' : kind === 'llama-swap' ? 'llama-swap' : 'local';
+
 export const LocalTestSchema = z
   .object({ baseUrl: z.string().min(1).max(500) })
   .strict()

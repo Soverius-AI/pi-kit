@@ -107,14 +107,14 @@ NODE=/path/to/node-24-or-newer
 
 The lifecycle suite leaves the isolated service running for remote tests. The actual test data path and hashed service label are in the private `/tmp/pi-kit-macos-service-test/paths.json`.
 
-Use the local administrative test helper without attaching as a desktop:
+Use the shipped `pi-kit` commands; none of them attaches as a desktop:
 
 ```sh
 export PI_KIT_DATA_DIR="$HOME/Library/Caches/pi-kit-macos-service-test-9ef77b2/data"
 # Inspect existing Serve ports first and choose an unused test port.
-"$NODE" scripts/headless-test/host-rpc.mjs remote.start 8444
-"$NODE" scripts/headless-test/host-rpc.mjs remote.beginPairing
-# Open the returned URL, compare confirmation codes, approve using local RPC.
+/tmp/pi-kit-macos-service-test/pi-kit remote enable --port 8444
+/tmp/pi-kit-macos-service-test/pi-kit pair
+# Open the link in the test browser, compare confirmation codes, and approve in the terminal.
 ```
 
 Use `model-e2e.browser.js` on the paired origin, passing the native test project as its optional third argument:
@@ -140,8 +140,8 @@ PI_KIT_TEST_PROJECT="$HOME/Library/Caches/pi-kit-macos-service-test-9ef77b2/home
 Revoke the test device, stop only this profile's remote gateway, and uninstall only its hashed LaunchAgent:
 
 ```sh
-"$NODE" scripts/headless-test/host-rpc.mjs remote.revokeDevice '"<device-id>"'
-"$NODE" scripts/headless-test/host-rpc.mjs remote.stop
+/tmp/pi-kit-macos-service-test/pi-kit devices revoke <device-id>
+/tmp/pi-kit-macos-service-test/pi-kit remote disable
 /tmp/pi-kit-macos-service-test/pi-kit service uninstall
 /tmp/pi-kit-macos-service-test/pi-kit service status
 # Expected: not installed; not running; exit code 3.

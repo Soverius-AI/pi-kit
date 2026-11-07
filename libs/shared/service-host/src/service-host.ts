@@ -91,7 +91,10 @@ export function hostConfigFromEnv(
     cwd: env['PI_KIT_CWD'] || homedir(),
     version: env['PI_KIT_VERSION'] || bundledVersion(hostDir),
     rendererRoot: env['PI_KIT_RENDERER_ROOT'] || join(hostDir, '..', 'renderer', 'browser'),
-    level: env['PI_KIT_SERVICE_LEVEL'] === 'login' ? 'login' : 'app',
+    level:
+      env['PI_KIT_SERVICE_LEVEL'] === 'login' || env['PI_KIT_SERVICE_LEVEL'] === 'serve'
+        ? env['PI_KIT_SERVICE_LEVEL']
+        : 'app',
   };
 }
 

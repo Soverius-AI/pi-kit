@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-/** Who runs the host: the desktop app as its child (`app`), or the operating system at sign-in (`login`). */
-export type HostLevel = 'app' | 'login';
+/** Who runs the host: the desktop app as its child (`app`), the operating system (`login`), or `pi-kit serve` in a terminal. */
+export type HostLevel = 'app' | 'login' | 'serve';
 
 /** `<dataDir>/service.json`: how a desktop finds and enters the host that owns the folder. */
 export interface HostDiscovery {
@@ -40,7 +40,7 @@ export function readDiscovery(dataDir: string): HostDiscovery | undefined {
     if (
       !Number.isInteger(value.pid) ||
       typeof value.version !== 'string' ||
-      (value.level !== 'app' && value.level !== 'login') ||
+      (value.level !== 'app' && value.level !== 'login' && value.level !== 'serve') ||
       typeof value.socket !== 'string' ||
       typeof value.token !== 'string' ||
       typeof value.startedAt !== 'string'

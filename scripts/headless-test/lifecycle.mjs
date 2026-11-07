@@ -10,7 +10,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 const data = join(process.env.HOME, '.config/pi-kit');
 const discovery = () => JSON.parse(readFileSync(join(data, 'service.json'), 'utf8'));
 const cli = (...args) => spawnSync('pi-kit', ['service', ...args], { encoding: 'utf8', timeout: 75_000 });
-const status = () => JSON.parse(execFileSync(process.execPath, ['/opt/host-rpc.mjs', 'status'], { encoding: 'utf8' }));
+const status = () => JSON.parse(execFileSync('pi-kit', ['service', 'status', '--json'], { encoding: 'utf8' }));
 const checkCli = (...args) => {
   const result = cli(...args);
   assert.equal(result.status, 0, `${args.join(' ')}: ${result.stderr || result.stdout}`);

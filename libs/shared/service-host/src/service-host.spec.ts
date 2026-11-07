@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RunningBackend } from './backend';
 import { connectHostChannel, hostSocketPath, listenHostChannel } from './host-channel';
-import { HostClient, HostStartError } from './host-process';
+import { HOST_ALREADY_RUNNING, HostClient, HostStartError } from './host-process';
 import { NOT_RUNNING, runCli, type CliContext } from './service-cli';
 import { FileWrappingKeys, HostSealing, instanceKeyFile, KeyringWrappingKeys } from './instance-key-sealing';
 import { hostConfigFromEnv, type LaunchedBackend, ServiceHost, type ServiceHostDeps } from './service-host';
@@ -275,6 +275,39 @@ describe('ServiceHost with a desktop on its socket', () => {
       expect(output).toContain('not "pi-kit logs"');
     },
   );
+
+  it('prints the host status as JSON for scripts, without the host token', async () => {
+    const backend = fakeBackend(2000);
+    const { path, host } = await startHost(backend);
+    await host.start();
+    const printed: string[] = [];
+    const owner = {
+      pid: process.pid,
+      version: '0.0.0',
+      level: 'login' as const,
+      socket: path,
+      token: TOKEN,
+      startedAt: 'now',
+    };
+    expect(await runCli(['service', 'status', '--json'], io(printed), { ...cli, discover: () => owner })).toBe(0);
+    expect(JSON.parse(printed.join(''))).toMatchObject({
+      installed: false,
+      host: { pid: process.pid, level: 'login', version: '0.0.0' },
+      desktopAttached: false,
+      backendPid: 2000,
+      status: { state: expect.any(String), restarts: 0 },
+    });
+    expect(printed.join('')).not.toContain(TOKEN);
+  });
+
+  it('refuses `pi-kit serve` while another host owns the profile', async () => {
+    let served = 0;
+    const serve = async () => ++served;
+    const owner = { pid: 7, version: '0.0.0', level: 'login' as const, socket: 's', token: 't', startedAt: 'now' };
+    expect(await runCli(['serve'], io([]), { ...cli, serve, discover: () => owner })).toBe(HOST_ALREADY_RUNNING);
+    expect(served).toBe(0);
+    expect(await runCli(['serve'], io([]), { ...cli, serve })).toBe(1);
+  });
 
   it('exits `pi-kit service status` with 3 when nothing runs, for scripts', async () => {
     expect(await runCli(['service', 'status'], io([]), cli)).toBe(NOT_RUNNING);

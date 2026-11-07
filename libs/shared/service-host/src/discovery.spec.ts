@@ -66,3 +66,19 @@ describe('which install is newer', () => {
     expect(isNewerVersion(version, than)).toBe(newer);
   });
 });
+
+describe('the discovery file', () => {
+  it.each(['app', 'login', 'serve'] as const)('reads back a host run at the %s level', async (level) => {
+    const dir = await dataDir();
+    const host: HostDiscovery = {
+      pid: process.pid,
+      version: '1.0.0',
+      level,
+      socket: 's',
+      token: 't',
+      startedAt: 'now',
+    };
+    writeDiscovery(dir, host);
+    expect(readDiscovery(dir)).toEqual(host);
+  });
+});
