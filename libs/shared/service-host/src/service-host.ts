@@ -69,6 +69,8 @@ export interface ServiceHostDeps {
   hostSealing?: InstanceKeyEncryption;
   /** The owner's browser door, open while the host is. */
   owner?: OwnerAccess;
+  /** The web app of this host's install, handed to an attaching desktop. */
+  rendererRoot?: string;
 }
 
 /** Longer than the backend's own shutdown grace (15 s), so a clean shutdown is never cut short. */
@@ -161,7 +163,13 @@ export class ServiceHost {
       this.deps.log('desktop attached');
       if (previous && previous !== peer) previous.close();
       const pid = this.current?.child.pid;
-      return { endpoint: this.endpoint, status: this.status, ...(pid ? { backendPid: pid } : {}) };
+      const rendererRoot = this.deps.rendererRoot;
+      return {
+        endpoint: this.endpoint,
+        status: this.status,
+        ...(pid ? { backendPid: pid } : {}),
+        ...(rendererRoot ? { rendererRoot } : {}),
+      };
     });
     peer.handle('status', (): HostStatus => {
       const pid = this.current?.child.pid;

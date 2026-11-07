@@ -14,7 +14,7 @@ describe('browser artifact viewport', () => {
     page.set({ ...emptyBrowserState('a', true), open: true, url: 'http://localhost:3000/' });
     act.mockClear();
     layout.mockClear();
-    window.piKit = { getBackendUrl: async () => '', getToken: async () => '', setBrowserViewport: layout };
+    window.piKit = { getBackendUrl: async () => '', setBrowserViewport: layout };
     vi.stubGlobal(
       'ResizeObserver',
       class {

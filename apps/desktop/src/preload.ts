@@ -26,7 +26,6 @@ contextBridge.exposeInMainWorld('piKit', {
   rejectRemotePairing: (id: string) => ipcRenderer.invoke('pi-kit:remote-pair-reject', id),
   revokeRemoteDevice: (id: string) => ipcRenderer.invoke('pi-kit:remote-device-revoke', id),
   getBackendUrl: (): Promise<string> => ipcRenderer.invoke('pi-kit:backend-url'),
-  getToken: (): Promise<string> => ipcRenderer.invoke('pi-kit:token'),
   getUiStorage: (): Promise<Record<string, string> | undefined> => ipcRenderer.invoke('pi-kit:ui-storage-get'),
   setUiStorage: (key: string, value: string): Promise<void> => ipcRenderer.invoke('pi-kit:ui-storage-set', key, value),
   /** The backend watchdog's state: it changes when the backend crashes, is restarted, or is given up on. */

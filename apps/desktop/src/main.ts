@@ -9,6 +9,7 @@ import {
   nativeImage,
   nativeTheme,
   safeStorage,
+  session,
   shell,
   systemPreferences,
   Tray,
@@ -29,6 +30,7 @@ import {
   HostStartError,
   HOST_ALREADY_RUNNING,
   isAlive,
+  isNewerVersion,
   liveDiscovery,
   loginShellPath,
   type ServiceManager,
@@ -120,6 +122,10 @@ const DEV_DIR =
     : undefined;
 if (DEV_DIR) app.setPath('userData', DEV_DIR);
 if (SMOKE) process.on('SIGTERM', () => app.quit());
+// One app per profile: another launch, or `pi-kit open`, brings this one forward. The Windows supervisor is not the app.
+const SECOND_INSTANCE = !SUPERVISOR && !app.requestSingleInstanceLock();
+if (SECOND_INSTANCE) app.quit();
+app.on('second-instance', () => reopenWindow());
 
 registerAppScheme();
 
@@ -566,6 +572,18 @@ function commandStatus(): { available: boolean; dir: string; path: string; insta
   return { available, dir, path, installed, onPath: (userPath() ?? '').split(delimiter).includes(dir) };
 }
 
+/**
+ * Puts the backend's token on the app page's own requests in the network layer, so it never enters page JavaScript. Frames the
+ * backend serves (the MCP app and GenUI sandboxes) send no app Origin and get none: the missing token is what keeps them out.
+ */
+function authorizeAppRequests({ url, token }: BackendEndpoint): void {
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: [`${url}/*`] }, (details, callback) => {
+    const headers = details.requestHeaders;
+    if ((headers['Origin'] ?? headers['origin']) === RENDERER_ORIGIN) headers['Authorization'] = `Bearer ${token}`;
+    callback({ requestHeaders: headers });
+  });
+}
+
 /** Stops whichever host owns the data folder and waits until it is gone. */
 async function stopHost(): Promise<void> {
   const running = liveDiscovery(app.getPath('userData'));
@@ -596,13 +614,19 @@ async function openHost(): Promise<HostClient> {
   });
   if (background?.installed() && !(await background.unsupported())) {
     mainLog?.line('background service registered: attaching to it');
-    // Keeps paths, version and PATH current; a changed registration restarts the service on it.
-    await background.install();
-    const running = liveDiscovery(dataDir);
-    if (!running) await background.start();
-    else if (running.version !== app.getVersion()) await background.restart();
+    const peek = liveDiscovery(dataDir);
+    // The newest install runs the service: never move a newer one back onto this app's version. The updater offers the newer app.
+    if (peek && isNewerVersion(peek.version, app.getVersion()))
+      mainLog?.line(`the service runs ${peek.version}, newer than this app: attaching without moving it`);
+    else {
+      // Keeps paths, version and PATH current; a changed registration restarts the service on it.
+      await background.install();
+      const running = liveDiscovery(dataDir);
+      if (!running) await background.start();
+      else if (running.version !== app.getVersion()) await background.restart();
+    }
     const { client, discovery } = await HostClient.find(dataDir, {
-      accept: (found) => found.version === app.getVersion(),
+      accept: (found) => found.version === app.getVersion() || isNewerVersion(found.version, app.getVersion()),
       timeoutMs: 60_000,
     });
     mainLog?.line(`attached to the ${discovery.level} host, pid ${discovery.pid}`);
@@ -700,7 +724,8 @@ async function boot(): Promise<void> {
   client.serveSealing(new SafeStorageEncryption(safeStorage));
   const attachment = await client.attach();
   endpoint = attachment.endpoint;
-  if (!DEV_URL) serveRenderer(RENDERER_ROOT, endpoint.url);
+  if (!DEV_URL) serveRenderer(attachment.rendererRoot ?? RENDERER_ROOT, endpoint.url);
+  authorizeAppRequests(endpoint);
   const storageReady = !DEV_URL
     ? (async () => {
         uiStorage = new UiStorage(join(app.getPath('userData'), 'ui-storage.json'));
@@ -729,7 +754,6 @@ async function boot(): Promise<void> {
 
   createTray();
   ipcMain.handle('pi-kit:backend-url', (event) => (fromRenderer(event) ? url : Promise.reject(new Error('forbidden'))));
-  ipcMain.handle('pi-kit:token', (event) => (fromRenderer(event) ? token : Promise.reject(new Error('forbidden'))));
   // The watchdog's state, for a window that opened after the last change.
   ipcMain.handle('pi-kit:backend-status-get', (event) =>
     fromRenderer(event) ? latestStatus : Promise.reject(new Error('forbidden')),
@@ -867,8 +891,7 @@ async function reportSmoke(win: BrowserWindow, url: string, token: string): Prom
   const connection = await win.webContents.executeJavaScript(`(async () => {
     try {
       const url = await window.piKit.getBackendUrl();
-      const token = await window.piKit.getToken();
-      const response = await fetch(url + '/api/health', { headers: { Authorization: 'Bearer ' + token } });
+      const response = await fetch(url + '/api/instance');
       return { status: response.status };
     } catch (error) { return { status: 0, error: String(error) }; }
   })()`);
@@ -896,7 +919,7 @@ async function reportSmoke(win: BrowserWindow, url: string, token: string): Prom
 
 app
   .whenReady()
-  .then(() => (SUPERVISOR ? superviseHost() : boot()))
+  .then(() => (SECOND_INSTANCE ? undefined : SUPERVISOR ? superviseHost() : boot()))
   .catch((err: Error) => {
     if (err instanceof StartupCancelled) {
       mainLog?.line('could not start: the user quit');
@@ -934,11 +957,15 @@ app.on('before-quit', (event) => {
   // Our own host also stops on IPC disconnect; a background service's host keeps running.
   if (hostOwned) host?.stop();
 });
+/** Brings the app window forward, or opens it again once the backend is up. */
+function reopenWindow(): void {
+  if (rendererWindow()) return showRenderer();
+  if (!backendReady) return;
+  const win = createWindow();
+  win.once('closed', () => browserArtifacts.dispose());
+  win.once('ready-to-show', () => win.show());
+  void win.loadURL(DEV_URL ?? `${APP_ORIGIN}/`);
+}
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0 && backendReady) {
-    const win = createWindow();
-    win.once('closed', () => browserArtifacts.dispose());
-    win.once('ready-to-show', () => win.show());
-    void win.loadURL(DEV_URL ?? `${APP_ORIGIN}/`);
-  }
+  if (BrowserWindow.getAllWindows().length === 0) reopenWindow();
 });

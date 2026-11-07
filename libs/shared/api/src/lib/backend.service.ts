@@ -121,7 +121,8 @@ export function createBackendConnection(devWebUrl = 'http://127.0.0.1:4300'): Ba
     },
 
     async token(): Promise<string> {
-      if (window.piKit) return window.piKit.getToken();
+      // The desktop app adds the token to the page's requests itself.
+      if (window.piKit) return '';
       const stored = readStorage(TOKEN_KEY);
       if (!isDevMode()) {
         if (stored) return stored;
@@ -161,7 +162,8 @@ export class BackendService implements BackendConnection {
   /** `fetch` against the backend with the bearer token; drops a stale stored token on 401. */
   async fetch(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
-    headers.set('Authorization', `Bearer ${await this.token()}`);
+    const token = await this.token();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
     const res = await fetch(`${await this.url()}${path}`, {
       ...init,
       ...(this.connection.mode === 'phone' ? { credentials: 'same-origin' as const, redirect: 'error' as const } : {}),

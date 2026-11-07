@@ -13,6 +13,8 @@ export interface HostAttachment {
   endpoint: BackendEndpoint;
   status: WatchdogStatus;
   backendPid?: number;
+  /** The web app of this host's install, which the desktop shows so that UI and backend are one version. */
+  rendererRoot?: string;
 }
 
 /** The answer to `status`, for anyone with the token: never the backend's token. */

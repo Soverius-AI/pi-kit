@@ -57,6 +57,7 @@ const owner = new OwnerGateway({
 });
 const host: ServiceHost = new ServiceHost(config, {
   owner,
+  rendererRoot,
   allocate: allocateEndpoint,
   spawn: spawnBackend,
   launch: launchForWatchdog,

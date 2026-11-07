@@ -44,7 +44,6 @@ describe('Settings › Remote access', () => {
     stop.mockResolvedValue({ state: 'available' });
     window.piKit = {
       getBackendUrl: async () => '',
-      getToken: async () => '',
       getRemoteAccessStatus: getStatus,
       startRemoteAccess: start,
       stopRemoteAccess: stop,

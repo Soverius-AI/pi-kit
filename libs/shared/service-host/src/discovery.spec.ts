@@ -3,7 +3,7 @@ import type { Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { type HostDiscovery, readDiscovery, removeDiscovery, writeDiscovery } from './discovery';
+import { type HostDiscovery, isNewerVersion, readDiscovery, removeDiscovery, writeDiscovery } from './discovery';
 import { HostAlreadyRunningError, hostSocketPath, listenHostChannel } from './host-channel';
 
 const cleanup: Array<() => Promise<unknown>> = [];
@@ -50,5 +50,19 @@ describe('one host per data folder', () => {
 
     removeDiscovery(dir, 111);
     expect(readDiscovery(dir)).toEqual(next);
+  });
+});
+
+describe('which install is newer', () => {
+  it.each([
+    ['0.10.0', '0.9.12', true],
+    ['0.10.9', '0.10.9', false],
+    ['1.0.0', '0.99.99', true],
+    ['0.9.12', '0.10.0', false],
+    ['development', '0.10.9', false],
+    ['0.10.9', 'unknown', false],
+    ['0.11.0-beta.1', '0.10.9', false],
+  ])('%s is newer than %s: %s', (version, than, newer) => {
+    expect(isNewerVersion(version, than)).toBe(newer);
   });
 });

@@ -18,7 +18,8 @@ export class EntryApiClient {
   private connect(connection: BackendConnection): TypedClient {
     return createTypedClient(async (path, init) => {
       const headers = new Headers(init?.headers);
-      headers.set('authorization', `Bearer ${await connection.token()}`);
+      const token = await connection.token();
+      if (token) headers.set('authorization', `Bearer ${token}`);
       const result = await fetch((await connection.url()) + path, {
         ...init,
         headers,

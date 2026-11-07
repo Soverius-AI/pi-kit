@@ -10,7 +10,6 @@ it('reads and updates the desktop cache without synchronously opening browser st
   const set = vi.fn(async () => undefined);
   window.piKit = {
     getBackendUrl: async () => '',
-    getToken: async () => '',
     getUiStorage: async () => ({ 'pi-kit.theme': 'pi-light', 'pk.graph.fold.thread': '0' }),
     setUiStorage: set,
   };

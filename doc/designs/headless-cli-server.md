@@ -240,9 +240,10 @@ The CLI is a client of two existing interfaces and repeats no business rule.
 1. Host-side instance-key sealing with migration, and `pi-kit peers`. Instance pairing works headless.
 2. The owner listener, owner sessions, one-time links and `pi-kit open`. A local browser works against today's server.
 3. Electron serves the running server's web app and adds the token in its network layer instead of handing it to the
-   page; single-instance lock; the version rule of §3 and bridge capabilities.
+   page; single-instance lock; the shell never moves a newer host back onto its own version.
 4. The server folder as the one artifact: the renderer leaves `app.asar`, the desktop bundles the folder, the npm
-   packages are written from it, and the host derives the web app and version from it.
+   packages are written from it, and the host derives the web app and version from it. With a newer npm server to
+   test against, the rest of §3's version rule: the shell updates itself before attaching, and bridge capabilities.
 5. The remaining CLI: `backend` RPC, `remote`, `pair`, `devices`, `login`, `logout`, `model`, `serve`;
    `host-rpc.mjs` is deleted.
 6. Registration for npm installs: Linux user unit and linger, macOS LaunchAgent and LaunchDaemon, Windows scheduled

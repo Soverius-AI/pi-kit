@@ -59,18 +59,18 @@ describe('BackendService transport', () => {
     expect(fetch.mock.calls.every(([url]) => url === '/phone/session')).toBe(true);
   });
 
-  it('ignores the phone marker in the trusted Electron renderer', async () => {
+  it('ignores the phone marker in the trusted Electron renderer, whose page holds no backend token', async () => {
     const meta = document.createElement('meta');
     meta.name = 'pi-kit-connection';
     meta.content = 'device';
     document.head.append(meta);
     vi.stubGlobal('piKit', {
       getBackendUrl: async () => 'http://127.0.0.1:1234',
-      getToken: async () => 'desktop-token',
     });
     const connection = createBackendConnection();
     expect(isDeviceConnection()).toBe(false);
-    expect(await connection.token()).toBe('desktop-token');
+    expect(await connection.url()).toBe('http://127.0.0.1:1234');
+    expect(await connection.token()).toBe('');
   });
 
   it('retries a failed phone nonce request without falling back to dev token discovery', async () => {

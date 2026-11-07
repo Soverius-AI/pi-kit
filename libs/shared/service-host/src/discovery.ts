@@ -17,6 +17,16 @@ export interface HostDiscovery {
 
 const FILE = 'service.json';
 
+/** Whether release `version` is newer than `than`; a development or unknown version is never newer, so it never wins. */
+export function isNewerVersion(version: string, than: string): boolean {
+  const parse = (value: string) => /^(\d+)\.(\d+)\.(\d+)$/.exec(value)?.slice(1).map(Number);
+  const a = parse(version);
+  const b = parse(than);
+  if (!a || !b) return false;
+  const differs = a.findIndex((part, i) => part !== b[i]);
+  return differs !== -1 && a[differs] > b[differs];
+}
+
 export function writeDiscovery(dataDir: string, discovery: HostDiscovery): void {
   const path = join(dataDir, FILE);
   const temp = `${path}.${randomUUID()}.tmp`;

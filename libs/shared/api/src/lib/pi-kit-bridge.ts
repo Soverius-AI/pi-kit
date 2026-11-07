@@ -77,7 +77,6 @@ export interface PiKitBridge {
   rejectRemotePairing?(id: string): Promise<RemoteAccessStatus>;
   revokeRemoteDevice?(id: string): Promise<RemoteAccessStatus>;
   getBackendUrl(): Promise<string>;
-  getToken(): Promise<string>;
   /** Async native UI cache; undefined in development, where browser storage is used. */
   getUiStorage?(): Promise<Record<string, string> | undefined>;
   setUiStorage?(key: string, value: string): Promise<void>;

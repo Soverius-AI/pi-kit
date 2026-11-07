@@ -11,7 +11,6 @@ describe('browser certificate options', () => {
     const previous = window.piKit;
     window.piKit = {
       getBackendUrl: async () => '',
-      getToken: async () => '',
       setBrowserLocalCertificates: vi.fn(async () => undefined),
     };
     const prefs = { browserAllowInvalidLocalCertificates: signal(false), set: vi.fn(async () => true) };

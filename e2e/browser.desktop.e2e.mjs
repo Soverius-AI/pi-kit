@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { after, afterEach, before, describe, it } from 'node:test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { _electron } from 'playwright';
 import { build } from 'esbuild';
@@ -90,10 +90,9 @@ before(async () => {
       .find((w) => w.webContents.getURL().startsWith('app://pi-kit'))
       ?.setSize(1700, 1000),
   );
-  connection = await page.evaluate(async () => ({
-    url: await window.piKit.getBackendUrl(),
-    token: await window.piKit.getToken(),
-  }));
+  // The page holds no backend token; smoke mode reports the endpoint for scripts.
+  await until(() => existsSync(join(world.data, 'smoke.json')), 'the smoke report');
+  connection = JSON.parse(readFileSync(join(world.data, 'smoke.json'), 'utf8'));
   // Production desktop builds correctly ignore the dev-only trust override; approve this test's scratch project in the real dialog.
   await page.getByRole('button', { name: 'Trust once', exact: true }).click();
   await page.locator('pk-trust-dialog dialog').waitFor({ state: 'detached' });

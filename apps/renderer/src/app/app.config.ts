@@ -26,7 +26,7 @@ import { ShellStore } from './shell.store';
 export interface BackendEndpoint {
   /** e.g. `http://127.0.0.1:4300`; no trailing slash. */
   url: string;
-  /** Per-launch bearer token; empty when it could not be obtained. */
+  /** Per-launch bearer token; empty in the desktop app, which adds it to requests itself, or when it could not be obtained. */
   token: string;
 }
 
@@ -39,6 +39,7 @@ export function buildAppConfig(
   inspector = readInspectorPreference(),
   entry?: BackendConnection,
 ): ApplicationConfig {
+  const authorization: Record<string, string> = backend.token ? { Authorization: `Bearer ${backend.token}` } : {};
   return {
     providers: [
       provideLanguage(() => readLanguagePreference(readStorage('pi-kit.look', 'controller'))),
@@ -49,12 +50,12 @@ export function buildAppConfig(
       provideOpenUiSandbox(),
       provideCopilotKit({
         runtimeUrl: `${backend.url}${RUNTIME_PATH}`,
-        headers: { Authorization: `Bearer ${backend.token}` },
+        headers: authorization,
         selfManagedAgents: {
           pi: new ThreadReplayAgent({
             runtimeUrl: `${backend.url}${RUNTIME_PATH}`,
             agentId: 'pi',
-            headers: { Authorization: `Bearer ${backend.token}` },
+            headers: authorization,
             transport: 'rest',
             runtimeMode: 'sse',
           }),
@@ -62,7 +63,7 @@ export function buildAppConfig(
           'pi-bg': new ThreadReplayAgent({
             runtimeUrl: `${backend.url}${RUNTIME_PATH}`,
             agentId: 'pi-bg',
-            headers: { Authorization: `Bearer ${backend.token}` },
+            headers: authorization,
             transport: 'rest',
             runtimeMode: 'sse',
           }),
