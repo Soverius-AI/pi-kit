@@ -211,6 +211,20 @@ describe('ServiceHost with a desktop on its socket', () => {
     expect(asked).toHaveLength(1);
   });
 
+  it.each([[], ['--help'], ['service', '--help'], ['logs']].map((args) => ({ args })))(
+    'shows complete service commands in help for $args',
+    async ({ args }) => {
+      const printed: string[] = [];
+      const code = await runServiceCli(args, io(printed), cli);
+      expect(code).toBe(args[0] === 'logs' ? 2 : 0);
+      const output = printed.join('');
+      for (const command of ['status', 'install', 'uninstall', 'start', 'stop', 'restart', 'logs']) {
+        expect(output).toContain(`pi-kit service ${command}`);
+      }
+      expect(output).toContain('not "pi-kit logs"');
+    },
+  );
+
   it('exits `pi-kit service status` with 3 when nothing runs, for scripts', async () => {
     expect(await runServiceCli(['service', 'status'], io([]), cli)).toBe(NOT_RUNNING);
   });

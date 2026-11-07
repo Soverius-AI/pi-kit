@@ -27,14 +27,16 @@ const WAIT_MS = 60_000;
 
 const USAGE = `Usage: pi-kit service <command>
 
-Commands:
-  status     Whether the background service is installed and running (exit code 3: not running)
-  install    Start pi-kit's backend at sign-in, and now
-  uninstall  Stop it and no longer start it at sign-in
-  start      Start it now
-  stop       Stop it until the next sign-in or start
-  restart    Stop it and start it again
-  logs       Print the end of service.log and where the logs are
+Service commands (include "service" before the command):
+  pi-kit service status     Whether the background service is installed and running (exit code 3: not running)
+  pi-kit service install    Start pi-kit's backend at sign-in, and now
+  pi-kit service uninstall  Stop it and no longer start it at sign-in
+  pi-kit service start      Start it now
+  pi-kit service stop       Stop it until the next sign-in or start
+  pi-kit service restart    Stop it and start it again
+  pi-kit service logs       Print the end of service.log and where the logs are
+
+For example, use "pi-kit service logs", not "pi-kit logs".
 
 pi-kit's backend runs as a service of this computer, so background agents and phone access keep working when the
 pi-kit window is closed. Settings › General › Background in the app does the same as install and uninstall.
