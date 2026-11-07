@@ -1,0 +1,13 @@
+# Test-only tailnet node: userspace networking needs no host TUN device.
+[Unit]
+Description=Isolated Tailscale node for pi-kit integration tests
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock
+StateDirectory=tailscale
+RuntimeDirectory=tailscale
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

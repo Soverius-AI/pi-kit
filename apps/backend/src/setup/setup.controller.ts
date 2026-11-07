@@ -40,7 +40,8 @@ export class SetupController {
     return this.setup.detect();
   }
 
-  /** The user finished the flow, or left it: it does not open by itself again (a missing model after a skip is the composer's to explain). */
+  /** A paired client may dismiss onboarding; this only records completed/skipped, never configures providers or credentials. */
+  @Remote()
   @Post('state')
   @HttpCode(200)
   @ApiOperation({

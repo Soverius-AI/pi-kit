@@ -8327,6 +8327,7 @@ paths:
       summary: Record how the onboarding ended
       tags:
         - setup
+      x-remote: true
   /api/setup/local/test:
     post:
       description: 'Asks a server at a base URL which models it lists. A server that does not answer is a result with `ok: false`, not an error.'
