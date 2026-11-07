@@ -33,6 +33,7 @@ import {
   isAlive,
   isNewerVersion,
   liveDiscovery,
+  otherInstall,
   loginShellPath,
   type ServiceManager,
   spawnServiceHost,
@@ -623,18 +624,23 @@ async function openHost(status: (text: string) => void): Promise<HostClient> {
   if (background?.installed() && !(await background.unsupported())) {
     mainLog?.line('background service registered: attaching to it');
     const peek = liveDiscovery(dataDir);
-    // The newest install runs the service: never move a newer one back onto this app's version. Become that version first, so the
-    // window has every native feature the newer server expects; without such a release, attach as this version.
-    if (peek && isNewerVersion(peek.version, app.getVersion())) {
-      mainLog?.line(`the service runs ${peek.version}, newer than this app`);
-      status(`Updating pi-kit to ${peek.version} to match the background service…`);
+    // The newest install runs the service, whether it runs now or is only registered: never move it back onto this app's version.
+    // Become that version first, so the window has every native feature the newer server expects; without such a release, attach
+    // as this version.
+    const newer = [peek?.version, otherInstall(background, HOST_ENTRY)?.version].find(
+      (version) => version !== undefined && isNewerVersion(version, app.getVersion()),
+    );
+    if (newer) {
+      mainLog?.line(`the service runs ${newer}, newer than this app`);
+      status(`Updating pi-kit to ${newer} to match the background service…`);
       if (
         await appUpdates()
-          .updateTo(peek.version)
+          .updateTo(newer)
           .catch(() => false)
       )
         return new Promise<never>(() => undefined);
-      mainLog?.line(`no app release of ${peek.version} or newer: attaching without moving the service`);
+      mainLog?.line(`no app release of ${newer} or newer: attaching without moving the service`);
+      if (!peek) await background.start();
     } else {
       // Keeps paths, version and PATH current; a changed registration restarts the service on it.
       await background.install();

@@ -1,7 +1,9 @@
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { bundledVersion } from './service-host';
 import { LaunchdService, type ServiceManager, type ServiceSpec, SystemdService } from './service-registration';
 
 /** The flag that starts the app as a windowless supervisor of the service host (the Windows sign-in entry). */
@@ -102,6 +104,15 @@ export class WindowsRunService implements ServiceManager {
     }
   }
 
+  registered(): string[] | undefined {
+    try {
+      const line = execFileSync('reg', ['query', RUN_KEY, '/v', this.name], { encoding: 'utf8' });
+      return [...line.matchAll(/"([^"]*)"/g)].map((match) => match[1]);
+    } catch {
+      return undefined;
+    }
+  }
+
   async install(): Promise<boolean> {
     const changed = !this.installed();
     if (changed) await this.reg(['add', RUN_KEY, '/v', this.name, '/t', 'REG_SZ', '/d', this.command, '/f']);
@@ -162,6 +173,10 @@ class UnavailableService implements ServiceManager {
     return false;
   }
 
+  registered(): undefined {
+    return undefined;
+  }
+
   async install(): Promise<boolean> {
     throw new Error(this.reason);
   }
@@ -197,6 +212,16 @@ export interface BackgroundServiceStatus {
   /** Why it cannot run here, when it cannot. */
   reason?: string;
   enabled: boolean;
+}
+
+/**
+ * The other install a registration starts: its service host and version, or undefined when the registration starts `entry`
+ * itself or no service host at all. An install that is gone has the version `unknown`, so it never counts as newer.
+ */
+export function otherInstall(manager: ServiceManager, entry: string): { entry: string; version: string } | undefined {
+  const host = manager.registered()?.find((part) => basename(part) === 'service-host.cjs');
+  if (!host || resolve(host) === resolve(entry)) return undefined;
+  return { entry: host, version: existsSync(host) ? bundledVersion(dirname(host)) : 'unknown' };
 }
 
 export async function backgroundStatus(service: ServiceManager | undefined): Promise<BackgroundServiceStatus> {

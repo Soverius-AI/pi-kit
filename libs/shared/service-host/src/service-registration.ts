@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 
 /** What the operating system starts at sign-in: the program, its arguments and its whole environment. */
@@ -35,6 +35,10 @@ export interface ServiceManager {
   start(): Promise<void>;
   /** Stops the running host and starts it again on the current registration. */
   restart(): Promise<void>;
+  /** The program and arguments the current registration starts, whichever install wrote it. */
+  registered(): string[] | undefined;
+  /** How the service starts at boot with nobody signed in, when it does not yet; undefined when it does. */
+  bootNote?(): Promise<string | undefined>;
 }
 
 const xml = (value: string): string =>
@@ -73,6 +77,19 @@ ${env}
 `;
 }
 
+const unxml = (value: string): string =>
+  value
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&');
+
+/** The ProgramArguments of a plist `launchAgentPlist` wrote. */
+export function launchAgentArguments(plist: string): string[] {
+  const array = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(plist)?.[1] ?? '';
+  return [...array.matchAll(/<string>([\s\S]*?)<\/string>/g)].map((match) => unxml(match[1]));
+}
+
 /** systemd's quoting: a double-quoted word, with `%` and `$` doubled so systemd expands neither. */
 const unitWord = (value: string): string =>
   `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%').replace(/\$/g, '$$$$')}"`;
@@ -94,6 +111,14 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 `;
+}
+
+/** The ExecStart words of a unit `systemdUnit` wrote. */
+export function systemdExecStart(unit: string): string[] {
+  const line = /^ExecStart=(.*)$/m.exec(unit)?.[1] ?? '';
+  return [...line.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((match) =>
+    match[1].replace(/\\(.)/g, '$1').replace(/%%/g, '%').replace(/\$\$/g, '$'),
+  );
 }
 
 function writeIfChanged(path: string, content: string, mode: number): boolean {
@@ -126,6 +151,10 @@ export class LaunchdService implements ServiceManager {
 
   installed(): boolean {
     return existsSync(this.plist);
+  }
+
+  registered(): string[] | undefined {
+    return existsSync(this.plist) ? launchAgentArguments(readFileSync(this.plist, 'utf8')) : undefined;
   }
 
   async install(): Promise<boolean> {
@@ -177,6 +206,18 @@ export class SystemdService implements ServiceManager {
 
   installed(): boolean {
     return existsSync(this.file);
+  }
+
+  registered(): string[] | undefined {
+    return existsSync(this.file) ? systemdExecStart(readFileSync(this.file, 'utf8')) : undefined;
+  }
+
+  async bootNote(): Promise<string | undefined> {
+    const user = userInfo().username;
+    const linger = await this.run('loginctl', ['show-user', user, '--property=Linger', '--value']);
+    return linger.output.trim() === 'yes'
+      ? undefined
+      : `It starts when you sign in. To start it at boot with nobody signed in, run: loginctl enable-linger ${user}`;
   }
 
   async install(): Promise<boolean> {

@@ -22,7 +22,7 @@ const notarize = notarizationEnabled();
 // "toolsets" ship arm64 builds. Other hosts keep the classic tools. PI_KIT_TOOLSETS=classic|beta forces either.
 const toolsetChoice =
   process.env.PI_KIT_TOOLSETS || (process.platform === 'darwin' && process.arch === 'arm64' ? 'beta' : 'classic');
-const [updateOwner, updateRepo] = (process.env.PI_KIT_UPDATE_REPO || 'Soverius-AI/pi-kit').split('/');
+const [updateOwner, updateRepo] = require('./scripts/release-repo.cjs').split('/');
 
 /** @type {import('electron-builder').Configuration} */
 module.exports = {

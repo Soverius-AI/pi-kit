@@ -12,6 +12,7 @@ import { HOST_ALREADY_RUNNING, HostClient, HostStartError } from './host-process
 import { NOT_RUNNING, runCli, type CliContext } from './service-cli';
 import { FileWrappingKeys, HostSealing, instanceKeyFile, KeyringWrappingKeys } from './instance-key-sealing';
 import { hostConfigFromEnv, type LaunchedBackend, ServiceHost, type ServiceHostDeps } from './service-host';
+import type { ServiceManager } from './service-registration';
 
 const TOKEN = 'k'.repeat(64);
 
@@ -307,6 +308,30 @@ describe('ServiceHost with a desktop on its socket', () => {
     expect(await runCli(['serve'], io([]), { ...cli, serve, discover: () => owner })).toBe(HOST_ALREADY_RUNNING);
     expect(served).toBe(0);
     expect(await runCli(['serve'], io([]), { ...cli, serve })).toBe(1);
+  });
+
+  it.each([
+    ['newer', '2.0.0', false],
+    ['older', '0.0.1', true],
+  ])('leaves the registration of a %s install alone only when it is newer', async (_, version, replaced) => {
+    let installs = 0;
+    const manager = {
+      unsupported: async () => undefined,
+      installed: () => true,
+      install: async () => (++installs, true),
+      registered: () => undefined,
+    } as unknown as ServiceManager;
+    const other = { entry: '/srv/pi-kit-server/backend/service-host.cjs', version };
+    const code = await runCli(['service', 'install'], io([]), {
+      ...cli,
+      version: '1.0.0',
+      manager,
+      otherInstall: () => other,
+      sleep: async () => undefined,
+      discover: () => ({ pid: 1, version, level: 'login', socket: 's', token: 't', startedAt: 'now' }),
+    });
+    expect(installs).toBe(replaced ? 1 : 0);
+    expect(code).toBe(replaced ? 0 : 1);
   });
 
   it('exits `pi-kit service status` with 3 when nothing runs, for scripts', async () => {

@@ -7,7 +7,7 @@
 //   backend/ renderer/browser/   dist/stage/<target>/ as scripts/package-stage.mjs staged it
 //   runtime/                     node (node.exe) from the official release below, checked against its pinned SHA-256, and its LICENSE
 //   bin/pi-kit (pi-kit.cmd)      runs backend/pi-kit.cjs on that runtime
-//   package.json                 the version the host and `pi-kit --version` report
+//   package.json                 the version the host and `pi-kit --version` report, and the release feed `pi-kit update` reads
 // dist/server/SHA256SUMS         one line per archive, for `pi-kit update` and the release page
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -27,6 +27,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { TRIPLES } from './natives.mjs';
+import releaseRepo from './release-repo.cjs';
 
 /** Node 24 LTS; the SHA-256 of each archive as nodejs.org/dist/v<version>/SHASUMS256.txt publishes it. */
 const NODE = {
@@ -141,7 +142,17 @@ for (const triple of targets) {
   }
   writeFileSync(
     join(folder, 'package.json'),
-    `${JSON.stringify({ name: 'pi-kit-server', version, private: true, description: `The pi-kit server for ${triple}, with Node ${NODE.version}` }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        name: 'pi-kit-server',
+        version,
+        private: true,
+        description: `The pi-kit server for ${triple}, with Node ${NODE.version}`,
+        releases: `https://api.github.com/repos/${releaseRepo}/releases/latest`,
+      },
+      null,
+      2,
+    )}\n`,
   );
 
   const archive = join(out, `${folderName}${windows ? '.zip' : '.tar.gz'}`);

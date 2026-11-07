@@ -1,5 +1,7 @@
-import type { HostDiscovery } from './discovery';
+import { dirname } from 'node:path';
+import { type HostDiscovery, isNewerVersion } from './discovery';
 import type { RpcPeer } from './host-channel';
+import { stopHost, waitFor } from './cli-host';
 import { HOST_ALREADY_RUNNING } from './host-process';
 import type { HostStatus } from './host-protocol';
 import { OPEN_USAGE, runOpenCli } from './open-cli';
@@ -7,6 +9,7 @@ import { PEERS_USAGE, runPeersCli } from './peers-cli';
 import { REMOTE_USAGE, runDevicesCli, runPairCli, runRemoteCli } from './remote-cli';
 import type { ServiceManager } from './service-registration';
 import { runLoginCli, runLogoutCli, runModelCli, SETTINGS_USAGE } from './settings-cli';
+import { runUpdateCli, UPDATE_USAGE } from './update-cli';
 
 export interface CliIo {
   out(text: string): void;
@@ -35,6 +38,10 @@ export interface CliContext {
   openUrl?(url: string): boolean;
   /** Runs the host in this process until it stops (`pi-kit serve`). */
   serve?(): Promise<number>;
+  /** Another install the service registration starts, with its version (`otherInstall`). */
+  otherInstall?(): { entry: string; version: string } | undefined;
+  /** This server install (a tarball with its own runtime): where it is, its version, target and release feed. */
+  serverInstall?: { root: string; version: string; target: string; releases: string };
 }
 
 const GROUPS: Record<string, (args: string[], io: CliIo, ctx: CliContext) => Promise<number>> = {
@@ -47,11 +54,11 @@ const GROUPS: Record<string, (args: string[], io: CliIo, ctx: CliContext) => Pro
   peers: runPeersCli,
   remote: runRemoteCli,
   serve,
+  update: runUpdateCli,
 };
 
 /** `status` exits with 3 when nothing runs, like `systemctl is-active` and LSB init scripts, so scripts can tell. */
 export const NOT_RUNNING = 3;
-const WAIT_MS = 60_000;
 
 const USAGE = `Usage: pi-kit <command>. On a server, the setup is: service install (or serve), login, remote enable, pair.
 
@@ -65,7 +72,7 @@ Service commands (include "service" before the command):
   pi-kit service restart    Stop it and start it again
   pi-kit service logs       Print the end of service.log and where the logs are
   pi-kit serve              Run it in this terminal instead, for a container or another supervisor
-
+${UPDATE_USAGE}
 For example, use "pi-kit service logs", not "pi-kit logs".
 
 ${SETTINGS_USAGE}
@@ -203,26 +210,6 @@ async function status(io: CliIo, ctx: CliContext, json = false): Promise<number>
   return 0;
 }
 
-async function waitFor<T>(ctx: Pick<CliContext, 'sleep'>, find: () => T | undefined): Promise<T | undefined> {
-  for (let waited = 0; waited < WAIT_MS; waited += 200) {
-    const found = find();
-    if (found) return found;
-    await ctx.sleep(200);
-  }
-  return undefined;
-}
-
-/** Asks the host that owns the folder to stop and waits, a minute at most, until it has. */
-export async function stopHost(
-  ctx: Pick<CliContext, 'connect' | 'discover' | 'sleep'>,
-  host: HostDiscovery,
-): Promise<boolean> {
-  const peer = await ctx.connect(host);
-  await peer.call('stop').catch(() => undefined);
-  peer.close();
-  return !!(await waitFor(ctx, () => (ctx.discover()?.pid === host.pid ? undefined : true)));
-}
-
 function reportStarted(io: CliIo, host: HostDiscovery | undefined): number {
   if (!host) {
     io.err('pi-kit: the service did not start in time; see `pi-kit service logs`.\n');
@@ -241,9 +228,20 @@ function reportStarted(io: CliIo, host: HostDiscovery | undefined): number {
 async function install(io: CliIo, ctx: CliContext): Promise<number> {
   const manager = await supported(io, ctx);
   if (!manager) return 1;
+  // The newest install runs the service: an older one never takes its registration back.
+  const other = ctx.otherInstall?.();
+  if (other && isNewerVersion(other.version, ctx.version)) {
+    io.err(
+      `pi-kit: the service starts a newer install, ${other.version} in ${dirname(dirname(other.entry))}; this ${ctx.version} changes nothing.\n`,
+    );
+    return 1;
+  }
   const changed = await manager.install();
   io.out(changed ? 'Installed: the backend now starts when you sign in.\n' : 'Already installed.\n');
-  return reportStarted(io, await waitFor(ctx, () => ctx.discover()));
+  const code = reportStarted(io, await waitFor(ctx, () => ctx.discover()));
+  const note = await manager.bootNote?.();
+  if (note) io.out(`${note}\n`);
+  return code;
 }
 
 async function uninstall(io: CliIo, ctx: CliContext): Promise<number> {

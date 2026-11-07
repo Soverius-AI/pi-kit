@@ -1,4 +1,5 @@
 export * from './backend';
+export * from './cli-host';
 export * from './discovery';
 export * from './host-channel';
 export * from './host-process';
