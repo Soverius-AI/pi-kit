@@ -62,25 +62,25 @@ const discover = (): HostDiscovery | undefined => liveDiscovery(dataDir);
 const connect = (host: HostDiscovery) => connectHostChannel(host.socket, host.token);
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-// Windows registration starts the desktop app's windowless supervisor, which a server install's Node runtime does not have.
-const manager =
-  process.platform === 'win32' && !process.versions['electron']
-    ? undefined
-    : serviceManager({
-        name,
-        program: process.execPath,
-        hostEntry,
-        dataDir,
-        logDir,
-        ...(path ? { path } : {}),
-        ...(process.env['APPIMAGE'] ? { appImage: process.env['APPIMAGE'] } : {}),
-        ...(devEnv ? { devEnv } : {}),
-        supervisorArgs: packaged ? [SUPERVISOR_FLAG] : [join(__dirname, '..', 'desktop', 'main.cjs'), SUPERVISOR_FLAG],
-        stopHost: async () => {
-          const host = discover();
-          if (host) await stopHost({ connect, discover, sleep }, host);
-        },
-      });
+const registration = {
+  name,
+  program: process.execPath,
+  hostEntry,
+  dataDir,
+  logDir,
+  ...(path ? { path } : {}),
+  ...(process.env['APPIMAGE'] ? { appImage: process.env['APPIMAGE'] } : {}),
+  ...(devEnv ? { devEnv } : {}),
+  supervisorArgs: packaged ? [SUPERVISOR_FLAG] : [join(__dirname, '..', 'desktop', 'main.cjs'), SUPERVISOR_FLAG],
+  stopHost: async () => {
+    const host = discover();
+    if (host) await stopHost({ connect, discover, sleep }, host);
+  },
+  // On its own Node, a server install has no windowless supervisor: Windows gets a scheduled task instead.
+  server: !process.versions['electron'],
+};
+const manager = serviceManager(registration);
+const bootManager = process.platform === 'darwin' ? serviceManager({ ...registration, level: 'boot' }) : undefined;
 
 /** A line from the terminal (the prompt on stderr, so stdout stays data) or from piped stdin. */
 async function readLine(prompt: string): Promise<string | undefined> {
@@ -168,6 +168,7 @@ void runCli(
     dataDir,
     logDir,
     manager,
+    ...(bootManager ? { bootManager } : {}),
     discover,
     connect,
     tail: (file, lines) => {

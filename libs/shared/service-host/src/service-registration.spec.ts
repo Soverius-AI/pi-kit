@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  LaunchDaemonService,
   launchAgentArguments,
   launchAgentPlist,
   type ServiceManager,
@@ -12,7 +13,7 @@ import {
   systemdExecStart,
   systemdUnit,
 } from './service-registration';
-import { otherInstall } from './service-spec';
+import { otherInstall, scheduledTaskXml, serviceBatch, WindowsTaskService } from './service-spec';
 
 const spec: ServiceSpec = {
   name: 'dev.pi-kit.app.service',
@@ -38,12 +39,13 @@ describe('service registration files', () => {
     const dir = await mkdtemp(join(tmpdir(), 'pk-plist-'));
     try {
       const path = join(dir, 'service.plist');
-      await writeFile(path, launchAgentPlist(spec));
+      await writeFile(path, launchAgentPlist(spec, 'ana'));
       execFileSync('plutil', ['-lint', path]);
       const parsed = JSON.parse(execFileSync('plutil', ['-convert', 'json', '-o', '-', path], { encoding: 'utf8' }));
 
       expect(parsed.ProgramArguments).toEqual([spec.program, ...spec.args]);
       expect(parsed.EnvironmentVariables).toEqual(spec.env);
+      expect(parsed.UserName).toBe('ana');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -85,5 +87,84 @@ describe('what a registration starts', () => {
   ])('notes how to start at boot when linger is %s', async (linger, note) => {
     const service = new SystemdService(spec, async () => ({ code: 0, output: `${linger}\n` }), tmpdir());
     expect(await service.bootNote()).toEqual(note);
+  });
+});
+
+describe('starting at boot', () => {
+  it('macOS: installs a root-owned LaunchDaemon that runs the host as its owner, through sudo', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'pk-daemons-'));
+    try {
+      const commands: string[][] = [];
+      let staged = '';
+      const sudo = async (file: string, args: string[]) => {
+        commands.push([file, ...args]);
+        if (file === 'install') {
+          staged = await readFile(args[args.length - 2], 'utf8');
+          await copyFile(args[args.length - 2], args[args.length - 1]);
+        }
+        return { code: 0, output: '' };
+      };
+      const daemon = new LaunchDaemonService(spec, sudo, 'ana', '/Users/ana', root);
+      const plist = join(root, `${spec.name}.plist`);
+
+      expect(await daemon.install()).toBe(true);
+      expect(commands).toEqual([
+        ['launchctl', 'bootout', `system/${spec.name}`],
+        ['install', '-m', '644', '-o', 'root', '-g', 'wheel', expect.stringContaining(spec.name), plist],
+        ['launchctl', 'bootstrap', 'system', plist],
+      ]);
+      expect(staged).toContain('<key>UserName</key>\n  <string>ana</string>');
+      expect(staged).toContain('<key>HOME</key>\n    <string>/Users/ana</string>');
+      expect(daemon.registered()).toEqual([spec.program, ...spec.args]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('Windows: a batch file sets the service environment that a task action cannot carry', () => {
+    const batch = serviceBatch({
+      ...spec,
+      env: { PI_KIT_DATA_DIR: 'C:\\Users\\ana\\pi-kit', PATH: 'C:\\bin;%SystemRoot%' },
+    });
+    expect(batch.split('\r\n')).toEqual([
+      '@echo off',
+      'set "PI_KIT_DATA_DIR=C:\\Users\\ana\\pi-kit"',
+      'set "PATH=C:\\bin;%%SystemRoot%%"',
+      `"${spec.program}" "${spec.args[0]}"`,
+      '',
+    ]);
+  });
+
+  it('Windows: registers a boot task with a stored password that restarts after a failure, then runs it', async () => {
+    const data = await mkdtemp(join(tmpdir(), 'pk-task-'));
+    try {
+      const calls: string[][] = [];
+      let xml = '';
+      const terminal = async (file: string, args: string[]) => {
+        calls.push([file, ...args]);
+        if (args[0] === '/Create') xml = (await readFile(args[args.indexOf('/XML') + 1])).toString('utf16le');
+        return { code: 0, output: '' };
+      };
+      const task = new WindowsTaskService(
+        { ...spec, env: { ...spec.env, PI_KIT_DATA_DIR: data } },
+        async () => undefined,
+        terminal,
+        'BOX\\ana',
+      );
+
+      expect(await task.install()).toBe(true);
+      expect(calls).toEqual([
+        ['schtasks', '/Create', '/TN', spec.name, '/XML', expect.any(String), '/RU', 'BOX\\ana', '/RP', '*', '/F'],
+        ['schtasks', '/Run', '/TN', spec.name],
+      ]);
+      expect(xml.startsWith('\ufeff<?xml version="1.0" encoding="UTF-16"?>')).toBe(true);
+      expect(xml).toBe(`\ufeff${scheduledTaskXml(join(data, 'service.cmd'), 'BOX\\ana', spec.description)}`);
+      expect(xml).toContain('<BootTrigger><Enabled>true</Enabled></BootTrigger>');
+      expect(xml).toContain('<LogonType>Password</LogonType>');
+      expect(xml).toContain('<RestartOnFailure>');
+      expect(task.registered()).toEqual([spec.program, ...spec.args]);
+    } finally {
+      await rm(data, { recursive: true, force: true });
+    }
   });
 });

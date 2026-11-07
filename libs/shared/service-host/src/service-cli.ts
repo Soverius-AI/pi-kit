@@ -28,6 +28,8 @@ export interface CliContext {
   dataDir: string;
   logDir: string;
   manager: ServiceManager | undefined;
+  /** macOS's registration for starting at boot with nobody signed in (a LaunchDaemon); elsewhere `manager` covers boot. */
+  bootManager?: ServiceManager;
   /** The live host that owns the data folder, if one does. */
   discover(): HostDiscovery | undefined;
   connect(host: HostDiscovery): Promise<RpcPeer>;
@@ -65,7 +67,7 @@ const USAGE = `Usage: pi-kit <command>. On a server, the setup is: service insta
 Service commands (include "service" before the command):
   pi-kit service status     Whether the background service is installed and running (exit code 3: not running;
                             --json for scripts)
-  pi-kit service install    Start pi-kit's backend at sign-in, and now
+  pi-kit service install    Start pi-kit's backend at sign-in, and now (--level boot: at boot, with nobody signed in)
   pi-kit service uninstall  Stop it and no longer start it at sign-in
   pi-kit service start      Start it now
   pi-kit service stop       Stop it until the next sign-in or start
@@ -102,7 +104,13 @@ export async function runCli(args: string[], io: CliIo, ctx: CliContext): Promis
     return 0;
   }
   const json = group === 'service' && command === 'status' && rest.length === 1 && rest[0] === '--json';
-  if (!run && (group !== 'service' || (rest.length > 0 && !json))) {
+  const boot =
+    group === 'service' &&
+    (command === 'install' || command === 'uninstall') &&
+    rest.length === 2 &&
+    rest[0] === '--level' &&
+    rest[1] === 'boot';
+  if (!run && (group !== 'service' || (rest.length > 0 && !json && !boot))) {
     io.err(USAGE);
     return 2;
   }
@@ -112,9 +120,9 @@ export async function runCli(args: string[], io: CliIo, ctx: CliContext): Promis
       case 'status':
         return await status(io, ctx, json);
       case 'install':
-        return await install(io, ctx);
+        return await install(io, ctx, boot);
       case 'uninstall':
-        return await uninstall(io, ctx);
+        return await uninstall(io, ctx, boot);
       case 'start':
         return await start(io, ctx);
       case 'stop':
@@ -154,7 +162,7 @@ async function supported(io: CliIo, ctx: CliContext): Promise<ServiceManager | u
 }
 
 async function installed(io: CliIo, ctx: CliContext): Promise<ServiceManager | undefined> {
-  const manager = await supported(io, ctx);
+  const manager = ctx.bootManager?.installed() ? ctx.bootManager : await supported(io, ctx);
   if (manager && !manager.installed()) {
     io.err('pi-kit: the background service is not installed; run `pi-kit service install`.\n');
     return undefined;
@@ -185,7 +193,10 @@ async function status(io: CliIo, ctx: CliContext, json = false): Promise<number>
     io.out(`${JSON.stringify({ installed, ...(host ? { host: running } : {}), ...state })}\n`);
     return !host ? NOT_RUNNING : state ? 0 : 1;
   }
-  io.out(`Background service: ${installed ? `installed (${ctx.serviceName})` : 'not installed'}\n`);
+  const atBoot = ctx.bootManager?.installed() ?? false;
+  io.out(
+    `Background service: ${atBoot ? `installed at boot (${ctx.serviceName})` : installed ? `installed (${ctx.serviceName})` : 'not installed'}\n`,
+  );
   const host = ctx.discover();
   if (!host) {
     io.out('Host: not running\n');
@@ -225,7 +236,8 @@ function reportStarted(io: CliIo, host: HostDiscovery | undefined): number {
   return 0;
 }
 
-async function install(io: CliIo, ctx: CliContext): Promise<number> {
+async function install(io: CliIo, ctx: CliContext, boot = false): Promise<number> {
+  if (boot && ctx.bootManager) return installAtBoot(io, ctx, ctx.bootManager);
   const manager = await supported(io, ctx);
   if (!manager) return 1;
   // The newest install runs the service: an older one never takes its registration back.
@@ -244,8 +256,23 @@ async function install(io: CliIo, ctx: CliContext): Promise<number> {
   return code;
 }
 
-async function uninstall(io: CliIo, ctx: CliContext): Promise<number> {
-  const manager = await supported(io, ctx);
+/** macOS: the LaunchDaemon replaces the sign-in LaunchAgent, which goes first so that its host does not keep the folder. */
+async function installAtBoot(io: CliIo, ctx: CliContext, daemon: ServiceManager): Promise<number> {
+  const host = ctx.discover();
+  if (ctx.manager?.installed()) {
+    if (host?.level === 'login') await stopHost(ctx, host);
+    await ctx.manager.uninstall();
+  }
+  await daemon.install();
+  io.out(
+    'Installed: the backend now starts at boot, as you, before anyone signs in. The login keychain stays locked then: ' +
+      'for instance pairing, run "pi-kit peers key-file --yes".\n',
+  );
+  return reportStarted(io, await waitFor(ctx, () => ctx.discover()));
+}
+
+async function uninstall(io: CliIo, ctx: CliContext, boot = false): Promise<number> {
+  const manager = boot && ctx.bootManager ? ctx.bootManager : await supported(io, ctx);
   if (!manager) return 1;
   const host = ctx.discover();
   if (host?.level === 'login') await stopHost(ctx, host);

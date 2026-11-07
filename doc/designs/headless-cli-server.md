@@ -69,7 +69,9 @@ installed**: every install carries its own runtime.
 - **One release.** Each version publishes the installers and the server tarballs from the same CI run, with their
   checksums, so every server version has a matching desktop app (§3).
 - **`pi-kit update`** in a server install fetches the release's tarball for its target, checks its SHA-256, stops the
-  service, replaces the install and starts the service again. In a desktop install it says to update from the app.
+  service, replaces the install and starts the service again. In a desktop install it says to update from the app. On
+  Windows, where the running `node.exe` cannot be renamed, it says how to update by hand until a finisher outside the
+  install does the swap.
 
 ### §2 Front doors
 

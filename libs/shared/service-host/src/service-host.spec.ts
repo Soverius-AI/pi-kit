@@ -334,6 +334,29 @@ describe('ServiceHost with a desktop on its socket', () => {
     expect(code).toBe(replaced ? 0 : 1);
   });
 
+  it('replaces the sign-in registration with the boot one before starting it, on macOS', async () => {
+    const steps: string[] = [];
+    const registration = (kind: string, installed: boolean) =>
+      ({
+        unsupported: async () => undefined,
+        installed: () => installed,
+        install: async () => (steps.push(`${kind} install`), true),
+        uninstall: async () => void steps.push(`${kind} uninstall`),
+        registered: () => undefined,
+      }) as unknown as ServiceManager;
+    const running = { pid: 9, version: '1.0.0', level: 'login' as const, socket: 's', token: 't', startedAt: 'now' };
+    const code = await runCli(['service', 'install', '--level', 'boot'], io([]), {
+      ...cli,
+      manager: registration('agent', true),
+      bootManager: registration('daemon', false),
+      sleep: async () => undefined,
+      discover: () => running,
+      connect: async () => ({ call: async () => void steps.push('stop host'), close: () => undefined }) as never,
+    });
+    expect(steps.slice(0, 3)).toEqual(['stop host', 'agent uninstall', 'daemon install']);
+    expect(code).toBe(0);
+  });
+
   it('exits `pi-kit service status` with 3 when nothing runs, for scripts', async () => {
     expect(await runCli(['service', 'status'], io([]), cli)).toBe(NOT_RUNNING);
   });

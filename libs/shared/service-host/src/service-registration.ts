@@ -1,6 +1,6 @@
-import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { homedir, userInfo } from 'node:os';
+import { execFile, spawn } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
 
 /** What the operating system starts at sign-in: the program, its arguments and its whole environment. */
@@ -15,6 +15,14 @@ export interface ServiceSpec {
 }
 
 export type RunCommand = (file: string, args: string[]) => Promise<{ code: number; output: string }>;
+
+/** Runs a command in this terminal, so that it can ask the person for a password itself. */
+export const runInTerminal: RunCommand = (file, args) =>
+  new Promise((resolve) => {
+    const child = spawn(file, args, { stdio: 'inherit' });
+    child.on('error', (error) => resolve({ code: 1, output: error.message }));
+    child.on('close', (code) => resolve({ code: code ?? 1, output: '' }));
+  });
 
 const runCommand: RunCommand = (file, args) =>
   new Promise((resolve) => {
@@ -44,7 +52,8 @@ export interface ServiceManager {
 const xml = (value: string): string =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-export function launchAgentPlist(spec: ServiceSpec): string {
+/** A launchd job; `userName` makes it a LaunchDaemon's, run as that user from the system domain. */
+export function launchAgentPlist(spec: ServiceSpec, userName?: string): string {
   const strings = (values: string[]) => values.map((value) => `    <string>${xml(value)}</string>`).join('\n');
   const env = Object.entries(spec.env)
     .map(([key, value]) => `    <key>${xml(key)}</key>\n    <string>${xml(value)}</string>`)
@@ -55,7 +64,7 @@ export function launchAgentPlist(spec: ServiceSpec): string {
 <dict>
   <key>Label</key>
   <string>${xml(spec.name)}</string>
-  <key>ProgramArguments</key>
+${userName ? `  <key>UserName</key>\n  <string>${xml(userName)}</string>\n` : ''}  <key>ProgramArguments</key>
   <array>
 ${strings([spec.program, ...spec.args])}
   </array>
@@ -246,5 +255,74 @@ export class SystemdService implements ServiceManager {
   private async must(args: string[]): Promise<void> {
     const result = await this.run('systemctl', ['--user', ...args]);
     if (result.code !== 0) throw new Error(`systemctl --user ${args[0]} failed (${result.code}): ${result.output}`);
+  }
+}
+
+/**
+ * macOS at boot, with nobody signed in: a LaunchDaemon that runs the host as its owner, never as root. The plist is root's, so
+ * `sudo` writes and loads it and asks for the password in the terminal.
+ */
+export class LaunchDaemonService implements ServiceManager {
+  private readonly plist: string;
+  private readonly job: string;
+
+  constructor(
+    private readonly spec: ServiceSpec,
+    private readonly sudo: RunCommand = (file, args) => runInTerminal('sudo', [file, ...args]),
+    private readonly user = userInfo().username,
+    private readonly home = homedir(),
+    root = '/Library/LaunchDaemons',
+  ) {
+    this.plist = join(root, `${spec.name}.plist`);
+    this.job = `system/${spec.name}`;
+  }
+
+  async unsupported(): Promise<string | undefined> {
+    return undefined;
+  }
+
+  installed(): boolean {
+    return existsSync(this.plist);
+  }
+
+  registered(): string[] | undefined {
+    return existsSync(this.plist) ? launchAgentArguments(readFileSync(this.plist, 'utf8')) : undefined;
+  }
+
+  async install(): Promise<boolean> {
+    const content = launchAgentPlist({ ...this.spec, env: { ...this.spec.env, HOME: this.home } }, this.user);
+    if (existsSync(this.plist) && readFileSync(this.plist, 'utf8') === content) {
+      await this.start();
+      return false;
+    }
+    const staging = mkdtempSync(join(tmpdir(), 'pi-kit-daemon-'));
+    try {
+      const staged = join(staging, `${this.spec.name}.plist`);
+      writeFileSync(staged, content, { mode: 0o644 });
+      await this.sudo('launchctl', ['bootout', this.job]);
+      await this.must('install', ['-m', '644', '-o', 'root', '-g', 'wheel', staged, this.plist]);
+      await this.must('launchctl', ['bootstrap', 'system', this.plist]);
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
+    return true;
+  }
+
+  async uninstall(): Promise<void> {
+    await this.sudo('launchctl', ['bootout', this.job]);
+    await this.must('rm', ['-f', this.plist]);
+  }
+
+  async start(): Promise<void> {
+    await this.must('launchctl', ['kickstart', this.job]);
+  }
+
+  async restart(): Promise<void> {
+    await this.must('launchctl', ['kickstart', '-k', this.job]);
+  }
+
+  private async must(file: string, args: string[]): Promise<void> {
+    const result = await this.sudo(file, args);
+    if (result.code !== 0) throw new Error(`sudo ${file} ${args[0]} failed (${result.code})`);
   }
 }

@@ -1,10 +1,18 @@
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { homedir } from 'node:os';
-import { existsSync } from 'node:fs';
+import { homedir, tmpdir, userInfo } from 'node:os';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { bundledVersion } from './service-host';
-import { LaunchdService, type ServiceManager, type ServiceSpec, SystemdService } from './service-registration';
+import {
+  LaunchDaemonService,
+  LaunchdService,
+  type RunCommand,
+  runInTerminal,
+  type ServiceManager,
+  type ServiceSpec,
+  SystemdService,
+} from './service-registration';
 
 /** The flag that starts the app as a windowless supervisor of the service host (the Windows sign-in entry). */
 export const SUPERVISOR_FLAG = '--pi-kit-service';
@@ -146,6 +154,124 @@ export interface ManagerInputs extends SpecInputs {
   /** The supervisor's arguments on Windows: the flag, after the app's folder for a development build. */
   supervisorArgs: string[];
   stopHost: () => Promise<void>;
+  /** A server install runs on its own Node, which has no windowless supervisor: Windows gets a scheduled task instead. */
+  server?: boolean;
+  /** `boot`: start with nobody signed in. Only macOS has a separate registration for it (a LaunchDaemon). */
+  level?: 'login' | 'boot';
+}
+
+/**
+ * The batch file a scheduled task runs: a task's action has no environment of its own, so the file sets the service's. `%` is
+ * doubled so cmd expands nothing.
+ */
+export function serviceBatch(spec: ServiceSpec): string {
+  const lines = Object.entries(spec.env).map(([key, value]) => `set "${key}=${value.replace(/%/g, '%%')}"`);
+  return ['@echo off', ...lines, [spec.program, ...spec.args].map((part) => `"${part}"`).join(' '), ''].join('\r\n');
+}
+
+/** A task that runs `batch` at boot as `user`, whether signed in or not, and again after a failure; no window ever shows. */
+export function scheduledTaskXml(batch: string, user: string, description: string): string {
+  return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo><Description>${xmlText(description)}</Description></RegistrationInfo>
+  <Triggers><BootTrigger><Enabled>true</Enabled></BootTrigger></Triggers>
+  <Principals>
+    <Principal id="Owner"><UserId>${xmlText(user)}</UserId><LogonType>Password</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure>
+  </Settings>
+  <Actions Context="Owner"><Exec><Command>cmd.exe</Command><Arguments>/d /c "${xmlText(batch)}"</Arguments></Exec></Actions>
+</Task>
+`;
+}
+
+const xmlText = (value: string): string => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+/**
+ * Windows, for a server install: a Task Scheduler task that starts at boot and runs whether the owner is signed in or not, so
+ * its `node.exe` never opens a window. Task Scheduler stores the account's password, so Credential Manager works; `schtasks`
+ * asks for it in the terminal.
+ */
+export class WindowsTaskService implements ServiceManager {
+  private readonly batch: string;
+
+  constructor(
+    private readonly spec: ServiceSpec,
+    private readonly stopHost: () => Promise<void>,
+    private readonly terminal: RunCommand = runInTerminal,
+    private readonly user = `${process.env['USERDOMAIN'] ?? '.'}\\${userInfo().username}`,
+  ) {
+    this.batch = join(spec.env['PI_KIT_DATA_DIR'] ?? spec.logDir, 'service.cmd');
+  }
+
+  async unsupported(): Promise<string | undefined> {
+    return undefined;
+  }
+
+  installed(): boolean {
+    try {
+      execFileSync('schtasks', ['/Query', '/TN', this.spec.name], { stdio: 'ignore' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  registered(): string[] | undefined {
+    if (!existsSync(this.batch)) return undefined;
+    const run = readFileSync(this.batch, 'utf8').trim().split(/\r?\n/).pop() ?? '';
+    return [...run.matchAll(/"([^"]*)"/g)].map((match) => match[1]);
+  }
+
+  async install(): Promise<boolean> {
+    const content = serviceBatch(this.spec);
+    const same = existsSync(this.batch) && readFileSync(this.batch, 'utf8') === content;
+    if (same && this.installed()) {
+      await this.start();
+      return false;
+    }
+    mkdirSync(dirname(this.batch), { recursive: true });
+    writeFileSync(this.batch, content, { mode: 0o600 });
+    const staging = mkdtempSync(join(tmpdir(), 'pi-kit-task-'));
+    try {
+      const xml = join(staging, 'task.xml');
+      writeFileSync(
+        xml,
+        Buffer.from(`\ufeff${scheduledTaskXml(this.batch, this.user, this.spec.description)}`, 'utf16le'),
+      );
+      await this.must(['/Create', '/TN', this.spec.name, '/XML', xml, '/RU', this.user, '/RP', '*', '/F']);
+    } finally {
+      rmSync(staging, { recursive: true, force: true });
+    }
+    await this.start();
+    return true;
+  }
+
+  async uninstall(): Promise<void> {
+    await this.stopHost();
+    await this.terminal('schtasks', ['/Delete', '/TN', this.spec.name, '/F']);
+    rmSync(this.batch, { force: true });
+  }
+
+  async start(): Promise<void> {
+    await this.must(['/Run', '/TN', this.spec.name]);
+  }
+
+  async restart(): Promise<void> {
+    await this.stopHost();
+    await this.start();
+  }
+
+  private async must(args: string[]): Promise<void> {
+    const result = await this.terminal('schtasks', args);
+    if (result.code !== 0) throw new Error(`schtasks ${args[0]} failed (${result.code})`);
+  }
 }
 
 /** This platform's service manager, or undefined where pi-kit has none. */
@@ -201,8 +327,13 @@ export function serviceManager(
   const temporary = temporaryLocation(platform, inputs.program);
   if (temporary) return new UnavailableService(temporary);
   if (platform === 'win32')
-    return new WindowsRunService(inputs.name, inputs.program, inputs.supervisorArgs, inputs.stopHost);
-  if (platform === 'darwin') return new LaunchdService(serviceSpec(inputs));
+    return inputs.server
+      ? new WindowsTaskService(serviceSpec(inputs), inputs.stopHost)
+      : new WindowsRunService(inputs.name, inputs.program, inputs.supervisorArgs, inputs.stopHost);
+  if (platform === 'darwin')
+    return inputs.level === 'boot'
+      ? new LaunchDaemonService(serviceSpec(inputs))
+      : new LaunchdService(serviceSpec(inputs));
   if (platform === 'linux') return new SystemdService(serviceSpec(inputs));
   return undefined;
 }
