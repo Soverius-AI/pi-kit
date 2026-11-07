@@ -1,4 +1,4 @@
-// Assembles what electron-builder packs, and the server folders the npm packages are written from (scripts/package-npm.mjs).
+// Assembles what electron-builder packs, and the server folders the server tarballs are written from (scripts/package-server.mjs).
 //
 //   node scripts/package-stage.mjs [--target darwin-arm64 --target win32-x64 ...] [--platform darwin|linux|win32 --arch arm64|x64]
 //                                  [--skip-build] [--build-only] [--natives-cache <dir>]
@@ -6,7 +6,7 @@
 // dist/package/                the shell, the same for every target
 //   package.json               name, version, main -> desktop/main.cjs (no dependencies: the shell bundles everything)
 //   desktop/{main,preload}.cjs Electron main process and preload (esbuild bundles, `electron` external)
-// dist/stage/<platform>-<arch>/          the server of one target: Resources/backend and Resources/renderer in the app, the npm platform package
+// dist/stage/<platform>-<arch>/          the server of one target: Resources/backend and Resources/renderer in the app, the server tarball
 //   backend/                   main.js + migrations/ + packages/ + assets/: Nx production artifacts, including
 //                              the bundled Pi SDK, workers, WASM and themes. The only node_modules are the
 //                              esbuild-built native loaders and target-specific binaries. No dependency tree

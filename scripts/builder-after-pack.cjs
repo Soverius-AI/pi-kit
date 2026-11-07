@@ -1,5 +1,5 @@
 // electron-builder `afterPack` hook: puts the staged server of this target next to app.asar as plain folders, Resources/backend and
-// Resources/renderer, where the service host finds its web app as it does in the npm package.
+// Resources/renderer, where the service host finds its web app as it does in the server tarball.
 //
 // electron-builder's `extraResources` would do it, but it never copies a folder named node_modules, and the backend
 // needs its node_modules (the native loaders and binaries of better-sqlite3-multiple-ciphers, @napi-rs/keyring, node-pty and the rest). The hook runs before code signing, so

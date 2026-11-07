@@ -8,8 +8,9 @@
 // is built once per CPU as pi-kit-linux-release:<arch>; Docker's cache makes later runs skip it. The working tree is copied, without
 // node_modules, dist and .git, into a volume that keeps the container's install, pnpm store and build output between runs (`--fresh`
 // drops it). The AppImage and latest-linux*.yml land in dist/release/ on the host, where `pnpm run release` puts them;
-// `--dir` copies the unpacked app folder instead. `--smoke` runs scripts/release-smoke.mjs on the AppImage under Xvfb, as the
-// workflow does. `--shell` opens a bash in the prepared container instead of building.
+// `--dir` copies the unpacked app folder instead. The server tarball (scripts/package-server.mjs) lands beside them either
+// way. `--smoke` runs scripts/release-smoke.mjs on the AppImage under Xvfb, as the workflow does. `--shell` opens a bash in
+// the prepared container instead of building.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -109,9 +110,13 @@ if (values.shell) {
   docker([...runArgs, 'bash', '-c', `${sync} && exec bash`]);
   process.exit(0);
 }
-const outputs = values.dir
-  ? [`rsync -a --delete dist/release/${target.unpacked}/ /out/${target.unpacked}/`]
-  : [`cp -f ${target.artifacts.map((a) => `dist/release/${a}`).join(' ')} dist/release/${target.updateInfo} /out/`]; // an AppImage embeds its block map
+const server = `pi-kit-server-${pkg.version}-linux-${values.arch}.tar.gz`;
+const outputs = [
+  values.dir
+    ? `rsync -a --delete dist/release/${target.unpacked}/ /out/${target.unpacked}/`
+    : `cp -f ${target.artifacts.map((a) => `dist/release/${a}`).join(' ')} dist/release/${target.updateInfo} /out/`, // an AppImage embeds its block map
+  `cp -f dist/server/${server} /out/`,
+];
 const steps = [
   'set -euo pipefail',
   `echo "=== sync the working tree into the ${workVolume} volume"`,
@@ -119,6 +124,7 @@ const steps = [
   'echo "=== pnpm install (node-pty compiles here)"',
   'pnpm install --frozen-lockfile --store-dir /work/.pnpm-store',
   `node scripts/release.mjs --only linux-${values.arch}${values.dir ? ' --dir' : ''}`,
+  `node scripts/package-server.mjs --target linux-${values.arch}`,
   // The container runs as root, which Electron only allows without its sandbox (the smoke test launches the real app).
   ...(values.smoke && !values.dir
     ? [
@@ -130,7 +136,7 @@ const steps = [
 docker([...runArgs, 'bash', '-c', steps.join('\n')]);
 
 // ---- what reached the host
-const expected = values.dir ? [target.unpacked] : [...target.artifacts, target.updateInfo];
+const expected = [...(values.dir ? [target.unpacked] : [...target.artifacts, target.updateInfo]), server];
 const missing = expected.filter((file) => !existsSync(join(release, file)));
 if (missing.length) {
   for (const file of missing) console.error(`MISSING dist/release/${file}`);

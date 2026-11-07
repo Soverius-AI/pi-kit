@@ -8,7 +8,8 @@
 //   runtime/                     node (node.exe) from the official release below, checked against its pinned SHA-256, and its LICENSE
 //   bin/pi-kit (pi-kit.cmd)      runs backend/pi-kit.cjs on that runtime
 //   package.json                 the version the host and `pi-kit --version` report, and the release feed `pi-kit update` reads
-// dist/server/SHA256SUMS         one line per archive, for `pi-kit update` and the release page
+// The machine's own target is run before it is packed: `bin/pi-kit --version`, and the natives loaded on its runtime.
+// The release's SHA256SUMS, which `pi-kit update` checks, is written by the publish job over every target's archive.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -26,7 +27,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { TRIPLES } from './natives.mjs';
+import { TRIPLES, isHost, loadInElectron } from './natives.mjs';
 import releaseRepo from './release-repo.cjs';
 
 /** Node 24 LTS; the SHA-256 of each archive as nodejs.org/dist/v<version>/SHASUMS256.txt publishes it. */
@@ -90,29 +91,37 @@ async function nodeArchive(triple) {
   return { file, name: name.replace(/\.(tar\.gz|zip)$/, '') };
 }
 
-/** Unpacks a zip with bsdtar (macOS, Windows), or unzip where tar is GNU tar. */
+// Windows' own tar.exe is bsdtar; the GNU tar of Git Bash, first on PATH in CI, reads `C:\` as a remote host and knows no zip.
+const tar = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+const bsdtar = execFileSync(tar, ['--version'], { encoding: 'utf8' }).includes('bsdtar');
+
 function unzip(archive, into) {
-  try {
-    execFileSync('tar', ['-xf', archive, '-C', into], { stdio: 'ignore' });
-  } catch {
-    execFileSync('unzip', ['-q', '-o', archive, '-d', into]);
-  }
+  if (bsdtar) execFileSync(tar, ['-xf', archive, '-C', into]);
+  else execFileSync('unzip', ['-q', '-o', archive, '-d', into]);
 }
 
-/** Writes a zip with bsdtar's format-by-suffix, or zip where tar is GNU tar. */
 function zip(folder, archive) {
-  try {
-    execFileSync('tar', ['-a', '-cf', archive, '-C', dirname(folder), folder.split(/[\\/]/).pop()], {
-      stdio: 'ignore',
-    });
-  } catch {
-    execFileSync('zip', ['-q', '-r', archive, folder.split(/[\\/]/).pop()], { cwd: dirname(folder) });
-  }
+  const name = folder.split(/[\\/]/).pop();
+  if (bsdtar) execFileSync(tar, ['-a', '-cf', archive, '-C', dirname(folder), name]);
+  else execFileSync('zip', ['-q', '-r', archive, name], { cwd: dirname(folder) });
+}
+
+/** The machine's own target as it ships: its launcher reports this version, and the natives load on its runtime. */
+function check(folder, windows) {
+  const launcher = join(folder, 'bin', windows ? 'pi-kit.cmd' : 'pi-kit');
+  // Node runs a .cmd only through a shell, which takes the command line as written.
+  const reported = execFileSync(windows ? `"${launcher}"` : launcher, ['--version'], {
+    encoding: 'utf8',
+    shell: windows,
+  }).trim();
+  if (!reported.includes(version)) throw new Error(`bin/pi-kit --version said "${reported}", not ${version}.`);
+  console.log(`  bin/pi-kit --version: ${reported}`);
+  const runtime = join(folder, 'runtime', windows ? 'node.exe' : 'node');
+  loadInElectron({ backend: join(folder, 'backend'), electron: runtime, label: `Node ${NODE.version}` });
 }
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
-const sums = [];
 for (const triple of targets) {
   const windows = triple.startsWith('win32-');
   const folderName = `pi-kit-server-${version}-${triple}`;
@@ -124,7 +133,7 @@ for (const triple of targets) {
   const unpacked = mkdtempSync(join(tmpdir(), 'pi-kit-node-'));
   try {
     if (windows) unzip(node.file, unpacked);
-    else execFileSync('tar', ['-xzf', node.file, '-C', unpacked]);
+    else execFileSync(tar, ['-xzf', node.file, '-C', unpacked]);
     const binary = windows ? join(unpacked, node.name, 'node.exe') : join(unpacked, node.name, 'bin', 'node');
     mkdirSync(join(folder, 'runtime'));
     cpSync(binary, join(folder, 'runtime', windows ? 'node.exe' : 'node'));
@@ -155,11 +164,12 @@ for (const triple of targets) {
     )}\n`,
   );
 
+  console.log(`\n== ${folderName}`);
+  if (isHost(triple)) check(folder, windows);
+  else console.log(`  run check skipped: ${triple} cannot run on ${process.platform}-${process.arch}`);
   const archive = join(out, `${folderName}${windows ? '.zip' : '.tar.gz'}`);
   if (windows) zip(folder, archive);
-  else execFileSync('tar', ['-czf', archive, '-C', out, folderName]);
+  else execFileSync(tar, ['-czf', archive, '-C', out, folderName]);
   rmSync(folder, { recursive: true, force: true });
-  sums.push(`${sha256(archive)}  ${archive.split(/[\\/]/).pop()}`);
-  console.log(`${archive.split(/[\\/]/).pop()}: ${mb(statSync(archive).size)} (Node ${NODE.version})`);
+  console.log(`  ${archive.split(/[\\/]/).pop()}: ${mb(statSync(archive).size)} (Node ${NODE.version})`);
 }
-writeFileSync(join(out, 'SHA256SUMS'), `${sums.join('\n')}\n`);
