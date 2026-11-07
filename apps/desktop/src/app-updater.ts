@@ -1,5 +1,7 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { app } from 'electron';
 import { autoUpdater, type UpdateInfo } from 'electron-updater';
+import { isNewerVersion } from '@pi-kit/service-host';
 
 /**
  * pi-kit's own updates: `electron-updater` against the GitHub repository in `app-update.yml` (the `publish` block of
@@ -57,11 +59,27 @@ function releaseNotes(info: UpdateInfo): ReleaseNote[] {
   return (notes ?? []).flatMap((release) => (release.note ? [{ version: release.version, html: release.note }] : []));
 }
 
+/** How long a finished download may take to become installable before startup goes on without it. */
+const READY_MS = 120_000;
+
+/** `work`, or `fallback` once `ms` pass first. */
+async function within<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  const waited = new AbortController();
+  try {
+    return await Promise.race([work, delay(ms, fallback, { signal: waited.signal })]);
+  } finally {
+    waited.abort();
+  }
+}
+
 /** Answers the backend's update requests and forwards every updater event through `emit`. */
 export class AppUpdater {
   private latest: string | undefined;
   private downloaded = false;
   private configured = false;
+  private markReady!: () => void;
+  /** Settles once electron-updater reports a download ready to install (on macOS, once Squirrel has it). */
+  private readonly ready = new Promise<void>((resolve) => (this.markReady = resolve));
 
   constructor(private readonly emit: (event: AppUpdateEvent) => void) {}
 
@@ -99,6 +117,7 @@ export class AppUpdater {
     );
     autoUpdater.on('update-downloaded', (info) => {
       this.downloaded = true;
+      this.markReady();
       this.latest = info.version;
       emit({ kind: 'downloaded', version: info.version });
     });
@@ -106,6 +125,29 @@ export class AppUpdater {
       emit({ kind: 'error', message: unavailableFeed(error) ?? error?.message ?? String(error) }),
     );
     return autoUpdater;
+  }
+
+  /**
+   * Installs the published release of `version`, or a newer one, and quits to do it: what the app does before it attaches to a
+   * service that a newer install runs. False, with nothing changed, when no such release answers within `timeoutMs`.
+   */
+  async updateTo(version: string, timeoutMs = 15_000): Promise<boolean> {
+    const found = await within(
+      this.run('check').catch(() => undefined),
+      timeoutMs,
+      undefined,
+    );
+    if (!found?.available || !found.version || isNewerVersion(version, found.version)) return false;
+    await this.run('download');
+    if (
+      !(await within(
+        this.ready.then(() => true),
+        READY_MS,
+        false,
+      ))
+    )
+      return false;
+    return (await this.run('install')).downloaded === true;
   }
 
   async run(action: AppUpdateAction): Promise<AppUpdateResult> {

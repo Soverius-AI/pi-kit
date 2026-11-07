@@ -114,14 +114,15 @@ installed**: every install carries its own runtime.
   - **Same**: attach.
   - **The running server is older**: restart the host onto the bundled server, as ADR-0036 §2 does today, and register
     the desktop install as the service when the older one was registered (§5).
-  - **The running server is newer** (a server install updated first): electron-updater fetches and installs that version
-    before the shell attaches. The window says it is updating to match the server. Both channels ship from one release
-    (§1), so that version exists.
-  - **No shell of that version exists** (no network, or a server built from a branch): the shell attaches, and
-    `attach` carries its bridge capabilities. The UI marks any native feature the shell lacks with "update the pi-kit
-    app" instead of failing. This is the only case with a missing feature, and it says why.
-- **The bridge only grows.** A new bridge message is optional for the server, and an existing one never changes
-  meaning, so a server never depends on a feature an older shell lacks.
+  - **The running server is newer** (a server install updated first): electron-updater fetches and installs that
+    release, or a newer one, before the shell attaches (`AppUpdater.updateTo`). The splash says it is updating to match
+    the service. Both channels ship from one release (§1), so that version exists.
+  - **No shell of that version answers** (no network within 15 seconds, or a server built from a branch): the shell
+    attaches as it is. This is the only case with a missing feature, and the bridge rule below keeps it from failing.
+- **The bridge only grows.** A new backend request to the desktop is optional for the server, and an existing one never
+  changes meaning. An older shell answers a request it does not know as a host without a desktop does ("needs the
+  desktop app"), so nothing waits. A new preload method is optional in the bridge type, so the UI checks for it and
+  says to update the app where it is missing.
 - **What stays native**: the embedded browser, open and reveal path, app update, tray, notifications and microphone
   permission, all through the existing `DesktopBridge` (`browser`, `openPath`, `revealPath`, `appUpdate`). In a plain
   browser they answer "needs the desktop app", as they already do on a phone. Computer use still needs a signed-in
@@ -234,9 +235,8 @@ The CLI is a client of two existing interfaces and repeats no business rule.
 3. Electron serves the running server's web app and adds the token in its network layer instead of handing it to the
    page; single-instance lock; the shell never moves a newer host back onto its own version.
 4. The server folder as the one artifact: the renderer leaves `app.asar`, the desktop bundles the folder, the server
-   tarball is written from it with its pinned runtime, and the host derives the web app and version from it. With a
-   newer server install to test against, the rest of §3's version rule: the shell updates itself before attaching, and
-   bridge capabilities.
+   tarball is written from it with its pinned runtime, and the host derives the web app and version from it. The rest
+   of §3's version rule: the shell updates itself before attaching, and answers unknown bridge requests.
 5. The remaining CLI: `backend` RPC, `remote`, `pair`, `devices`, `login`, `logout`, `model`, `serve`;
    `host-rpc.mjs` is deleted.
 6. Registration for server installs, and `pi-kit update`: Linux user unit and linger, macOS LaunchAgent and

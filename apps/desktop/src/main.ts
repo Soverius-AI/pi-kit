@@ -25,6 +25,7 @@ import {
   cliLauncher,
   cliLauncherName,
   type DesktopAnswer,
+  detachedAnswer,
   FileLog,
   HostClient,
   HostStartError,
@@ -457,32 +458,37 @@ async function answerBackend(value: unknown): Promise<DesktopAnswer> {
   }
   // pi-kit's own update: the backend decides when, this process does it with electron-updater.
   if (message.type === 'app-update') {
-    appUpdater ??= new AppUpdater((event) => {
-      mainLog?.line(`app update: ${JSON.stringify(event)}`);
-      host?.appUpdateEvent(event);
-    });
+    const updater = appUpdates();
     // Windows' installer cannot replace a pi-kit.exe that still runs, and the host and backend are pi-kit.exe too.
-    if (message.action === 'install' && process.platform === 'win32' && appUpdater.pending) {
+    if (message.action === 'install' && process.platform === 'win32' && updater.pending) {
       switching = true;
       await stopHost();
     }
-    return appUpdater.run(message.action ?? 'check').then(
+    return updater.run(message.action ?? 'check').then(
       (result) => ({ result }),
       (error: Error) => ({ error: error.message }),
     );
   }
-  if (typeof message.path !== 'string') return undefined;
   // "Open in editor": the backend validated the path, the OS opens it with the default application (shell.openPath).
-  if (message.type === 'open-path') {
+  if (message.type === 'open-path' && typeof message.path === 'string') {
     const error = await shell.openPath(message.path);
     return error ? { error } : {};
   }
   // "Reveal in Finder / Explorer" (the Files panel's context menu): the backend validated the path as for open-path.
-  if (message.type === 'reveal-path') {
+  if (message.type === 'reveal-path' && typeof message.path === 'string') {
     shell.showItemInFolder(message.path);
     return {};
   }
-  return undefined;
+  // A request this app does not know comes from a newer server: answer as a host without a desktop does, so it never waits.
+  return detachedAnswer(value);
+}
+
+/** The one updater: electron-updater's events go to the log and to the backend's update job. */
+function appUpdates(): AppUpdater {
+  return (appUpdater ??= new AppUpdater((event) => {
+    mainLog?.line(`app update: ${JSON.stringify(event)}`);
+    host?.appUpdateEvent(event);
+  }));
 }
 
 /** Quit was chosen in a startup dialog. */
@@ -597,7 +603,7 @@ async function stopHost(): Promise<void> {
  * Enters the host that owns the data folder. With the background service registered, that is the operating system's host,
  * started or moved onto this version when needed; otherwise this app starts one as its child and it ends with the app.
  */
-async function openHost(): Promise<HostClient> {
+async function openHost(status: (text: string) => void): Promise<HostClient> {
   const dataDir = app.getPath('userData');
   const env = hostEnvironment();
   background = backgroundService({
@@ -617,10 +623,19 @@ async function openHost(): Promise<HostClient> {
   if (background?.installed() && !(await background.unsupported())) {
     mainLog?.line('background service registered: attaching to it');
     const peek = liveDiscovery(dataDir);
-    // The newest install runs the service: never move a newer one back onto this app's version. The updater offers the newer app.
-    if (peek && isNewerVersion(peek.version, app.getVersion()))
-      mainLog?.line(`the service runs ${peek.version}, newer than this app: attaching without moving it`);
-    else {
+    // The newest install runs the service: never move a newer one back onto this app's version. Become that version first, so the
+    // window has every native feature the newer server expects; without such a release, attach as this version.
+    if (peek && isNewerVersion(peek.version, app.getVersion())) {
+      mainLog?.line(`the service runs ${peek.version}, newer than this app`);
+      status(`Updating pi-kit to ${peek.version} to match the background service…`);
+      if (
+        await appUpdates()
+          .updateTo(peek.version)
+          .catch(() => false)
+      )
+        return new Promise<never>(() => undefined);
+      mainLog?.line(`no app release of ${peek.version} or newer: attaching without moving the service`);
+    } else {
       // Keeps paths, version and PATH current; a changed registration restarts the service on it.
       await background.install();
       const running = liveDiscovery(dataDir);
@@ -714,7 +729,7 @@ async function boot(): Promise<void> {
   const splash = createSplash();
   setSplashStatus(splash, 'Starting the backend…');
 
-  const client = await openHost();
+  const client = await openHost((text) => setSplashStatus(splash, text));
   host = client;
   client.onClose(() => {
     if (shutdownStarted || switching) return;
