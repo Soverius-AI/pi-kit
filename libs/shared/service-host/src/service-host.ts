@@ -84,27 +84,28 @@ export function hostConfigFromEnv(
 ): HostConfig & { rendererRoot: string; level: HostLevel } {
   const dataDir = env['PI_KIT_DATA_DIR'];
   if (!dataDir) throw new Error('PI_KIT_DATA_DIR is required to start the pi-kit service host.');
-  const asar = join(hostDir, '..', 'app.asar');
   return {
     entry: env['PI_KIT_BACKEND_ENTRY'] || join(hostDir, 'main.js'),
     origin: env['PI_KIT_ORIGIN'] || 'app://pi-kit',
     dataDir,
     cwd: env['PI_KIT_CWD'] || homedir(),
     version: env['PI_KIT_VERSION'] || bundledVersion(hostDir),
-    rendererRoot: env['PI_KIT_RENDERER_ROOT'] || join(asar, 'renderer', 'browser'),
+    rendererRoot: env['PI_KIT_RENDERER_ROOT'] || join(hostDir, '..', 'renderer', 'browser'),
     level: env['PI_KIT_SERVICE_LEVEL'] === 'login' ? 'login' : 'app',
   };
 }
 
-/** The packaged app's version, from the asar beside the host. */
+/** The install's version: the desktop app's asar beside the host, or the npm package that holds it. */
 export function bundledVersion(hostDir: string): string {
-  try {
-    const path = join(hostDir, '..', 'app.asar', 'package.json');
-    const version = (JSON.parse(readFileSync(path, 'utf8')) as { version?: unknown }).version;
-    return typeof version === 'string' ? version : 'unknown';
-  } catch {
-    return 'unknown';
+  for (const path of [join(hostDir, '..', 'app.asar', 'package.json'), join(hostDir, '..', 'package.json')]) {
+    try {
+      const version = (JSON.parse(readFileSync(path, 'utf8')) as { version?: unknown }).version;
+      if (typeof version === 'string') return version;
+    } catch {
+      // Not this layout.
+    }
   }
+  return 'unknown';
 }
 
 /** Owns the backend (one port and token for its life) whether or not a desktop is attached; the desktop asks for the first start so it can answer a broken database. */

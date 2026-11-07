@@ -124,7 +124,10 @@ async function main() {
     'the window loaded the renderer from app://pi-kit/',
     report.window.url,
   );
-  check(report.window.rootChildren > 0, '<pk-root> has drawn (the Angular build served from app.asar started)');
+  check(
+    report.window.rootChildren > 0,
+    '<pk-root> has drawn (the Angular build served from Resources/renderer started)',
+  );
   check(
     report.splash?.loaded && report.splash?.shown,
     'the packaged splash loaded and was shown',
@@ -132,7 +135,7 @@ async function main() {
   );
   check(
     report.window.backendStatus === 200,
-    'the renderer reaches the backend through the preload and browser fetch',
+    'the renderer reaches a protected backend route with the token Electron adds, holding none itself',
     report.window.backendError ?? report.window.backendStatus,
   );
 

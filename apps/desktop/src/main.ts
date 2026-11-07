@@ -58,15 +58,17 @@ import { SafeStorageEncryption } from './instance-key-encryption';
 const DEV_URL = process.env['PI_KIT_DEV_URL'];
 const RENDERER_ORIGIN = DEV_URL ? new URL(DEV_URL).origin : APP_ORIGIN;
 // Development: dist/apps/desktop/{main,service-host}.cjs -> dist/apps/{backend,renderer/browser}.
-// Packaged: Resources/app.asar/desktop/main.cjs holds the shell and renderer; the backend and the service host that runs it are real
-// files in Resources/backend.
+// Packaged: Resources/app.asar/desktop/main.cjs holds the shell; the server is real files beside it, Resources/backend (the backend
+// and the service host that runs it) and Resources/renderer/browser, laid out as the npm package lays them out.
 const BACKEND_ENTRY = app.isPackaged
   ? join(process.resourcesPath, 'backend', 'main.js')
   : join(__dirname, '..', 'backend', 'main.js');
 const HOST_ENTRY = app.isPackaged
   ? join(process.resourcesPath, 'backend', 'service-host.cjs')
   : join(__dirname, 'service-host.cjs');
-const RENDERER_ROOT = join(__dirname, '..', 'renderer', 'browser');
+const RENDERER_ROOT = app.isPackaged
+  ? join(process.resourcesPath, 'renderer', 'browser')
+  : join(__dirname, '..', 'renderer', 'browser');
 /** The `pi-kit` command's bundle: beside the backend when packaged, the cli project's output in a checkout. */
 const CLI_ENTRY = app.isPackaged
   ? join(process.resourcesPath, 'backend', 'pi-kit.cjs')

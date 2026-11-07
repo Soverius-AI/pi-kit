@@ -3,10 +3,10 @@
 Status: Proposed
 Date: 2026-11-07
 
-pi-kit becomes a server first. The npm package and the desktop app ship the same server; Electron is a window onto it,
-and a local browser or a paired phone is another client of the same web app. This replaces the separate headless
-distribution that [ADR-0036](../docs/adr/0036-always-on-service.md) §7 step 6 planned, and becomes ADR-0037 when
-accepted.
+pi-kit becomes a server first. The desktop installers and a server tarball ship the same server, each with its own
+runtime; Electron is a window onto it, and a local browser or a paired phone is another client of the same web app.
+This replaces the separate headless distribution that [ADR-0036](../docs/adr/0036-always-on-service.md) §7 step 6
+planned, and becomes ADR-0037 when accepted.
 
 ## Context
 
@@ -25,9 +25,9 @@ accepted.
   - on Windows the background service is the Electron binary as a windowless supervisor (`superviseHost` in desktop
     main), because `node.exe` opens a console window;
   - the CLI has no remote, pairing, sign-in or peer commands.
-- **Requirements:** the npm install and the desktop app are the same product and can live on one machine; the
-  installers and their updater stay the desktop channel; Linux, macOS and Windows are supported from the first
-  release; instance-to-instance pairing works without a desktop.
+- **Requirements:** a server install and the desktop app are the same product and can live on one machine; neither
+  runs on a Node.js the user installed; the installers and their updater stay the desktop channel; Linux, macOS and
+  Windows are supported from the first release; instance-to-instance pairing works without a desktop.
 
 ## Decision
 
@@ -36,7 +36,7 @@ host, backend, gateway and renderer stay as they are. The work is a front door f
 out of the desktop page, and the instance key's seal moved from Electron to the host.
 
 ```text
-pi-kit server  (npm package; the desktop app bundles the same files)
+pi-kit server  (the server tarball; the desktop app bundles the same files)
   host ── backend          loopback, token: only the host, Electron main and the CLI hold it
    └── gateway ── owner listener   127.0.0.1:<port>   owner session: every route
                └── device listener → tailscale serve   device session: @Remote() routes
@@ -50,34 +50,26 @@ other pi-kit instance ──> device listener, signed with its instance key
 ### §1 The server and how it ships
 
 The server is one folder: the `backend/` that `scripts/package-stage.mjs` already stages per target (`main.js`,
-`service-host.cjs`, `pi-kit.cjs`, `pi-kit-secret.cjs`, the natives), plus `renderer/browser/` and a `package.json`
-that carries the version. The renderer leaves `app.asar`. The host takes the web app and its version from its own
-folder, so a service unit carries only the data folder, the log folder and PATH, and an upgrade leaves it unchanged.
+`service-host.cjs`, `pi-kit.cjs`, `pi-kit-secret.cjs`, the natives) with `renderer/browser/` beside it. The renderer
+leaves `app.asar`. The host takes the web app and its version from its own install, so a service unit carries only the
+data folder, the log folder and PATH, and an upgrade leaves it unchanged. **Nothing runs on a Node.js the user
+installed**: every install carries its own runtime.
 
 - **Installers, for desktops, from the first release.** The dmg and zip on macOS, the AppImage on Linux and the NSIS
-  installer on Windows stay, published to GitHub releases as today. They carry the server folder in the app's
-  resources and run it on Electron's Node. electron-updater updates the shell and its bundled server together, and the
-  app restarts the host when it runs from that install.
-- **One release.** Each version publishes the installers and the npm packages from the same CI run, so every server
-  version has a matching desktop app (§3).
-- **npm, for machines without a desktop.** A Linux server installs this, not the AppImage: the Electron binary needs
-  GTK, NSS and audio libraries even when it runs as Node (the headless test image installs `libgtk-3-0`, `libnss3`,
-  `libasound2` and more), and an AppImage needs FUSE.
-  - The main package is `pi-kit`, whose `pi-kit` bin is a shim that runs `backend/pi-kit.cjs`. The name is free on
-    npm, and so are `pikit`, `pi_kit` and `pi.kit`, so npm's rule against names that differ only by punctuation does
-    not block it.
-  - One platform package per target, an `optionalDependency` with `os`, `cpu` and `libc` set, for all six targets in
-    `scripts/natives.mjs`: `@pi-kit/server-linux-x64-gnu`, `@pi-kit/server-linux-arm64-gnu`,
-    `@pi-kit/server-darwin-x64`, `@pi-kit/server-darwin-arm64`, `@pi-kit/server-win32-x64` and
-    `@pi-kit/server-win32-arm64`. No workspace package uses these names. Claim `pi-kit` and the `@pi-kit` org before
-    the first publish.
-  - A platform package packs to about 27 to 36 MB: the staged backend measures 23.3 MB (win32-x64) to 32.5 MB
-    (darwin-arm64) gzipped, plus 3.3 MB of renderer. The packaging step prints each size and fails above 50 MB.
-  - The natives are N-API, so the binaries the desktop stages load under stock Node 24. Installing runs no scripts and
-    downloads nothing.
-  - `pi-kit update` checks the registry for a newer version, stops the service, runs `npm install -g pi-kit@<version>`
-    and starts the service again. In a desktop install it says to update from the app.
-- The CLI's argument check (`require.main === module` in `apps/cli/src/main.ts`) must also recognise the npm shim.
+  installer on Windows stay, published to GitHub releases as today. They carry the server folder as
+  `Resources/backend` and `Resources/renderer` and run it on Electron's Node. electron-updater updates the shell and
+  its bundled server together, and the app restarts the host when it runs from that install.
+- **The server tarball, for machines without a desktop.** One archive per target, `pi-kit-server-<version>-<target>`
+  (`.tar.gz`, `.zip` on Windows), for all six targets in `scripts/natives.mjs`. It holds the server folder, a pinned
+  Node 24 runtime (`runtime/`, the official binary, checked against its published SHA-256 as `scripts/natives.mjs`
+  checks the natives), a `package.json` with the version, and `bin/pi-kit` (`bin\pi-kit.cmd` on Windows), which runs
+  `backend/pi-kit.cjs` on that runtime. It unpacks anywhere, needs no installed Node, and needs none of the GUI
+  libraries the Electron binary loads even as Node (the headless test image installs `libgtk-3-0`, `libnss3`,
+  `libasound2` and more). The natives are N-API, so the binaries the desktop stages load under that runtime.
+- **One release.** Each version publishes the installers and the server tarballs from the same CI run, with their
+  checksums, so every server version has a matching desktop app (§3).
+- **`pi-kit update`** in a server install fetches the release's tarball for its target, checks its SHA-256, stops the
+  service, replaces the install and starts the service again. In a desktop install it says to update from the app.
 
 ### §2 Front doors
 
@@ -122,12 +114,12 @@ folder, so a service unit carries only the data folder, the log folder and PATH,
   - **Same**: attach.
   - **The running server is older**: restart the host onto the bundled server, as ADR-0036 §2 does today, and register
     the desktop install as the service when the older one was registered (§5).
-  - **The running server is newer** (an npm install updated first): electron-updater fetches and installs that version
+  - **The running server is newer** (a server install updated first): electron-updater fetches and installs that version
     before the shell attaches. The window says it is updating to match the server. Both channels ship from one release
     (§1), so that version exists.
-  - **No shell of that version exists** (an npm prerelease, or no network): the shell attaches, and `attach` carries
-    its bridge capabilities. The UI marks any native feature the shell lacks with "update the pi-kit app" instead of
-    failing. This is the only case with a missing feature, and it says why.
+  - **No shell of that version exists** (no network, or a server built from a branch): the shell attaches, and
+    `attach` carries its bridge capabilities. The UI marks any native feature the shell lacks with "update the pi-kit
+    app" instead of failing. This is the only case with a missing feature, and it says why.
 - **The bridge only grows.** A new bridge message is optional for the server, and an existing one never changes
   meaning, so a server never depends on a feature an older shell lacks.
 - **What stays native**: the embedded browser, open and reveal path, app update, tray, notifications and microphone
@@ -147,9 +139,7 @@ folder, so a service unit carries only the data folder, the log folder and PATH,
   the protection. It is never chosen automatically; without it instance pairing stays unavailable.
 - **macOS**: a login keychain item belongs to the binary that made it, so the wrapping key belongs to the runtime that
   runs the registered service. Switching installs (§5) happens while someone is signed in: macOS asks once, and
-  `service install` says so beforehand. Homebrew's Node is ad-hoc signed, so its signature changes with each upgrade
-  and macOS asks again; the docs recommend the nodejs.org installer on macOS. A Mac nobody signs in to uses the file
-  opt-in anyway.
+  `service install` says so beforehand. A Mac nobody signs in to uses the file opt-in anyway.
 - **Migration**: a key Electron sealed is re-sealed once by the host while a desktop is attached: the desktop unseals,
   the host seals, and the old file stays until the new one reads back. ADR-0035's rule holds: no identity is ever
   silently regenerated.
@@ -157,7 +147,7 @@ folder, so a service unit carries only the data folder, the log folder and PATH,
   <invitation>`, `peers approve|reject <request>` and `peers unpair <peer>` on the existing routes in
   `apps/backend/src/peers/peers.controller.ts`.
 - Provider keys and the database key follow ADR-0019 unchanged. The Touch ID store needs the signed desktop app's
-  helper, so a Mac with only the npm install has the other ADR-0019 choices.
+  helper, so a Mac with only the server install has the other ADR-0019 choices.
 
 ### §5 One registration, whichever install made it
 
@@ -171,13 +161,14 @@ folder, so a service unit carries only the data folder, the log folder and PATH,
 - **macOS**: the LaunchAgent while someone is signed in. Starting at boot with nobody signed in: a LaunchDaemon in
   `/Library/LaunchDaemons` with `UserName` set to the owner, never root, installed once with `sudo`. The login keychain
   is locked there, so the instance key needs the file opt-in of §4.
-- **Windows**: the desktop keeps its sign-in entry and windowless supervisor. An npm-only install registers a Task
-  Scheduler task that starts at boot, runs whether the owner is signed in or not, restarts on failure, and shows no
-  window; Task Scheduler stores the account password, so Credential Manager works.
+- **Windows**: the desktop keeps its sign-in entry and windowless supervisor. A server install, whose `node.exe` would
+  open a console window from a sign-in entry, registers a Task Scheduler task that starts at boot, runs whether the
+  owner is signed in or not, restarts on failure, and shows no window; Task Scheduler stores the account password, so
+  Credential Manager works.
 - **`pi-kit serve`** runs the host in the foreground on all three, for containers and other supervisors: a third host
   level that starts the backend at once and writes its output to the terminal. With another host on the data folder it
   exits with 3.
-- **Upgrade**: electron-updater for a desktop install and `pi-kit update` for an npm install (§1); each updates only
+- **Upgrade**: electron-updater for a desktop install and `pi-kit update` for a server install (§1); each updates only
   its own install. The unit names a path that stays the same across versions, and `service status` flags a host whose
   version differs from the CLI's.
 
@@ -188,7 +179,7 @@ The CLI is a client of two existing interfaces and repeats no business rule.
 | Command | Calls |
 | --- | --- |
 | `pi-kit service …`, `serve` | the service manager and host lifecycle, as today |
-| `pi-kit update` | npm install: the registry, then `service stop`, `npm install -g`, `service start`; desktop install: points to the app |
+| `pi-kit update` | server install: the release's tarball and checksum, then `service stop`, replace, `service start`; desktop install: points to the app |
 | `pi-kit open` | host: owner link; launches the desktop app or a browser |
 | `pi-kit remote status\|enable\|disable` | host: `remote.status`, `remote.start` (prints `remote.setupUrl` when Serve needs approval), `remote.stop` |
 | `pi-kit pair`, `pi-kit devices [approve\|reject\|revoke]` | host: `remote.beginPairing`, `remote.status`, `remote.approvePairing`, `remote.rejectPairing`, `remote.revokeDevice` |
@@ -222,7 +213,8 @@ The CLI is a client of two existing interfaces and repeats no business rule.
 - **ADR-0035**: the host gains an owner listener beside the device gateway; the instance key is sealed by the host.
 - **ADR-0036**: the desktop becomes a client of the server; the renderer moves out of `app.asar` into the server
   folder, which Electron serves from the running server; the newest installed server runs, and an older shell updates
-  itself before attaching; adds the `backend` RPC, the `serve` level, and npm registration on macOS and Windows;
+  itself before attaching; adds the `backend` RPC, the `serve` level, and server-install registration on macOS and
+  Windows;
   this record replaces §7 step 6.
 - **ADR-0019 and ADR-0034**: no change. The CLI and every UI use the existing HTTP contract, so nothing in
   `apps/backend` moves.
@@ -241,33 +233,33 @@ The CLI is a client of two existing interfaces and repeats no business rule.
 2. The owner listener, owner sessions, one-time links and `pi-kit open`. A local browser works against today's server.
 3. Electron serves the running server's web app and adds the token in its network layer instead of handing it to the
    page; single-instance lock; the shell never moves a newer host back onto its own version.
-4. The server folder as the one artifact: the renderer leaves `app.asar`, the desktop bundles the folder, the npm
-   packages are written from it, and the host derives the web app and version from it. With a newer npm server to
-   test against, the rest of §3's version rule: the shell updates itself before attaching, and bridge capabilities.
+4. The server folder as the one artifact: the renderer leaves `app.asar`, the desktop bundles the folder, the server
+   tarball is written from it with its pinned runtime, and the host derives the web app and version from it. With a
+   newer server install to test against, the rest of §3's version rule: the shell updates itself before attaching, and
+   bridge capabilities.
 5. The remaining CLI: `backend` RPC, `remote`, `pair`, `devices`, `login`, `logout`, `model`, `serve`;
    `host-rpc.mjs` is deleted.
-6. Registration for npm installs: Linux user unit and linger, macOS LaunchAgent and LaunchDaemon, Windows scheduled
-   task, and "the newest install runs".
-7. Release: the installers as today from the first release, carrying the new server folder; from the first npm
-   release on, the npm packages come from the same CI run with trusted publishing and provenance, once `pi-kit` and the
-   `@pi-kit` org are claimed.
+6. Registration for server installs, and `pi-kit update`: Linux user unit and linger, macOS LaunchAgent and
+   LaunchDaemon, Windows scheduled task, and "the newest install runs".
+7. Release: the installers as today and the server tarballs, with their checksums, from the same CI run.
 
 ## Verification
 
-Linux x64 and arm64 in the headless Docker test from the packed tarballs on stock Node 24; macOS and Windows on real
-machines:
+Linux x64 and arm64 in the headless Docker test from the server tarball, on an image with no Node installed; macOS and
+Windows on real machines:
 
-1. `npm install -g`, `pi-kit service install`: status names the npm install, backend running, no desktop.
+1. Unpack the server tarball, then `bin/pi-kit service install`: status names the server install, backend running, no
+   desktop, and no `node` on PATH.
 2. `pi-kit login --local` against a local model server; `pi-kit login` with a dummy API key (masked, says where the key
    went, fails the key check cleanly).
 3. `pi-kit open`: the full UI in a local browser, provider settings included. A page from another origin, a wrong
    `Host` and a missing token are all refused.
 4. The desktop app installed beside it, in three cases:
-   - At the same version, it attaches to the running npm server.
-   - Newer than the npm server, it restarts the host onto its own server and takes over the registration; a later
-     `pi-kit service install` from the older npm install changes nothing and names the desktop install.
-   - Older than the npm server, it updates itself to that version before attaching. Offline, it attaches and marks the
-     native features it lacks.
+   - At the same version, it attaches to the running server install.
+   - Newer than the server install, it restarts the host onto its own server and takes over the registration; a later
+     `pi-kit service install` from the older server install changes nothing and names the desktop install.
+   - Older than the server install, it updates itself to that version before attaching. Offline, it attaches and marks
+     the native features it lacks.
 
    In every case its requests go straight to the backend, page JavaScript holds no token, an MCP app or GenUI sandbox
    frame gets 401 from the backend, and closing the window leaves the server running. The e2e suite, its
@@ -287,12 +279,14 @@ machines:
 - **Instance key with no usable OS store.** `systemd-creds` would need systemd 256 or newer, which Ubuntu 24.04 does
   not have, so most Linux servers would get no instance pairing; requiring the OS store has the same effect. The
   opt-in key file gives them pairing with the protection an SSH key has, stated plainly.
-- **Windows background for npm installs.** A Windows Service needs a shipped wrapper such as WinSW, administrator
+- **Windows background for server installs.** A Windows Service needs a shipped wrapper such as WinSW, administrator
   approval and the password; `pi-kit serve` alone leaves supervision to the user. The scheduled task needs no extra
   binary.
 - **macOS boot.** Supporting only signed-in Macs would leave a Mac mini without auto-login unable to start pi-kit after
   a reboot.
-- **A Linux server on the AppImage.** It would need GTK, NSS and audio libraries and FUSE on a machine with no
-  display; npm on stock Node needs none of them.
+- **An npm package on the user's Node.** A familiar install, but the service would run on a Node the user installs and
+  changes (nvm, upgrades) underneath it. The server tarball carries its runtime instead.
+- **A Linux server on the AppImage, or the Electron binary as the tarball's runtime.** Both need GTK, NSS and audio
+  libraries on a machine with no display, and the AppImage needs FUSE; the tarball's Node runtime needs none of them.
 - **A wrapping key per runtime on macOS.** Keeping one sealed copy per runtime would avoid the one prompt when a
   profile switches installs, at the cost of two copies of the identity to keep in step.

@@ -1,4 +1,4 @@
-// Assembles what electron-builder packs.
+// Assembles what electron-builder packs, and the server folders the npm packages are written from (scripts/package-npm.mjs).
 //
 //   node scripts/package-stage.mjs [--target darwin-arm64 --target win32-x64 ...] [--platform darwin|linux|win32 --arch arm64|x64]
 //                                  [--skip-build] [--build-only] [--natives-cache <dir>]
@@ -6,12 +6,12 @@
 // dist/package/                the shell, the same for every target
 //   package.json               name, version, main -> desktop/main.cjs (no dependencies: the shell bundles everything)
 //   desktop/{main,preload}.cjs Electron main process and preload (esbuild bundles, `electron` external)
-//   renderer/browser/          the Angular production build, served from app://pi-kit/
-// dist/stage/<platform>-<arch>/backend/   one per target
-//   main.js + migrations/ + packages/ + assets/: Nx production artifacts, including
-//   the bundled Pi SDK, workers, WASM and themes. The only node_modules are the
-//   esbuild-built native loaders and target-specific binaries. No dependency tree
-//   is copied from the workspace. Electron executes the backend outside app.asar.
+// dist/stage/<platform>-<arch>/          the server of one target: Resources/backend and Resources/renderer in the app, the npm platform package
+//   backend/                   main.js + migrations/ + packages/ + assets/: Nx production artifacts, including
+//                              the bundled Pi SDK, workers, WASM and themes. The only node_modules are the
+//                              esbuild-built native loaders and target-specific binaries. No dependency tree
+//                              is copied from the workspace. Electron executes the backend outside app.asar.
+//   renderer/browser/          the Angular production build: the app serves it on app://pi-kit/, the host to browsers and phones
 // dist/stage/<platform>-<arch>/natives.json   the natives table of that target (module, file, where the binary came from)
 import { execFileSync } from 'node:child_process';
 import { constants, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -76,7 +76,6 @@ const rootPackage = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 mkdirSync(join(stage, 'desktop'));
 for (const file of ['main.cjs', 'preload.cjs', 'screenshot-encoder-preload.cjs', 'splash.html', 'icon.png'])
   cpSync(join(dist, 'apps/desktop', file), join(stage, 'desktop', file));
-cpSync(join(dist, 'apps/renderer/browser'), join(stage, 'renderer/browser'), { recursive: true });
 writeFileSync(
   join(stage, 'package.json'),
   JSON.stringify(
@@ -150,6 +149,7 @@ for (const triple of triples) {
   const rows = await provisionNatives({ modulesOut: join(backend, 'node_modules'), triple, cacheDir: nativesCache });
   verifyStaged({ backend, triple, electron });
   writeFileSync(join(targetRoot, 'natives.json'), JSON.stringify(rows, null, 2));
+  cpSync(join(dist, 'apps/renderer/browser'), join(targetRoot, 'renderer/browser'), { recursive: true });
   console.log(
     `staged ${triple}: backend ${mb(dirSize(backend))} (node_modules ${mb(dirSize(join(backend, 'node_modules')))}) in ${seconds(started)}`,
   );
@@ -157,5 +157,5 @@ for (const triple of triples) {
 }
 rmSync(baseRoot, { recursive: true, force: true });
 console.log(
-  `\nshell ${mb(dirSize(join(stage, 'desktop')) + dirSize(join(stage, 'renderer')))} in ${relative(root, stage)}; backends in ${relative(root, stageRoot)}/<triple>/backend`,
+  `\nshell ${mb(dirSize(join(stage, 'desktop')))} in ${relative(root, stage)}; servers in ${relative(root, stageRoot)}/<triple>/{backend,renderer}`,
 );

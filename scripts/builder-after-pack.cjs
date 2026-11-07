@@ -1,4 +1,5 @@
-// electron-builder `afterPack` hook: puts the staged backend of this target next to app.asar as a plain folder, Resources/backend.
+// electron-builder `afterPack` hook: puts the staged server of this target next to app.asar as plain folders, Resources/backend and
+// Resources/renderer, where the service host finds its web app as it does in the npm package.
 //
 // electron-builder's `extraResources` would do it, but it never copies a folder named node_modules, and the backend
 // needs its node_modules (the native loaders and binaries of better-sqlite3-multiple-ciphers, @napi-rs/keyring, node-pty and the rest). The hook runs before code signing, so
@@ -18,11 +19,14 @@ exports.default = async function afterPack(context) {
     throw new Error(
       `The backend for ${triple} is not staged at ${source}; run scripts/package-stage.mjs --target ${triple}.`,
     );
+  if (!existsSync(join(source, '..', 'renderer', 'browser', 'index.html')))
+    throw new Error(`The renderer for ${triple} is not staged; run scripts/package-stage.mjs --target ${triple}.`);
   const resources =
     context.electronPlatformName === 'darwin'
       ? join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources')
       : join(context.appOutDir, 'resources');
   cpSync(source, join(resources, 'backend'), { recursive: true, verbatimSymlinks: true });
-  console.log(`  • backend (${triple}) copied to ${join(resources, 'backend')}`);
+  cpSync(join(source, '..', 'renderer'), join(resources, 'renderer'), { recursive: true });
+  console.log(`  • backend and renderer (${triple}) copied to ${resources}`);
   installNotarizationRecovery(context);
 };

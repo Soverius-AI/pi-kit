@@ -1,7 +1,7 @@
 import type { ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import type { Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,7 +11,7 @@ import { connectHostChannel, hostSocketPath, listenHostChannel } from './host-ch
 import { HostClient, HostStartError } from './host-process';
 import { NOT_RUNNING, runCli, type CliContext } from './service-cli';
 import { FileWrappingKeys, HostSealing, instanceKeyFile, KeyringWrappingKeys } from './instance-key-sealing';
-import { type LaunchedBackend, ServiceHost, type ServiceHostDeps } from './service-host';
+import { hostConfigFromEnv, type LaunchedBackend, ServiceHost, type ServiceHostDeps } from './service-host';
 
 const TOKEN = 'k'.repeat(64);
 
@@ -296,3 +296,23 @@ const cli: CliContext = {
   tail: () => undefined,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 };
+
+describe('a packaged host finds its install', () => {
+  it.each([
+    ['the desktop app', { 'app.asar/package.json': '{"version":"1.2.3"}' }],
+    ['a server install', { 'package.json': '{"version":"1.2.3"}' }],
+  ])('in %s: the backend, web app and version beside itself', async (_, files: Record<string, string>) => {
+    const install = await mkdtemp(join(tmpdir(), 'pk-install-'));
+    cleanup.push(() => rm(install, { recursive: true, force: true }));
+    for (const [path, content] of Object.entries(files)) {
+      await mkdir(join(install, path, '..'), { recursive: true });
+      await writeFile(join(install, path), content);
+    }
+    const config = hostConfigFromEnv({ PI_KIT_DATA_DIR: install }, join(install, 'backend'));
+    expect(config).toMatchObject({
+      entry: join(install, 'backend', 'main.js'),
+      rendererRoot: join(install, 'renderer', 'browser'),
+      version: '1.2.3',
+    });
+  });
+});

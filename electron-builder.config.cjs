@@ -3,7 +3,8 @@
 // (`scripts/package.mjs <mac|win|linux>`); the architectures come from the command line.
 //
 // Layout of the packed app:
-//   Resources/app.asar        desktop/{main,preload}.cjs, splash.html, icon.png and renderer/browser (the shell)
+//   Resources/app.asar        desktop/{main,preload}.cjs, splash.html, icon.png (the shell)
+//   Resources/renderer/       browser/: the Angular production build, served on app://pi-kit/ and by the service host
 //   Resources/backend/        main.js (Nest + CopilotKit bundled), service-host.cjs (runs main.js), migrations/, packages/,
 //                             assets/{pi,needle}, pi-kit-secret.cjs, pi-kit.cjs (the `pi-kit service` command)
 //                             and node_modules/ (built native loaders + binaries for the target's architecture), staged from
