@@ -9,8 +9,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RunningBackend } from './backend';
 import { connectHostChannel, hostSocketPath, listenHostChannel } from './host-channel';
 import { HostClient, HostStartError } from './host-process';
-import { NOT_RUNNING, runServiceCli, type CliContext } from './service-cli';
-import { type LaunchedBackend, ServiceHost } from './service-host';
+import { NOT_RUNNING, runCli, type CliContext } from './service-cli';
+import { FileWrappingKeys, HostSealing, instanceKeyFile, KeyringWrappingKeys } from './instance-key-sealing';
+import { type LaunchedBackend, ServiceHost, type ServiceHostDeps } from './service-host';
 
 const TOKEN = 'k'.repeat(64);
 
@@ -46,7 +47,11 @@ afterEach(async () => {
 });
 
 /** A host listening on a real socket in a scratch data folder, with a backend that is healthy unless told otherwise. */
-async function startHost(backend: ReturnType<typeof fakeBackend>, healthy = true) {
+async function startHost(
+  backend: ReturnType<typeof fakeBackend>,
+  healthy = true,
+  extra: (dataDir: string) => Partial<ServiceHostDeps> = () => ({}),
+) {
   const dataDir = await mkdtemp(join(tmpdir(), 'pk-host-'));
   cleanup.push(() => rm(dataDir, { recursive: true, force: true }));
   const host = new ServiceHost(
@@ -68,6 +73,7 @@ async function startHost(backend: ReturnType<typeof fakeBackend>, healthy = true
       schedule: () => () => undefined,
       now: () => 0,
       exit: () => undefined,
+      ...extra(dataDir),
     },
   );
   await host.open();
@@ -79,7 +85,7 @@ async function startHost(backend: ReturnType<typeof fakeBackend>, healthy = true
     cleanup.push(async () => peer.close());
     return { client: new HostClient(peer), close: () => peer.close() };
   };
-  return { path, desktop };
+  return { path, desktop, dataDir, host };
 }
 
 describe('ServiceHost with a desktop on its socket', () => {
@@ -172,6 +178,51 @@ describe('ServiceHost with a desktop on its socket', () => {
     );
   });
 
+  it('signs with an instance key it sealed itself, with no desktop ever attached', async () => {
+    const backend = fakeBackend(2000);
+    const entries = new Map<string, string>();
+    const store = {
+      available: () => true,
+      get: (account: string) => entries.get(account),
+      set: (account: string, value: string) => void entries.set(account, value),
+    };
+    const { host } = await startHost(backend, true, (dataDir) => ({
+      hostSealing: new HostSealing(
+        new KeyringWrappingKeys(() => store, dataDir),
+        new FileWrappingKeys(instanceKeyFile(dataDir)),
+      ),
+    }));
+    await host.start();
+    const instanceId = randomUUID();
+    backend.child.emit('message', {
+      type: 'instance-key',
+      id: 'k1',
+      keyRequest: { action: 'info', instanceId, create: true },
+    });
+    backend.child.emit('message', {
+      type: 'instance-key',
+      id: 'k2',
+      keyRequest: {
+        action: 'sign',
+        instanceId,
+        claims: { aud: randomUUID(), purpose: 'session', nonce: 'n'.repeat(16) },
+      },
+    });
+    await vi.waitFor(() =>
+      expect(backend.child.received).toContainEqual({ type: 'desktop-answer', id: 'k2', result: expect.any(String) }),
+    );
+  });
+
+  it('hands the backend endpoint to a local client only while the backend runs', async () => {
+    const { path, host } = await startHost(fakeBackend(2000));
+    const command = await connectHostChannel(path, TOKEN);
+    cleanup.push(async () => command.close());
+
+    await expect(command.call('backend')).rejects.toThrow('not running');
+    await host.start();
+    expect(await command.call('backend')).toEqual({ url: 'http://127.0.0.1:1', port: 1, token: 't'.repeat(32) });
+  });
+
   it('answers nothing to a connection without the token', async () => {
     const { path } = await startHost(fakeBackend(2000));
     const intruder = await connectHostChannel(path, 'x'.repeat(64));
@@ -192,7 +243,7 @@ describe('ServiceHost with a desktop on its socket', () => {
     await client.start();
     const printed: string[] = [];
 
-    const code = await runServiceCli(['service', 'status'], io(printed), {
+    const code = await runCli(['service', 'status'], io(printed), {
       ...cli,
       discover: () => ({
         pid: process.pid,
@@ -215,7 +266,7 @@ describe('ServiceHost with a desktop on its socket', () => {
     'shows complete service commands in help for $args',
     async ({ args }) => {
       const printed: string[] = [];
-      const code = await runServiceCli(args, io(printed), cli);
+      const code = await runCli(args, io(printed), cli);
       expect(code).toBe(args[0] === 'logs' ? 2 : 0);
       const output = printed.join('');
       for (const command of ['status', 'install', 'uninstall', 'start', 'stop', 'restart', 'logs']) {
@@ -226,7 +277,7 @@ describe('ServiceHost with a desktop on its socket', () => {
   );
 
   it('exits `pi-kit service status` with 3 when nothing runs, for scripts', async () => {
-    expect(await runServiceCli(['service', 'status'], io([]), cli)).toBe(NOT_RUNNING);
+    expect(await runCli(['service', 'status'], io([]), cli)).toBe(NOT_RUNNING);
   });
 });
 
@@ -237,6 +288,7 @@ const io = (printed: string[]) => ({
 const cli: CliContext = {
   version: '0.0.0',
   serviceName: 'test',
+  dataDir: tmpdir(),
   logDir: tmpdir(),
   manager: undefined,
   discover: () => undefined,

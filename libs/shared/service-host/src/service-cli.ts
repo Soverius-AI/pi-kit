@@ -1,16 +1,20 @@
 import type { HostDiscovery } from './discovery';
 import type { RpcPeer } from './host-channel';
 import type { HostStatus } from './host-protocol';
+import { PEERS_USAGE, runPeersCli } from './peers-cli';
 import type { ServiceManager } from './service-registration';
 
 export interface CliIo {
   out(text: string): void;
   err(text: string): void;
+  /** One line from the terminal or stdin, for input that must not be a command argument. */
+  readLine?(prompt: string): Promise<string | undefined>;
 }
 
 export interface CliContext {
   version: string;
   serviceName: string;
+  dataDir: string;
   logDir: string;
   manager: ServiceManager | undefined;
   /** The live host that owns the data folder, if one does. */
@@ -25,7 +29,7 @@ export interface CliContext {
 export const NOT_RUNNING = 3;
 const WAIT_MS = 60_000;
 
-const USAGE = `Usage: pi-kit service <command>
+const USAGE = `Usage: pi-kit service <command>, pi-kit peers <command>
 
 Service commands (include "service" before the command):
   pi-kit service status     Whether the background service is installed and running (exit code 3: not running)
@@ -38,27 +42,34 @@ Service commands (include "service" before the command):
 
 For example, use "pi-kit service logs", not "pi-kit logs".
 
+${PEERS_USAGE}
 pi-kit's backend runs as a service of this computer, so background agents and phone access keep working when the
 pi-kit window is closed. Settings › General › Background in the app does the same as install and uninstall.
 `;
 
-/** `pi-kit service …`: the background service from a terminal, also over SSH. Returns the exit code. */
-export async function runServiceCli(args: string[], io: CliIo, ctx: CliContext): Promise<number> {
+/** `pi-kit …` from a terminal, also over SSH. Returns the exit code. */
+export async function runCli(args: string[], io: CliIo, ctx: CliContext): Promise<number> {
   const [group, command, ...rest] = args;
   if (group === '--version' || group === '-v') {
     io.out(`pi-kit ${ctx.version}\n`);
     return 0;
   }
-  const help = (word: string | undefined) => word === undefined || word === 'help' || word === '--help';
-  if (help(group) || (group === 'service' && help(command))) {
+  const asked = (word: string | undefined) => word === 'help' || word === '--help';
+  if (
+    group === undefined ||
+    asked(group) ||
+    (group === 'service' && (command === undefined || asked(command))) ||
+    (group === 'peers' && asked(command))
+  ) {
     io.out(USAGE);
     return 0;
   }
-  if (group !== 'service' || rest.length > 0) {
+  if (group !== 'peers' && (group !== 'service' || rest.length > 0)) {
     io.err(USAGE);
     return 2;
   }
   try {
+    if (group === 'peers') return await runPeersCli(args.slice(1), io, ctx);
     switch (command) {
       case 'status':
         return await status(io, ctx);
@@ -79,9 +90,16 @@ export async function runServiceCli(args: string[], io: CliIo, ctx: CliContext):
         return 2;
     }
   } catch (error) {
-    io.err(`pi-kit: ${error instanceof Error ? error.message : String(error)}\n`);
+    io.err(`pi-kit: ${reason(error)}\n`);
     return 1;
   }
+}
+
+/** A thrown Error, or the error body a backend route answered with. */
+function reason(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  const message = error && typeof error === 'object' ? (error as { message?: unknown }).message : undefined;
+  return typeof message === 'string' ? message : String(error);
 }
 
 async function supported(io: CliIo, ctx: CliContext): Promise<ServiceManager | undefined> {

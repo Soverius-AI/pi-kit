@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { open, mkdir, lstat, link, unlink } from 'node:fs/promises';
+import { open, mkdir, lstat, link, rename, unlink } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import {
   createHash,
@@ -21,6 +21,8 @@ export interface InstanceKeyEncryption {
   available(): Promise<boolean>;
   encrypt(value: string): Promise<Buffer>;
   decrypt(value: Buffer): Promise<string>;
+  /** New bytes for a key that opened under an older seal, or undefined to keep the file as it is. */
+  reseal?(sealed: Buffer, value: string): Promise<Buffer | undefined>;
 }
 export class InstanceKeyError extends Error {
   constructor(readonly code: 'unavailable' | 'missing' | 'invalid' | 'identity-mismatch') {
@@ -144,7 +146,8 @@ export class InstanceKeyStore {
       return this.load(instanceId, false);
     }
     try {
-      const record: unknown = JSON.parse(await this.encryption.decrypt(bytes));
+      const plain = await this.encryption.decrypt(bytes);
+      const record: unknown = JSON.parse(plain);
       if (!record || typeof record !== 'object') throw new InstanceKeyError('invalid');
       const value = record as { version?: unknown; instanceId?: unknown; profileScope?: unknown; privateKey?: unknown };
       if (value.version !== 1 || typeof value.privateKey !== 'string' || value.privateKey.length > 4096)
@@ -162,9 +165,29 @@ export class InstanceKeyStore {
         fingerprint: await calculateJwkThumbprint(publicKey, 'sha256'),
       });
       this.loaded = { instanceId, scope, key, info };
+      await this.reseal(path, bytes, plain);
       return this.loaded;
     } catch (error) {
       throw error instanceof InstanceKeyError ? error : new InstanceKeyError('invalid');
+    }
+  }
+
+  /** Replaces the file only with bytes that read back to the same key; on any failure the old file stays and the next load tries again. */
+  private async reseal(path: string, sealed: Buffer, plain: string): Promise<void> {
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    try {
+      const resealed = await this.encryption.reseal?.(sealed, plain);
+      if (!resealed || (await this.encryption.decrypt(resealed)) !== plain) return;
+      const handle = await open(temporary, 'wx', 0o600);
+      try {
+        await handle.writeFile(resealed);
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await rename(temporary, path);
+    } catch {
+      await unlink(temporary).catch(() => undefined);
     }
   }
 }

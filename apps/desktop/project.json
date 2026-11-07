@@ -21,7 +21,7 @@
         "format": ["cjs"],
         "bundle": true,
         "thirdParty": true,
-        "external": ["electron"],
+        "external": ["electron", "@napi-rs/keyring", "keychain-store"],
         "assets": [
           {
             "glob": "splash.html",

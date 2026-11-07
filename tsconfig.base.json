@@ -72,6 +72,7 @@
       "@pi-kit/threads/feature-learn": ["./libs/threads/feature-learn/src/index.ts"],
       "@pi-kit/threads/feature-new-thread": ["./libs/threads/feature-new-thread/src/index.ts"],
       "@pi-kit/api": ["./libs/shared/api/src/index.ts"],
+      "@pi-kit/api/generated": ["./libs/shared/api/src/generated/index.ts"],
       "@pi-kit/artifacts/data": ["./libs/artifacts/data/src/index.ts"],
       "@pi-kit/artifacts/feature-artifacts": ["./libs/artifacts/feature-artifacts/src/index.ts"],
       "@pi-kit/i18n": ["./libs/shared/i18n/src/index.ts"],

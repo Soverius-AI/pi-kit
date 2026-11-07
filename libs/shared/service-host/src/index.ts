@@ -4,6 +4,7 @@ export * from './host-channel';
 export * from './host-process';
 export * from './host-protocol';
 export * from './instance-key';
+export * from './instance-key-sealing';
 export * from './log';
 export * from './proxy-env';
 export * from './remote-access';

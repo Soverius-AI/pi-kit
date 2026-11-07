@@ -18,6 +18,7 @@ import {
   startupFailureOf,
 } from './host-protocol';
 import { InstanceKeyError, type InstanceKeyEncryption, InstanceKeyStore } from './instance-key';
+import { MigratingSealing } from './instance-key-sealing';
 import type { RemoteAccess } from './remote-access';
 import { BackendActivity, type SleepGuard } from './sleep-guard';
 import {
@@ -63,6 +64,8 @@ export interface ServiceHostDeps {
   restoreRemote?: boolean;
   /** Held while a thread runs or a background agent is active. */
   sleepGuard?: SleepGuard;
+  /** Seals the instance key in this process; without it only an attached desktop can. */
+  hostSealing?: InstanceKeyEncryption;
 }
 
 /** Longer than the backend's own shutdown grace (15 s), so a clean shutdown is never cut short. */
@@ -120,7 +123,8 @@ export class ServiceHost {
     private readonly deps: ServiceHostDeps,
     private readonly watchdogOptions: WatchdogOptions = DEFAULT_WATCHDOG_OPTIONS,
   ) {
-    this.keys = new InstanceKeyStore(() => join(config.dataDir, 'instance-keys', 'identity.v1.enc'), this.sealing);
+    const sealing = deps.hostSealing ? new MigratingSealing(deps.hostSealing, this.sealing) : this.sealing;
+    this.keys = new InstanceKeyStore(() => join(config.dataDir, 'instance-keys', 'identity.v1.enc'), sealing);
   }
 
   /** The backend's address, for phone access; fixed once `open()` resolved. */
@@ -160,6 +164,11 @@ export class ServiceHost {
         ...(this.endpoint ? { backendUrl: this.endpoint.url } : {}),
         ...(pid ? { backendPid: pid } : {}),
       };
+    });
+    // What `attach` answers too, without becoming the desktop: for the `pi-kit` command's backend calls.
+    peer.handle('backend', (): BackendEndpoint => {
+      if (!this.endpoint || !this.watchdog) throw new RpcError('The backend is not running.');
+      return { ...this.endpoint };
     });
     peer.handle('start', () => this.start());
     peer.handle('retry', () => this.watchdog?.retry());
@@ -314,7 +323,7 @@ export class ServiceHost {
     }
   }
 
-  /** The key is sealed by the desktop's OS-protected storage; once unsealed it stays in this process, so signing outlives the window. */
+  /** The desktop's safeStorage: the seal of keys made before the host sealed its own, and the fallback where the host cannot seal. */
   private get sealing(): InstanceKeyEncryption {
     const desktop = (): RpcPeer => {
       if (!this.desktop) throw new Error('No desktop attached.');

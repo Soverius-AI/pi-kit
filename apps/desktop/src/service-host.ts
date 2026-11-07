@@ -12,6 +12,10 @@ import {
   listenHostChannel,
   pingHealth,
   CommandSleepGuard,
+  FileWrappingKeys,
+  HostSealing,
+  instanceKeyFile,
+  KeyringWrappingKeys,
   RemoteAccess,
   RemoteAccessStores,
   removeDiscovery,
@@ -20,6 +24,7 @@ import {
   spawnBackend,
   writeDiscovery,
 } from '@pi-kit/service-host';
+import { KeyringSecretStore, selectSecretStore } from '@pi-kit/secret-store';
 
 const { rendererRoot, level, ...config } = hostConfigFromEnv(process.env, __dirname);
 const logDir = process.env['PI_KIT_LOG_DIR'];
@@ -59,6 +64,14 @@ const host: ServiceHost = new ServiceHost(config, {
   remote,
   restoreRemote: process.env['PI_KIT_SMOKE'] !== '1',
   sleepGuard: new CommandSleepGuard(sleepCommand(process.platform, process.pid), (line) => serviceLog?.line(line)),
+  // Tests and e2e name a scratch store in PI_KIT_SECRET_STORE; otherwise the OS credential store holds the wrapping key.
+  hostSealing: new HostSealing(
+    new KeyringWrappingKeys(
+      () => (process.env['PI_KIT_SECRET_STORE'] ? selectSecretStore(process.env) : new KeyringSecretStore()),
+      config.dataDir,
+    ),
+    new FileWrappingKeys(instanceKeyFile(config.dataDir)),
+  ),
 });
 
 // A host the desktop app or its Windows supervisor started ends with it: the IPC channel closes when that process goes.

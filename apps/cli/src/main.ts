@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import {
   appFolders,
   connectHostChannel,
@@ -7,7 +8,7 @@ import {
   bundledVersion,
   loginShellPath,
   liveDiscovery,
-  runServiceCli,
+  runCli,
   stopHost,
   serviceManager,
   serviceName,
@@ -62,12 +63,25 @@ const manager = serviceManager({
   },
 });
 
-void runServiceCli(
+/** A line from the terminal (the prompt on stderr, so stdout stays data) or from piped stdin. */
+async function readLine(prompt: string): Promise<string | undefined> {
+  const reader = createInterface({ input: process.stdin, terminal: false });
+  if (process.stdin.isTTY) process.stderr.write(prompt);
+  try {
+    for await (const line of reader) return line;
+    return undefined;
+  } finally {
+    reader.close();
+  }
+}
+
+void runCli(
   args,
-  { out: (text) => void process.stdout.write(text), err: (text) => void process.stderr.write(text) },
+  { out: (text) => void process.stdout.write(text), err: (text) => void process.stderr.write(text), readLine },
   {
     version,
     serviceName: name,
+    dataDir,
     logDir,
     manager,
     discover,
