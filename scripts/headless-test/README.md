@@ -1,6 +1,6 @@
-# Packaged Linux headless-service integration test
+# Linux server-install integration test
 
-This is an isolated Docker test machine, **not a production server image**. It exercises the packaged Electron binary in Node mode and real systemd user registration. No desktop attachment or fake sealing/key store is used.
+This is an isolated Docker test machine, **not a production server image**. It installs the server tarball (`pi-kit-server-<version>-linux-<arch>.tar.gz`) on a Debian image with no Node.js and no desktop libraries, and exercises real systemd user registration. No desktop attachment or fake sealing/key store is used.
 
 For the separate **native macOS LaunchAgent test**, see [MACOS.md](./MACOS.md). That run used the Mac directly, including native crash recovery, real model tool use, remote pairing, and scoped cleanup.
 
@@ -13,7 +13,7 @@ node scripts/release-linux-docker.mjs --arch arm64 --dir
 docker build --platform linux/arm64 -t pi-kit-headless-test:arm64 scripts/headless-test
 ```
 
-The release command copies the source read-only into a Docker build volume, installs Linux dependencies, builds the applications, packages them, and verifies native modules. It does not use the Mac's `node_modules`.
+The release command copies the source read-only into a Docker build volume, installs Linux dependencies, builds the applications, packages them, verifies native modules, and writes `dist/release/pi-kit-server-<version>-linux-arm64.tar.gz` after running its `bin/pi-kit` and loading its natives on its own runtime. It does not use the Mac's `node_modules`.
 
 If Docker's credential helper hangs on a public image, an empty **temporary** `DOCKER_CONFIG` with `DOCKER_HOST` pointing at the existing Docker context avoids accessing that helper. Do not change or delete the user's normal Docker credentials.
 
@@ -22,7 +22,7 @@ If Docker's credential helper hangs on a public image, an empty **temporary** `D
 ```sh
 docker network create --label pi-kit.test=headless pi-kit-headless-test-net
 docker volume create --label pi-kit.test=headless pi-kit-headless-test-home
-docker run -d --name pi-kit-headless-test-9ef77b2 \
+docker run -d --name pi-kit-headless-test \
   --label pi-kit.test=headless --network pi-kit-headless-test-net \
   --privileged --cgroupns=private \
   --tmpfs /run --tmpfs /run/lock --tmpfs /tmp \
@@ -35,19 +35,17 @@ Docker Desktop required `--privileged` for writable cgroups: the narrower `SYS_A
 
 The image enables linger for the test user so its real systemd user manager starts without a graphical/login session. This is test infrastructure, **not evidence that pi-kit's unimplemented boot-level installer works**.
 
+Install the tarball as the test user would, in their home with `bin/pi-kit` on PATH:
+
 ```sh
-C=pi-kit-headless-test-9ef77b2
+C=pi-kit-headless-test
+S=pi-kit-server-$(node -p "require('./package.json').version")-linux-arm64
 docker exec "$C" systemctl is-system-running
 docker exec "$C" systemctl status user@1001.service --no-pager
-docker cp dist/release/linux-arm64-unpacked/. "$C":/opt/pi-kit/
+docker cp dist/release/$S.tar.gz "$C":/opt/
 docker cp scripts/headless-test/lifecycle.mjs "$C":/opt/lifecycle.mjs
-```
-
-Create `/usr/local/bin/pi-kit` inside the container, mode 0755:
-
-```sh
-#!/bin/sh
-ELECTRON_RUN_AS_NODE=1 exec /opt/pi-kit/pi-kit /opt/pi-kit/resources/backend/pi-kit.cjs "$@"
+docker exec --user tester "$C" tar -xzf /opt/$S.tar.gz -C /home/tester
+docker exec "$C" ln -s /home/tester/$S/bin/pi-kit /usr/local/bin/pi-kit
 ```
 
 Define a host-shell convenience function:
@@ -57,15 +55,15 @@ testuser() {
   docker exec --user tester -e HOME=/home/tester \
     -e XDG_RUNTIME_DIR=/run/user/1001 \
     -e DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1001/bus \
-    pi-kit-headless-test-9ef77b2 "$@"
+    pi-kit-headless-test "$@"
 }
 testuser pi-kit --version
 testuser pi-kit service install
 testuser pi-kit service status
-testuser node /opt/lifecycle.mjs
+testuser /home/tester/$S/runtime/node /opt/lifecycle.mjs
 ```
 
-The lifecycle suite kills the test user's backend and service host, tests recovery and authentication, and exercises stop/start/restart/uninstall/reinstall. It leaves the service running. Do not point it at a real user profile.
+The lifecycle suite runs on the install's own runtime. It checks that the machine has no `node` and that the systemd unit starts the install's runtime, then kills the test user's backend and service host, tests recovery and authentication, and exercises stop/start/restart/uninstall/reinstall. It leaves the service running. Do not point it at a real user profile.
 
 ## Tailscale and browser pairing
 
@@ -91,9 +89,18 @@ testuser pi-kit devices approve REQUEST_ID
 
 These are the shipped commands. They use the owner-only discovery file and socket, never call `attach`, and never print the backend token. Keep their output private: the pairing link carries a short-lived code.
 
-After pairing, verify the actual renderer, remote thread operations, streaming updates, persistence across backend/host/container restarts, and revocation. Instance-to-instance signed pairing is distinct from browser-device pairing and currently requires desktop-backed instance-key sealing.
+After pairing, verify the actual renderer, remote thread operations, streaming updates, persistence across backend/host/container restarts, and revocation. Instance-to-instance signed pairing is distinct from browser-device pairing: `pi-kit peers invite` on one instance, `pi-kit peers connect` on the other. Where no Secret Service runs, `pi-kit peers key-file --yes` seals the instance key with an owner-only file first.
 
-## Results (base commit 9ef77b2, including the onboarding fix)
+## Results (server tarball, Linux ARM64, 0.10.9)
+
+- PASS: the Docker release writes the tarball; its `bin/pi-kit --version` and native modules (SQLite, keyring, Cua, node-pty spawn) run on its Node 24.22.2.
+- PASS: no `node` on PATH, no GTK/NSS/audio libraries; `service install` registers a user unit that runs the install's own runtime.
+- PASS: all lifecycle checks above.
+- PASS: `pi-kit open` prints a one-time owner link and an `ssh -L` hint; the listener serves the web app marked `owner`, and answers 401 without a token and 403 to a wrong `Host` or a foreign `Origin`.
+- PASS: `pi-kit update` against a local feed of 0.10.10: SHA256SUMS checked, service stopped, install swapped in place (the old one kept as `<install>.previous`), service back on 0.10.10; it comes back by itself after a container restart.
+- NOT TESTED: instance pairing (`pi-kit peers invite` needs remote access, so a tailnet), `--level boot`, Linux x64.
+
+## Results (base commit 9ef77b2, packaged Electron binary in Node mode, including the onboarding fix)
 
 - PASS: Linux ARM64 release packaging and native module verification.
 - PASS: real systemd user manager; CLI install; backend running with `Desktop: not attached`.
@@ -120,9 +127,9 @@ The recorded test run has been cleaned up: the test Docker container/home volume
 For future runs, only remove this test's resources; never run a global Docker prune.
 
 ```sh
-docker exec pi-kit-headless-test-9ef77b2 tailscale logout
-docker stop -t 30 pi-kit-headless-test-9ef77b2
-docker rm pi-kit-headless-test-9ef77b2
+docker exec pi-kit-headless-test tailscale logout
+docker stop -t 30 pi-kit-headless-test
+docker rm pi-kit-headless-test
 # Destructive: removes only the disposable profile and its pairing grants.
 docker volume rm pi-kit-headless-test-home
 docker network rm pi-kit-headless-test-net

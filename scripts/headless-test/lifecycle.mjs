@@ -1,12 +1,13 @@
-// Run inside the integration-test container as tester, against the packaged app.
+// Run inside the integration-test container as tester, on the server install's own runtime: <install>/runtime/node lifecycle.mjs.
 // Destructive ONLY to this test user's pi-kit service. No desktop is attached.
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { createConnection } from 'node:net';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 
+const install = dirname(dirname(process.execPath));
 const data = join(process.env.HOME, '.config/pi-kit');
 const discovery = () => JSON.parse(readFileSync(join(data, 'service.json'), 'utf8'));
 const cli = (...args) => spawnSync('pi-kit', ['service', ...args], { encoding: 'utf8', timeout: 75_000 });
@@ -39,6 +40,13 @@ const report = (name, details) => console.log(`PASS ${name}${details ? `: ${deta
 
 await ready();
 report('fresh service runs without a desktop');
+assert.notEqual(spawnSync('sh', ['-c', 'command -v node']).status, 0, 'this machine must have no node on PATH');
+const units = join(process.env.HOME, '.config/systemd/user');
+const unit = readdirSync(units).find((name) => name.startsWith('dev.pi-kit.') && name.endsWith('.service'));
+assert.ok(unit, `no pi-kit unit in ${units}`);
+const execStart = /^ExecStart=(.*)$/m.exec(readFileSync(join(units, unit), 'utf8'))?.[1] ?? '';
+assert.ok(execStart.includes(join(install, 'runtime', 'node')), `${unit} runs ${execStart}`);
+report('the service runs on the server install', `${unit}, no node on PATH`);
 for (const file of ['service.json', 'host.sock']) {
   const metadata = statSync(join(data, file));
   assert.equal(metadata.mode & 0o777, 0o600, `${file} must be owner-only`);
@@ -95,12 +103,11 @@ assert.equal(denied.status, 401);
 report('unauthenticated health and thread APIs denied', '401 / 401');
 
 const ownerBeforeDuplicate = discovery().pid;
-const duplicate = spawnSync('/opt/pi-kit/pi-kit', ['/opt/pi-kit/resources/backend/service-host.cjs'], {
+const duplicate = spawnSync(process.execPath, [join(install, 'backend', 'service-host.cjs')], {
   encoding: 'utf8',
   timeout: 15_000,
   env: {
     ...process.env,
-    ELECTRON_RUN_AS_NODE: '1',
     PI_KIT_SERVICE_LEVEL: 'app',
     PI_KIT_DATA_DIR: data,
     PI_KIT_LOG_DIR: join(data, 'logs'),
