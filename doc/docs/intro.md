@@ -7,16 +7,18 @@ sidebar_position: 0
 
 # pi-kit
 
-pi-kit is a desktop app for the [pi](https://github.com/earendil-works/pi) coding agent: an Electron shell, an Angular renderer
-and a NestJS backend that runs pi's SDK in-process and talks to the renderer over [AG-UI](https://docs.ag-ui.com), hosted by the
-open-source CopilotKit runtime. pi's own session files stay the source of truth, so the `pi` command line and the app share
+pi-kit is an app for the [pi](https://github.com/earendil-works/pi) coding agent: a NestJS backend that runs pi's SDK
+in-process and talks to an Angular renderer over [AG-UI](https://docs.ag-ui.com), hosted by the open-source CopilotKit runtime.
+A service host keeps the backend running as a service of the computer; the Electron desktop app, a browser and paired phones
+are its clients, and a server install runs it with no desktop at all. pi's own session files stay the source of truth, so the `pi` command line and the app share
 every conversation.
 
 This site is the documentation of the code base. It is written for the people who change it.
 
 | Page | What it answers |
 |---|---|
-| [Architecture](architecture.md) | How the three processes fit together, what a turn goes through, how the renderer is layered, how background agents run. |
+| [Architecture](architecture.md) | How the processes fit together, what a turn goes through, how the renderer is layered, how background agents run. |
+| [Server and CLI](server.md) | The service host and its clients, the desktop, server and npm installs, the service on each platform, every `pi-kit` command. |
 | [Backend](backend.md) | One folder per domain and four roles in each, the request path, what every folder owns, the steps for a new route, domain, table, stream or extension. |
 | [AG-UI events](agui-events.md) | How a run streams from pi to the renderer, every event and custom event, replay and compaction, interrupts, and a review of the pipeline. |
 | [Background agents](background-agents.md) | Subagents a thread spawns: spawning, permissions, questions, reports, recovery, and a review of the implementation. |

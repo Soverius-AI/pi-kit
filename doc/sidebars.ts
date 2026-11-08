@@ -8,6 +8,7 @@ const sidebars: SidebarsConfig = {
   docs: [
     'intro',
     'architecture',
+    'server',
     'backend',
     'agui-events',
     'background-agents',

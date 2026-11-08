@@ -12,6 +12,7 @@ apps/
                    no route table: one page, the panels are switched by UiStore)                                             scope:app
   desktop/         Electron main + preload                                                                                   scope:app
   backend/         NestJS (folder per domain under src/, see Backend)                                                         scope:backend
+  cli/             the pi-kit command: service, update, login, open, remote, pair, desktop install                            scope:backend
   backend-runtime/ esbuild bundles of pi, MCP, Needle and the native-module loaders for the packaged backend                   scope:backend
   secret-cli/      pi-kit-secret, the keychain helper pi runs                                                                 scope:backend
 libs/

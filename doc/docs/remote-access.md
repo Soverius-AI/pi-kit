@@ -16,7 +16,7 @@ flowchart LR
     serve["Tailscale Serve\nhttps://computer.tailnet.ts.net:8443\nTLS termination"]
   end
   subgraph desktop["This computer"]
-    gateway["Remote gateway (Electron main)\n127.0.0.1, random port\npairing, device cookies, route allowlist"]
+    gateway["Remote gateway (service host)\n127.0.0.1, random port\npairing, device cookies, route allowlist"]
     backend["Backend (NestJS)\n127.0.0.1, per-launch token"]
     gateway -->|"reviewed routes, backend token added privately"| backend
   end
@@ -25,11 +25,11 @@ flowchart LR
   serve --> gateway
 ```
 
-1. **Publication is explicit.** Nothing listens until the owner turns on **Settings › Remote access** and chooses a port. The desktop then opens a gateway on a random loopback port and runs `tailscale serve --https=<port> http://127.0.0.1:<gateway port>` in the foreground. Tailscale terminates TLS with the computer's own `*.ts.net` certificate; the gateway sees plain HTTP from the Serve process on loopback only.
+1. **Publication is explicit.** Nothing listens until the owner turns on **Settings › Remote access** and chooses a port (on a server: `pi-kit remote enable`). The service host then opens a gateway on a random loopback port and runs `tailscale serve --https=<port> http://127.0.0.1:<gateway port>` in the foreground. Tailscale terminates TLS with the computer's own `*.ts.net` certificate; the gateway sees plain HTTP from the Serve process on loopback only.
 2. **The backend never changes.** It keeps listening on loopback with its per-launch bearer token ([ADR-0007](adr/0007-local-security.md)). The gateway is the only client that knows that token, and it adds it to each upstream request after authenticating the caller on its own terms. No backend address or token ever appears in a QR code, a page, browser storage or a phone response.
 3. **Devices are approved by the owner.** A phone pairs once with a short-lived code and a six-digit confirmation that must match on both screens. From then on it holds an `HttpOnly` session cookie and fetches a CSRF nonce per page load; both are required on every API call. Approvals are stored in the profile's database and last until the owner revokes them.
 4. **Only reviewed routes go through.** The gateway forwards a request only when its path and method are on the allowlist generated from the API contract: routes a controller marks `@Remote()` become `x-remote` in the OpenAPI document and from there the list in `libs/shared/protocol`. Everything administrative, every HTML document and the embedded browser, MCP apps and sandbox routes stay desktop-only.
-5. **Instances pair with each other the same way**, with keys instead of cookies. Two computers exchange an invitation, both owners approve the same confirmation code, and from then on each may open short sessions on the other, signed with an Ed25519 key the desktop keeps sealed in the OS keychain. A phone approved at one computer may use that computer's paired peers through it.
+5. **Instances pair with each other the same way**, with keys instead of cookies. Two computers exchange an invitation, both owners approve the same confirmation code, and from then on each may open short sessions on the other, signed with an Ed25519 key the service host keeps sealed: in the OS keychain, or on a machine without one in an owner-only file (`pi-kit peers key-file --yes`). A phone approved at one computer may use that computer's paired peers through it.
 
 ## Connect a phone
 
@@ -38,6 +38,9 @@ flowchart LR
 3. Click **Pair device** and scan the QR code with the phone's camera, or open the address ending in `/phone` on the phone and type the code. Scanning only fills in the code; nothing is requested without the user's tap.
 4. On the phone choose **Request access**. Compare the six-digit code with the request shown on the desktop and approve it there. The phone then opens the normal application at the private address.
 5. Bookmark the address or add it to the Home Screen. The desktop can revoke each device at any time or disable remote access entirely; disabling disconnects every stream but keeps the approvals for the next time.
+
+On a server without the desktop app, `pi-kit remote enable`, `pi-kit pair` and `pi-kit devices approve <request>` do the same
+([Server and CLI](server.md)).
 
 The computer must be awake and pi-kit running; this is remote control of a running desktop, not an always-on service. The phone must be connected to Tailscale, being on the same Wi-Fi is not enough, and the tailnet policy must allow the chosen port. Serve is private to the tailnet; pi-kit never enables Funnel.
 
