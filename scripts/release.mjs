@@ -58,7 +58,8 @@ for (const name of selected) {
   const t = TARGETS[name];
   for (const file of [...t.artifacts, ...t.artifacts.map((a) => `${a}.blockmap`)])
     rmSync(join(release, file), { force: true });
-  rmSync(join(release, t.unpacked), { recursive: true, force: true });
+  // Finder writes .DS_Store into a folder it shows, which can land mid-removal (ENOTEMPTY); rmSync retries that.
+  rmSync(join(release, t.unpacked), { recursive: true, force: true, maxRetries: 5 });
   rmSync(join(root, 'dist', 'stage', t.triple), { recursive: true, force: true });
 }
 for (const info of new Set(selected.map((n) => TARGETS[n].updateInfo))) rmSync(join(release, info), { force: true });
