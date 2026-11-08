@@ -27,6 +27,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { tar, unpack, zip } from './archives.mjs';
 import { TRIPLES, isHost, loadInElectron } from './natives.mjs';
 import releaseRepo from './release-repo.cjs';
 
@@ -91,21 +92,6 @@ async function nodeArchive(triple) {
   return { file, name: name.replace(/\.(tar\.gz|zip)$/, '') };
 }
 
-// Windows' own tar.exe is bsdtar; the GNU tar of Git Bash, first on PATH in CI, reads `C:\` as a remote host and knows no zip.
-const tar = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
-const bsdtar = execFileSync(tar, ['--version'], { encoding: 'utf8' }).includes('bsdtar');
-
-function unzip(archive, into) {
-  if (bsdtar) execFileSync(tar, ['-xf', archive, '-C', into]);
-  else execFileSync('unzip', ['-q', '-o', archive, '-d', into]);
-}
-
-function zip(folder, archive) {
-  const name = folder.split(/[\\/]/).pop();
-  if (bsdtar) execFileSync(tar, ['-a', '-cf', archive, '-C', dirname(folder), name]);
-  else execFileSync('zip', ['-q', '-r', archive, name], { cwd: dirname(folder) });
-}
-
 /** The machine's own target as it ships: its launcher reports this version, and the natives load on its runtime. */
 function check(folder, windows) {
   const launcher = join(folder, 'bin', windows ? 'pi-kit.cmd' : 'pi-kit');
@@ -132,8 +118,7 @@ for (const triple of targets) {
   const node = await nodeArchive(triple);
   const unpacked = mkdtempSync(join(tmpdir(), 'pi-kit-node-'));
   try {
-    if (windows) unzip(node.file, unpacked);
-    else execFileSync(tar, ['-xzf', node.file, '-C', unpacked]);
+    unpack(node.file, unpacked);
     const binary = windows ? join(unpacked, node.name, 'node.exe') : join(unpacked, node.name, 'bin', 'node');
     mkdirSync(join(folder, 'runtime'));
     cpSync(binary, join(folder, 'runtime', windows ? 'node.exe' : 'node'));

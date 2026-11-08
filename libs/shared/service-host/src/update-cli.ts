@@ -33,8 +33,16 @@ export async function runUpdateCli(args: string[], io: CliIo, ctx: CliContext): 
     io.err('pi-kit: the desktop app updates itself; use "Check for updates" in it.\n');
     return 2;
   }
+  const command = install.npm ? `npm install -g ${install.npm}@latest` : 'pi-kit update';
+  // npm owns the folder; it replaces it in place, so the service keeps its registration.
+  if (install.npm && !check) {
+    io.err(
+      `pi-kit: npm installed this pi-kit; update it with npm:\n  pi-kit service stop\n  ${command}\n  pi-kit service start\n`,
+    );
+    return 2;
+  }
   // A running node.exe cannot be renamed, and this command runs on the install's own.
-  if (install.target.startsWith('win32-')) {
+  if (!install.npm && install.target.startsWith('win32-')) {
     io.err('pi-kit: on Windows, stop the service, unpack the new release over this install, and start it again.\n');
     return 2;
   }
@@ -45,7 +53,7 @@ export async function runUpdateCli(args: string[], io: CliIo, ctx: CliContext): 
     return 0;
   }
   if (check) {
-    io.out(`${version} is available; run "pi-kit update".\n`);
+    io.out(`${version} is available; run "${command}".\n`);
     return 0;
   }
   const name = `pi-kit-server-${version}-${install.target}.tar.gz`;

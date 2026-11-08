@@ -66,10 +66,17 @@ installed**: every install carries its own runtime.
   `backend/pi-kit.cjs` on that runtime. It unpacks anywhere, needs no installed Node, and needs none of the GUI
   libraries the Electron binary loads even as Node (the headless test image installs `libgtk-3-0`, `libnss3`,
   `libasound2` and more). The natives are N-API, so the binaries the desktop stages load under that runtime.
-- **One release.** Each version publishes the installers and the server tarballs from the same CI run, with their
-  checksums, so every server version has a matching desktop app (§3).
+- **npm, the same server for a terminal.** `npm install -g @soverius-ai/pi-kit` gives the `pi-kit` command on all six
+  targets. `@soverius-ai/pi-kit` is a launcher; its optional dependencies are one package per target,
+  `@soverius-ai/pi-kit-<target>`, each the server tarball of that target unpacked as it is, with `os` and `cpu` so that
+  npm installs only the machine's own. The launcher runs on the user's Node only to start that package's
+  `backend/pi-kit.cjs` on the package's own runtime, so the service never depends on the Node that installed it
+  (`scripts/package-npm.mjs`, `scripts/npm/`).
+- **One release.** Each version publishes the installers, the server tarballs and the npm packages from the same CI
+  run, with the tarballs' checksums, so every server version has a matching desktop app (§3).
 - **`pi-kit update`** in a server install fetches the release's tarball for its target, checks its SHA-256, stops the
-  service, replaces the install and starts the service again. In a desktop install it says to update from the app. On
+  service, replaces the install and starts the service again. In a desktop install it says to update from the app; in
+  an npm install it gives the npm command, with the service stopped around it, since npm owns that folder. On
   Windows, where the running `node.exe` cannot be renamed, it says how to update by hand until a finisher outside the
   install does the swap.
 
@@ -182,7 +189,7 @@ The CLI is a client of two existing interfaces and repeats no business rule.
 | Command | Calls |
 | --- | --- |
 | `pi-kit service …`, `serve` | the service manager and host lifecycle, as today |
-| `pi-kit update` | server install: the release's tarball and checksum, then `service stop`, replace, `service start`; desktop install: points to the app |
+| `pi-kit update` | server install: the release's tarball and checksum, then `service stop`, replace, `service start`; npm install: the npm command; desktop install: points to the app |
 | `pi-kit open` | host: owner link; launches the desktop app or a browser |
 | `pi-kit remote status\|enable\|disable` | host: `remote.status`, `remote.start` (prints `remote.setupUrl` when Serve needs approval), `remote.stop` |
 | `pi-kit pair`, `pi-kit devices [approve\|reject\|revoke]` | host: `remote.beginPairing`, `remote.status`, `remote.approvePairing`, `remote.rejectPairing`, `remote.revokeDevice` |
@@ -244,6 +251,8 @@ The CLI is a client of two existing interfaces and repeats no business rule.
 6. Registration for server installs, and `pi-kit update`: Linux user unit and linger, macOS LaunchAgent and
    LaunchDaemon, Windows scheduled task, and "the newest install runs".
 7. Release: the installers as today and the server tarballs, with their checksums, from the same CI run.
+8. npm: the launcher and one package per target, written from that run's server tarballs, installed and run on every
+   release run and published on a tag.
 
 ## Verification
 
@@ -286,8 +295,10 @@ Windows on real machines:
   binary.
 - **macOS boot.** Supporting only signed-in Macs would leave a Mac mini without auto-login unable to start pi-kit after
   a reboot.
-- **An npm package on the user's Node.** A familiar install, but the service would run on a Node the user installs and
-  changes (nvm, upgrades) underneath it. The server tarball carries its runtime instead.
+- **An npm package on the user's Node.** Half the size, but the service would run on a Node the user installs and
+  changes (nvm, upgrades) underneath it. The npm packages carry the tarball's runtime instead.
+- **One npm package that downloads the server tarball on first run.** Small to publish, but the first run needs GitHub,
+  and npm's lockfiles, integrity checks and mirrors would not cover the server.
 - **A Linux server on the AppImage, or the Electron binary as the tarball's runtime.** Both need GTK, NSS and audio
   libraries on a machine with no display, and the AppImage needs FUSE; the tarball's Node runtime needs none of them.
 - **A wrapping key per runtime on macOS.** Keeping one sealed copy per runtime would avoid the one prompt when a

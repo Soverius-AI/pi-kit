@@ -90,6 +90,18 @@ describe('pi-kit update', () => {
     expect(existsSync(`${root}.previous`)).toBe(false);
   });
 
+  it('leaves an npm install to npm, and names its command when a release is newer', async () => {
+    const { root, install } = await world();
+    const printed: string[] = [];
+    const npm = context({ ...install, npm: '@soverius-ai/pi-kit' });
+    const say = { out: (text: string) => void printed.push(text), err: (text: string) => void printed.push(text) };
+    expect(await runCli(['update'], say, npm)).toBe(2);
+    expect(await versionAt(root)).toBe('1.0.0');
+    expect(await runCli(['update', '--check'], say, npm)).toBe(0);
+    expect(printed.join('')).toContain('npm install -g @soverius-ai/pi-kit@latest');
+    expect(printed[printed.length - 1]).toBe('2.0.0 is available; run "npm install -g @soverius-ai/pi-kit@latest".\n');
+  });
+
   it('changes nothing while "pi-kit serve" runs the profile', async () => {
     const { root, install } = await world();
     const serving: HostDiscovery = {

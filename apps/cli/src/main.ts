@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { createInterface } from 'node:readline';
 import {
   appFolders,
+  type CliContext,
   connectHostChannel,
   type HostDiscovery,
   bundledVersion,
@@ -47,15 +48,26 @@ const devEnv: Record<string, string> | undefined = packaged
     };
 
 /** A server install carries its runtime beside the backend; its package.json names its version and release feed. */
-function serverInstall(): { root: string; version: string; target: string; releases: string } | undefined {
+function serverInstall(): CliContext['serverInstall'] {
   const root = join(__dirname, '..');
   if (!packaged || !existsSync(join(root, 'runtime'))) return undefined;
-  const { version: installed, releases } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
+  const {
+    version: installed,
+    releases,
+    npm,
+  } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as {
     version?: unknown;
     releases?: unknown;
+    npm?: unknown;
   };
   if (typeof installed !== 'string' || typeof releases !== 'string') return undefined;
-  return { root, version: installed, target: `${process.platform}-${process.arch}`, releases };
+  return {
+    root,
+    version: installed,
+    target: `${process.platform}-${process.arch}`,
+    releases,
+    ...(typeof npm === 'string' ? { npm } : {}),
+  };
 }
 
 const discover = (): HostDiscovery | undefined => liveDiscovery(dataDir);

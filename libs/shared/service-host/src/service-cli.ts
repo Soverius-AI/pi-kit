@@ -43,7 +43,8 @@ export interface CliContext {
   /** Another install the service registration starts, with its version (`otherInstall`). */
   otherInstall?(): { entry: string; version: string } | undefined;
   /** This server install (a tarball with its own runtime): where it is, its version, target and release feed. */
-  serverInstall?: { root: string; version: string; target: string; releases: string };
+  /** `npm`: the npm package that installed it, which npm updates instead of `pi-kit update`. */
+  serverInstall?: { root: string; version: string; target: string; releases: string; npm?: string };
 }
 
 const GROUPS: Record<string, (args: string[], io: CliIo, ctx: CliContext) => Promise<number>> = {
