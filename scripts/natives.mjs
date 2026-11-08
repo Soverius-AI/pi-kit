@@ -33,10 +33,10 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse as parseYaml } from 'yaml';
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -106,7 +106,9 @@ const cuaLibrary = (platform) =>
 
 /** The `integrity` (sha512, base64) pnpm-lock.yaml records for `name@version`, or undefined. */
 function lockedIntegrity(name, version) {
-  const lock = parseYaml(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8'));
+  // Loaded here, not at the top: scripts/package-npm.mjs reads TRIPLES in a CI job that installs no dependencies.
+  const { parse } = createRequire(import.meta.url)('yaml');
+  const lock = parse(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8'));
   return lock.packages?.[`${name}@${version}`]?.resolution?.integrity;
 }
 
