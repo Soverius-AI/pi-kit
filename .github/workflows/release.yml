@@ -202,6 +202,14 @@ jobs:
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      # Evidence for the intermittent "Missing built native loader better-sqlite3-multiple-ciphers": `pnpm run` re-imports
+      # node_modules with the hoisted importer the install above avoids; this shows what it left and what the bundle holds.
+      - name: SQLite package and natives bundle (on failure)
+        if: failure()
+        run: |
+          ls -la node_modules/better-sqlite3-multiple-ciphers node_modules/better-sqlite3-multiple-ciphers/lib || true
+          find node_modules -maxdepth 5 -type d -name better-sqlite3-multiple-ciphers || true
+          ls -laR dist/apps/backend-runtime-natives/node_modules | head -60 || true
       # The x64 runner cannot launch the arm64 build; that one only gets the release step's header checks.
       - name: Smoke test (x64, the unpacked app)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
