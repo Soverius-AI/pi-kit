@@ -99,11 +99,10 @@ export class SecretsService implements OnModuleInit {
     const script = this.cliBundle();
     if (!script) return undefined;
     const electron = !!process.versions['electron'] || process.env['ELECTRON_RUN_AS_NODE'] === '1';
+    const mac = !this.store.protected ? 'legacy' : this.store.unattendedKeys ? 'macos-unattended' : 'macos';
     const secretStore =
       this.store.kind === 'keychain' && this.platform() === 'darwin'
-        ? this.store.protected
-          ? 'macos'
-          : 'legacy'
+        ? mac
         : process.env['PI_KIT_SECRET_STORE'] ||
           (this.platform() === 'darwin' && this.retainedHelperReferences ? 'macos' : undefined);
     return launcherScript(this.platform(), {
@@ -298,6 +297,8 @@ export class SecretsService implements OnModuleInit {
       this.meta.setSetting('credentialStoreEnabled', true);
       return result;
     }
+    // Copies readable without Touch ID never outlive the storage they copy.
+    if (this.store.unattendedKeys) await this.store.setUnattended?.(false);
     // Persist first, so a failed export or restart never silently resumes storing new keys.
     writeSecurityPreferences(this.config.dataDir, { credentialStoreEnabled: false });
     this.meta.setSetting('credentialStoreEnabled', false);
@@ -349,7 +350,21 @@ export class SecretsService implements OnModuleInit {
         ? { cliInstallDir: process.env['PI_KIT_BIN_DIR'] || defaultInstallDir(this.platform(), process.env, homedir()) }
         : {}),
       cliNeeded: !!resolver && resolver.includes('pi-kit-secret') && !this.cliOnUserPath(),
+      ...(available && this.store.setUnattended ? { unattended: !!this.store.unattendedKeys } : {}),
     };
+  }
+
+  /** Settings › General › Background: makes or removes the copies, keeps the choice in security.json and rewrites the pi-kit-secret launcher to match. */
+  async setUnattended(enabled: boolean): Promise<SecretsStatus> {
+    if (!this.credentialsEnabled() || !this.store.setUnattended)
+      throw new Error('Keys need no Touch ID here, so there is nothing to keep readable.');
+    await this.store.setUnattended(enabled);
+    writeSecurityPreferences(this.config.dataDir, {
+      credentialStoreEnabled: true,
+      ...(enabled ? { unattendedKeys: true } : {}),
+    });
+    this.ensureLauncher();
+    return this.status();
   }
 
   retryAccess(): SecretsStatus {

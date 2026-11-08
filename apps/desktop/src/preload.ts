@@ -26,7 +26,6 @@ contextBridge.exposeInMainWorld('piKit', {
   rejectRemotePairing: (id: string) => ipcRenderer.invoke('pi-kit:remote-pair-reject', id),
   revokeRemoteDevice: (id: string) => ipcRenderer.invoke('pi-kit:remote-device-revoke', id),
   getBackendUrl: (): Promise<string> => ipcRenderer.invoke('pi-kit:backend-url'),
-  getToken: (): Promise<string> => ipcRenderer.invoke('pi-kit:token'),
   getUiStorage: (): Promise<Record<string, string> | undefined> => ipcRenderer.invoke('pi-kit:ui-storage-get'),
   setUiStorage: (key: string, value: string): Promise<void> => ipcRenderer.invoke('pi-kit:ui-storage-set', key, value),
   /** The backend watchdog's state: it changes when the backend crashes, is restarted, or is given up on. */
@@ -37,6 +36,10 @@ contextBridge.exposeInMainWorld('piKit', {
     return () => ipcRenderer.removeListener('pi-kit:backend-status', listener);
   },
   quit: (): Promise<void> => ipcRenderer.invoke('pi-kit:quit'),
+  getBackgroundService: (): Promise<unknown> => ipcRenderer.invoke('pi-kit:background-service-get'),
+  setBackgroundService: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke('pi-kit:background-service-set', enabled),
+  installCommand: (): Promise<unknown> => ipcRenderer.invoke('pi-kit:cli-install'),
   /** Quits and starts the app again (Settings › Computer use, after a new macOS permission). */
   relaunch: (): Promise<void> => ipcRenderer.invoke('pi-kit:relaunch'),
   /** The folder picker; `undefined` if cancelled. */

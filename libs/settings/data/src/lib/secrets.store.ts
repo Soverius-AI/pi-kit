@@ -13,6 +13,7 @@ import {
   secretsRecoveryKey,
   secretsRetry,
   secretsStatus,
+  secretsUnattended,
   unwrap,
 } from '@pi-kit/api';
 import { ToastStore } from '@pi-kit/data-access';
@@ -34,6 +35,7 @@ interface SecretsState {
   retrying: boolean;
   storageBusy: boolean;
   storageResult: MoveKeysResult | undefined;
+  unattendedBusy: boolean;
 }
 
 /**
@@ -55,6 +57,7 @@ export const SecretsStore = signalStore(
     retrying: false,
     storageBusy: false,
     storageResult: undefined,
+    unattendedBusy: false,
   }),
   withMethods((store) => {
     const translate = inject(Language).t;
@@ -105,6 +108,19 @@ export const SecretsStore = signalStore(
             'error',
             translate('settings.secretsStore.couldNotReadWhereSecretsAreKept', { value1: errorMessage(error) }),
           );
+        }
+      },
+
+      async setUnattended(enabled: boolean): Promise<void> {
+        patchState(store, { unattendedBusy: true });
+        try {
+          patchState(store, {
+            status: await unwrap(secretsUnattended({ client: api.client, body: { enabled } })),
+          });
+        } catch (error) {
+          toasts.show('error', translate('settings.background.unattendedFailed', { value1: errorMessage(error) }));
+        } finally {
+          patchState(store, { unattendedBusy: false });
         }
       },
 

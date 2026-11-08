@@ -1,0 +1,138 @@
+// Run inside the integration-test container as tester, on the server install's own runtime: <install>/runtime/node lifecycle.mjs.
+// Destructive ONLY to this test user's pi-kit service. No desktop is attached.
+import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { createConnection } from 'node:net';
+import { dirname, join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
+
+const install = dirname(dirname(process.execPath));
+const data = join(process.env.HOME, '.config/pi-kit');
+const discovery = () => JSON.parse(readFileSync(join(data, 'service.json'), 'utf8'));
+const cli = (...args) => spawnSync('pi-kit', ['service', ...args], { encoding: 'utf8', timeout: 75_000 });
+const status = () => JSON.parse(execFileSync('pi-kit', ['service', 'status', '--json'], { encoding: 'utf8' }));
+const checkCli = (...args) => {
+  const result = cli(...args);
+  assert.equal(result.status, 0, `${args.join(' ')}: ${result.stderr || result.stdout}`);
+  return result.stdout.trim();
+};
+async function until(label, predicate, timeout = 30_000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    try {
+      const value = await predicate();
+      if (value) return value;
+    } catch {
+      // Discovery/socket may temporarily disappear during recovery.
+    }
+    await sleep(250);
+  }
+  throw new Error(`Timed out: ${label}`);
+}
+const ready = () =>
+  until('healthy detached backend', () => {
+    const current = status();
+    assert.equal(current.desktopAttached, false);
+    return current.status.state === 'running' && current;
+  });
+const report = (name, details) => console.log(`PASS ${name}${details ? `: ${details}` : ''}`);
+
+await ready();
+report('fresh service runs without a desktop');
+assert.notEqual(spawnSync('sh', ['-c', 'command -v node']).status, 0, 'this machine must have no node on PATH');
+const units = join(process.env.HOME, '.config/systemd/user');
+const unit = readdirSync(units).find((name) => name.startsWith('dev.pi-kit.') && name.endsWith('.service'));
+assert.ok(unit, `no pi-kit unit in ${units}`);
+const execStart = /^ExecStart=(.*)$/m.exec(readFileSync(join(units, unit), 'utf8'))?.[1] ?? '';
+assert.ok(execStart.includes(join(install, 'runtime', 'node')), `${unit} runs ${execStart}`);
+report('the service runs on the server install', `${unit}, no node on PATH`);
+for (const file of ['service.json', 'host.sock']) {
+  const metadata = statSync(join(data, file));
+  assert.equal(metadata.mode & 0o777, 0o600, `${file} must be owner-only`);
+  assert.equal(metadata.uid, process.getuid());
+}
+report('discovery file and host socket permissions', '0600, owned by tester');
+
+const beforeInstall = discovery().pid;
+checkCli('install');
+assert.equal(discovery().pid, beforeInstall, 'idempotent install must not restart the host');
+report('idempotent service install');
+
+await new Promise((resolve, reject) => {
+  const socket = createConnection(discovery().socket);
+  const timer = setTimeout(() => {
+    socket.destroy();
+    reject(new Error('Bad authentication was not closed'));
+  }, 7_000);
+  socket.on('connect', () => socket.write(JSON.stringify({ t: 'hello', token: 'invalid-test-token' }) + '\n'));
+  socket.on('data', () => {
+    clearTimeout(timer);
+    socket.destroy();
+    reject(new Error('Bad authentication received data'));
+  });
+  socket.on('error', reject);
+  socket.on('close', () => {
+    clearTimeout(timer);
+    resolve();
+  });
+});
+report('unauthenticated local RPC rejected');
+
+const backendBefore = status().backendPid;
+process.kill(backendBefore, 'SIGKILL');
+const recovered = await until('watchdog recovers backend', () => {
+  const current = status();
+  return current.status.state === 'running' && current.backendPid !== backendBefore && current;
+});
+assert.equal(discovery().pid, beforeInstall, 'backend crash must not restart the host');
+assert.ok(recovered.status.restarts >= 1);
+report('watchdog restarts crashed backend', `${backendBefore} -> ${recovered.backendPid}`);
+
+const hostBefore = discovery().pid;
+process.kill(hostBefore, 'SIGKILL');
+await until('systemd recovers crashed host', () => discovery().pid !== hostBefore);
+await ready();
+report('systemd restarts crashed service host', `${hostBefore} -> ${discovery().pid}`);
+
+const healthy = status();
+const health = await fetch(`${healthy.backendUrl}/api/health`);
+assert.equal(health.status, 401);
+const denied = await fetch(`${healthy.backendUrl}/api/threads`);
+assert.equal(denied.status, 401);
+report('unauthenticated health and thread APIs denied', '401 / 401');
+
+const ownerBeforeDuplicate = discovery().pid;
+const keptPort = () => JSON.parse(readFileSync(join(data, 'owner.json'), 'utf8')).port;
+const portBeforeDuplicate = keptPort();
+const duplicate = spawnSync(process.execPath, [join(install, 'backend', 'service-host.cjs')], {
+  encoding: 'utf8',
+  timeout: 15_000,
+  env: {
+    ...process.env,
+    PI_KIT_SERVICE_LEVEL: 'app',
+    PI_KIT_DATA_DIR: data,
+    PI_KIT_LOG_DIR: join(data, 'logs'),
+  },
+});
+assert.equal(duplicate.status, 3, duplicate.stderr);
+assert.equal(discovery().pid, ownerBeforeDuplicate);
+assert.equal(keptPort(), portBeforeDuplicate, 'a refused host must not move the browser port');
+await ready();
+report('duplicate host refused', `exit 3, browser port still ${portBeforeDuplicate}`);
+
+report('CLI stop', checkCli('stop'));
+await sleep(6_000); // Greater than systemd RestartSec: a clean stop must stay stopped.
+assert.equal(cli('status').status, 3);
+report('clean stop remains stopped');
+report('CLI start', checkCli('start'));
+await ready();
+const beforeRestart = discovery().pid;
+report('CLI restart', checkCli('restart'));
+await ready();
+assert.notEqual(discovery().pid, beforeRestart);
+report('CLI uninstall', checkCli('uninstall'));
+assert.equal(cli('status').status, 3);
+report('CLI reinstall', checkCli('install'));
+await ready();
+console.log('Lifecycle suite complete; service left running for pairing tests.');

@@ -6,7 +6,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createServer, request } from 'node:http';
 import { createServer as createTlsServer } from 'node:https';
 import { join } from 'node:path';
-import { RemoteGateway } from '../../apps/desktop/src/remote-gateway';
+import { RemoteGateway } from '../../libs/shared/service-host/src/remote-gateway';
 import { startBackend } from './instance';
 
 app.setActivationPolicy('accessory');

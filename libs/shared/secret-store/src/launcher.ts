@@ -24,7 +24,7 @@ export function launcherScript(platform: ResolverPlatform, target: LauncherTarge
   if (
     setting !== undefined &&
     (!(
-      ['macos', 'legacy', 'memory', 'none'].includes(setting) ||
+      ['macos', 'macos-unattended', 'legacy', 'memory', 'none'].includes(setting) ||
       (setting.startsWith('file:') && setting.length > 5)
     ) ||
       /[\0\r\n]/.test(setting) ||

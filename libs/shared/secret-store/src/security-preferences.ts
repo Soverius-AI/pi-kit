@@ -5,6 +5,8 @@ import { join } from 'node:path';
 /** Opt-in security choices only. Never store credentials in this file. */
 export interface SecurityPreferences {
   credentialStoreEnabled: boolean;
+  /** macOS Touch ID storage only: keep copies of the keys readable without Touch ID, for the background service (ADR-0036). */
+  unattendedKeys?: boolean;
 }
 
 function validate(value: unknown, allowLegacy = false): SecurityPreferences {
@@ -12,16 +14,20 @@ function validate(value: unknown, allowLegacy = false): SecurityPreferences {
     throw new Error('Invalid security.json: expected credentialStoreEnabled boolean with no unknown fields.');
   }
   const object = value as Record<string, unknown>;
-  const allowed = allowLegacy ? ['credentialStoreEnabled', 'databaseEncryptionEnabled'] : ['credentialStoreEnabled'];
+  const allowed = ['credentialStoreEnabled', 'unattendedKeys', ...(allowLegacy ? ['databaseEncryptionEnabled'] : [])];
   if (
     Object.keys(object).some((key) => !allowed.includes(key)) ||
     !Object.hasOwn(object, 'credentialStoreEnabled') ||
     typeof object['credentialStoreEnabled'] !== 'boolean' ||
+    (Object.hasOwn(object, 'unattendedKeys') && typeof object['unattendedKeys'] !== 'boolean') ||
     (Object.hasOwn(object, 'databaseEncryptionEnabled') && typeof object['databaseEncryptionEnabled'] !== 'boolean')
   ) {
     throw new Error('Invalid security.json: expected credentialStoreEnabled boolean with no unknown fields.');
   }
-  return { credentialStoreEnabled: object['credentialStoreEnabled'] };
+  return {
+    credentialStoreEnabled: object['credentialStoreEnabled'],
+    ...(object['unattendedKeys'] === true ? { unattendedKeys: true } : {}),
+  };
 }
 
 /** Missing preferences are distinct from explicit opt-out. Errors never include file contents. */

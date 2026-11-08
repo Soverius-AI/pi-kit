@@ -4,7 +4,12 @@
 #   windows  windows-latest (x64)       pnpm run release --only win   -> pi-kit-<v>-win-x64.exe + -portable.exe, pi-kit-<v>-win-arm64.exe + -portable.exe, latest.yml
 #                                       (one run packs both architectures so latest.yml lists both installers; the arm64 build is a cross build)
 #   linux    ubuntu-22.04 / -arm       native x64 and arm64 AppImages, latest-linux.yml / latest-linux-arm64.yml
-#   publish  ubuntu-latest              on a `v*` tag push: automatically publish a GitHub release holding every file.
+#   Each job also writes the server tarballs of its platform (scripts/package-server.mjs): mac darwin-arm64 and darwin-x64,
+#   windows win32-x64 and win32-arm64 (.zip), linux its own; pi-kit-server-<v>-<target>.tar.gz.
+#   publish  ubuntu-latest              on a `v*` tag push: automatically publish a GitHub release holding every file, and
+#                                       SHA256SUMS over the six server tarballs, which `pi-kit update` checks.
+#   npm      ubuntu-latest              @soverius-ai/pi-kit and @soverius-ai/pi-kit-<target>, written from the six server tarballs
+#                                       (scripts/package-npm.mjs) and installed and run on every run; published on a `v*` tag push.
 #   deploy-onboarding ubuntu-latest     after publish on a tag push: ask Coolify to rebuild remote.pi-kit.dev from the tagged commit.
 #
 # Triggers: a `v*` tag push builds every target without smoke tests, then publishes the release. Manual runs build without publishing; smoke tests are opt-in.
@@ -29,6 +34,7 @@
 #                      or an App Store Connect API key: secrets APPLE_API_KEY_BASE64 (the .p8 file, base64; the step below writes it out and points
 #                      APPLE_API_KEY at it) + APPLE_API_KEY_ID + APPLE_API_ISSUER
 #   Windows signing    secret WIN_CSC_LINK          base64 of a code-signing .pfx (or an https URL), secret WIN_CSC_KEY_PASSWORD
+#   npm                secret NPM_TOKEN             an npm token that may publish the @soverius-ai packages (required for tag releases)
 #                      (an EV/HSM or Azure Trusted Signing setup needs electron-builder's `win.azureSignOptions` / a custom sign hook, not wired here)
 # electron-builder reads CSC_LINK / CSC_KEY_PASSWORD for macOS and WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD for Windows; the jobs below map the secrets onto them.
 #
@@ -79,6 +85,7 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           PI_KIT_NOTARIZE: ${{ vars.PI_KIT_NOTARIZE }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           version="$(node -p "require('./package.json').version")"
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
@@ -86,7 +93,7 @@ jobs:
             exit 1
           fi
           missing=0
-          for name in MAC_CSC_LINK MAC_CSC_KEY_PASSWORD MAC_PROVISIONING_PROFILE_BASE64 APPLE_TEAM_ID; do
+          for name in MAC_CSC_LINK MAC_CSC_KEY_PASSWORD MAC_PROVISIONING_PROFILE_BASE64 APPLE_TEAM_ID NPM_TOKEN; do
             if [ -z "${!name}" ]; then
               echo "::error::Required release secret $name is missing"
               missing=1
@@ -153,6 +160,13 @@ jobs:
       - name: Smoke test (zip)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
         run: node scripts/release-smoke.mjs dist/release/pi-kit-*-mac-arm64.zip
+      # Intel Macs get the server only; its backend is staged from the same build. The archives join dist/release because
+      # upload-artifact keeps the paths below the files' common folder, and the publish job takes every file from the top.
+      - name: Server tarballs (darwin-arm64, darwin-x64)
+        run: |
+          node scripts/package-stage.mjs --skip-build --target darwin-x64
+          node scripts/package-server.mjs --target darwin-arm64 --target darwin-x64
+          mv dist/server/pi-kit-server-* dist/release/
       - uses: actions/upload-artifact@v4
         with:
           name: release-mac
@@ -162,6 +176,7 @@ jobs:
             dist/release/*.zip
             dist/release/*.blockmap
             dist/release/latest-mac.yml
+            dist/release/pi-kit-server-*
 
   windows:
     needs: preflight
@@ -178,10 +193,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      # Avoid pnpm's hoisted importer on Windows: importing nested packages can fail with
-      # ENOENT when renaming _tmp_* directories (seen with the SQLite alias under @ag-ui/client).
-      # Public hoisting keeps root node_modules lookups used by Nx and the build scripts working.
-      - run: pnpm install --frozen-lockfile --node-linker=isolated --shamefully-hoist
+      # Before pnpm 11.22.0 the hoisted importer lost files on Windows in workspaces with patchedDependencies (the SQLite
+      # package, electron-builder's NSIS templates); this job used an isolated install that `pnpm run` re-imported anyway.
+      - run: pnpm install --frozen-lockfile
       - name: Build the Windows apps (x64 and arm64)
         run: pnpm run release --only win
         env:
@@ -196,6 +210,10 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
         continue-on-error: true
         run: node scripts/release-smoke.mjs dist/release/pi-kit-*-win-x64.exe
+      - name: Server zips (win32-x64, win32-arm64)
+        run: |
+          node scripts/package-server.mjs --target win32-x64 --target win32-arm64
+          mv dist/server/pi-kit-server-* dist/release/
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
@@ -204,6 +222,7 @@ jobs:
             dist/release/*.exe
             dist/release/*.blockmap
             dist/release/latest.yml
+            dist/release/pi-kit-server-*
 
   linux:
     needs: preflight
@@ -241,6 +260,10 @@ jobs:
       - name: Smoke test (AppImage)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
         run: xvfb-run -a node scripts/release-smoke.mjs dist/release/pi-kit-*-linux-${{ matrix.appimageArch }}.AppImage
+      - name: Server tarball (linux-${{ matrix.arch }})
+        run: |
+          node scripts/package-server.mjs --target linux-${{ matrix.arch }}
+          mv dist/server/pi-kit-server-* dist/release/
       - uses: actions/upload-artifact@v4
         with:
           name: release-linux-${{ matrix.arch }}
@@ -248,6 +271,7 @@ jobs:
           path: |
             dist/release/*.AppImage
             dist/release/latest-linux*.yml
+            dist/release/pi-kit-server-*
 
   publish:
     if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
@@ -273,6 +297,19 @@ jobs:
             echo "::error::the app looks for updates in $owner/$repo, but this release goes to $GITHUB_REPOSITORY"
             exit 1
           fi
+      - name: Every server tarball, and their SHA256SUMS
+        run: |
+          cd release
+          for target in darwin-arm64 darwin-x64 linux-arm64 linux-x64 win32-arm64 win32-x64; do
+            case $target in win32-*) ext=zip ;; *) ext=tar.gz ;; esac
+            archive="pi-kit-server-${GITHUB_REF_NAME#v}-$target.$ext"
+            if [ ! -f "$archive" ]; then
+              echo "::error::$archive is missing"
+              exit 1
+            fi
+          done
+          sha256sum pi-kit-server-* > SHA256SUMS
+          cat SHA256SUMS
       - name: Publish the GitHub release (or replace assets on rerun)
         run: |
           ls -l release
@@ -284,6 +321,54 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ github.token }}
+
+  # Every run: the npm packages from this run's server tarballs, installed as a user would and run. A `v*` tag push publishes
+  # them with provenance, the platform packages before the launcher that names them; a version npm already has is skipped,
+  # so a rerun publishes only what is missing.
+  npm:
+    needs: [mac, windows, linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - name: Write the npm packages
+        run: node scripts/package-npm.mjs --from release --out npm
+      - name: Install the launcher and linux-x64 package as a user would, and run pi-kit
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          mkdir packs
+          npm pack ./npm/linux-x64 ./npm/pi-kit --pack-destination packs
+          npm install -g --prefix "$RUNNER_TEMP/pi-kit" ./packs/*.tgz # without ./ npm reads packs/<file> as a GitHub repository
+          reported="$(PI_KIT_DATA_DIR="$RUNNER_TEMP/pi-kit-data" "$RUNNER_TEMP/pi-kit/bin/pi-kit" --version)"
+          echo "$reported"
+          [ "$reported" = "pi-kit $version" ]
+      - name: Publish to npm
+        if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          case $version in *-*) tag=next ;; *) tag=latest ;; esac
+          for dir in npm/darwin-* npm/linux-* npm/win32-* npm/pi-kit; do
+            name="$(node -p "require('./$dir/package.json').name")"
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already on npm"
+              continue
+            fi
+            npm publish "./$dir" --access public --provenance --tag "$tag"
+          done
 
   # remote.pi-kit.dev follows the tag: Coolify rebuilds the onboarding site from the tagged commit once the release is public,
   # so its download link never points at a release that does not exist yet. Needs the three COOLIFY_* secrets (doc/docs/remote-onboarding-site.md).

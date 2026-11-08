@@ -66,6 +66,12 @@ run(
     'electron-builder.config.cjs',
   ],
   // The config reuses the workspace's own Electron when the one target is the machine's (no download); the other targets download theirs once into electron's cache.
-  { PI_KIT_BUILD_PLATFORM: group.platform, PI_KIT_BUILD_ARCHS: archs.join(',') },
+  // Windows: 7-Zip 23+ packs ARM64 executables with its ARM64 filter, which the NSIS installer's extractor cannot read, so the
+  // arm64 installer skipped pi-kit.exe and every DLL and still exited 0. BCJ is the filter that extractor knows.
+  {
+    PI_KIT_BUILD_PLATFORM: group.platform,
+    PI_KIT_BUILD_ARCHS: archs.join(','),
+    ...(group.platform === 'win32' ? { ELECTRON_BUILDER_7Z_FILTER: 'BCJ' } : {}),
+  },
 );
 console.log(`packed ${group.platform} (${archs.join(', ')}${values.dir ? ', --dir' : ''}) in ${seconds(started)}`);

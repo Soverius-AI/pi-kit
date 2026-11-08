@@ -11,7 +11,13 @@ vi.mock('electron', () => ({
   },
 }));
 vi.mock('electron-updater', () => ({
-  autoUpdater: { on: vi.fn(), isUpdaterActive: vi.fn(() => true), checkForUpdates: vi.fn(), downloadUpdate: vi.fn() },
+  autoUpdater: {
+    on: vi.fn(),
+    isUpdaterActive: vi.fn(() => true),
+    checkForUpdates: vi.fn(),
+    downloadUpdate: vi.fn(),
+    quitAndInstall: vi.fn(),
+  },
 }));
 
 beforeEach(() => vi.clearAllMocks());
@@ -122,5 +128,46 @@ describe('release notes', () => {
         { version: '0.8.10', html: '<p>Features</p>' },
       ],
     });
+  });
+});
+
+describe('matching a service that a newer install runs', () => {
+  const published = (version: string) => ({ isUpdateAvailable: true, updateInfo: { version, releaseNotes: '' } });
+
+  it.each(['0.12.0', '0.13.0'])(
+    'installs the published %s for a 0.12.0 service and quits to do it',
+    async (version) => {
+      vi.mocked(autoUpdater.checkForUpdates).mockResolvedValueOnce(published(version) as never);
+      // As electron-updater does: a finished download is reported, and only then is it installable.
+      vi.mocked(autoUpdater.downloadUpdate).mockImplementationOnce(async () => {
+        const downloaded = vi.mocked(autoUpdater.on).mock.calls.find(([event]) => event === 'update-downloaded')?.[1];
+        (downloaded as ((info: { version: string }) => void) | undefined)?.({ version });
+        return [];
+      });
+      expect(await new AppUpdater(vi.fn()).updateTo('0.12.0')).toBe(true);
+      expect(autoUpdater.downloadUpdate).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(autoUpdater.quitAndInstall).toHaveBeenCalledOnce());
+    },
+  );
+
+  it.each([
+    [
+      'only an older release',
+      () => vi.mocked(autoUpdater.checkForUpdates).mockResolvedValueOnce(published('0.11.5') as never),
+    ],
+    [
+      'no newer release',
+      () => vi.mocked(autoUpdater.checkForUpdates).mockResolvedValueOnce({ isUpdateAvailable: false } as never),
+    ],
+    ['a failing feed', () => vi.mocked(autoUpdater.checkForUpdates).mockRejectedValueOnce(new Error('offline'))],
+    [
+      'a feed that does not answer',
+      () => vi.mocked(autoUpdater.checkForUpdates).mockReturnValueOnce(new Promise(() => undefined)),
+    ],
+  ])('leaves the app as it is with %s', async (_, feed) => {
+    feed();
+    expect(await new AppUpdater(vi.fn()).updateTo('0.12.0', 20)).toBe(false);
+    expect(autoUpdater.downloadUpdate).not.toHaveBeenCalled();
+    expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled();
   });
 });

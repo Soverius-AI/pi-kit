@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PairingPage } from './phone-pairing-page';
 
-const publicRoot = resolve(__dirname, '../../renderer/public');
+const publicRoot = resolve(__dirname, '../../../../apps/renderer/public');
 describe('installable phone metadata', () => {
   it('uses one standalone identity, no pairing secrets, and matching production icons', () => {
     const manifest = JSON.parse(readFileSync(resolve(publicRoot, 'manifest.webmanifest'), 'utf8'));
@@ -31,7 +31,7 @@ describe('installable phone metadata', () => {
     }
   });
   it('exposes the same manifest and Home Screen identity before and after pairing', () => {
-    const index = readFileSync(resolve(__dirname, '../../renderer/src/index.html'), 'utf8');
+    const index = readFileSync(resolve(__dirname, '../../../../apps/renderer/src/index.html'), 'utf8');
     const pairing = PairingPage.html('test-nonce');
     for (const html of [index, pairing]) {
       expect(html).toContain('rel="manifest" href="/manifest.webmanifest"');

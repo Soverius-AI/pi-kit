@@ -139,8 +139,8 @@ export const settingsSections = (translate: Translate): readonly SettingsSection
 
 export const SETTINGS_NAV_GROUPS: readonly SettingsNavGroup[] = ['App', 'pi', 'Workspace'];
 
-/** Where a setting lives: one of pi’s own files, pi-kit’s SQLite database, the folder’s `.pi/`, or macOS itself (a privacy permission it grants the app). */
-export type SettingsStorage = 'pi' | 'pi-kit' | 'project' | 'macos';
+/** Where a setting lives: one of pi’s own files, pi-kit’s SQLite database, the folder’s `.pi/`, macOS itself (a privacy permission it grants the app), or the system's sign-in services. */
+export type SettingsStorage = 'pi' | 'pi-kit' | 'project' | 'macos' | 'system';
 
 export interface SettingEntry {
   id: string;
@@ -169,6 +169,24 @@ export const settingsCatalog = (translate: Translate): readonly SettingEntry[] =
     keywords: 'language locale english german deutsch sprache',
   },
   // ---- General
+  {
+    id: 'background-service',
+    section: 'general',
+    group: translate('settings.background.heading'),
+    name: translate('shared.catalog.keepRunningWhenClosed'),
+    description: translate('shared.catalog.keepRunningWhenClosedHint'),
+    storage: 'system',
+    keywords: 'background service daemon always on sign in login startup launchd systemd autostart quit close',
+  },
+  {
+    id: 'unattended-keys',
+    section: 'general',
+    group: translate('settings.background.heading'),
+    name: translate('settings.background.unattendedName'),
+    description: translate('settings.background.unattendedHint'),
+    storage: 'pi-kit',
+    keywords: 'touch id keychain away unattended overnight background service keys fingerprint',
+  },
   {
     id: 'auto-compaction',
     section: 'general',
@@ -987,6 +1005,7 @@ export function sectionById(translate: Translate, id: SettingsSectionId): Settin
 export function storageLabel(translate: Translate, entry: Pick<SettingEntry, 'storage' | 'file'>): string {
   if (entry.storage === 'pi-kit') return translate('shared.catalog.piKitDatabase');
   if (entry.storage === 'macos') return 'macOS';
+  if (entry.storage === 'system') return translate('shared.catalog.signInItems');
   if (entry.storage === 'project')
     return translate('shared.catalog.projectPi', { value1: entry.file ?? 'settings.json' });
   return `pi ${entry.file ?? 'settings.json'}`;
@@ -996,6 +1015,7 @@ export function storageLabel(translate: Translate, entry: Pick<SettingEntry, 'st
 export function storageTitle(translate: Translate, entry: Pick<SettingEntry, 'storage' | 'file'>): string {
   if (entry.storage === 'pi-kit') return translate('shared.catalog.storedInPiKitSOwnSQLite');
   if (entry.storage === 'macos') return translate('shared.catalog.grantedByMacOS');
+  if (entry.storage === 'system') return translate('shared.catalog.registeredToStartAtSignIn');
   if (entry.storage === 'project')
     return translate('shared.catalog.storedInTheFolderSPi', { value1: entry.file ?? 'settings.json' });
   return translate('shared.catalog.storedInPiSInItsAgent', { value1: entry.file ?? 'settings.json' });

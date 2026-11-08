@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { PairingPage } from './phone-pairing-page';
 
-const script = readFileSync(resolve(__dirname, '../../renderer/public/phone/pairing.js'), 'utf8');
+const script = readFileSync(resolve(__dirname, '../../../../apps/renderer/public/phone/pairing.js'), 'utf8');
 const code = 'ABCDEFGHIJKL';
 function element() {
   const listeners = new Map<string, (event: unknown) => unknown>();

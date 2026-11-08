@@ -36,7 +36,13 @@ export class RendererFiles {
   }
 
   /** A renderer file under the root; extensionless navigations fall back to the app shell, which only a paired device gets. */
-  async serve(path: string, req: IncomingMessage, res: ServerResponse, authenticated: boolean): Promise<void> {
+  async serve(
+    path: string,
+    req: IncomingMessage,
+    res: ServerResponse,
+    authenticated: boolean,
+    connection: 'device' | 'owner' = 'device',
+  ): Promise<void> {
     const root = await realpath(this.rendererRoot);
     let file: string;
     let index = path === '/' || path === '/index.html';
@@ -61,7 +67,7 @@ export class RendererFiles {
     if (index) {
       const html = (await readFile(file, 'utf8')).replace(
         /<head(?:\s[^>]*)?>/i,
-        '$&<meta name="pi-kit-connection" content="device">',
+        `$&<meta name="pi-kit-connection" content="${connection}">`,
       );
       res.end(req.method === 'HEAD' ? undefined : html);
     } else if (req.method === 'HEAD') res.end();

@@ -2,9 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
-import { RemoteAccess } from '../../apps/desktop/src/remote-access';
-import { RemoteAccessStores } from '../../apps/desktop/src/remote-access-store';
-import { InstanceKeyStore } from '../../apps/desktop/src/instance-key';
+import { RemoteAccess } from '../../libs/shared/service-host/src/remote-access';
+import { RemoteAccessStores } from '../../libs/shared/service-host/src/remote-access-store';
+import { InstanceKeyStore } from '../../libs/shared/service-host/src/instance-key';
 import { fixtureEncryption, startBackend, until } from './instance';
 
 const root = process.env['PI_KIT_TAILNET_TEST_ROOT']!,

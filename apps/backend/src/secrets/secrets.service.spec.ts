@@ -440,4 +440,31 @@ describe('SecretsService', () => {
       expect(new FileSecretStore(path).get('openrouter')).toBe('sk-or-shared');
     });
   });
+
+  describe('keys readable while away', () => {
+    it('keeps the choice for the next start and points the pi-kit-secret launcher pi runs at the copies', async () => {
+      asPlatform('darwin');
+      const store: SecretStore = {
+        kind: 'keychain',
+        label: 'macOS Keychain (Touch ID)',
+        protected: true,
+        helperResolver: true,
+        unattendedKeys: false,
+        available: () => true,
+        get: () => undefined,
+        set: () => undefined,
+        delete: () => false,
+        list: () => [],
+        setUnattended: async (enabled) => void Object.assign(store, { unattendedKeys: enabled }),
+      };
+      const { service, dataDir } = make(store);
+      writeSecurityPreferences(dataDir, { credentialStoreEnabled: true });
+
+      expect((await service.setUnattended(true)).unattended).toBe(true);
+      expect(readSecurityPreferences(dataDir)).toEqual({ credentialStoreEnabled: true, unattendedKeys: true });
+      expect(readFileSync(join(dataDir, 'bin', 'pi-kit-secret'), 'utf8')).toContain(
+        "PI_KIT_SECRET_STORE='macos-unattended'",
+      );
+    });
+  });
 });

@@ -54,7 +54,7 @@ describe('ViewPrefs', () => {
   it('keeps localhost certificate exceptions off by default and syncs only the explicit boolean preference to the desktop', async () => {
     const previous = window.piKit;
     const apply = vi.fn(async () => undefined);
-    window.piKit = { getBackendUrl: async () => '', getToken: async () => '', setBrowserLocalCertificates: apply };
+    window.piKit = { getBackendUrl: async () => '', setBrowserLocalCertificates: apply };
     try {
       const prefs = TestBed.inject(ViewPrefs);
       TestBed.tick();

@@ -11,13 +11,17 @@
       "options": {
         "outputPath": "dist/apps/desktop",
         "main": "apps/desktop/src/main.ts",
-        "additionalEntryPoints": ["apps/desktop/src/preload.ts", "apps/desktop/src/screenshot-encoder-preload.ts"],
+        "additionalEntryPoints": [
+          "apps/desktop/src/preload.ts",
+          "apps/desktop/src/screenshot-encoder-preload.ts",
+          "apps/desktop/src/service-host.ts"
+        ],
         "tsConfig": "apps/desktop/tsconfig.app.json",
         "platform": "node",
         "format": ["cjs"],
         "bundle": true,
         "thirdParty": true,
-        "external": ["electron"],
+        "external": ["electron", "@napi-rs/keyring", "keychain-store"],
         "assets": [
           {
             "glob": "splash.html",

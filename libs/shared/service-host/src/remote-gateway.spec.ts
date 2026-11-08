@@ -313,6 +313,23 @@ describe('RemoteGateway', () => {
     expect(index.headers['content-security-policy']).toContain("font-src 'self' data: https://fonts.gstatic.com");
     expect(index.headers['content-security-policy']).toContain("connect-src 'self'; frame-src 'none'");
   });
+  it('lets a paired browser finish or skip onboarding without bypassing cookie, CSRF, or Origin checks', async () => {
+    const { call, pair, upstreamPaths } = await fixture();
+    const path = '/api/setup/state';
+    const body = { state: 'completed' };
+    expect((await call(path, { method: 'POST', body })).status).toBe(401);
+    const session = await pair();
+    expect((await call(path, { method: 'POST', headers: { Cookie: session.cookie }, body })).status).toBe(401);
+    expect(
+      (await call(path, { method: 'POST', headers: { Authorization: `Bearer ${session.token}` }, body })).status,
+    ).toBe(401);
+    for (const Origin of ['', 'https://evil.test'])
+      expect((await call(path, { method: 'POST', headers: { ...session.headers, Origin }, body })).status).toBe(403);
+    expect(upstreamPaths).toEqual([]);
+    for (const state of ['completed', 'skipped'])
+      expect((await call(path, { method: 'POST', headers: session.headers, body: { state } })).status).toBe(200);
+    expect(upstreamPaths).toEqual([path, path]);
+  });
   it('denies unreviewed administrative, browser, and sandbox routes even with a valid session', async () => {
     const { call, pair } = await fixture();
     const { headers } = await pair();
@@ -333,7 +350,15 @@ describe('RemoteGateway', () => {
       '/api/mcp/file',
     ])
       expect((await call(path, { headers })).status, path).toBe(403);
-    for (const path of ['/api/settings/key', '/api/resources/toggle', '/api/providers/remove'])
+    for (const path of [
+      '/api/settings/key',
+      '/api/resources/toggle',
+      '/api/providers/remove',
+      '/api/setup/local/test',
+      '/api/setup/local/save',
+      '/api/setup/ready',
+      '/api/setup/scratch',
+    ])
       expect((await call(path, { method: 'POST', headers, body: {} })).status).toBe(403);
     expect((await call('/api/threads', { method: 'POST', headers, body: {} })).status).toBe(200);
     expect((await call('/api/copilotkit', { method: 'POST', headers, body: {} })).status).toBe(200);

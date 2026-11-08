@@ -25,6 +25,22 @@ describe('isReviewedRemoteApi', () => {
     expect(isReviewedRemoteApi('/api/health', 'HEAD')).toBe(false);
   });
 
+  it('allows only onboarding completion, not setup administration', () => {
+    expect(isReviewedRemoteApi('/api/setup/state', 'POST')).toBe(true);
+    for (const method of ['GET', 'PUT', 'PATCH', 'DELETE'])
+      expect(isReviewedRemoteApi('/api/setup/state', method)).toBe(false);
+    for (const path of [
+      '/api/setup/local/test',
+      '/api/setup/local/save',
+      '/api/setup/ready',
+      '/api/setup/scratch',
+      '/api/setup/local-runtime',
+      '/api/auth/login',
+      '/api/providers/remove',
+    ])
+      expect(isReviewedRemoteApi(path, 'POST'), path).toBe(false);
+  });
+
   it('rejects raw paths with traversal or control characters', () => {
     expect(isRemoteApiPath('/api/threads/a%2Fb')).toBe(true);
     expect(isRemoteApiPath('/api/threads/../x')).toBe(false);

@@ -32,7 +32,7 @@ async function start(): Promise<void> {
   let entryId = readStorage('pi-kit.entryInstance', 'controller') ?? undefined;
   try {
     const response = await fetch(entryUrl + '/api/instance', {
-      headers: { authorization: `Bearer ${token}` },
+      headers: token ? { authorization: `Bearer ${token}` } : {},
       ...(entry.mode === 'phone' ? { credentials: 'same-origin' } : {}),
       redirect: 'error',
     });

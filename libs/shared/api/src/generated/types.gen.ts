@@ -2030,6 +2030,7 @@ export type SecretsStatus = {
     cliOnPath: boolean;
     cliInstallDir?: string;
     cliNeeded: boolean;
+    unattended?: boolean;
 };
 
 export type SessionContext = {
@@ -2690,6 +2691,10 @@ export type TrustState = {
         path: string;
         servers?: number;
     }>;
+};
+
+export type UnattendedKeys = {
+    enabled: boolean;
 };
 
 export type UpdateEvent = {
@@ -6784,6 +6789,35 @@ export type SecretsCredentialStorageResponses = {
 };
 
 export type SecretsCredentialStorageResponse = SecretsCredentialStorageResponses[keyof SecretsCredentialStorageResponses];
+
+export type SecretsUnattendedData = {
+    body: UnattendedKeys;
+    path?: never;
+    query?: never;
+    url: '/api/secrets/unattended';
+};
+
+export type SecretsUnattendedErrors = {
+    /**
+     * There is no Touch ID storage, or Touch ID was cancelled.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type SecretsUnattendedError = SecretsUnattendedErrors[keyof SecretsUnattendedErrors];
+
+export type SecretsUnattendedResponses = {
+    /**
+     * OK
+     */
+    200: SecretsStatus;
+};
+
+export type SecretsUnattendedResponse = SecretsUnattendedResponses[keyof SecretsUnattendedResponses];
 
 export type SecretsRetryData = {
     body?: never;

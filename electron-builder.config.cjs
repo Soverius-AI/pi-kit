@@ -3,8 +3,10 @@
 // (`scripts/package.mjs <mac|win|linux>`); the architectures come from the command line.
 //
 // Layout of the packed app:
-//   Resources/app.asar        desktop/{main,preload}.cjs, splash.html, icon.png and renderer/browser (the shell)
-//   Resources/backend/        main.js (Nest + CopilotKit bundled), migrations/, packages/, assets/{pi,needle}, pi-kit-secret.cjs
+//   Resources/app.asar        desktop/{main,preload}.cjs, splash.html, icon.png (the shell)
+//   Resources/renderer/       browser/: the Angular production build, served on app://pi-kit/ and by the service host
+//   Resources/backend/        main.js (Nest + CopilotKit bundled), service-host.cjs (runs main.js), migrations/, packages/,
+//                             assets/{pi,needle}, pi-kit-secret.cjs, pi-kit.cjs (the `pi-kit service` command)
 //                             and node_modules/ (built native loaders + binaries for the target's architecture), staged from
 //                             Nx production outputs and copied by scripts/builder-after-pack.cjs
 // The backend is an extra resource, not part of the asar: it is started with ELECTRON_RUN_AS_NODE from there, and the native
@@ -20,7 +22,7 @@ const notarize = notarizationEnabled();
 // "toolsets" ship arm64 builds. Other hosts keep the classic tools. PI_KIT_TOOLSETS=classic|beta forces either.
 const toolsetChoice =
   process.env.PI_KIT_TOOLSETS || (process.platform === 'darwin' && process.arch === 'arm64' ? 'beta' : 'classic');
-const [updateOwner, updateRepo] = (process.env.PI_KIT_UPDATE_REPO || 'Soverius-AI/pi-kit').split('/');
+const [updateOwner, updateRepo] = require('./scripts/release-repo.cjs').split('/');
 
 /** @type {import('electron-builder').Configuration} */
 module.exports = {

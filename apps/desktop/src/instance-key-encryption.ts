@@ -1,5 +1,5 @@
 import type { SafeStorage } from 'electron';
-import type { InstanceKeyEncryption } from './instance-key';
+import type { InstanceKeyEncryption } from '@pi-kit/service-host';
 
 /** Async Electron adapter. Linux's plaintext fallback is never accepted for a reusable instance key. */
 export class SafeStorageEncryption implements InstanceKeyEncryption {

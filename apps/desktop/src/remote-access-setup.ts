@@ -1,6 +1,7 @@
 import type { Shell } from 'electron';
 import { join } from 'node:path';
 import type { RemoteAccessSetupAction } from '@pi-kit/protocol';
+import { tailscaleApprovalUrl } from '@pi-kit/service-host';
 
 /** Explicit user actions only. Does not run up/down, install certificates, or edit tailnet policy. */
 export class RemoteAccessSetup {
@@ -11,23 +12,10 @@ export class RemoteAccessSetup {
     private readonly platform: NodeJS.Platform = process.platform,
   ) {}
 
-  /** A CLI can supply only a Tailscale-owned approval page, never an arbitrary URL. */
-  static approvalUrl(value: string | undefined): string | undefined {
-    if (!value || value.length > 2048) return;
-    try {
-      const url = new URL(value);
-      if (url.origin !== 'https://login.tailscale.com' || url.username || url.password || url.hash) return;
-      if (url.pathname !== '/admin/dns' && !/^\/f\/(?:serve|https)(?:\/|$)/.test(url.pathname)) return;
-      return url.href;
-    } catch {
-      return;
-    }
-  }
-
   async open(action: RemoteAccessSetupAction, approvalUrl?: string): Promise<void> {
     if (action === 'https') return this.page(RemoteAccessSetup.HTTPS_SETTINGS);
     if (action === 'authorize') {
-      const url = RemoteAccessSetup.approvalUrl(approvalUrl);
+      const url = tailscaleApprovalUrl(approvalUrl);
       if (!url) throw new Error('No HTTPS approval link is available. Open Tailscale HTTPS settings and check again.');
       return this.page(url);
     }

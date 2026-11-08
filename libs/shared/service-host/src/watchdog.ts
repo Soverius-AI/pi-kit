@@ -57,7 +57,7 @@ export type WatchdogState = 'starting' | 'running' | 'restarting' | 'failed' | '
 
 export interface WatchdogStatus {
   state: WatchdogState;
-  /** How many times the backend came back after a failure since the app started. */
+  /** How many times the backend came back after a failure since the host started. */
   restarts: number;
   /** For `restarting`: which consecutive failure this is and how long until the next attempt. */
   attempt?: number;

@@ -18,7 +18,7 @@ export function startupSecretStore(dataDir: string, env: NodeJS.ProcessEnv = pro
   const protectedProfile = preferences?.credentialStoreEnabled || hasEncryptedDatabase(dataDir);
   const selectedEnv =
     !env['PI_KIT_SECRET_STORE'] && process.platform === 'darwin' && protectedProfile
-      ? { ...env, PI_KIT_SECRET_STORE: 'macos' }
+      ? { ...env, PI_KIT_SECRET_STORE: preferences?.unattendedKeys ? 'macos-unattended' : 'macos' }
       : env;
   return selectSecretStore(selectedEnv);
 }

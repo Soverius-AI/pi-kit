@@ -1,7 +1,8 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import type { RemoteAccessPairing, RemoteAccessSetupAction, RemoteAccessStatus } from '@pi-kit/protocol';
 import { RemoteGateway } from './remote-gateway';
 import type { Backend } from './remote-gateway-proxy';
-import { RemoteAccessSetup } from './remote-access-setup';
+import { tailscaleApprovalUrl } from './tailscale-approval';
 import {
   RemoteAccessStores,
   RemoteStorageError,
@@ -22,6 +23,9 @@ export interface RemoteAccessDependencies extends Pick<TailscaleCli, 'findCli' |
   startupTimeoutMs: number;
   pollIntervalMs: number;
   shutdownTimeoutMs: number;
+  /** A restore that finds Tailscale not ready tries again this often, this many times in all. */
+  restoreRetryMs: number;
+  restoreAttempts: number;
   gatewayFactory(options: RemoteAccessOptions & { publicOrigin: string }): RemoteAccessGateway;
 }
 
@@ -65,7 +69,11 @@ export class RemoteAccess {
     permission: {
       issue: 'permission-denied',
       setupAction: 'tailscale',
-      message: 'Tailscale denied permission. Open Tailscale and check this computer’s access permissions, then retry.',
+      // Linux has no Tailscale app to open: a user who is not root may change Serve only as Tailscale's operator.
+      message:
+        process.platform === 'linux'
+          ? 'Tailscale denied permission. Let your user manage it with "sudo tailscale set --operator=$USER", then retry.'
+          : 'Tailscale denied permission. Open Tailscale and check this computer’s access permissions, then retry.',
     },
     unavailable: {
       state: 'disconnected',
@@ -108,6 +116,8 @@ export class RemoteAccess {
       startupTimeoutMs: 10000,
       pollIntervalMs: 200,
       shutdownTimeoutMs: 1500,
+      restoreRetryMs: 10_000,
+      restoreAttempts: 30,
       gatewayFactory: (options) => new RemoteGateway(options),
       ...dependencies,
     };
@@ -372,14 +382,27 @@ export class RemoteAccess {
     });
   }
 
-  /** Restore only persisted prior consent, after the correct backend/profile is healthy. */
+  /**
+   * Restore only persisted prior consent, after the correct backend/profile is healthy. At boot Tailscale may still be
+   * connecting: while it is not ready, the restore tries again for a few minutes, until the owner enables or disables
+   * remote access themselves.
+   */
   async restore(): Promise<void> {
-    const interaction = this.interaction;
+    let interaction = this.interaction;
     const value = await this.options.preferences?.load();
     // A late startup read must not undo a newer explicit Enable/Disable or mutate an active port.
     if (!value || this.disposed || this.child || interaction !== this.interaction) return;
     this.port = value.httpsPort;
-    if (value.desiredEnabled) await this.start(value.httpsPort);
+    if (!value.desiredEnabled) return;
+    for (let attempt = 1; ; attempt++) {
+      const starting = this.start(value.httpsPort);
+      interaction = this.interaction;
+      const { issue } = await starting;
+      if ((issue !== 'connection-required' && issue !== 'status-failed') || attempt >= this.deps.restoreAttempts)
+        return;
+      await delay(this.deps.restoreRetryMs);
+      if (this.disposed || interaction !== this.interaction) return;
+    }
   }
 
   stop(): Promise<RemoteAccessStatus> {
@@ -451,7 +474,7 @@ export class RemoteAccess {
 
   private processGuidance(output: string): RemoteAccessStatus | undefined {
     for (const candidate of output.match(/https:\/\/[^\s<>"']+/g) ?? []) {
-      const url = RemoteAccessSetup.approvalUrl(candidate);
+      const url = tailscaleApprovalUrl(candidate);
       if (url) {
         this.consentUrl = url;
         return this.fail(

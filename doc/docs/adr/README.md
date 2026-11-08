@@ -59,3 +59,4 @@ Date: YYYY-MM-DD
 | [0033](0033-durable-background-agents.md) | Durable background agents per thread, on pi-durable, shown through AG-UI |
 | [0034](0034-backend-domain-folders-four-roles.md) | Backend folders are one module per domain with four roles |
 | [0035](0035-remote-access-over-the-tailnet.md) | Remote access over the user's tailnet, with paired devices and reciprocal instances |
+| [0036](0036-always-on-service.md) | An always-on service at sign-in or at boot: the backend outlives the window (proposed) |

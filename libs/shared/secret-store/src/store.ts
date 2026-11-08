@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { MacKeychainSecretStore } from './mac-keychain';
@@ -31,6 +32,10 @@ export interface SecretStore {
   delete(account: string): StoreResult<boolean>;
   /** Account names only, never values. */
   list(): StoreResult<string[]>;
+  /** Touch ID storage only: whether copies readable without Touch ID are kept, for a service nobody attends. */
+  readonly unattendedKeys?: boolean;
+  /** Makes or removes those copies; making them reads every key once with Touch ID. */
+  setUnattended?(enabled: boolean): Promise<void>;
 }
 
 /** The operating system's name for its credential store. */
@@ -65,8 +70,16 @@ export class SecretStoreAccessError extends Error {
   }
 }
 
+const LINUX_LOCKED = 'The Secret Service keyring is locked.';
+
 export function accessFailure(error: unknown): CredentialAccess {
   const message = error instanceof Error ? error.message : '';
+  if (message === LINUX_LOCKED)
+    return {
+      state: 'locked',
+      reason:
+        'The login keyring is locked. Unlock it (sign in on the desktop, or in Passwords and Keys), then retry access.',
+    };
   if (/locked|interaction.*not.*allowed|-25308/i.test(message))
     return { state: 'locked', reason: 'The credential store is locked. Unlock it, then retry access.' };
   if (/denied|cancelled|canceled|authorization|authentication.*failed|-25293|(?:^|\D)-128(?:\D|$)/i.test(message))
@@ -75,6 +88,31 @@ export function accessFailure(error: unknown): CredentialAccess {
       reason: 'Credential access was denied or cancelled. Allow access in the operating system, then retry.',
     };
   return { state: 'failed', reason: 'The credential store could not be accessed. Check its availability, then retry.' };
+}
+
+/**
+ * Linux: whether the Secret Service's default collection is locked, asked over D-Bus without unlocking it, or undefined when
+ * that cannot be told. Reading a locked collection makes the daemon prompt, and the native call waits for an answer that a
+ * service nobody watches never gets (SSH sessions, auto-login, a boot-time service).
+ */
+export function secretServiceLocked(): boolean | undefined {
+  try {
+    const answer = execFileSync(
+      'busctl',
+      [
+        '--user',
+        'get-property',
+        'org.freedesktop.secrets',
+        '/org/freedesktop/secrets/aliases/default',
+        'org.freedesktop.Secret.Collection',
+        'Locked',
+      ],
+      { encoding: 'utf8', timeout: 5_000, stdio: ['ignore', 'pipe', 'ignore'] },
+    ).trim();
+    return answer === 'b true' ? true : answer === 'b false' ? false : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The OS credential store through `@napi-rs/keyring` (Keychain, Credential Manager, Secret Service), service `pi-kit`, one entry per account. */
@@ -88,6 +126,7 @@ export class KeyringSecretStore implements SecretStore {
   constructor(
     private readonly load: () => KeyringModule = () => require('@napi-rs/keyring') as KeyringModule,
     platform: NodeJS.Platform = process.platform,
+    private readonly locked: () => boolean | undefined = secretServiceLocked,
   ) {
     this.label = osStoreLabel(platform);
     this.platform = platform;
@@ -138,6 +177,7 @@ export class KeyringSecretStore implements SecretStore {
     const previous = this.blocked.get(account);
     if (previous) throw previous;
     try {
+      if (this.platform === 'linux' && this.available() && this.locked() === true) throw new Error(LINUX_LOCKED);
       const result = action();
       this.accessed = true;
       return result;
@@ -273,7 +313,7 @@ let selected: SecretStore | undefined;
 let selectedFor: string | undefined;
 
 /**
- * The store this process uses. `PI_KIT_SECRET_STORE` decides: `macos`, `legacy`, `memory`, `file:<path>`, or `none`. Unset disables storage on macOS;
+ * The store this process uses. `PI_KIT_SECRET_STORE` decides: `macos`, `macos-unattended`, `legacy`, `memory`, `file:<path>`, or `none`. Unset disables storage on macOS;
  * other platforms use the operating system credential store when available. Tests and e2e runs set it so nothing reaches a real keychain. The choice is made once per distinct setting.
  */
 export function selectSecretStore(env: NodeJS.ProcessEnv = process.env, fresh = false): SecretStore {
@@ -285,8 +325,11 @@ export function selectSecretStore(env: NodeJS.ProcessEnv = process.env, fresh = 
   else if (setting.startsWith('file:')) store = new FileSecretStore(setting.slice('file:'.length));
   else if (setting === 'legacy') store = new KeyringSecretStore();
   else if (setting === 'macos') store = new MacKeychainSecretStore(env);
+  else if (setting === 'macos-unattended') store = new MacKeychainSecretStore(env, undefined, undefined, true);
   else if (setting !== '')
-    throw new Error('Unknown PI_KIT_SECRET_STORE setting. Use macos, legacy, memory, file:<path>, or none.');
+    throw new Error(
+      'Unknown PI_KIT_SECRET_STORE setting. Use macos, macos-unattended, legacy, memory, file:<path>, or none.',
+    );
   else if (process.platform === 'darwin') store = new NoSecretStore();
   else {
     const keyring = new KeyringSecretStore();

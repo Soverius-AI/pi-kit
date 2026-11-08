@@ -59,18 +59,18 @@ describe('BackendService transport', () => {
     expect(fetch.mock.calls.every(([url]) => url === '/phone/session')).toBe(true);
   });
 
-  it('ignores the phone marker in the trusted Electron renderer', async () => {
+  it('ignores the phone marker in the trusted Electron renderer, whose page holds no backend token', async () => {
     const meta = document.createElement('meta');
     meta.name = 'pi-kit-connection';
     meta.content = 'device';
     document.head.append(meta);
     vi.stubGlobal('piKit', {
       getBackendUrl: async () => 'http://127.0.0.1:1234',
-      getToken: async () => 'desktop-token',
     });
     const connection = createBackendConnection();
     expect(isDeviceConnection()).toBe(false);
-    expect(await connection.token()).toBe('desktop-token');
+    expect(await connection.url()).toBe('http://127.0.0.1:1234');
+    expect(await connection.token()).toBe('');
   });
 
   it('retries a failed phone nonce request without falling back to dev token discovery', async () => {
@@ -131,5 +131,58 @@ describe('BackendService transport', () => {
     expect(new Headers(init?.headers).get('accept')).toBe('application/json');
     expect(new Headers(init?.headers).get('authorization')).toBe('Bearer first');
     expect(new Headers(fetch.mock.calls[1][1]?.headers).get('authorization')).toBe('Bearer second');
+  });
+
+  it('trades the one-time owner link for a token kept in this origin, as a full owner UI rather than a phone', async () => {
+    vi.stubGlobal('piKit', undefined);
+    const meta = document.createElement('meta');
+    meta.name = 'pi-kit-connection';
+    meta.content = 'owner';
+    document.head.append(meta);
+    localStorage.removeItem('pi-kit.owner');
+    const code = 'c'.repeat(43);
+    history.replaceState(null, '', `${location.pathname}#owner=${code}`);
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ token: 'owner-browser-token' }));
+    vi.stubGlobal('fetch', fetch);
+
+    const connection = createBackendConnection();
+    expect(isDeviceConnection()).toBe(false);
+    expect(connection.mode).toBe('owner');
+    expect(await connection.token()).toBe('owner-browser-token');
+    expect(location.hash).toBe('');
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).toBe('/owner/session');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({ code });
+
+    expect(await createBackendConnection().token()).toBe('owner-browser-token');
+    expect(fetch).toHaveBeenCalledOnce();
+    localStorage.removeItem('pi-kit.owner');
+  });
+
+  it('signs the owner browser out only when the owner listener itself refuses its token', async () => {
+    localStorage.setItem('pi-kit.owner', 'owner-browser-token');
+    const connection: BackendConnection = {
+      mode: 'owner',
+      url: async () => window.location.origin,
+      token: async () => 'owner-browser-token',
+    };
+    TestBed.configureTestingModule({ providers: [{ provide: BACKEND_CONNECTION, useValue: connection }] });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json({ error: 'peer refused' }, { status: 401 }))
+      .mockResolvedValueOnce(
+        Response.json(
+          { error: 'Sign-in required' },
+          { status: 401, headers: { 'WWW-Authenticate': 'Bearer realm="pi-kit-owner"' } },
+        ),
+      );
+    vi.stubGlobal('fetch', fetch);
+    const transport = TestBed.inject(BackendService);
+
+    await transport.fetch('/api/instances/peer/proxy/api/threads');
+    expect(localStorage.getItem('pi-kit.owner')).toBe('owner-browser-token');
+    await transport.fetch('/api/threads');
+    expect(localStorage.getItem('pi-kit.owner')).toBeNull();
   });
 });

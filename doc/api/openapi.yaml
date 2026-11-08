@@ -4244,6 +4244,39 @@ paths:
       summary: Choose credential storage
       tags:
         - secrets
+  /api/secrets/unattended:
+    put:
+      description: 'macOS Touch ID storage only: copies every key to a Keychain item this app reads without Touch ID (one Touch ID prompt per key), or removes the copies. Never returns a key.'
+      operationId: Secrets_unattended
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnattendedKeys'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecretsStatus'
+        '400':
+          description: There is no Touch ID storage, or Touch ID was cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Keep keys readable while away
+      tags:
+        - secrets
   /api/secrets/retry:
     post:
       description: Allows credential operations again after an access failure. Does not read or modify a credential itself.
@@ -8294,6 +8327,7 @@ paths:
       summary: Record how the onboarding ended
       tags:
         - setup
+      x-remote: true
   /api/setup/local/test:
     post:
       description: 'Asks a server at a base URL which models it lists. A server that does not answer is a result with `ok: false`, not an error.'
@@ -16166,6 +16200,8 @@ components:
           type: string
         cliNeeded:
           type: boolean
+        unattended:
+          type: boolean
       required:
         - store
         - label
@@ -18406,6 +18442,14 @@ components:
         - status
         - source
         - resources
+      additionalProperties: false
+    UnattendedKeys:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required:
+        - enabled
       additionalProperties: false
     UpdateEvent:
       oneOf:

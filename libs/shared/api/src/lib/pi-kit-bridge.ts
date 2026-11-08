@@ -1,14 +1,32 @@
 // eslint-disable-next-line @nx/enforce-module-boundaries -- Type-only Electron IPC contract; protocol validators never enter the transport runtime.
 import type { RemoteAccessSetupAction, RemoteAccessStatus } from '@pi-kit/protocol';
 
-/** API exposed by apps/desktop/src/preload.ts through contextBridge. */
-/** The backend watchdog's state (apps/desktop/src/watchdog.ts). */
+/** The backend watchdog's state (libs/shared/service-host/src/watchdog.ts, run by the service host). */
 export interface BackendStatus {
   state: 'starting' | 'running' | 'restarting' | 'failed' | 'stopped';
   restarts: number;
   attempt?: number;
   delayMs?: number;
   reason?: string;
+}
+
+/** The `pi-kit` command for a terminal: whether this build has it, where it goes, and whether that folder is on PATH. */
+export interface CommandStatus {
+  available: boolean;
+  dir: string;
+  path: string;
+  installed: boolean;
+  onPath: boolean;
+  /** What another install keeps at `path` (a server install's launcher, a symlink to one), which this app never replaces. */
+  other?: string;
+}
+
+export interface BackgroundServiceStatus {
+  supported: boolean;
+  /** Why it cannot run on this computer, when it cannot. */
+  reason?: string;
+  enabled: boolean;
+  cli?: CommandStatus;
 }
 
 export type TrayThreadState = 'running' | 'waiting';
@@ -28,11 +46,13 @@ export interface TrayLabels {
   noActiveThreads: string;
   showApp: string;
   quit: string;
+  quitAndStop: string;
   tooltip: string;
   waitingMore: string;
   runningMore: string;
 }
 
+/** API exposed by apps/desktop/src/preload.ts through contextBridge. */
 export interface PiKitBridge {
   /** Replaces the actionable running/waiting thread list in the cross-platform system tray. */
   setTrayThreads?(threads: readonly TrayThread[], labels: TrayLabels): Promise<void>;
@@ -59,7 +79,6 @@ export interface PiKitBridge {
   rejectRemotePairing?(id: string): Promise<RemoteAccessStatus>;
   revokeRemoteDevice?(id: string): Promise<RemoteAccessStatus>;
   getBackendUrl(): Promise<string>;
-  getToken(): Promise<string>;
   /** Async native UI cache; undefined in development, where browser storage is used. */
   getUiStorage?(): Promise<Record<string, string> | undefined>;
   setUiStorage?(key: string, value: string): Promise<void>;
@@ -68,6 +87,12 @@ export interface PiKitBridge {
   onBackendStatus?(callback: (status: BackendStatus) => void): () => void;
   /** `/quit`: closes the app; absent in a browser. */
   quit?(): Promise<void>;
+  /** Whether the backend keeps running after the app closes, as a service the operating system starts at sign-in. */
+  getBackgroundService?(): Promise<BackgroundServiceStatus>;
+  /** Moves the backend into the background service or back into the app; the app restarts to do it. */
+  setBackgroundService?(enabled: boolean): Promise<void>;
+  /** Writes the `pi-kit` launcher to a folder on PATH; only on a click. */
+  installCommand?(): Promise<CommandStatus>;
   /** Quits and starts the app again: macOS applies a new Screen Recording grant only to a restarted app (Settings › Computer use); absent in a browser. */
   relaunch?(): Promise<void>;
   /** The native folder picker; `undefined` if cancelled. */

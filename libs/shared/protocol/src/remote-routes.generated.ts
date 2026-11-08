@@ -15,6 +15,7 @@ export const REMOTE_ROUTES: readonly (readonly [method: string, path: string])[]
   ['GET', '/api/settings'],
   ['PUT', '/api/settings/{key}'],
   ['GET', '/api/setup'],
+  ['POST', '/api/setup/state'],
   ['GET', '/api/threads'],
   ['POST', '/api/threads'],
   ['DELETE', '/api/threads/{id}'],

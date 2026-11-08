@@ -138,3 +138,63 @@ describe('Touch ID Keychain storage', () => {
     expect(w.set).toHaveBeenCalledTimes(2);
   });
 });
+
+/** A Keychain that keeps Touch ID items and items without Touch ID apart, and counts the reads that would ask for Touch ID. */
+function keychain() {
+  const agent = mkdtempSync(join(tmpdir(), 'pk-unattended-'));
+  const items = new Map<string, string>();
+  const touchIdReads: string[] = [];
+  let refuse: string | undefined;
+  const open = (options: { authentication: unknown }) => {
+    const kind = options.authentication === 'none' ? 'plain' : 'touch';
+    return {
+      status: async (account: string) => ({ status: items.has(`${kind}:${account}`) ? 'available' : 'missing' }),
+      get: async (account: string) => {
+        if (kind === 'touch') {
+          touchIdReads.push(account);
+          if (account === refuse) throw Object.assign(new Error('User canceled'), { code: 'user_canceled' });
+        }
+        return items.get(`${kind}:${account}`) ?? null;
+      },
+      getOrCreate: async (account: string, value: string) => {
+        if (!items.has(`${kind}:${account}`)) items.set(`${kind}:${account}`, value);
+        return items.get(`${kind}:${account}`) as string;
+      },
+      set: async (account: string, value: string) => void items.set(`${kind}:${account}`, value),
+      remove: async (account: string) => items.delete(`${kind}:${account}`),
+    };
+  };
+  const store = new MacKeychainSecretStore({ PI_CODING_AGENT_DIR: agent }, new MemorySecretStore(), () => ({
+    openKeychainStore: open,
+  }));
+  return { store, items, touchIdReads, refuseOn: (account: string) => (refuse = account) };
+}
+
+describe('keys readable while you are away', () => {
+  it('copies every key, then reads them without Touch ID; switching off removes only the copies', async () => {
+    const k = keychain();
+    await k.store.set(DB_KEY_ACCOUNT, 'd'.repeat(64));
+    await k.store.set('anthropic', 'provider-key');
+
+    await k.store.setUnattended(true);
+    k.touchIdReads.length = 0;
+    expect(await k.store.get(DB_KEY_ACCOUNT)).toBe('d'.repeat(64));
+    expect(await k.store.get('anthropic')).toBe('provider-key');
+    expect(k.touchIdReads).toEqual([]);
+
+    await k.store.setUnattended(false);
+    expect([...k.items.keys()].sort()).toEqual(['touch:anthropic', `touch:${DB_KEY_ACCOUNT}`]);
+  });
+
+  it('removes the copies already made when Touch ID is cancelled for a later key', async () => {
+    const k = keychain();
+    await k.store.set('openai', 'provider-key');
+    await k.store.set(DB_KEY_ACCOUNT, 'd'.repeat(64));
+    // Keys are copied in name order: openai first, then the database key, which is refused.
+    k.refuseOn(DB_KEY_ACCOUNT);
+
+    await expect(k.store.setUnattended(true)).rejects.toThrow();
+    expect([...k.items.keys()].filter((key) => key.startsWith('plain:'))).toEqual([]);
+    expect(k.store.unattendedKeys).toBe(false);
+  });
+});
