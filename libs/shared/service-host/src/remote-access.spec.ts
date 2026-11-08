@@ -39,6 +39,7 @@ function harness(
   } = {},
 ) {
   let config: unknown = options.conflict ?? {};
+  let backendState = options.backend ?? 'Running';
   let target = '';
   let previousConfig: unknown = config;
   let exit!: () => void;
@@ -72,7 +73,7 @@ function harness(
   const run = vi.fn(async (_file: string, args: readonly string[]) => {
     if (args[0] === 'status')
       return JSON.stringify({
-        BackendState: options.backend ?? 'Running',
+        BackendState: backendState,
         Self: { DNSName: `${dns}.` },
         Peer: { secret: 'not for UI' },
       });
@@ -86,6 +87,8 @@ function harness(
     startupTimeoutMs: 35,
     pollIntervalMs: 5,
     shutdownTimeoutMs: 10,
+    restoreRetryMs: 5,
+    restoreAttempts: 4,
   };
   const access = new RemoteAccess(deps, {
     rendererRoot: '/production',
@@ -107,6 +110,9 @@ function harness(
     },
     setConfig(value: unknown) {
       config = value;
+    },
+    setBackend(value: string) {
+      backendState = value;
     },
     exit() {
       config = {};
@@ -166,6 +172,36 @@ describe('RemoteAccess', () => {
     });
     expect(h.launch).not.toHaveBeenCalled();
     expect(h.deps.findCli).not.toHaveBeenCalled();
+  });
+
+  it('restores again while Tailscale is still connecting at boot, until it serves or the owner acts', async () => {
+    const preferences = {
+      load: async () => ({ desiredEnabled: true, httpsPort: 9443 }),
+      save: vi.fn(async () => undefined),
+    };
+    const booting = harness({ backend: 'Starting', stores: { preferences } });
+    const tailscale = booting.run.getMockImplementation()!;
+    let checks = 0;
+    booting.run.mockImplementation(async (file: string, args: readonly string[]) => {
+      if (args[0] === 'status' && ++checks === 2) booting.setBackend('Running');
+      return tailscale(file, args);
+    });
+    await booting.access.restore();
+    expect(booting.launch).toHaveBeenCalledOnce();
+    expect((await booting.access.status()).state).toBe('serving');
+
+    // The owner disables remote access while the restore waits to try again: it gives up after that one attempt.
+    const waiting = harness({ backend: 'Starting', stores: { preferences } });
+    const stillStarting = waiting.run.getMockImplementation()!;
+    let statusChecks = 0;
+    waiting.run.mockImplementation(async (file: string, args: readonly string[]) => {
+      if (args[0] === 'status' && ++statusChecks === 1) void waiting.access.stop();
+      return stillStarting(file, args);
+    });
+    await waiting.access.restore();
+    expect(waiting.launch).not.toHaveBeenCalled();
+    // One restore attempt and stop's own check; without the owner's say, it would try four times.
+    expect(statusChecks).toBe(2);
   });
 
   it('does not let a late restoration override newer explicit Disable consent', async () => {

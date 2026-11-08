@@ -77,8 +77,9 @@ installed**: every install carries its own runtime.
 - **`pi-kit update`** in a server install fetches the release's tarball for its target, checks its SHA-256, stops the
   service, replaces the install and starts the service again. In a desktop install it says to update from the app; in
   an npm install it gives the npm command, with the service stopped around it, since npm owns that folder. On
-  Windows, where the running `node.exe` cannot be renamed, it says how to update by hand until a finisher outside the
-  install does the swap.
+  Windows, where the running `node.exe` cannot be renamed, a finisher makes the swap: a copy of the runtime and CLI
+  beside the download, started through WMI so that a closing SSH session does not end it. It waits for the command to
+  exit, swaps (putting the old install back when that fails), starts the service again and removes the download.
 
 ### §2 Front doors
 

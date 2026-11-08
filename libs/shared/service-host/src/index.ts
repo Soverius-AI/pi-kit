@@ -18,4 +18,5 @@ export * from './service-spec';
 export * from './shell-env';
 export * from './sleep-guard';
 export * from './tailscale-approval';
+export * from './update-cli';
 export * from './watchdog';

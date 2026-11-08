@@ -154,7 +154,7 @@ export interface ManagerInputs extends SpecInputs {
   /** The supervisor's arguments on Windows: the flag, after the app's folder for a development build. */
   supervisorArgs: string[];
   stopHost: () => Promise<void>;
-  /** A server install runs on its own Node, which has no windowless supervisor: Windows gets a scheduled task instead. */
+  /** A server install runs on its own Node: Windows gets a scheduled task that runs `supervisorArgs` on it. */
   server?: boolean;
   /** `boot`: start with nobody signed in. Only macOS has a separate registration for it (a LaunchDaemon). */
   level?: 'login' | 'boot';
@@ -198,14 +198,34 @@ const xmlText = (value: string): string => value.replace(/&/g, '&amp;').replace(
  * its `node.exe` never opens a window. Task Scheduler stores the account's password, so Credential Manager works; `schtasks`
  * asks for it in the terminal.
  */
+/** The account as Windows maps it. In an OpenSSH session USERDOMAIN is the workgroup, which no account belongs to. */
+function windowsAccount(): string {
+  try {
+    return execFileSync('whoami', { encoding: 'utf8' }).trim();
+  } catch {
+    return `${process.env['COMPUTERNAME'] ?? '.'}\\${userInfo().username}`;
+  }
+}
+
+const taskExists = (name: string): boolean => {
+  try {
+    execFileSync('schtasks', ['/Query', '/TN', name], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export class WindowsTaskService implements ServiceManager {
+  readonly startsAtBoot = true;
   private readonly batch: string;
 
   constructor(
     private readonly spec: ServiceSpec,
     private readonly stopHost: () => Promise<void>,
     private readonly terminal: RunCommand = runInTerminal,
-    private readonly user = `${process.env['USERDOMAIN'] ?? '.'}\\${userInfo().username}`,
+    private readonly user = windowsAccount(),
+    private readonly exists: (name: string) => boolean = taskExists,
   ) {
     this.batch = join(spec.env['PI_KIT_DATA_DIR'] ?? spec.logDir, 'service.cmd');
   }
@@ -215,12 +235,7 @@ export class WindowsTaskService implements ServiceManager {
   }
 
   installed(): boolean {
-    try {
-      execFileSync('schtasks', ['/Query', '/TN', this.spec.name], { stdio: 'ignore' });
-      return true;
-    } catch {
-      return false;
-    }
+    return this.exists(this.spec.name);
   }
 
   registered(): string[] | undefined {
@@ -232,9 +247,15 @@ export class WindowsTaskService implements ServiceManager {
   async install(): Promise<boolean> {
     const content = serviceBatch(this.spec);
     const same = existsSync(this.batch) && readFileSync(this.batch, 'utf8') === content;
-    if (same && this.installed()) {
-      await this.start();
-      return false;
+    if (this.installed()) {
+      if (same) {
+        await this.start();
+        return false;
+      }
+      // The task runs the batch by its path: a new batch needs no new task, and so no password.
+      writeFileSync(this.batch, content, { mode: 0o600 });
+      await this.restart();
+      return true;
     }
     mkdirSync(dirname(this.batch), { recursive: true });
     writeFileSync(this.batch, content, { mode: 0o600 });
@@ -274,7 +295,6 @@ export class WindowsTaskService implements ServiceManager {
   }
 }
 
-/** This platform's service manager, or undefined where pi-kit has none. */
 /** Why an app at this location must not register: the path it would register goes away. */
 export function temporaryLocation(
   platform: NodeJS.Platform,
@@ -328,7 +348,7 @@ export function serviceManager(
   if (temporary) return new UnavailableService(temporary);
   if (platform === 'win32')
     return inputs.server
-      ? new WindowsTaskService(serviceSpec(inputs), inputs.stopHost)
+      ? new WindowsTaskService({ ...serviceSpec(inputs), args: inputs.supervisorArgs }, inputs.stopHost)
       : new WindowsRunService(inputs.name, inputs.program, inputs.supervisorArgs, inputs.stopHost);
   if (platform === 'darwin')
     return inputs.level === 'boot'
@@ -350,7 +370,9 @@ export interface BackgroundServiceStatus {
  * itself or no service host at all. An install that is gone has the version `unknown`, so it never counts as newer.
  */
 export function otherInstall(manager: ServiceManager, entry: string): { entry: string; version: string } | undefined {
-  const host = manager.registered()?.find((part) => basename(part) === 'service-host.cjs');
+  // A Windows server install registers its supervisor, the CLI bundle beside the host.
+  const part = manager.registered()?.find((arg) => ['service-host.cjs', 'pi-kit.cjs'].includes(basename(arg)));
+  const host = part && join(dirname(part), 'service-host.cjs');
   if (!host || resolve(host) === resolve(entry)) return undefined;
   return { entry: host, version: existsSync(host) ? bundledVersion(dirname(host)) : 'unknown' };
 }

@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { RemoteAccessStatus } from '@pi-kit/protocol';
 import { type HostDiscovery, liveDiscovery } from './discovery';
 import { connectHostChannel, RpcError, type RpcPeer } from './host-channel';
@@ -47,6 +48,33 @@ export function spawnServiceHost(entry: string, env: NodeJS.ProcessEnv): Spawned
     child.once('error', () => resolve({ code: null, signal: null }));
   });
   return { pid: child.pid, exited };
+}
+
+/**
+ * Keeps a service host running for a supervisor nobody watches (the desktop's Windows sign-in entry, the scheduled task of a
+ * Windows server install, which restarts nothing that exits): started again after a crash with a growing pause, ended by a
+ * clean exit (stopped on purpose, or another host owns the folder), and given up after six quick failures in a row.
+ */
+export async function superviseServiceHost(
+  start: () => SpawnedHost,
+  log: (line: string) => void,
+  sleep: (ms: number) => Promise<unknown> = delay,
+  now: () => number = Date.now,
+): Promise<void> {
+  let failures = 0;
+  for (;;) {
+    const startedAt = now();
+    const host = start();
+    const exit = await host.exited;
+    log(`service host ${host.pid} exited (code ${exit.code}, signal ${exit.signal})`);
+    if (exit.code === 0) return;
+    failures = now() - startedAt > 60_000 ? 1 : failures + 1;
+    if (failures > 5) {
+      log('the service host keeps stopping; giving up until the service is started again');
+      return;
+    }
+    await sleep(Math.min(30_000, 1000 * 2 ** failures));
+  }
 }
 
 export interface FindHostOptions {

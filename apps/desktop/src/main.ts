@@ -39,6 +39,7 @@ import {
   spawnServiceHost,
   type SpawnedHost,
   SUPERVISOR_FLAG,
+  superviseServiceHost,
   temporaryLocation,
   type WatchdogStatus,
 } from '@pi-kit/service-host';
@@ -694,25 +695,10 @@ async function switchBackground(enabled: unknown): Promise<void> {
 async function superviseHost(): Promise<void> {
   const log = new FileLog(app.getPath('logs'), 'supervisor.log');
   log.line(`pi-kit ${app.getVersion()} supervising the service host`);
-  let failures = 0;
-  for (;;) {
-    const startedAt = Date.now();
-    const spawned = spawnServiceHost(HOST_ENTRY, {
-      ...process.env,
-      ...hostEnvironment(),
-      PI_KIT_SERVICE_LEVEL: 'login',
-    });
-    const exit = await spawned.exited;
-    log.line(`service host ${spawned.pid} exited (code ${exit.code}, signal ${exit.signal})`);
-    // 0: stopped on purpose or another host owns the folder.
-    if (exit.code === 0) break;
-    failures = Date.now() - startedAt > 60_000 ? 1 : failures + 1;
-    if (failures > 5) {
-      log.line('the service host keeps stopping; giving up until the next sign-in');
-      break;
-    }
-    await new Promise((resolve) => setTimeout(resolve, Math.min(30_000, 1000 * 2 ** failures)));
-  }
+  await superviseServiceHost(
+    () => spawnServiceHost(HOST_ENTRY, { ...process.env, ...hostEnvironment(), PI_KIT_SERVICE_LEVEL: 'login' }),
+    (line) => log.line(line),
+  );
   app.quit();
 }
 

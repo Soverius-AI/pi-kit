@@ -9,7 +9,7 @@ import { PEERS_USAGE, runPeersCli } from './peers-cli';
 import { REMOTE_USAGE, runDevicesCli, runPairCli, runRemoteCli } from './remote-cli';
 import type { ServiceManager } from './service-registration';
 import { runLoginCli, runLogoutCli, runModelCli, SETTINGS_USAGE } from './settings-cli';
-import { runUpdateCli, UPDATE_USAGE } from './update-cli';
+import { type FinishPlan, runUpdateCli, UPDATE_USAGE } from './update-cli';
 
 export interface CliIo {
   out(text: string): void;
@@ -45,6 +45,8 @@ export interface CliContext {
   /** This server install (a tarball with its own runtime): where it is, its version, target and release feed. */
   /** `npm`: the npm package that installed it, which npm updates instead of `pi-kit update`. */
   serverInstall?: { root: string; version: string; target: string; releases: string; npm?: string };
+  /** Windows: starts the finisher that swaps the install once this command has exited (`pi-kit update`). */
+  startFinisher?: (plan: FinishPlan) => void;
 }
 
 const GROUPS: Record<string, (args: string[], io: CliIo, ctx: CliContext) => Promise<number>> = {
@@ -254,7 +256,8 @@ async function install(io: CliIo, ctx: CliContext, boot = false): Promise<number
     return 1;
   }
   const changed = await manager.install();
-  io.out(changed ? 'Installed: the backend now starts when you sign in.\n' : 'Already installed.\n');
+  const when = manager.startsAtBoot ? 'at boot, whether anyone is signed in or not' : 'when you sign in';
+  io.out(changed ? `Installed: the backend now starts ${when}.\n` : 'Already installed.\n');
   const code = reportStarted(io, await waitFor(ctx, () => ctx.discover()));
   const note = await manager.bootNote?.();
   if (note) io.out(`${note}\n`);

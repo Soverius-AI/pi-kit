@@ -47,6 +47,8 @@ export interface ServiceManager {
   registered(): string[] | undefined;
   /** How the service starts at boot with nobody signed in, when it does not yet; undefined when it does. */
   bootNote?(): Promise<string | undefined>;
+  /** It starts at boot, whether anyone is signed in or not (Windows server installs). */
+  readonly startsAtBoot?: boolean;
 }
 
 const xml = (value: string): string =>

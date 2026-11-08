@@ -1,11 +1,17 @@
-import { spawn } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { createInterface } from 'node:readline';
 import {
   appFolders,
   type CliContext,
+  FileLog,
+  FINISH_UPDATE_FLAG,
+  type FinishPlan,
+  finishWindowsUpdate,
+  removeStagingAfterExit,
+  windowsFinishOps,
   connectHostChannel,
   type HostDiscovery,
   bundledVersion,
@@ -17,6 +23,8 @@ import {
   serviceManager,
   serviceName,
   SUPERVISOR_FLAG,
+  spawnServiceHost,
+  superviseServiceHost,
 } from '@pi-kit/service-host';
 
 // pi-kit from a terminal: on the desktop app's binary run as Node, or on a server install's own Node runtime.
@@ -83,12 +91,17 @@ const registration = {
   ...(path ? { path } : {}),
   ...(process.env['APPIMAGE'] ? { appImage: process.env['APPIMAGE'] } : {}),
   ...(devEnv ? { devEnv } : {}),
-  supervisorArgs: packaged ? [SUPERVISOR_FLAG] : [join(__dirname, '..', 'desktop', 'main.cjs'), SUPERVISOR_FLAG],
+  // A server install's scheduled task runs this bundle as the supervisor; the desktop app's entry runs the app itself.
+  supervisorArgs: !process.versions['electron']
+    ? [__filename, SUPERVISOR_FLAG]
+    : packaged
+      ? [SUPERVISOR_FLAG]
+      : [join(__dirname, '..', 'desktop', 'main.cjs'), SUPERVISOR_FLAG],
   stopHost: async () => {
     const host = discover();
     if (host) await stopHost({ connect, discover, sleep }, host);
   },
-  // On its own Node, a server install has no windowless supervisor: Windows gets a scheduled task instead.
+  // On its own Node, a server install registers a scheduled task on Windows, which runs the supervisor below.
   server: !process.versions['electron'],
 };
 const manager = serviceManager(registration);
@@ -165,36 +178,79 @@ function openUrl(url: string): boolean {
   return true;
 }
 
-void runCli(
-  args,
-  {
-    out: (text) => void process.stdout.write(text),
-    err: (text) => void process.stderr.write(text),
-    readLine,
-    readSecret,
-    interactive: !!process.stdin.isTTY,
-  },
-  {
-    version,
-    serviceName: name,
-    dataDir,
-    logDir,
-    manager,
-    ...(bootManager ? { bootManager } : {}),
-    discover,
-    connect,
-    tail: (file, lines) => {
-      const at = join(logDir, file);
-      if (!existsSync(at)) return undefined;
-      return readFileSync(at, 'utf8')
-        .split('\n')
-        .slice(-lines - 1)
-        .join('\n');
+/**
+ * Copies this runtime and bundle beside the download and starts them as the finisher. Through WMI, so that it leaves this
+ * session's job object: Windows OpenSSH ends every process of a session that closes, which could stop the finisher halfway.
+ */
+function startFinisher(plan: FinishPlan): void {
+  const dir = join(plan.staging, 'finisher');
+  mkdirSync(dir);
+  const node = join(dir, 'node.exe');
+  const script = join(dir, 'pi-kit.cjs');
+  const planFile = join(dir, 'plan.json');
+  copyFileSync(process.execPath, node);
+  copyFileSync(__filename, script);
+  writeFileSync(planFile, JSON.stringify(plan));
+  execFileSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      '$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $env:PI_KIT_FINISHER }; exit $r.ReturnValue',
+    ],
+    {
+      env: { ...process.env, PI_KIT_FINISHER: `"${node}" "${script}" ${FINISH_UPDATE_FLAG} "${planFile}"` },
+      stdio: 'ignore',
     },
-    sleep,
-    openUrl,
-    serve,
-    otherInstall: () => (manager ? otherInstall(manager, hostEntry) : undefined),
-    ...(serverInstall() ? { serverInstall: serverInstall() } : {}),
-  },
-).then((code) => process.exit(code));
+  );
+}
+
+if (args[0] === FINISH_UPDATE_FLAG) {
+  const plan = JSON.parse(readFileSync(args[1] ?? '', 'utf8')) as FinishPlan;
+  void finishWindowsUpdate(plan, windowsFinishOps(plan)).then((updated) => {
+    removeStagingAfterExit(plan);
+    process.exit(updated ? 0 : 1);
+  });
+} else if (args[0] === SUPERVISOR_FLAG) {
+  const log = new FileLog(logDir, 'supervisor.log');
+  log.line(`pi-kit ${version} supervising the service host`);
+  void superviseServiceHost(
+    () => spawnServiceHost(hostEntry, { ...process.env, PI_KIT_SERVICE_LEVEL: 'login' }),
+    (line) => log.line(line),
+  ).then(() => process.exit(0));
+} else
+  void runCli(
+    args,
+    {
+      out: (text) => void process.stdout.write(text),
+      err: (text) => void process.stderr.write(text),
+      readLine,
+      readSecret,
+      interactive: !!process.stdin.isTTY,
+    },
+    {
+      version,
+      serviceName: name,
+      dataDir,
+      logDir,
+      manager,
+      ...(bootManager ? { bootManager } : {}),
+      discover,
+      connect,
+      tail: (file, lines) => {
+        const at = join(logDir, file);
+        if (!existsSync(at)) return undefined;
+        return readFileSync(at, 'utf8')
+          .split('\n')
+          .slice(-lines - 1)
+          .join('\n');
+      },
+      sleep,
+      openUrl,
+      serve,
+      otherInstall: () => (manager ? otherInstall(manager, hostEntry) : undefined),
+      ...(serverInstall() ? { serverInstall: serverInstall() } : {}),
+      ...(process.platform === 'win32' ? { startFinisher } : {}),
+    },
+  ).then((code) => process.exit(code));

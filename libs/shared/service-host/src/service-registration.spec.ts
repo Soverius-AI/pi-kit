@@ -73,6 +73,11 @@ describe('what a registration starts', () => {
       const ours = join(root, 'app', 'backend', 'service-host.cjs');
 
       expect(otherInstall(starting(['/node', theirs]), ours)).toEqual({ entry: theirs, version: '2.0.0' });
+      const supervisor = join(root, 'server', 'backend', 'pi-kit.cjs');
+      expect(otherInstall(starting(['/node', supervisor, '--pi-kit-service']), ours)).toEqual({
+        entry: theirs,
+        version: '2.0.0',
+      });
       expect(otherInstall(starting(['/node', ours]), ours)).toBeUndefined();
       expect(otherInstall(starting(['/node', join(root, 'gone', 'backend', 'service-host.cjs')]), ours)).toMatchObject({
         version: 'unknown',
@@ -213,6 +218,36 @@ describe('starting at boot', () => {
       expect(xml).toContain('<LogonType>Password</LogonType>');
       expect(xml).toContain('<RestartOnFailure>');
       expect(task.registered()).toEqual([spec.program, ...spec.args]);
+    } finally {
+      await rm(data, { recursive: true, force: true });
+    }
+  });
+
+  it('Windows: an existing task only gets its new batch, so no password is asked again', async () => {
+    const data = await mkdtemp(join(tmpdir(), 'pk-task-'));
+    try {
+      const calls: string[][] = [];
+      const terminal = async (file: string, args: string[]) => (calls.push([file, ...args]), { code: 0, output: '' });
+      let stops = 0;
+      const task = (args: string[]) =>
+        new WindowsTaskService(
+          { ...spec, args, env: { ...spec.env, PI_KIT_DATA_DIR: data } },
+          async () => void stops++,
+          terminal,
+          'BOX\\ana',
+          () => true,
+        );
+      await writeFile(join(data, 'service.cmd'), 'an older batch');
+
+      expect(await task(['C:\\pi-kit\\backend\\pi-kit.cjs', '--pi-kit-service']).install()).toBe(true);
+      expect(calls).toEqual([['schtasks', '/Run', '/TN', spec.name]]);
+      expect(stops).toBe(1);
+      expect(task([]).registered()).toEqual([spec.program, 'C:\\pi-kit\\backend\\pi-kit.cjs', '--pi-kit-service']);
+
+      calls.length = 0;
+      expect(await task(['C:\\pi-kit\\backend\\pi-kit.cjs', '--pi-kit-service']).install()).toBe(false);
+      expect(calls).toEqual([['schtasks', '/Run', '/TN', spec.name]]);
+      expect(stops).toBe(1);
     } finally {
       await rm(data, { recursive: true, force: true });
     }
