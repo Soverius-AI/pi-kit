@@ -361,14 +361,29 @@ jobs:
         run: |
           version="$(node -p "require('./package.json').version")"
           case $version in *-*) tag=next ;; *) tag=latest ;; esac
-          for dir in npm/darwin-* npm/linux-* npm/win32-* npm/pi-kit; do
-            name="$(node -p "require('./$dir/package.json').name")"
+          publish() {
+            name="$(node -p "require('./$1/package.json').name")"
             if npm view "$name@$version" version >/dev/null 2>&1; then
               echo "$name@$version is already on npm"
-              continue
+              return
             fi
-            npm publish "./$dir" --access public --provenance --tag "$tag"
+            npm publish "./$1" --access public --provenance --tag "$tag"
+          }
+          for dir in npm/darwin-* npm/linux-* npm/win32-*; do publish "$dir"; done
+          # The launcher pins these versions, so it goes out only once npm serves all of them: npm can hold a version for
+          # a maintainer's approval (staged publishing), and a launcher out before its packages installs without them.
+          for dir in npm/darwin-* npm/linux-* npm/win32-*; do
+            name="$(node -p "require('./$dir/package.json').name")"
+            for attempt in $(seq 1 40); do
+              npm view "$name@$version" version >/dev/null 2>&1 && break
+              sleep 15
+            done
+            if ! npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "::error::npm does not serve $name@$version yet. If it is staged, approve it on npmjs.com (Staged Packages), then re-run this job: it publishes the launcher once all six are out."
+              exit 1
+            fi
           done
+          publish npm/pi-kit
 
   # remote.pi-kit.dev follows the tag: Coolify rebuilds the onboarding site from the tagged commit once the release is public,
   # so its download link never points at a release that does not exist yet. Needs the three COOLIFY_* secrets (doc/docs/remote-onboarding-site.md).

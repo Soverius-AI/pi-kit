@@ -1,0 +1,47 @@
+# The documentation site (doc/, Docusaurus) on GitHub Pages: https://soverius-ai.github.io/pi-kit/
+# Every push to main that changes doc/ publishes it again; it can also be started by hand. The repository's Pages source is
+# "GitHub Actions".
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths: ['doc/**', '.github/workflows/docs.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The pnpm version comes from `packageManager` in package.json; the site is a package of its own with its own lockfile.
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: doc/pnpm-lock.yaml
+      - run: pnpm --dir doc install --frozen-lockfile
+      - run: pnpm --dir doc build
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: doc/build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

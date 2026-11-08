@@ -1,4 +1,4 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, execSync, spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -18,6 +18,7 @@ import {
   bundledVersion,
   loginShellPath,
   liveDiscovery,
+  desktopApp,
   otherInstall,
   ownAppImage,
   runCli,
@@ -85,6 +86,38 @@ function serverInstall(): CliContext['serverInstall'] {
 }
 
 const discover = (): HostDiscovery | undefined => liveDiscovery(dataDir);
+const desktop = desktopApp();
+/**
+ * npm on this computer. Windows' npm is a .cmd, which runs only through a shell: there it gets one command line (package
+ * specs carry nothing cmd reads, and the prefix is quoted), elsewhere its arguments as they are.
+ */
+const runNpm = (args: string[], stdio: 'pipe' | 'inherit'): string =>
+  process.platform === 'win32'
+    ? execSync(`npm ${args.map((arg) => (arg.includes(' ') ? `"${arg}"` : arg)).join(' ')}`, {
+        encoding: 'utf8',
+        stdio: ['ignore', stdio, stdio === 'pipe' ? 'ignore' : 'inherit'],
+      })
+    : execFileSync('npm', args, {
+        encoding: 'utf8',
+        stdio: ['ignore', stdio, stdio === 'pipe' ? 'ignore' : 'inherit'],
+      });
+const npm = {
+  view: (spec: string) => {
+    try {
+      return runNpm(['view', spec, 'version'], 'pipe').trim() || undefined;
+    } catch {
+      return undefined;
+    }
+  },
+  install: (prefix: string, spec: string) => {
+    try {
+      runNpm(['install', '-g', '--prefix', prefix, spec], 'inherit');
+      return true;
+    } catch {
+      return false;
+    }
+  },
+};
 const connect = (host: HostDiscovery) => connectHostChannel(host.socket, host.token);
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -299,6 +332,8 @@ if (args[0] === FINISH_UPDATE_FLAG) {
       },
       sleep,
       openUrl,
+      ...(desktop ? { desktop } : {}),
+      npm,
       serve,
       otherInstall: () => (manager ? otherInstall(manager, ownAppImage(__dirname) ?? hostEntry) : undefined),
       ...(serverInstall() ? { serverInstall: serverInstall() } : {}),

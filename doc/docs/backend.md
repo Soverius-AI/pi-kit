@@ -5,8 +5,8 @@ sidebar_position: 2
 
 # Backend
 
-`apps/backend` is one NestJS 12 process on Node 24. Electron main starts it with a random loopback port and a
-per-launch token, the renderer reaches it over HTTP, and it is the only process that touches the file system, the
+`apps/backend` is one NestJS 12 process on Node 24. The service host starts it with a random loopback port and a
+per-start token, the renderer reaches it over HTTP, and it is the only process that touches the file system, the
 network, pi's SDK and the keychain ([Architecture](architecture.md)). This page is the map of that process for the
 people who change it: how the code is cut, what each folder owns, what a request goes through, and the steps for the
 changes that come up most.
@@ -226,9 +226,9 @@ Settings, never at startup.
 
 **`app/`, `contract/`, `desktop/`.** `app/` is the root module, the config token, the guard, the health route and
 the parent monitor. `contract/` is the request path above. `desktop/` is `DesktopBridge`, a correlated
-request-and-answer channel over process IPC to Electron main, for what only the shell can do: open a path, reveal a
-file, drive the browser artifact, install an app update. It answers "unavailable" when the backend runs without
-Electron (`dev:web`, the tests).
+request-and-answer channel over process IPC to the service host, which relays it to the attached desktop app, for what only
+the shell can do: open a path, reveal a file, drive the browser artifact, install an app update. It answers "unavailable"
+when no desktop app is attached (a server, a browser, `dev:web`, the tests).
 
 **`@pi-kit/protocol`.** The zod schemas and types of every request, response, stream line, AG-UI custom event and
 plugin message live in `libs/shared/protocol`, compiled into the backend and the renderer alike. A schema that is a

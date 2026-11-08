@@ -5,16 +5,20 @@ sidebar_position: 1
 
 # Architecture
 
-pi-kit is three processes and one agent. Electron main owns the window and the lifetime of the backend; the Angular renderer is
-the window's page; the NestJS backend runs pi's SDK in-process and is the only thing that touches the file system, the network and
-the keychain. The renderer and the backend talk over HTTP on the loopback interface, with a token minted per launch
+pi-kit is a server with clients around one agent. The service host runs the backend and outlives any window
+([Server and CLI](server.md)); Electron main is one client and owns the window; the Angular renderer is the page every client
+shows; the NestJS backend runs pi's SDK in-process and is the only thing that touches the file system, the network and the
+keychain. The renderer and the backend talk over HTTP on the loopback interface, with a token minted per host start
 ([ADR-0007](adr/0007-local-security.md)).
 
 ```mermaid
 flowchart LR
+  subgraph host["Service host (libs/shared/service-host)"]
+    watchdog["watchdog: starts, pings and restarts the backend"]
+    gateways["owner and remote gateways: a browser, phones"]
+  end
   subgraph desktop["Electron main (apps/desktop)"]
     main["main.ts: window, menu, updater"]
-    watchdog["watchdog: starts, pings and restarts the backend"]
     preload["preload: a small bridge (backend URL and token, open dialog, theme, backend status)"]
   end
   subgraph renderer["Renderer (apps/renderer + libs/*)"]
@@ -35,7 +39,8 @@ flowchart LR
   sessions[("pi session files (JSONL): the source of truth")]
   models["Model providers: APIs, subscriptions, llama-swap"]
   mcp["MCP servers, pi packages, extensions, skills"]
-  main -->|spawns, random port + token| backend
+  watchdog -->|spawns, random port + token| backend
+  main -->|host channel| host
   main -->|loads| renderer
   copilot <-->|AG-UI over SSE| runtime
   stores <-->|HTTP + NDJSON| rest
@@ -49,14 +54,19 @@ flowchart LR
   rest --> secrets
 ```
 
-## The three processes
+## The processes
 
-**Electron main** (`apps/desktop`) creates the window, picks a free loopback port and a random token, starts the backend as a child
-process with both in its environment, and keeps it alive: a watchdog pings it and restarts it when it stops answering, and the
-renderer reconnects when the backend comes back ([ADR-0013](adr/0013-packaging-crash-recovery-and-updates.md)). The
-preload script exposes only what the page cannot do itself: the backend's URL and token, the native open dialog, the colour
-scheme, the backend's status, the microphone permission, the tray, the browser artifact's viewport and a few view preferences
-kept on disk.
+**The service host** (`libs/shared/service-host`, started as the operating system's service, by the desktop app or by
+`pi-kit serve`) picks a free loopback port and a random token, starts the backend as a child process with both in its
+environment, and keeps it alive: a watchdog pings it and restarts it when it stops answering, and the renderer reconnects when
+the backend comes back ([ADR-0013](adr/0013-packaging-crash-recovery-and-updates.md), [ADR-0036](adr/0036-always-on-service.md)).
+It also runs the owner gateway for a browser on the same computer and the remote gateway for phones and paired instances.
+[Server and CLI](server.md) covers the installs, the service and the `pi-kit` command.
+
+**Electron main** (`apps/desktop`) creates the window and attaches to the host over the host channel, which gives it the
+backend's URL and token; it answers the backend's requests for what only Electron can do. The preload script exposes only what
+the page cannot do itself: the backend's URL and token, the native open dialog, the colour scheme, the backend's status, the
+microphone permission, the tray, the browser artifact's viewport and a few view preferences kept on disk.
 Packaging, code signing and the in-app update of pi-kit itself live here too.
 
 **The renderer** (`apps/renderer` and the libraries under `libs/`) is one Angular page with no route table: the chat page in the

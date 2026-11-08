@@ -11,9 +11,9 @@ const config: Config = {
   title: 'pi-kit',
   tagline: 'A desktop UI for the pi coding agent',
   favicon: 'img/mark-gold-256.png',
-  url: 'https://wolfmanfx.github.io',
+  url: 'https://soverius-ai.github.io',
   baseUrl: '/pi-kit/',
-  organizationName: 'wolfmanfx',
+  organizationName: 'Soverius-AI',
   projectName: 'pi-kit',
   trailingSlash: false,
   onBrokenLinks: 'warn',
@@ -39,7 +39,7 @@ const config: Config = {
             return items.filter((item) => !(item.type === 'doc' && item.id === 'adr/README'));
           },
           numberPrefixParser: false,
-          editUrl: 'https://github.com/wolfmanfx/pi-kit/tree/main/doc/',
+          editUrl: 'https://github.com/Soverius-AI/pi-kit/tree/main/doc/',
           showLastUpdateTime: false,
         },
         blog: false,
@@ -60,7 +60,7 @@ const config: Config = {
         { type: 'doc', docId: 'structure', position: 'left', label: 'Structure' },
         { type: 'doc', docId: 'design-system', position: 'left', label: 'Design system' },
         { to: '/adr', position: 'left', label: 'Decisions' },
-        { href: 'https://github.com/wolfmanfx/pi-kit', label: 'GitHub', position: 'right' },
+        { href: 'https://github.com/Soverius-AI/pi-kit', label: 'GitHub', position: 'right' },
       ],
     },
     footer: {
@@ -82,7 +82,7 @@ const config: Config = {
         },
         {
           title: 'Code',
-          items: [{ label: 'GitHub', href: 'https://github.com/wolfmanfx/pi-kit' }],
+          items: [{ label: 'GitHub', href: 'https://github.com/Soverius-AI/pi-kit' }],
         },
       ],
       copyright: `Built by Soverius.AI GmbH.`,
