@@ -61,6 +61,21 @@ for (const { target, file } of archives) {
     releases,
     npm: `${SCOPE}/pi-kit`,
   });
+  const os = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' }[platform];
+  writeFileSync(
+    join(out, target, 'README.md'),
+    `# ${SCOPE}/pi-kit-${target}
+
+The pi-kit server for ${os} on ${arch}, with its own Node.js runtime. Install
+[\`${SCOPE}/pi-kit\`](https://www.npmjs.com/package/${SCOPE}/pi-kit) instead, which picks this package on such a machine:
+
+\`\`\`sh
+npm install -g ${SCOPE}/pi-kit
+\`\`\`
+
+[pi-kit on GitHub](https://github.com/${releaseRepo})
+`,
+  );
   console.log(`${SCOPE}/pi-kit-${target}@${version}`);
 }
 
