@@ -209,10 +209,13 @@ export async function listenHostChannel(path: string, token: string, onPeer: (pe
   const server = createServer((socket) => {
     const peer: RpcPeer = new RpcPeer(socket, token, () => onPeer(peer));
   });
+  // Windows: a host the scheduled task starts runs in that task's logon session, whose default pipe permissions leave out
+  // the owner's own unelevated sign-in, so the desktop could not connect. Any local account may open the pipe; the token
+  // hello is what keeps the others out (ADR-0036). Unix sockets stay owner-only.
   const listen = () =>
     new Promise<void>((resolve, reject) => {
       server.once('error', reject);
-      server.listen(path, () => {
+      server.listen({ path, readableAll: !unix, writableAll: !unix }, () => {
         server.off('error', reject);
         resolve();
       });

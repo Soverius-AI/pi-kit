@@ -17,6 +17,8 @@ export interface CommandStatus {
   path: string;
   installed: boolean;
   onPath: boolean;
+  /** What another install keeps at `path` (a server install's launcher, a symlink to one), which this app never replaces. */
+  other?: string;
 }
 
 export interface BackgroundServiceStatus {

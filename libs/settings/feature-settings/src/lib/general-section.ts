@@ -96,7 +96,11 @@ import { BackgroundServiceStore, SecretsStore, SettingsStore } from '@pi-kit/set
                       @if (service.cli?.available && service.cli; as cli) {
                         <div sub class="flex flex-wrap items-center gap-2 t-xs muted" data-testid="pi-kit-command">
                           <span>{{ 'settings.background.command' | transloco }}</span>
-                          @if (cli.installed && cli.onPath) {
+                          @if (cli.other) {
+                            <span>{{
+                              'settings.background.commandOther' | transloco: { path: cli.path, other: cli.other }
+                            }}</span>
+                          } @else if (cli.installed && cli.onPath) {
                             <span class="chip ok">{{ 'settings.background.commandOnPath' | transloco }}</span>
                           } @else if (cli.installed) {
                             <span>{{ 'settings.background.commandNotOnPath' | transloco: { dir: cli.dir } }}</span>

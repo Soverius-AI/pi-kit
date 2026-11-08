@@ -1,8 +1,18 @@
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { homedir, tmpdir, userInfo } from 'node:os';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import { isNewerVersion } from './discovery';
 import { bundledVersion } from './service-host';
 import {
   LaunchDaemonService,
@@ -87,8 +97,13 @@ function besideBinary(file: string): string {
 
 const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 
+/** Windows: the other kind of registration for the same profile, which installing one removes (§5: one registration). */
+type Sibling = Pick<ServiceManager, 'registered' | 'uninstall'>;
+
 /** Windows: a value in the user's Run key that starts the app as the supervisor; no admin, no stored password. */
 export class WindowsRunService implements ServiceManager {
+  sibling: Sibling | undefined;
+
   constructor(
     private readonly name: string,
     private readonly program: string,
@@ -96,8 +111,20 @@ export class WindowsRunService implements ServiceManager {
     private readonly stopHost: () => Promise<void>,
   ) {}
 
+  otherRegistration(): string[] | undefined {
+    return this.sibling?.registered();
+  }
+
   private get command(): string {
     return [this.program, ...this.args].map((part) => `"${part}"`).join(' ');
+  }
+
+  /** The Run key's value; reg's "unable to find" for a missing one stays out of the terminal. */
+  private query(): string {
+    return execFileSync('reg', ['query', RUN_KEY, '/v', this.name], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
   }
 
   async unsupported(): Promise<string | undefined> {
@@ -106,7 +133,7 @@ export class WindowsRunService implements ServiceManager {
 
   installed(): boolean {
     try {
-      return execFileSync('reg', ['query', RUN_KEY, '/v', this.name], { encoding: 'utf8' }).includes(this.command);
+      return this.query().includes(this.command);
     } catch {
       return false;
     }
@@ -114,7 +141,7 @@ export class WindowsRunService implements ServiceManager {
 
   registered(): string[] | undefined {
     try {
-      const line = execFileSync('reg', ['query', RUN_KEY, '/v', this.name], { encoding: 'utf8' });
+      const line = this.query();
       return [...line.matchAll(/"([^"]*)"/g)].map((match) => match[1]);
     } catch {
       return undefined;
@@ -122,6 +149,9 @@ export class WindowsRunService implements ServiceManager {
   }
 
   async install(): Promise<boolean> {
+    // A server install's task would start its own host at the next boot: this registration replaces it, and when Windows
+    // refuses to remove the task, nothing changes.
+    if (this.sibling?.registered()) await this.sibling.uninstall();
     const changed = !this.installed();
     if (changed) await this.reg(['add', RUN_KEY, '/v', this.name, '/t', 'REG_SZ', '/d', this.command, '/f']);
     await this.start();
@@ -170,10 +200,13 @@ export function serviceBatch(spec: ServiceSpec): string {
 }
 
 /** A task that runs `batch` at boot as `user`, whether signed in or not, and again after a failure; no window ever shows. */
-export function scheduledTaskXml(batch: string, user: string, description: string): string {
+export function scheduledTaskXml(batch: string, user: string, description: string, sid?: string): string {
+  // A task made from an elevated prompt (an administrator's SSH session) is otherwise only an administrator's to change: the
+  // owner's own account may manage it too, so an unelevated desktop that takes the service over can remove it.
+  const security = sid ? `<SecurityDescriptor>D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;${sid})</SecurityDescriptor>` : '';
   return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo><Description>${xmlText(description)}</Description></RegistrationInfo>
+  <RegistrationInfo><Description>${xmlText(description)}</Description>${security}</RegistrationInfo>
   <Triggers><BootTrigger><Enabled>true</Enabled></BootTrigger></Triggers>
   <Principals>
     <Principal id="Owner"><UserId>${xmlText(user)}</UserId><LogonType>Password</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal>
@@ -193,17 +226,17 @@ export function scheduledTaskXml(batch: string, user: string, description: strin
 
 const xmlText = (value: string): string => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/**
- * Windows, for a server install: a Task Scheduler task that starts at boot and runs whether the owner is signed in or not, so
- * its `node.exe` never opens a window. Task Scheduler stores the account's password, so Credential Manager works; `schtasks`
- * asks for it in the terminal.
- */
-/** The account as Windows maps it. In an OpenSSH session USERDOMAIN is the workgroup, which no account belongs to. */
-function windowsAccount(): string {
+/** The account and its SID as Windows maps them. In an OpenSSH session USERDOMAIN is the workgroup, which no account belongs to. */
+function windowsIdentity(): { account: string; sid?: string } {
   try {
-    return execFileSync('whoami', { encoding: 'utf8' }).trim();
+    // "domain\user","S-1-5-21-…"
+    const [account, sid] = execFileSync('whoami', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8' })
+      .trim()
+      .split(',')
+      .map((field) => field.replace(/^"|"$/g, ''));
+    return { account, ...(sid?.startsWith('S-1-') ? { sid } : {}) };
   } catch {
-    return `${process.env['COMPUTERNAME'] ?? '.'}\\${userInfo().username}`;
+    return { account: `${process.env['COMPUTERNAME'] ?? '.'}\\${userInfo().username}` };
   }
 }
 
@@ -216,18 +249,33 @@ const taskExists = (name: string): boolean => {
   }
 };
 
+/**
+ * Windows, for a server install: a Task Scheduler task that starts at boot and runs whether the owner is signed in or not, so
+ * its `node.exe` never opens a window. Task Scheduler stores the account's password, so Credential Manager works; `schtasks`
+ * asks for it in the terminal.
+ */
 export class WindowsTaskService implements ServiceManager {
   readonly startsAtBoot = true;
+  sibling: Sibling | undefined;
   private readonly batch: string;
 
   constructor(
     private readonly spec: ServiceSpec,
     private readonly stopHost: () => Promise<void>,
     private readonly terminal: RunCommand = runInTerminal,
-    private readonly user = windowsAccount(),
+    private identity?: { account: string; sid?: string },
     private readonly exists: (name: string) => boolean = taskExists,
   ) {
     this.batch = join(spec.env['PI_KIT_DATA_DIR'] ?? spec.logDir, 'service.cmd');
+  }
+
+  /** Asked only when a task is created: a desktop that merely knows of the task never runs whoami. */
+  private get owner(): { account: string; sid?: string } {
+    return (this.identity ??= windowsIdentity());
+  }
+
+  otherRegistration(): string[] | undefined {
+    return this.sibling?.registered();
   }
 
   async unsupported(): Promise<string | undefined> {
@@ -247,6 +295,11 @@ export class WindowsTaskService implements ServiceManager {
   async install(): Promise<boolean> {
     const content = serviceBatch(this.spec);
     const same = existsSync(this.batch) && readFileSync(this.batch, 'utf8') === content;
+    // A desktop's sign-in entry would start its own host at the next sign-in: this registration replaces it, and its host.
+    if (this.sibling?.registered()) {
+      await this.sibling.uninstall();
+      await this.stopHost();
+    }
     if (this.installed()) {
       if (same) {
         await this.start();
@@ -264,9 +317,12 @@ export class WindowsTaskService implements ServiceManager {
       const xml = join(staging, 'task.xml');
       writeFileSync(
         xml,
-        Buffer.from(`\ufeff${scheduledTaskXml(this.batch, this.user, this.spec.description)}`, 'utf16le'),
+        Buffer.from(
+          `\ufeff${scheduledTaskXml(this.batch, this.owner.account, this.spec.description, this.owner.sid)}`,
+          'utf16le',
+        ),
       );
-      await this.must(['/Create', '/TN', this.spec.name, '/XML', xml, '/RU', this.user, '/RP', '*', '/F']);
+      await this.must(['/Create', '/TN', this.spec.name, '/XML', xml, '/RU', this.owner.account, '/RP', '*', '/F']);
     } finally {
       rmSync(staging, { recursive: true, force: true });
     }
@@ -274,9 +330,10 @@ export class WindowsTaskService implements ServiceManager {
     return true;
   }
 
+  /** Keeps the batch when Windows refuses: a task whose batch is gone fails at every boot. */
   async uninstall(): Promise<void> {
     await this.stopHost();
-    await this.terminal('schtasks', ['/Delete', '/TN', this.spec.name, '/F']);
+    await this.must(['/Delete', '/TN', this.spec.name, '/F']);
     rmSync(this.batch, { force: true });
   }
 
@@ -346,10 +403,13 @@ export function serviceManager(
 ): ServiceManager | undefined {
   const temporary = temporaryLocation(platform, inputs.program);
   if (temporary) return new UnavailableService(temporary);
-  if (platform === 'win32')
-    return inputs.server
-      ? new WindowsTaskService({ ...serviceSpec(inputs), args: inputs.supervisorArgs }, inputs.stopHost)
-      : new WindowsRunService(inputs.name, inputs.program, inputs.supervisorArgs, inputs.stopHost);
+  if (platform === 'win32') {
+    const task = new WindowsTaskService({ ...serviceSpec(inputs), args: inputs.supervisorArgs }, inputs.stopHost);
+    const run = new WindowsRunService(inputs.name, inputs.program, inputs.supervisorArgs, inputs.stopHost);
+    task.sibling = run;
+    run.sibling = task;
+    return inputs.server ? task : run;
+  }
   if (platform === 'darwin')
     return inputs.level === 'boot'
       ? new LaunchDaemonService(serviceSpec(inputs))
@@ -370,11 +430,32 @@ export interface BackgroundServiceStatus {
  * itself or no service host at all. An install that is gone has the version `unknown`, so it never counts as newer.
  */
 export function otherInstall(manager: ServiceManager, entry: string): { entry: string; version: string } | undefined {
-  // A Windows server install registers its supervisor, the CLI bundle beside the host.
-  const part = manager.registered()?.find((arg) => ['service-host.cjs', 'pi-kit.cjs'].includes(basename(arg)));
-  const host = part && join(dirname(part), 'service-host.cjs');
+  const registration = manager.registered() ?? manager.otherRegistration?.();
+  if (!registration?.length) return undefined;
+  // A Windows server install registers its supervisor, the CLI bundle beside the host; a Windows desktop registers its .exe,
+  // whose host is in its resources.
+  const part = registration.find((arg) => ['service-host.cjs', 'pi-kit.cjs'].includes(basename(arg)));
+  const host = part
+    ? join(dirname(part), 'service-host.cjs')
+    : registration[0].toLowerCase().endsWith('.exe')
+      ? join(dirname(registration[0]), 'resources', 'backend', 'service-host.cjs')
+      : undefined;
   if (!host || resolve(host) === resolve(entry)) return undefined;
   return { entry: host, version: existsSync(host) ? bundledVersion(dirname(host)) : 'unknown' };
+}
+
+export type ServiceHandover =
+  { action: 'update-first'; version: string } | { action: 'attach' } | { action: 'register' };
+
+/**
+ * What a starting desktop does about the profile's service (§5, the newest install runs it): become a newer version that runs
+ * or is registered first; leave an install of its own version in place and attach to it; otherwise register itself.
+ */
+export function serviceHandover(own: string, running?: string, registered?: { version: string }): ServiceHandover {
+  const newer = [running, registered?.version].find((version) => version !== undefined && isNewerVersion(version, own));
+  if (newer) return { action: 'update-first', version: newer };
+  if (registered?.version === own) return { action: 'attach' };
+  return { action: 'register' };
 }
 
 export async function backgroundStatus(service: ServiceManager | undefined): Promise<BackgroundServiceStatus> {
@@ -400,6 +481,30 @@ export function cliLauncher(
 }
 
 export const cliLauncherName = (platform: NodeJS.Platform): string => (platform === 'win32' ? 'pi-kit.cmd' : 'pi-kit');
+
+/**
+ * What another install keeps at the path the app writes its launcher to (a link into a server install, a server's own
+ * launcher), which the app must not replace: writing through a link would overwrite that install's file. Undefined when the
+ * path is free or holds a launcher the app wrote.
+ */
+export function otherCommand(path: string): string | undefined {
+  try {
+    if (lstatSync(path).isSymbolicLink()) return realpathSync(path);
+    return readFileSync(path, 'utf8').includes('Written by pi-kit (Settings > General > Background)')
+      ? undefined
+      : path;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' && !isLink(path) ? undefined : path;
+  }
+}
+
+const isLink = (path: string): boolean => {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+};
 
 /** A folder most shells have on PATH already, or that the user is told to add (the one `pi-kit-secret` uses). */
 export function cliInstallDir(platform: NodeJS.Platform, env: NodeJS.ProcessEnv, home = homedir()): string {

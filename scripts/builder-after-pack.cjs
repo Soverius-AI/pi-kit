@@ -7,7 +7,7 @@
 //
 // One electron-builder run can build several architectures (the two Windows ones share one latest.yml), so the backend is picked per
 // pack: dist/stage/<platform>-<arch>/backend, staged by scripts/package-stage.mjs with that triple's natives.
-const { cpSync, existsSync } = require('node:fs');
+const { cpSync, existsSync, writeFileSync } = require('node:fs');
 const { join, resolve } = require('node:path');
 const { Arch } = require('builder-util');
 const { installNotarizationRecovery } = require('./mac-notarization.cjs');
@@ -27,6 +27,10 @@ exports.default = async function afterPack(context) {
       : join(context.appOutDir, 'resources');
   cpSync(source, join(resources, 'backend'), { recursive: true, verbatimSymlinks: true });
   cpSync(join(source, '..', 'renderer'), join(resources, 'renderer'), { recursive: true });
-  console.log(`  • backend and renderer (${triple}) copied to ${resources}`);
+  // The version beside the server folder, as a server install has it: a server's plain Node cannot read app.asar, and
+  // needs it to tell whether this desktop is newer (doc/designs/headless-cli-server.md §5).
+  const version = context.packager.appInfo.version;
+  writeFileSync(join(resources, 'package.json'), `${JSON.stringify({ name: 'pi-kit', version }, null, 2)}\n`);
+  console.log(`  • backend, renderer and version ${version} (${triple}) copied to ${resources}`);
   installNotarizationRecovery(context);
 };

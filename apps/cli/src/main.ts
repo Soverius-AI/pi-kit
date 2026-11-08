@@ -1,6 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { delimiter, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { createInterface } from 'node:readline';
 import {
@@ -178,6 +179,50 @@ function openUrl(url: string): boolean {
   return true;
 }
 
+/** Whether a `pi-kit` command is already reachable through PATH (npm's, the desktop's, an earlier install's). */
+function commandOnPath(): boolean {
+  const names = process.platform === 'win32' ? ['pi-kit.cmd', 'pi-kit.exe', 'pi-kit.bat'] : ['pi-kit'];
+  return (process.env['PATH'] ?? '')
+    .split(delimiter)
+    .some((dir) => dir && names.some((name) => existsSync(join(dir, name))));
+}
+
+/**
+ * A server install's `pi-kit` for new terminals: on Windows its bin folder on the user's PATH, elsewhere a link in ~/.local/bin
+ * when that folder is on PATH.
+ */
+function putOnPath(): string | undefined {
+  const install = serverInstall();
+  if (!install || commandOnPath()) return undefined;
+  const bin = join(install.root, 'bin');
+  if (process.platform === 'win32') {
+    // The registry value as it is (REG_EXPAND_SZ, %USERPROFILE% entries unexpanded): .NET's SetEnvironmentVariable would
+    // write it back expanded as REG_SZ. Setting and clearing a variable through it only announces the change to new shells.
+    const script = [
+      "$key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)",
+      "$raw = [string]$key.GetValue('Path', '', 'DoNotExpandEnvironmentNames')",
+      "if (($raw -split ';') -notcontains $env:PI_KIT_BIN) {",
+      "  $kind = if ($raw) { $key.GetValueKind('Path') } else { [Microsoft.Win32.RegistryValueKind]::ExpandString }",
+      "  $key.SetValue('Path', ((@($raw.TrimEnd(';'), $env:PI_KIT_BIN) | Where-Object { $_ }) -join ';'), $kind)",
+      "  [Environment]::SetEnvironmentVariable('PI_KIT_PATH_CHANGED', '1', 'User')",
+      "  [Environment]::SetEnvironmentVariable('PI_KIT_PATH_CHANGED', $null, 'User')",
+      '}',
+    ].join('\n');
+    execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      env: { ...process.env, PI_KIT_BIN: bin },
+      stdio: 'ignore',
+    });
+    return `Added ${bin} to your PATH: "pi-kit" works in new terminals.`;
+  }
+  const dir = join(homedir(), '.local', 'bin');
+  const link = join(dir, 'pi-kit');
+  if (!(process.env['PATH'] ?? '').split(delimiter).includes(dir) || existsSync(link))
+    return `To run "pi-kit" from anywhere, add ${bin} to your PATH.`;
+  mkdirSync(dir, { recursive: true });
+  symlinkSync(join(bin, 'pi-kit'), link);
+  return `Linked ${link} to this install: "pi-kit" works from anywhere.`;
+}
+
 /**
  * Copies this runtime and bundle beside the download and starts them as the finisher. Through WMI, so that it leaves this
  * session's job object: Windows OpenSSH ends every process of a session that closes, which could stop the finisher halfway.
@@ -252,5 +297,6 @@ if (args[0] === FINISH_UPDATE_FLAG) {
       otherInstall: () => (manager ? otherInstall(manager, hostEntry) : undefined),
       ...(serverInstall() ? { serverInstall: serverInstall() } : {}),
       ...(process.platform === 'win32' ? { startFinisher } : {}),
+      putOnPath,
     },
   ).then((code) => process.exit(code));

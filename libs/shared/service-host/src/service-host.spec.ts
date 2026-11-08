@@ -386,6 +386,61 @@ describe('ServiceHost with a desktop on its socket', () => {
     expect(steps).toEqual(['daemon uninstall']);
   });
 
+  it('puts a server install’s pi-kit on PATH when it installs the service, and leaves the desktop’s alone', async () => {
+    const manager = {
+      unsupported: async () => undefined,
+      installed: () => false,
+      install: async () => true,
+      registered: () => undefined,
+    } as unknown as ServiceManager;
+    const running = { pid: 9, version: '1.0.0', level: 'login' as const, socket: 's', token: 't', startedAt: 'now' };
+    let asked = 0;
+    const base = { ...cli, manager, sleep: async () => undefined, discover: () => running };
+    const putOnPath = () => (asked++, 'Added C:\\pi-kit\\bin to your PATH.');
+    const printed: string[] = [];
+    await runCli(['service', 'install'], io(printed), { ...base, putOnPath });
+    expect(asked).toBe(0);
+    const server = { root: 'C:\\pi-kit', version: '1.0.0', target: 'win32-x64', releases: 'r' };
+    await runCli(['service', 'install'], io(printed), { ...base, putOnPath, serverInstall: server });
+    expect(asked).toBe(1);
+    expect(printed).toContain('Added C:\\pi-kit\\bin to your PATH.\n');
+  });
+
+  it('names the install that runs, and says when its folder or the registered install changed underneath it', async () => {
+    const install = await mkdtemp(join(tmpdir(), 'pk-install-'));
+    try {
+      await mkdir(join(install, 'backend'));
+      await writeFile(join(install, 'package.json'), '{"version":"2.0.0"}');
+      const printed: string[] = [];
+      const host = {
+        pid: 9,
+        version: '1.0.0',
+        level: 'login' as const,
+        socket: 's',
+        token: 't',
+        startedAt: 'now',
+        install,
+      };
+      await runCli(['service', 'status'], io(printed), {
+        ...cli,
+        discover: () => host,
+        connect: async () =>
+          ({
+            call: async () => ({ status: { state: 'running', restarts: 0 }, desktopAttached: false }),
+            close: () => undefined,
+          }) as never,
+        otherInstall: () => ({ entry: join(install, 'gone', 'backend', 'service-host.cjs'), version: 'unknown' }),
+      });
+      const text = printed.join('');
+      expect(text).toContain(`Background service: installed by another pi-kit (${join(install, 'gone')})`);
+      expect(text).toContain(`version 1.0.0, since now, from ${install}`);
+      expect(text).toContain(`${install} now holds 2.0.0; run "pi-kit service restart" to run it.`);
+      expect(text).toContain(`The registered install (${join(install, 'gone')}) is gone`);
+    } finally {
+      await rm(install, { recursive: true, force: true });
+    }
+  });
+
   it('exits `pi-kit service status` with 3 when nothing runs, for scripts', async () => {
     expect(await runCli(['service', 'status'], io([]), cli)).toBe(NOT_RUNNING);
   });

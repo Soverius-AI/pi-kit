@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -14,7 +14,14 @@ import {
   systemdExecStart,
   systemdUnit,
 } from './service-registration';
-import { otherInstall, scheduledTaskXml, serviceBatch, WindowsTaskService } from './service-spec';
+import {
+  otherCommand,
+  otherInstall,
+  scheduledTaskXml,
+  serviceBatch,
+  serviceHandover,
+  WindowsTaskService,
+} from './service-spec';
 
 const spec: ServiceSpec = {
   name: 'dev.pi-kit.app.service',
@@ -79,6 +86,19 @@ describe('what a registration starts', () => {
         version: '2.0.0',
       });
       expect(otherInstall(starting(['/node', ours]), ours)).toBeUndefined();
+
+      // A Windows desktop registers its .exe; a server's plain Node reads its version beside its resources.
+      await mkdir(join(root, 'desktop', 'resources', 'backend'), { recursive: true });
+      await writeFile(join(root, 'desktop', 'resources', 'backend', 'service-host.cjs'), '');
+      await writeFile(join(root, 'desktop', 'resources', 'package.json'), '{"version":"3.0.0"}');
+      const desktop = join(root, 'desktop', 'pi-kit.exe');
+      expect(otherInstall(starting([desktop, '--pi-kit-service']), ours)).toEqual({
+        entry: join(root, 'desktop', 'resources', 'backend', 'service-host.cjs'),
+        version: '3.0.0',
+      });
+      // A server's task sees the desktop's sign-in entry, the other kind of registration for the profile.
+      const task = { registered: () => undefined, otherRegistration: () => [desktop] } as unknown as ServiceManager;
+      expect(otherInstall(task, ours)?.version).toBe('3.0.0');
       expect(otherInstall(starting(['/node', join(root, 'gone', 'backend', 'service-host.cjs')]), ours)).toMatchObject({
         version: 'unknown',
       });
@@ -204,7 +224,7 @@ describe('starting at boot', () => {
         { ...spec, env: { ...spec.env, PI_KIT_DATA_DIR: data } },
         async () => undefined,
         terminal,
-        'BOX\\ana',
+        { account: 'BOX\\ana', sid: 'S-1-5-21-1-2-3-1001' },
       );
 
       expect(await task.install()).toBe(true);
@@ -213,7 +233,13 @@ describe('starting at boot', () => {
         ['schtasks', '/Run', '/TN', spec.name],
       ]);
       expect(xml.startsWith('\ufeff<?xml version="1.0" encoding="UTF-16"?>')).toBe(true);
-      expect(xml).toBe(`\ufeff${scheduledTaskXml(join(data, 'service.cmd'), 'BOX\\ana', spec.description)}`);
+      expect(xml).toBe(
+        `\ufeff${scheduledTaskXml(join(data, 'service.cmd'), 'BOX\\ana', spec.description, 'S-1-5-21-1-2-3-1001')}`,
+      );
+      // An unelevated desktop that takes the service over must be able to remove a task an elevated prompt made.
+      expect(xml).toContain(
+        '<SecurityDescriptor>D:(A;;FA;;;SY)(A;;FA;;;BA)(A;;FA;;;S-1-5-21-1-2-3-1001)</SecurityDescriptor>',
+      );
       expect(xml).toContain('<BootTrigger><Enabled>true</Enabled></BootTrigger>');
       expect(xml).toContain('<LogonType>Password</LogonType>');
       expect(xml).toContain('<RestartOnFailure>');
@@ -234,7 +260,7 @@ describe('starting at boot', () => {
           { ...spec, args, env: { ...spec.env, PI_KIT_DATA_DIR: data } },
           async () => void stops++,
           terminal,
-          'BOX\\ana',
+          { account: 'BOX\\ana', sid: 'S-1-5-21-1-2-3-1001' },
           () => true,
         );
       await writeFile(join(data, 'service.cmd'), 'an older batch');
@@ -250,6 +276,81 @@ describe('starting at boot', () => {
       expect(stops).toBe(1);
     } finally {
       await rm(data, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('two installs on one profile', () => {
+  it.each([
+    ['a newer host runs', '1.0.0', '2.0.0', undefined, { action: 'update-first', version: '2.0.0' }],
+    ['a newer install is registered', '1.0.0', undefined, '2.0.0', { action: 'update-first', version: '2.0.0' }],
+    ['an install of its own version is registered', '1.0.0', '1.0.0', '1.0.0', { action: 'attach' }],
+    ['an older install is registered', '2.0.0', '1.0.0', '1.0.0', { action: 'register' }],
+    ['the registered install is gone', '1.0.0', undefined, 'unknown', { action: 'register' }],
+    ['only this app is registered', '1.0.0', '1.0.0', undefined, { action: 'register' }],
+  ])('a starting desktop when %s', (_, own, running, registered, expected) => {
+    expect(serviceHandover(own, running, registered ? { version: registered } : undefined)).toEqual(expected);
+  });
+
+  it('Windows: a server task that takes over removes the desktop sign-in entry and stops its host', async () => {
+    const data = await mkdtemp(join(tmpdir(), 'pk-task-'));
+    try {
+      const steps: string[] = [];
+      const terminal = async (file: string, args: string[]) => (
+        steps.push(`${file} ${args[0]}`),
+        { code: 0, output: '' }
+      );
+      const task = new WindowsTaskService(
+        { ...spec, env: { ...spec.env, PI_KIT_DATA_DIR: data } },
+        async () => void steps.push('stop host'),
+        terminal,
+        { account: 'BOX\\ana', sid: 'S-1-5-21-1-2-3-1001' },
+        () => false,
+      );
+      let entry: string[] | undefined = ['C:\\pi-kit\\pi-kit.exe', '--pi-kit-service'];
+      task.sibling = {
+        registered: () => entry,
+        uninstall: async () => void (steps.push('remove sign-in entry'), (entry = undefined)),
+      };
+      await task.install();
+      expect(steps).toEqual(['remove sign-in entry', 'stop host', 'schtasks /Create', 'schtasks /Run']);
+    } finally {
+      await rm(data, { recursive: true, force: true });
+    }
+  });
+
+  it('Windows: a task Windows refuses to remove keeps its batch, and says so', async () => {
+    const data = await mkdtemp(join(tmpdir(), 'pk-task-'));
+    try {
+      await writeFile(join(data, 'service.cmd'), 'the batch');
+      const refused = async (_file: string, args: string[]) => ({ code: args[0] === '/Delete' ? 1 : 0, output: '' });
+      const task = new WindowsTaskService(
+        { ...spec, env: { ...spec.env, PI_KIT_DATA_DIR: data } },
+        async () => undefined,
+        refused,
+        { account: 'BOX\\ana' },
+        () => true,
+      );
+      await expect(task.uninstall()).rejects.toThrow(/schtasks \/Delete failed/);
+      expect(await readFile(join(data, 'service.cmd'), 'utf8')).toBe('the batch');
+    } finally {
+      await rm(data, { recursive: true, force: true });
+    }
+  });
+
+  it('never writes the desktop launcher over another install’s pi-kit command', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'pk-bin-'));
+    try {
+      const server = join(dir, 'server-bin-pi-kit');
+      await writeFile(server, '#!/bin/sh\n# pi-kit, on the Node runtime this server install carries.\n');
+      expect(otherCommand(join(dir, 'free'))).toBeUndefined();
+      await writeFile(join(dir, 'ours'), '#!/bin/sh\n# Written by pi-kit (Settings > General > Background).\n');
+      expect(otherCommand(join(dir, 'ours'))).toBeUndefined();
+      await symlink(server, join(dir, 'linked'));
+      expect(otherCommand(join(dir, 'linked'))).toBe(await realpath(server));
+      expect(otherCommand(server)).toBe(server);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });

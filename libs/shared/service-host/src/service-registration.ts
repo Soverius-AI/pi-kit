@@ -49,6 +49,8 @@ export interface ServiceManager {
   bootNote?(): Promise<string | undefined>;
   /** It starts at boot, whether anyone is signed in or not (Windows server installs). */
   readonly startsAtBoot?: boolean;
+  /** Windows: what the other kind of install registered for this profile (a desktop's sign-in entry, a server's task). */
+  otherRegistration?(): string[] | undefined;
 }
 
 const xml = (value: string): string =>

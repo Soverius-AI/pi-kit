@@ -4301,6 +4301,7 @@
       "installCommand": "Befehl pi-kit installieren",
       "commandOnPath": "pi-kit ist im PATH",
       "commandNotOnPath": "Installiert in {{dir}}; füge diesen Ordner zu deinem PATH hinzu.",
+      "commandOther": "{{path}} ist der pi-kit-Befehl einer anderen Installation ({{other}}) und bleibt, wie er ist.",
       "writesTo": "Schreibt einen Starter nach {{dir}}",
       "unattendedName": "Schlüssel lesen, während ich weg bin",
       "unattendedHint": "Legt von jedem Schlüssel eine Kopie in deinem Schlüsselbund ab, die nur pi-kit ohne Touch ID lesen kann, damit der Hintergrunddienst nicht auf deinen Fingerabdruck wartet. Einschalten fragt einmal pro Schlüssel nach Touch ID; Ausschalten entfernt die Kopien.",

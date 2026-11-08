@@ -4301,6 +4301,7 @@
       "installCommand": "Install the pi-kit command",
       "commandOnPath": "pi-kit is on PATH",
       "commandNotOnPath": "Installed in {{dir}}; add that folder to your PATH.",
+      "commandOther": "{{path}} is the pi-kit command of another install ({{other}}), so it stays as it is.",
       "writesTo": "Writes a launcher to {{dir}}",
       "unattendedName": "Read keys while I’m away",
       "unattendedHint": "Keeps a copy of each key in your Keychain that only pi-kit can read without Touch ID, so the background service doesn’t wait for your fingerprint. Turning it on asks for Touch ID once per key; turning it off removes the copies.",

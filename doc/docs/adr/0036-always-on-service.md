@@ -142,8 +142,10 @@ whoever the host is.
 
 - The desktop talks to the host over a local socket (`hostSocketPath`): a Unix socket in the data folder (0600; in
   `$XDG_RUNTIME_DIR` or the user's temporary folder when that path is too long for a socket address), a named pipe on
-  Windows. Frames are newline-delimited JSON with calls both ways and events; nothing is accepted before a hello that
-  carries the host token, made fresh at every start and never put in an environment variable. The backend keeps
+  Windows. Any local account may open that pipe: a host the scheduled task starts runs in the task's logon session, whose
+  default pipe permissions leave out the owner's unelevated sign-in. Frames are newline-delimited JSON with calls both
+  ways and events; nothing is accepted before a hello that carries the host token, made fresh at every start and never
+  put in an environment variable, so the token, readable only by its owner, is what keeps other accounts out. The backend keeps
   its child IPC to the host, so the `DesktopBridge` is unchanged: the host forwards its requests to the attached desktop
   or, with none attached, answers them itself (empty browser state, "needs the desktop app", no app update), so no
   request waits for a window. A desktop that signs in later attaches to a level 2 host the same way.

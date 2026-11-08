@@ -13,6 +13,8 @@ export interface HostDiscovery {
   socket: string;
   token: string;
   startedAt: string;
+  /** The folder holding the host's `backend/`: a server install, or a desktop app's resources. */
+  install?: string;
 }
 
 const FILE = 'service.json';
@@ -43,7 +45,8 @@ export function readDiscovery(dataDir: string): HostDiscovery | undefined {
       (value.level !== 'app' && value.level !== 'login' && value.level !== 'serve') ||
       typeof value.socket !== 'string' ||
       typeof value.token !== 'string' ||
-      typeof value.startedAt !== 'string'
+      typeof value.startedAt !== 'string' ||
+      (value.install !== undefined && typeof value.install !== 'string')
     )
       return undefined;
     return value as HostDiscovery;

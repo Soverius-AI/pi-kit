@@ -1,7 +1,7 @@
 // The service host: plain Node on the Electron binary (ELECTRON_RUN_AS_NODE), never Electron's own APIs (ADR-0036).
 import { randomBytes } from 'node:crypto';
 import { unlinkSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import {
   allocateEndpoint,
   appFolders,
@@ -109,6 +109,7 @@ void (async () => {
     socket,
     token,
     startedAt: new Date().toISOString(),
+    install: dirname(__dirname),
   });
   process.on('exit', () => {
     removeDiscovery(config.dataDir, process.pid);

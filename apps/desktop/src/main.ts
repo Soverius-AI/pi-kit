@@ -24,6 +24,7 @@ import {
   cliInstallDir,
   cliLauncher,
   cliLauncherName,
+  otherCommand,
   type DesktopAnswer,
   detachedAnswer,
   FileLog,
@@ -39,6 +40,7 @@ import {
   spawnServiceHost,
   type SpawnedHost,
   SUPERVISOR_FLAG,
+  serviceHandover,
   superviseServiceHost,
   temporaryLocation,
   type WatchdogStatus,
@@ -408,14 +410,14 @@ async function offerRetry(status: WatchdogStatus): Promise<void> {
   const { response } = await dialog.showMessageBox({
     type: 'error',
     title: 'pi-kit',
-    message: 'The pi-kit backend keeps stopping.',
+    message: host?.connected ? 'The pi-kit backend keeps stopping.' : 'The pi-kit backend stopped.',
     detail: `${status.reason ?? ''}\n\nThe log is in ${app.getPath('logs')}.`,
     buttons: ['Try again', 'Quit'],
     defaultId: 0,
     cancelId: 1,
   });
   if (response === 0 && host?.connected) host.retry();
-  // The host itself is gone (it never is on purpose): a fresh start of the app starts a fresh one.
+  // The host itself is gone: a fresh start of the app finds or starts the next one.
   else if (response === 0) {
     app.relaunch();
     app.quit();
@@ -573,13 +575,22 @@ function commandLauncher(): string {
 }
 
 /** Settings › General › Background: whether `pi-kit` is installed for a terminal, and whether that folder is on its PATH. */
-function commandStatus(): { available: boolean; dir: string; path: string; installed: boolean; onPath: boolean } {
+function commandStatus(): {
+  available: boolean;
+  dir: string;
+  path: string;
+  installed: boolean;
+  onPath: boolean;
+  other?: string;
+} {
   // PI_KIT_BIN_DIR: the folder `pi-kit-secret`'s "Install on PATH" also honours.
   const dir = process.env['PI_KIT_BIN_DIR'] || cliInstallDir(process.platform, process.env);
   const path = join(dir, cliLauncherName(process.platform));
   const available = existsSync(CLI_ENTRY) && !temporaryLocation(process.platform, process.execPath);
-  const installed = available && existsSync(path) && readFileSync(path, 'utf8') === commandLauncher();
-  return { available, dir, path, installed, onPath: (userPath() ?? '').split(delimiter).includes(dir) };
+  const other = otherCommand(path);
+  const installed = available && !other && existsSync(path) && readFileSync(path, 'utf8') === commandLauncher();
+  const onPath = (userPath() ?? '').split(delimiter).includes(dir);
+  return { available, dir, path, installed, onPath, ...(other ? { other } : {}) };
 }
 
 /**
@@ -622,25 +633,30 @@ async function openHost(status: (text: string) => void): Promise<HostClient> {
     },
     stopHost,
   });
-  if (background?.installed() && !(await background.unsupported())) {
+  // The profile's service may be registered by this app or by another install (a server install from npm or a tarball; on
+  // Windows its scheduled task rather than this app's sign-in entry). The newest install runs it, and one of this version
+  // keeps it (§5).
+  const supported = !!background && !(await background.unsupported());
+  const other = supported && background ? otherInstall(background, HOST_ENTRY) : undefined;
+  if (background && supported && (background.installed() || other)) {
     mainLog?.line('background service registered: attaching to it');
     const peek = liveDiscovery(dataDir);
-    // The newest install runs the service, whether it runs now or is only registered: never move it back onto this app's version.
-    // Become that version first, so the window has every native feature the newer server expects; without such a release, attach
-    // as this version.
-    const newer = [peek?.version, otherInstall(background, HOST_ENTRY)?.version].find(
-      (version) => version !== undefined && isNewerVersion(version, app.getVersion()),
-    );
-    if (newer) {
-      mainLog?.line(`the service runs ${newer}, newer than this app`);
-      status(`Updating pi-kit to ${newer} to match the background service…`);
+    const handover = serviceHandover(app.getVersion(), peek?.version, other);
+    if (handover.action === 'update-first') {
+      // Become that version first, so the window has every native feature the newer server expects; without such a
+      // release, attach as this version.
+      mainLog?.line(`the service runs ${handover.version}, newer than this app`);
+      status(`Updating pi-kit to ${handover.version} to match the background service…`);
       if (
         await appUpdates()
-          .updateTo(newer)
+          .updateTo(handover.version)
           .catch(() => false)
       )
         return new Promise<never>(() => undefined);
-      mainLog?.line(`no app release of ${newer} or newer: attaching without moving the service`);
+      mainLog?.line(`no app release of ${handover.version} or newer: attaching without moving the service`);
+      if (!peek) await background.start();
+    } else if (handover.action === 'attach') {
+      mainLog?.line(`the service belongs to ${other?.entry}, this app's version: leaving it there`);
       if (!peek) await background.start();
     } else {
       // Keeps paths, version and PATH current; a changed registration restarts the service on it.
@@ -691,6 +707,26 @@ async function switchBackground(enabled: unknown): Promise<void> {
   app.quit();
 }
 
+/**
+ * The host went away under the app. A service's host moves on purpose (`pi-kit service restart`, `pi-kit update`, a server
+ * install taking the service over), so the app restarts onto the next host of the data folder. The host this app started
+ * dying, or no next host within two minutes, is a failure.
+ */
+async function followHost(previousPid: number | undefined): Promise<void> {
+  for (let i = 0; !hostOwned && !shutdownStarted && i < 1200; i++) {
+    const next = liveDiscovery(app.getPath('userData'));
+    if (next && next.pid !== previousPid) {
+      mainLog?.line(`the service host is now pid ${next.pid}: restarting onto it`);
+      app.relaunch();
+      app.quit();
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (!shutdownStarted)
+    broadcast({ state: 'failed', restarts: latestStatus.restarts, reason: 'the pi-kit service host stopped' });
+}
+
 /** The Windows sign-in entry: no window, only the host, started again after a crash with a growing pause. */
 async function superviseHost(): Promise<void> {
   const log = new FileLog(app.getPath('logs'), 'supervisor.log');
@@ -723,10 +759,11 @@ async function boot(): Promise<void> {
 
   const client = await openHost((text) => setSplashStatus(splash, text));
   host = client;
+  const attachedPid = liveDiscovery(app.getPath('userData'))?.pid;
   client.onClose(() => {
     if (shutdownStarted || switching) return;
     mainLog?.line('the service host went away');
-    broadcast({ state: 'failed', restarts: latestStatus.restarts, reason: 'the pi-kit service host stopped' });
+    void followHost(attachedPid);
   });
   client.onStatus(broadcast);
   client.serveBackendRequests(answerBackend);
@@ -802,6 +839,7 @@ async function boot(): Promise<void> {
     if (!fromRenderer(event)) throw new Error('forbidden');
     const status = commandStatus();
     if (!status.available) throw new Error('The pi-kit command is not part of this build.');
+    if (status.other) throw new Error(`${status.path} is the pi-kit command of another install (${status.other}).`);
     mkdirSync(status.dir, { recursive: true });
     writeFileSync(status.path, commandLauncher(), { mode: 0o755 });
     chmodSync(status.path, 0o755);

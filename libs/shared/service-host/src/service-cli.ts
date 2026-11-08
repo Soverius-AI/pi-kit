@@ -1,4 +1,5 @@
-import { dirname } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { type HostDiscovery, isNewerVersion } from './discovery';
 import type { RpcPeer } from './host-channel';
 import { stopHost, waitFor } from './cli-host';
@@ -6,6 +7,7 @@ import { HOST_ALREADY_RUNNING } from './host-process';
 import type { HostStatus } from './host-protocol';
 import { OPEN_USAGE, runOpenCli } from './open-cli';
 import { PEERS_USAGE, runPeersCli } from './peers-cli';
+import { bundledVersion } from './service-host';
 import { REMOTE_USAGE, runDevicesCli, runPairCli, runRemoteCli } from './remote-cli';
 import type { ServiceManager } from './service-registration';
 import { runLoginCli, runLogoutCli, runModelCli, SETTINGS_USAGE } from './settings-cli';
@@ -47,6 +49,8 @@ export interface CliContext {
   serverInstall?: { root: string; version: string; target: string; releases: string; npm?: string };
   /** Windows: starts the finisher that swaps the install once this command has exited (`pi-kit update`). */
   startFinisher?: (plan: FinishPlan) => void;
+  /** A server install: makes `pi-kit` reachable from new terminals unless one already is, and says what it did. */
+  putOnPath?: () => string | undefined;
 }
 
 const GROUPS: Record<string, (args: string[], io: CliIo, ctx: CliContext) => Promise<number>> = {
@@ -197,9 +201,16 @@ async function status(io: CliIo, ctx: CliContext, json = false): Promise<number>
     return !host ? NOT_RUNNING : state ? 0 : 1;
   }
   const atBoot = ctx.bootManager?.installed() ?? false;
-  io.out(
-    `Background service: ${atBoot ? `installed at boot (${ctx.serviceName})` : installed ? `installed (${ctx.serviceName})` : 'not installed'}\n`,
-  );
+  // On Windows each install registers its own way: a desktop's sign-in entry is not a server's task, yet runs the service.
+  const registered = ctx.otherInstall?.();
+  const registration = atBoot
+    ? `installed at boot (${ctx.serviceName})`
+    : installed
+      ? `installed (${ctx.serviceName})`
+      : registered
+        ? `installed by another pi-kit (${dirname(dirname(registered.entry))})`
+        : 'not installed';
+  io.out(`Background service: ${registration}\n`);
   const host = ctx.discover();
   if (!host) {
     io.out('Host: not running\n');
@@ -207,7 +218,18 @@ async function status(io: CliIo, ctx: CliContext, json = false): Promise<number>
   }
   const owner =
     host.level === 'login' ? 'the background service' : host.level === 'serve' ? '"pi-kit serve"' : 'the pi-kit app';
-  io.out(`Host: running, pid ${host.pid}, run by ${owner}, version ${host.version}, since ${host.startedAt}\n`);
+  io.out(
+    `Host: running, pid ${host.pid}, run by ${owner}, version ${host.version}, since ${host.startedAt}` +
+      `${host.install ? `, from ${host.install}` : ''}\n`,
+  );
+  // npm and `pi-kit update` replace an install in place: the running host is then older than its folder.
+  const onDisk = host.install ? bundledVersion(join(host.install, 'backend')) : 'unknown';
+  if (onDisk !== 'unknown' && onDisk !== host.version)
+    io.out(`  ${host.install} now holds ${onDisk}; run "pi-kit service restart" to run it.\n`);
+  if (registered && !existsSync(registered.entry))
+    io.out(
+      `  The registered install (${dirname(dirname(registered.entry))}) is gone; run "pi-kit service install" to register this one.\n`,
+    );
   const state = await hostStatus(ctx, host);
   if (!state) {
     io.out('Backend: unknown (the host did not answer)\n');
@@ -258,6 +280,9 @@ async function install(io: CliIo, ctx: CliContext, boot = false): Promise<number
   const changed = await manager.install();
   const when = manager.startsAtBoot ? 'at boot, whether anyone is signed in or not' : 'when you sign in';
   io.out(changed ? `Installed: the backend now starts ${when}.\n` : 'Already installed.\n');
+  // A server zip or tarball has no installer to put `pi-kit` on PATH; npm and the desktop app do it themselves.
+  const command = ctx.serverInstall ? ctx.putOnPath?.() : undefined;
+  if (command) io.out(`${command}\n`);
   const code = reportStarted(io, await waitFor(ctx, () => ctx.discover()));
   const note = await manager.bootNote?.();
   if (note) io.out(`${note}\n`);
