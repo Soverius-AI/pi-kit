@@ -9,7 +9,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HostDiscovery } from './discovery';
 import { type CliContext, runCli } from './service-cli';
-import { type FinishPlan, finishWindowsUpdate } from './update-cli';
+import type { ServiceManager } from './service-registration';
+import { type FinishPlan, finishWindowsUpdate, type NpmUpdate } from './update-cli';
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {
@@ -75,6 +76,32 @@ function context(install: CliContext['serverInstall'], running?: HostDiscovery):
   };
 }
 
+/** An npm install of 1.0.0 under `modules` with its service running, and an npm that serves `served`. */
+function npmInstall(target: string, modules: string, served: Record<string, string> = {}) {
+  const host: HostDiscovery = { pid: 1, version: '1.0.0', level: 'login', socket: 's', token: 't', startedAt: 'now' };
+  const steps: string[] = [];
+  const sep = modules.includes('\\') ? '\\' : '/';
+  const root = [modules, '@soverius-ai', 'pi-kit', 'node_modules', '@soverius-ai', `pi-kit-${target}`].join(sep);
+  let running: HostDiscovery | undefined = host;
+  const registry: Record<string, string> = Object.keys(served).length
+    ? served
+    : { '@soverius-ai/pi-kit': '2.0.0', [`@soverius-ai/pi-kit-${target}@2.0.0`]: '2.0.0' };
+  const ctx: CliContext = {
+    ...context({ root, version: '1.0.0', target, releases: 'http://127.0.0.1:9/latest', npm: '@soverius-ai/pi-kit' }),
+    discover: () => running,
+    connect: async () =>
+      ({ call: async () => void (steps.push('stop'), (running = undefined)), close: () => undefined }) as never,
+    manager: {
+      start: async () => void (steps.push('start'), (running = { ...host, pid: 2, version: '2.0.0' })),
+    } as unknown as ServiceManager,
+    npm: {
+      view: (spec) => registry[spec],
+      install: (prefix, spec) => (steps.push(`npm ${prefix} ${spec}`), true),
+    },
+  };
+  return { ctx, steps };
+}
+
 const versionAt = async (root: string) => JSON.parse(await readFile(join(root, 'package.json'), 'utf8')).version;
 const io = { out: () => undefined, err: () => undefined };
 
@@ -93,16 +120,32 @@ describe('pi-kit update', () => {
     expect(existsSync(`${root}.previous`)).toBe(false);
   });
 
-  it('leaves an npm install to npm, and names its command when a release is newer', async () => {
-    const { root, install } = await world();
+  it('updates an npm install with npm, under the prefix npm installed it in, with the service stopped meanwhile', async () => {
+    const { ctx, steps } = npmInstall('linux-x64', '/opt/homebrew/lib/node_modules/@soverius-ai/pi-kit/node_modules');
+    expect(await runCli(['update'], io, ctx)).toBe(0);
+    expect(steps).toEqual(['stop', 'npm /opt/homebrew @soverius-ai/pi-kit@2.0.0', 'start']);
+  });
+
+  it('leaves an npm install as it is while npm has the new version but not yet this machine’s package of it', async () => {
+    const { ctx, steps } = npmInstall('linux-x64', '/usr/lib/node_modules', { '@soverius-ai/pi-kit': '2.0.0' });
     const printed: string[] = [];
-    const npm = context({ ...install, npm: '@soverius-ai/pi-kit' });
     const say = { out: (text: string) => void printed.push(text), err: (text: string) => void printed.push(text) };
-    expect(await runCli(['update'], say, npm)).toBe(2);
-    expect(await versionAt(root)).toBe('1.0.0');
-    expect(await runCli(['update', '--check'], say, npm)).toBe(0);
-    expect(printed.join('')).toContain('npm install -g @soverius-ai/pi-kit@latest');
-    expect(printed[printed.length - 1]).toBe('2.0.0 is available; run "npm install -g @soverius-ai/pi-kit@latest".\n');
+    expect(await runCli(['update'], say, ctx)).toBe(1);
+    expect(steps).toEqual([]);
+    expect(printed.join('')).toContain('not yet @soverius-ai/pi-kit-linux-x64 2.0.0');
+  });
+
+  it('on Windows, leaves npm to the finisher, which runs it once this command has exited', async () => {
+    const { ctx, steps } = npmInstall('win32-x64', 'C:\\Users\\ana\\AppData\\Roaming\\npm\\node_modules');
+    const plans: FinishPlan[] = [];
+    expect(await runCli(['update'], io, { ...ctx, startFinisher: (plan) => void plans.push(plan) })).toBe(0);
+    expect(steps).toEqual(['stop']);
+    expect(plans).toEqual([
+      expect.objectContaining({
+        npm: { prefix: 'C:\\Users\\ana\\AppData\\Roaming\\npm', spec: '@soverius-ai/pi-kit@2.0.0' },
+        task: 'test',
+      }),
+    ]);
   });
 
   it('on Windows, verifies, unpacks and stops the service, then leaves the swap to a finisher', async () => {
@@ -172,6 +215,7 @@ describe('the Windows finisher', () => {
           steps.push(`rename ${from} -> ${to}`);
         },
         remove: (path: string) => void steps.push(`remove ${path}`),
+        npm: (update: NpmUpdate) => (steps.push(`npm ${update.prefix} ${update.spec}`), true),
         runTask: (name: string) => void steps.push(`run ${name}`),
         log: (line: string) => void steps.push(`log ${line.split(':')[0]}`),
         sleep: async () => void steps.push('wait'),
@@ -191,6 +235,19 @@ describe('the Windows finisher', () => {
       'log updated C',
       'run pi-kit',
     ]);
+  });
+
+  it('for an npm install, runs npm once the update command has exited, then starts the service', async () => {
+    const { steps, ops } = machine({ parentRuns: 2, busy: 0 });
+    const npm: FinishPlan = {
+      parent: 42,
+      staging: 'C:/stage',
+      task: 'pi-kit',
+      log: 'C:/update.log',
+      npm: { prefix: 'C:/npm', spec: 'pi-kit@2.0.0' },
+    };
+    expect(await finishWindowsUpdate(npm, ops)).toBe(true);
+    expect(steps).toEqual(['wait', 'wait', 'npm C:/npm pi-kit@2.0.0', 'log npm installed pi-kit@2.0.0', 'run pi-kit']);
   });
 
   it('puts the old install back when the new one cannot move in, and still starts the service', async () => {

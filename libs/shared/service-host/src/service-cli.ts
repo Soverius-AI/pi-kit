@@ -11,6 +11,7 @@ import { bundledVersion } from './service-host';
 import { REMOTE_USAGE, runDevicesCli, runPairCli, runRemoteCli } from './remote-cli';
 import type { ServiceManager } from './service-registration';
 import { installOf } from './service-spec';
+import { DESKTOP_USAGE, type DesktopApp, runDesktopCli } from './desktop-cli';
 import { runLoginCli, runLogoutCli, runModelCli, SETTINGS_USAGE } from './settings-cli';
 import { type FinishPlan, runUpdateCli, UPDATE_USAGE } from './update-cli';
 
@@ -52,9 +53,19 @@ export interface CliContext {
   startFinisher?: (plan: FinishPlan) => void;
   /** A server install: makes `pi-kit` reachable from new terminals unless one already is, and says what it did. */
   putOnPath?: () => string | undefined;
+  /** The pi-kit app on this computer: where it is installed, how to install it, how to start it. */
+  desktop?: DesktopApp;
+  /** npm on this computer, for an install npm made. */
+  npm?: {
+    /** The version the registry serves for a spec (a name for its latest), or undefined when it serves none. */
+    view(spec: string): string | undefined;
+    /** Installs a spec globally under `prefix`, npm's output in this terminal; false when npm failed. */
+    install(prefix: string, spec: string): boolean;
+  };
 }
 
 const GROUPS: Record<string, (args: string[], io: CliIo, ctx: CliContext) => Promise<number>> = {
+  desktop: runDesktopCli,
   devices: runDevicesCli,
   login: runLoginCli,
   logout: runLogoutCli,
@@ -87,6 +98,7 @@ For example, use "pi-kit service logs", not "pi-kit logs".
 
 ${SETTINGS_USAGE}
 ${OPEN_USAGE}
+${DESKTOP_USAGE}
 ${REMOTE_USAGE}
 ${PEERS_USAGE}
 pi-kit's backend runs as a service of this computer, so background agents and phone access keep working when the

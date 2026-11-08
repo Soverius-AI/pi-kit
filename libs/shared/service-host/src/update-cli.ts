@@ -1,43 +1,45 @@
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, createWriteStream, existsSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { Readable } from 'node:stream';
-import { pipeline } from 'node:stream/promises';
-import type { ReadableStream } from 'node:stream/web';
 import { stopHost, waitFor } from './cli-host';
 import { isNewerVersion } from './discovery';
+import { download, getRelease, getText } from './release-feed';
 import type { CliContext, CliIo } from './service-cli';
 
 export const UPDATE_USAGE = `  pi-kit update [--check]           Update this server install to the latest release (the desktop app updates itself)
 `;
 
-interface Release {
-  tag_name: string;
-  assets: Array<{ name: string; browser_download_url: string }>;
-}
-
 /** The CLI started as the Windows finisher, with the path of its plan (JSON) after the flag. */
 export const FINISH_UPDATE_FLAG = '--pi-kit-finish-update';
 
-/** The swap the Windows finisher does once the `pi-kit update` that started it has exited. */
-export interface FinishPlan {
+/** An npm install's update: npm installs `spec` under the global prefix it installed pi-kit in. */
+export interface NpmUpdate {
+  prefix: string;
+  spec: string;
+}
+
+/**
+ * What the Windows finisher does once the `pi-kit update` that started it has exited: move the release in place of the
+ * install, or run npm on it.
+ */
+export type FinishPlan = {
   parent: number;
-  install: string;
-  unpacked: string;
-  previous: string;
   /** Holds the download and the finisher itself; removed after the finisher exits. */
   staging: string;
   /** The scheduled task to run again: the service ran before the update. */
   task?: string;
   log: string;
-}
+} & ({ install: string; unpacked: string; previous: string } | { npm: NpmUpdate });
 
 export interface FinishOps {
   alive(pid: number): boolean;
   rename(from: string, to: string): void;
   remove(path: string): void;
+  /** Runs npm for the update; false when it failed. */
+  npm(update: NpmUpdate): boolean;
   runTask(name: string): void;
   log(line: string): void;
   sleep(ms: number): Promise<unknown>;
@@ -49,9 +51,16 @@ const PATIENCE = 120;
  * Windows: the swap `pi-kit update` cannot make while it runs on the install's own node.exe, made from a copy outside the
  * install. It waits for that command to exit, moves the install aside (retrying while Windows still holds its files), moves
  * the new version in, puts the old one back when that fails, and starts the service again either way when it ran before.
+ * For an npm install, npm replaces the install instead, once nothing runs from it.
  */
 export async function finishWindowsUpdate(plan: FinishPlan, ops: FinishOps): Promise<boolean> {
   for (let i = 0; i < PATIENCE && ops.alive(plan.parent); i++) await ops.sleep(500);
+  if ('npm' in plan) {
+    const updated = ops.npm(plan.npm);
+    ops.log(updated ? `npm installed ${plan.npm.spec}` : `npm could not install ${plan.npm.spec}`);
+    if (plan.task) ops.runTask(plan.task);
+    return updated;
+  }
   let updated = false;
   try {
     ops.remove(plan.previous);
@@ -81,6 +90,7 @@ export async function finishWindowsUpdate(plan: FinishPlan, ops: FinishOps): Pro
 
 /** What the finisher does on a real Windows machine, logging to the plan's file. */
 export function windowsFinishOps(plan: FinishPlan): FinishOps {
+  mkdirSync(dirname(plan.log), { recursive: true });
   return {
     alive: (pid) => {
       try {
@@ -92,6 +102,15 @@ export function windowsFinishOps(plan: FinishPlan): FinishOps {
     },
     rename: renameSync,
     remove: (path) => rmSync(path, { recursive: true, force: true }),
+    npm: ({ prefix, spec }) => {
+      // Verbatim, as removeStagingAfterExit explains; cmd runs npm's .cmd from PATH.
+      const run = spawnSync('cmd.exe', ['/d', '/s', '/c', `"npm install -g --prefix "${prefix}" ${spec}"`], {
+        encoding: 'utf8',
+        windowsVerbatimArguments: true,
+      });
+      appendFileSync(plan.log, `${run.stdout ?? ''}${run.stderr ?? ''}`);
+      return run.status === 0;
+    },
     runTask: (name) => void execFileSync('schtasks', ['/Run', '/TN', name], { stdio: 'ignore' }),
     log: (line) => appendFileSync(plan.log, `${new Date().toISOString()} ${line}\n`),
     sleep: (ms) => delay(ms),
@@ -127,22 +146,15 @@ export async function runUpdateCli(args: string[], io: CliIo, ctx: CliContext): 
     io.err('pi-kit: the desktop app updates itself; use "Check for updates" in it.\n');
     return 2;
   }
-  const command = install.npm ? `npm install -g ${install.npm}@latest` : 'pi-kit update';
-  // npm owns the folder; it replaces it in place, so the service keeps its registration.
-  if (install.npm && !check) {
-    io.err(
-      `pi-kit: npm installed this pi-kit; update it with npm:\n  pi-kit service stop\n  ${command}\n  pi-kit service start\n`,
-    );
-    return 2;
-  }
-  const release = await get<Release>(install.releases);
+  if (install.npm) return updateWithNpm(check, io, ctx, { ...install, npm: install.npm });
+  const release = await getRelease(install.releases);
   const version = release.tag_name.replace(/^v/, '');
   if (!isNewerVersion(version, install.version)) {
     io.out(`Up to date: ${install.version}.\n`);
     return 0;
   }
   if (check) {
-    io.out(`${version} is available; run "${command}".\n`);
+    io.out(`${version} is available; run "pi-kit update".\n`);
     return 0;
   }
   const windows = install.target.startsWith('win32-');
@@ -166,7 +178,7 @@ export async function runUpdateCli(args: string[], io: CliIo, ctx: CliContext): 
   try {
     const file = join(staging, name);
     await download(archive.browser_download_url, file);
-    const expected = (await text(sums.browser_download_url))
+    const expected = (await getText(sums.browser_download_url))
       .split('\n')
       .map((line) => line.trim().split(/\s+/))
       .find(([, entry]) => entry === name)?.[0];
@@ -225,20 +237,81 @@ export async function runUpdateCli(args: string[], io: CliIo, ctx: CliContext): 
   }
 }
 
-async function get<T>(url: string): Promise<T> {
-  const response = await fetch(url, { headers: { accept: 'application/vnd.github+json' } });
-  if (!response.ok) throw new Error(`the release feed answered ${response.status}`);
-  return (await response.json()) as T;
+type NpmInstall = NonNullable<CliContext['serverInstall']> & { npm: string };
+
+/**
+ * An npm install: npm's latest of the package, once npm also serves this machine's package of it (it can hold a new
+ * version for a maintainer's approval, and the package without it would not run), installed by npm under the prefix it
+ * installed pi-kit in, with the service stopped meanwhile. npm replaces the folder in place, so the registration stays.
+ */
+async function updateWithNpm(check: boolean, io: CliIo, ctx: CliContext, install: NpmInstall): Promise<number> {
+  const manual = `  pi-kit service stop\n  npm install -g ${install.npm}@latest\n  pi-kit service start\n`;
+  const npm = ctx.npm;
+  const latest = npm?.view(install.npm);
+  const prefix = npmPrefix(install.root, install.target.startsWith('win32-'));
+  if (!npm || !latest || !prefix) {
+    io.err(`pi-kit: npm does not answer here; update with npm:\n${manual}`);
+    return 1;
+  }
+  if (!isNewerVersion(latest, install.version)) {
+    io.out(`Up to date: ${install.version}.\n`);
+    return 0;
+  }
+  const own = `${install.npm}-${install.target}`;
+  if (npm.view(`${own}@${latest}`) !== latest) {
+    io.err(`pi-kit: npm has ${install.npm} ${latest}, but not yet ${own} ${latest}; try again later.\n`);
+    return 1;
+  }
+  if (check) {
+    io.out(`${latest} is available; run "pi-kit update".\n`);
+    return 0;
+  }
+  const host = ctx.discover();
+  if (host && host.level !== 'login') {
+    io.err(
+      `pi-kit: ${host.level === 'serve' ? '"pi-kit serve"' : 'the pi-kit app'} runs this profile; stop it, then update.\n`,
+    );
+    return 1;
+  }
+  if (host && !(await stopHost(ctx, host))) {
+    io.err('pi-kit: the service did not stop; nothing changed.\n');
+    return 1;
+  }
+  const spec = `${install.npm}@${latest}`;
+  // Windows: npm cannot replace the node.exe this command runs on; the finisher runs it once this command has exited.
+  if (install.target.startsWith('win32-') && ctx.startFinisher) {
+    const log = join(ctx.logDir, 'update.log');
+    ctx.startFinisher({
+      parent: process.pid,
+      staging: mkdtempSync(join(tmpdir(), 'pi-kit-update-')),
+      npm: { prefix, spec },
+      log,
+      ...(host ? { task: ctx.serviceName } : {}),
+    });
+    io.out(
+      `Updating ${install.version} to ${latest} with npm as soon as this command exits.` +
+        `${host ? ' The service starts again by itself.' : ''} See ${log}.\n`,
+    );
+    return 0;
+  }
+  const updated = npm.install(prefix, spec);
+  if (updated) io.out(`Updated ${install.version} to ${latest}.\n`);
+  else io.err(`pi-kit: npm could not install ${spec}; see its output above.\n`);
+  if (!host || !ctx.manager) return updated ? 0 : 1;
+  await ctx.manager.start();
+  const started = await waitFor(ctx, () => ctx.discover());
+  io.out(
+    started
+      ? `Running ${started.version}, pid ${started.pid}.\n`
+      : 'The service did not start in time; see "pi-kit service logs".\n',
+  );
+  return updated && started ? 0 : 1;
 }
 
-async function text(url: string): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`downloading ${url} failed: ${response.status}`);
-  return response.text();
-}
-
-async function download(url: string, file: string): Promise<void> {
-  const response = await fetch(url);
-  if (!response.ok || !response.body) throw new Error(`downloading ${url} failed: ${response.status}`);
-  await pipeline(Readable.fromWeb(response.body as ReadableStream), createWriteStream(file));
+/** The global prefix npm installed `root` under: the folder above its first node_modules (and above lib, off Windows). */
+export function npmPrefix(root: string, windows: boolean): string | undefined {
+  const parts = root.split(/[\\/]/);
+  const at = parts.indexOf('node_modules');
+  if (at < 1) return undefined;
+  return parts.slice(0, !windows && parts[at - 1] === 'lib' ? at - 1 : at).join(windows ? '\\' : '/') || '/';
 }
