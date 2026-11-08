@@ -267,10 +267,11 @@ async function installAtBoot(io: CliIo, ctx: CliContext, daemon: ServiceManager)
     if (host?.level === 'login') await stopHost(ctx, host);
     await ctx.manager.uninstall();
   }
-  await daemon.install();
   io.out(
-    'Installed: the backend now starts at boot, as you, before anyone signs in. The login keychain stays locked then: ' +
-      'for instance pairing, run "pi-kit peers key-file --yes".\n',
+    (await daemon.install())
+      ? 'Installed: the backend now starts at boot, as you, before anyone signs in. The login keychain stays locked then: ' +
+          'for instance pairing, run "pi-kit peers key-file --yes".\n'
+      : 'Already installed: pi-kit starts at boot on this Mac.\n',
   );
   return reportStarted(io, await waitFor(ctx, () => ctx.discover()));
 }

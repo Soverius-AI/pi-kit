@@ -278,6 +278,7 @@ export class LaunchDaemonService implements ServiceManager {
     private readonly user = userInfo().username,
     private readonly home = homedir(),
     root = '/Library/LaunchDaemons',
+    private readonly run: RunCommand = runCommand,
   ) {
     this.plist = join(root, `${spec.name}.plist`);
     this.job = `system/${spec.name}`;
@@ -298,7 +299,9 @@ export class LaunchDaemonService implements ServiceManager {
   async install(): Promise<boolean> {
     const content = launchAgentPlist({ ...this.spec, env: { ...this.spec.env, HOME: this.home } }, this.user);
     if (existsSync(this.plist) && readFileSync(this.plist, 'utf8') === content) {
-      await this.start();
+      // Reading the job's state needs no root, so a daemon that already runs costs no password prompt.
+      const state = await this.run('launchctl', ['print', this.job]);
+      if (!/^\s*state = running$/m.test(state.output)) await this.start();
       return false;
     }
     const staging = mkdtempSync(join(tmpdir(), 'pi-kit-daemon-'));

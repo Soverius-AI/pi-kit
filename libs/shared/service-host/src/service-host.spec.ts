@@ -357,6 +357,19 @@ describe('ServiceHost with a desktop on its socket', () => {
     expect(code).toBe(0);
   });
 
+  it('says a boot install that changed nothing is already installed', async () => {
+    const printed: string[] = [];
+    const daemon = { installed: () => true, install: async () => false } as unknown as ServiceManager;
+    const running = { pid: 9, version: '1.0.0', level: 'login' as const, socket: 's', token: 't', startedAt: 'now' };
+    await runCli(['service', 'install', '--level', 'boot'], io(printed), {
+      ...cli,
+      bootManager: daemon,
+      sleep: async () => undefined,
+      discover: () => running,
+    });
+    expect(printed[0]).toBe('Already installed: pi-kit starts at boot on this Mac.\n');
+  });
+
   it('keeps the boot registration the only one: plain install changes nothing, plain uninstall removes it', async () => {
     const steps: string[] = [];
     const registration = (kind: string, installed: boolean) =>

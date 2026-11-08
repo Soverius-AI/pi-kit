@@ -131,6 +131,32 @@ describe('starting at boot', () => {
     }
   });
 
+  it.each([
+    ['running', []],
+    ['not running', [['launchctl', 'kickstart', `system/${spec.name}`]]],
+  ])(
+    'macOS: re-installing an unchanged LaunchDaemon that is %s asks sudo only to start it',
+    async (state, expected) => {
+      const root = await mkdtemp(join(tmpdir(), 'pk-daemons-'));
+      try {
+        const commands: string[][] = [];
+        const sudo = async (file: string, args: string[]) => {
+          commands.push([file, ...args]);
+          if (file === 'install') await copyFile(args[args.length - 2], args[args.length - 1]);
+          return { code: 0, output: '' };
+        };
+        const print = async () => ({ code: 0, output: `system/${spec.name} = {\n\tstate = ${state}\n}` });
+        const daemon = new LaunchDaemonService(spec, sudo, 'ana', '/Users/ana', root, print);
+        await daemon.install();
+        commands.length = 0;
+        expect(await daemon.install()).toBe(false);
+        expect(commands).toEqual(expected);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('macOS: a LaunchAgent is refused while the LaunchDaemon of the same name is installed', async () => {
     const home = await mkdtemp(join(tmpdir(), 'pk-home-'));
     const daemons = await mkdtemp(join(tmpdir(), 'pk-daemons-'));
