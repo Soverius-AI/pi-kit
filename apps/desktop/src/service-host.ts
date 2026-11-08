@@ -98,9 +98,10 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) process.on(signal, () => vo
 
 void (async () => {
   note(`service host ${config.version} (${level}) started, pid ${process.pid}`);
-  await host.open();
   const socket = hostSocketPath(config.dataDir);
+  // Claim the profile before opening its doors: a host refused here must not move the browser port the owner keeps.
   await listenHostChannel(socket, token, (peer) => host.accept(peer));
+  await host.open();
   writeDiscovery(config.dataDir, {
     pid: process.pid,
     version: config.version,

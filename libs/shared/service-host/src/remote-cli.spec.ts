@@ -68,9 +68,9 @@ describe('pi-kit remote, pair and devices', () => {
     let polls = 0;
     const { calls, ctx } = host({
       'remote.beginPairing': () => ({
-        code: 'c',
-        url: 'https://box.tail0.ts.net:8443/phone#c',
-        expiresAt: Date.now() + 60_000,
+        state: 'serving',
+        url: 'https://box.tail0.ts.net:8443',
+        pairing: { code: 'c', url: 'https://box.tail0.ts.net:8443/phone#c', expiresAt: Date.now() + 60_000 },
       }),
       'remote.status': () => ({ state: 'serving', requests: ++polls > 1 ? [request] : [] }),
       'remote.approvePairing': () => undefined,
@@ -78,6 +78,7 @@ describe('pi-kit remote, pair and devices', () => {
     });
     const { out, io } = terminal(answer);
     expect(await runCli(['pair'], io, ctx)).toBe(0);
+    expect(out[0]).toBe('https://box.tail0.ts.net:8443/phone#c\n');
     expect(out.join('')).toContain('Its confirmation code is 123456');
     const decided = calls.filter(([method]) => method.endsWith('Pairing') && method !== 'remote.beginPairing');
     expect(decided).toEqual(decision ? [decision] : []);

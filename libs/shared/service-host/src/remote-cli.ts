@@ -1,4 +1,4 @@
-import type { RemoteAccessPairing, RemoteAccessRequest, RemoteAccessStatus } from '@pi-kit/protocol';
+import type { RemoteAccessRequest, RemoteAccessStatus } from '@pi-kit/protocol';
 import { toString as qrCode } from 'qrcode';
 import { callHost } from './cli-host';
 import type { CliContext, CliIo } from './service-cli';
@@ -39,7 +39,12 @@ export async function runRemoteCli(args: string[], io: CliIo, ctx: CliContext): 
 /** `pi-kit pair`: one pairing link; the owner approves the device that uses it after comparing confirmation codes. */
 export async function runPairCli(args: string[], io: CliIo, ctx: CliContext): Promise<number> {
   if (args.length > 0) return usage(io);
-  const pairing = await callHost<RemoteAccessPairing>(ctx, 'remote.beginPairing');
+  // The host answers with the whole remote access status; the pairing is one part of it.
+  const { pairing } = await callHost<RemoteAccessStatus>(ctx, 'remote.beginPairing');
+  if (!pairing) {
+    io.err('pi-kit: remote access is not serving; run "pi-kit remote enable" first.\n');
+    return 1;
+  }
   io.out(`${pairing.url}\n`);
   io.err(
     `${await qrCode(pairing.url, { type: 'terminal', small: true })}\nOpen the link on the phone, or scan the code.\n`,

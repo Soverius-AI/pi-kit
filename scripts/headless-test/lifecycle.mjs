@@ -103,6 +103,8 @@ assert.equal(denied.status, 401);
 report('unauthenticated health and thread APIs denied', '401 / 401');
 
 const ownerBeforeDuplicate = discovery().pid;
+const keptPort = () => JSON.parse(readFileSync(join(data, 'owner.json'), 'utf8')).port;
+const portBeforeDuplicate = keptPort();
 const duplicate = spawnSync(process.execPath, [join(install, 'backend', 'service-host.cjs')], {
   encoding: 'utf8',
   timeout: 15_000,
@@ -115,8 +117,9 @@ const duplicate = spawnSync(process.execPath, [join(install, 'backend', 'service
 });
 assert.equal(duplicate.status, 3, duplicate.stderr);
 assert.equal(discovery().pid, ownerBeforeDuplicate);
+assert.equal(keptPort(), portBeforeDuplicate, 'a refused host must not move the browser port');
 await ready();
-report('duplicate host refused', 'exit 3');
+report('duplicate host refused', `exit 3, browser port still ${portBeforeDuplicate}`);
 
 report('CLI stop', checkCli('stop'));
 await sleep(6_000); // Greater than systemd RestartSec: a clean stop must stay stopped.

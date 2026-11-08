@@ -83,11 +83,24 @@ describe('the operating system store', () => {
 
   it('pins the entries to the Secret Service on Linux, because secret-tool cannot see the kernel keyring fallback', () => {
     const keyring = fakeKeyring();
-    new KeyringSecretStore(keyring.load, 'linux').set('openrouter', 'x');
+    new KeyringSecretStore(keyring.load, 'linux', () => false).set('openrouter', 'x');
     expect(keyring.calls.at(-1)).toEqual({ service: 'pi-kit', account: 'openrouter', linux: 'secret-service' });
     const mac = fakeKeyring();
     new KeyringSecretStore(mac.load, 'darwin').set('openrouter', 'x');
     expect(mac.calls.at(-1)).not.toHaveProperty('linux');
+  });
+
+  it('on Linux, reports a locked keyring without the native call, which would wait for an unlock nobody answers', () => {
+    const keyring = fakeKeyring();
+    const store = new KeyringSecretStore(keyring.load, 'linux', () => true);
+    expect(() => store.get('pi-kit/db')).toThrow(/login keyring is locked/);
+    expect(store.accessStatus().state).toBe('locked');
+    expect(keyring.calls).toEqual([]);
+    for (const answer of [false, undefined]) {
+      const open = fakeKeyring();
+      new KeyringSecretStore(open.load, 'linux', () => answer).set('openrouter', 'x');
+      expect(open.calls).toHaveLength(1);
+    }
   });
 
   it('separates a missing native module from a locked credential store', () => {

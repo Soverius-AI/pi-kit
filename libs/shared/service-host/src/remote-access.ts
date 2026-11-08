@@ -65,7 +65,11 @@ export class RemoteAccess {
     permission: {
       issue: 'permission-denied',
       setupAction: 'tailscale',
-      message: 'Tailscale denied permission. Open Tailscale and check this computer’s access permissions, then retry.',
+      // Linux has no Tailscale app to open: a user who is not root may change Serve only as Tailscale's operator.
+      message:
+        process.platform === 'linux'
+          ? 'Tailscale denied permission. Let your user manage it with "sudo tailscale set --operator=$USER", then retry.'
+          : 'Tailscale denied permission. Open Tailscale and check this computer’s access permissions, then retry.',
     },
     unavailable: {
       state: 'disconnected',
