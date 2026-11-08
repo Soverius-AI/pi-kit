@@ -1,7 +1,7 @@
 # Release builds.
 #
 #   mac      macos-15 (Apple Silicon)   pnpm run release --only mac   -> pi-kit-<v>-mac-arm64.dmg + .zip, latest-mac.yml
-#   windows  windows-latest (x64)       node scripts/release.mjs --only win -> pi-kit-<v>-win-x64.exe + -portable.exe, pi-kit-<v>-win-arm64.exe + -portable.exe, latest.yml
+#   windows  windows-latest (x64)       pnpm run release --only win   -> pi-kit-<v>-win-x64.exe + -portable.exe, pi-kit-<v>-win-arm64.exe + -portable.exe, latest.yml
 #                                       (one run packs both architectures so latest.yml lists both installers; the arm64 build is a cross build)
 #   linux    ubuntu-22.04 / -arm       native x64 and arm64 AppImages, latest-linux.yml / latest-linux-arm64.yml
 #   Each job also writes the server tarballs of its platform (scripts/package-server.mjs): mac darwin-arm64 and darwin-x64,
@@ -193,15 +193,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      # Avoid pnpm's hoisted importer on Windows: importing nested packages can fail with
-      # ENOENT when renaming _tmp_* directories (seen with the SQLite alias under @ag-ui/client).
-      # Public hoisting keeps root node_modules lookups used by Nx and the build scripts working.
-      - run: pnpm install --frozen-lockfile --node-linker=isolated --shamefully-hoist
-      # Not `pnpm run release`: pnpm 11 checks node_modules against nodeLinker: hoisted before a script and re-imports it with
-      # the hoisted importer, which drops files of the SQLite package on Windows ("Could not resolve .../lib/index.js",
-      # "Missing built native loader better-sqlite3-multiple-ciphers").
+      # Before pnpm 11.22.0 the hoisted importer lost files on Windows in workspaces with patchedDependencies (the SQLite
+      # package, electron-builder's NSIS templates); this job used an isolated install that `pnpm run` re-imported anyway.
+      - run: pnpm install --frozen-lockfile
       - name: Build the Windows apps (x64 and arm64)
-        run: node scripts/release.mjs --only win
+        run: pnpm run release --only win
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
