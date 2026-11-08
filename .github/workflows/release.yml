@@ -1,7 +1,7 @@
 # Release builds.
 #
 #   mac      macos-15 (Apple Silicon)   pnpm run release --only mac   -> pi-kit-<v>-mac-arm64.dmg + .zip, latest-mac.yml
-#   windows  windows-latest (x64)       pnpm run release --only win   -> pi-kit-<v>-win-x64.exe + -portable.exe, pi-kit-<v>-win-arm64.exe + -portable.exe, latest.yml
+#   windows  windows-latest (x64)       node scripts/release.mjs --only win -> pi-kit-<v>-win-x64.exe + -portable.exe, pi-kit-<v>-win-arm64.exe + -portable.exe, latest.yml
 #                                       (one run packs both architectures so latest.yml lists both installers; the arm64 build is a cross build)
 #   linux    ubuntu-22.04 / -arm       native x64 and arm64 AppImages, latest-linux.yml / latest-linux-arm64.yml
 #   Each job also writes the server tarballs of its platform (scripts/package-server.mjs): mac darwin-arm64 and darwin-x64,
@@ -197,19 +197,14 @@ jobs:
       # ENOENT when renaming _tmp_* directories (seen with the SQLite alias under @ag-ui/client).
       # Public hoisting keeps root node_modules lookups used by Nx and the build scripts working.
       - run: pnpm install --frozen-lockfile --node-linker=isolated --shamefully-hoist
+      # Not `pnpm run release`: pnpm 11 checks node_modules against nodeLinker: hoisted before a script and re-imports it with
+      # the hoisted importer, which drops files of the SQLite package on Windows ("Could not resolve .../lib/index.js",
+      # "Missing built native loader better-sqlite3-multiple-ciphers").
       - name: Build the Windows apps (x64 and arm64)
-        run: pnpm run release --only win
+        run: node scripts/release.mjs --only win
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-      # Evidence for the intermittent "Missing built native loader better-sqlite3-multiple-ciphers": `pnpm run` re-imports
-      # node_modules with the hoisted importer the install above avoids; this shows what it left and what the bundle holds.
-      - name: SQLite package and natives bundle (on failure)
-        if: failure()
-        run: |
-          ls -la node_modules/better-sqlite3-multiple-ciphers node_modules/better-sqlite3-multiple-ciphers/lib || true
-          find node_modules -maxdepth 5 -type d -name better-sqlite3-multiple-ciphers || true
-          ls -laR dist/apps/backend-runtime-natives/node_modules | head -60 || true
       # The x64 runner cannot launch the arm64 build; that one only gets the release step's header checks.
       - name: Smoke test (x64, the unpacked app)
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_tests }}
