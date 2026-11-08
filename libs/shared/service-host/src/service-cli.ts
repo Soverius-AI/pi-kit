@@ -238,6 +238,10 @@ function reportStarted(io: CliIo, host: HostDiscovery | undefined): number {
 
 async function install(io: CliIo, ctx: CliContext, boot = false): Promise<number> {
   if (boot && ctx.bootManager) return installAtBoot(io, ctx, ctx.bootManager);
+  if (ctx.bootManager?.installed()) {
+    io.out('Already installed: pi-kit starts at boot on this Mac.\n');
+    return 0;
+  }
   const manager = await supported(io, ctx);
   if (!manager) return 1;
   // The newest install runs the service: an older one never takes its registration back.
@@ -272,12 +276,15 @@ async function installAtBoot(io: CliIo, ctx: CliContext, daemon: ServiceManager)
 }
 
 async function uninstall(io: CliIo, ctx: CliContext, boot = false): Promise<number> {
-  const manager = boot && ctx.bootManager ? ctx.bootManager : await supported(io, ctx);
+  const atBoot = !!ctx.bootManager && (boot || ctx.bootManager.installed());
+  const manager = atBoot ? ctx.bootManager : await supported(io, ctx);
   if (!manager) return 1;
   const host = ctx.discover();
   if (host?.level === 'login') await stopHost(ctx, host);
   await manager.uninstall();
-  io.out('Uninstalled: the backend no longer starts at sign-in, and runs only while the pi-kit app is open.\n');
+  io.out(
+    `Uninstalled: the backend no longer starts at ${atBoot ? 'boot' : 'sign-in'}, and runs only while the pi-kit app is open.\n`,
+  );
   return 0;
 }
 

@@ -140,6 +140,7 @@ function writeIfChanged(path: string, content: string, mode: number): boolean {
 /** macOS: a LaunchAgent in the user's domain; launchd starts it at sign-in and again after a crash. */
 export class LaunchdService implements ServiceManager {
   private readonly plist: string;
+  private readonly daemon: string;
   private readonly domain: string;
   private readonly job: string;
 
@@ -148,14 +149,19 @@ export class LaunchdService implements ServiceManager {
     private readonly run: RunCommand = runCommand,
     home = homedir(),
     uid = process.getuid?.() ?? 0,
+    daemons = '/Library/LaunchDaemons',
   ) {
     this.plist = join(home, 'Library', 'LaunchAgents', `${spec.name}.plist`);
+    this.daemon = join(daemons, `${spec.name}.plist`);
     this.domain = `gui/${uid}`;
     this.job = `${this.domain}/${spec.name}`;
   }
 
+  /** A LaunchAgent beside the LaunchDaemon would start a second host at sign-in, which launchd restarts forever. */
   async unsupported(): Promise<string | undefined> {
-    return undefined;
+    return existsSync(this.daemon)
+      ? 'pi-kit starts at boot on this Mac. To start it at sign-in instead, run "pi-kit service uninstall --level boot" first.'
+      : undefined;
   }
 
   installed(): boolean {
@@ -299,7 +305,7 @@ export class LaunchDaemonService implements ServiceManager {
     try {
       const staged = join(staging, `${this.spec.name}.plist`);
       writeFileSync(staged, content, { mode: 0o644 });
-      await this.sudo('launchctl', ['bootout', this.job]);
+      if (existsSync(this.plist)) await this.sudo('launchctl', ['bootout', this.job]);
       await this.must('install', ['-m', '644', '-o', 'root', '-g', 'wheel', staged, this.plist]);
       await this.must('launchctl', ['bootstrap', 'system', this.plist]);
     } finally {
@@ -309,6 +315,7 @@ export class LaunchDaemonService implements ServiceManager {
   }
 
   async uninstall(): Promise<void> {
+    if (!existsSync(this.plist)) return;
     await this.sudo('launchctl', ['bootout', this.job]);
     await this.must('rm', ['-f', this.plist]);
   }

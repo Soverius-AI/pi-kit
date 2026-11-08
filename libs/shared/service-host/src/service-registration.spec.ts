@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   LaunchDaemonService,
+  LaunchdService,
   launchAgentArguments,
   launchAgentPlist,
   type ServiceManager,
@@ -102,22 +103,45 @@ describe('starting at boot', () => {
           staged = await readFile(args[args.length - 2], 'utf8');
           await copyFile(args[args.length - 2], args[args.length - 1]);
         }
+        if (file === 'rm') await rm(args[args.length - 1], { force: true });
         return { code: 0, output: '' };
       };
       const daemon = new LaunchDaemonService(spec, sudo, 'ana', '/Users/ana', root);
       const plist = join(root, `${spec.name}.plist`);
 
+      // Nothing to boot out yet: launchctl would print "Boot-out failed: 3: No such process" into the terminal.
       expect(await daemon.install()).toBe(true);
       expect(commands).toEqual([
-        ['launchctl', 'bootout', `system/${spec.name}`],
         ['install', '-m', '644', '-o', 'root', '-g', 'wheel', expect.stringContaining(spec.name), plist],
         ['launchctl', 'bootstrap', 'system', plist],
       ]);
       expect(staged).toContain('<key>UserName</key>\n  <string>ana</string>');
       expect(staged).toContain('<key>HOME</key>\n    <string>/Users/ana</string>');
       expect(daemon.registered()).toEqual([spec.program, ...spec.args]);
+
+      commands.length = 0;
+      await daemon.uninstall();
+      await daemon.uninstall();
+      expect(commands).toEqual([
+        ['launchctl', 'bootout', `system/${spec.name}`],
+        ['rm', '-f', plist],
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('macOS: a LaunchAgent is refused while the LaunchDaemon of the same name is installed', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'pk-home-'));
+    const daemons = await mkdtemp(join(tmpdir(), 'pk-daemons-'));
+    try {
+      const agent = new LaunchdService(spec, async () => ({ code: 0, output: '' }), home, 501, daemons);
+      expect(await agent.unsupported()).toBeUndefined();
+      await writeFile(join(daemons, `${spec.name}.plist`), '');
+      expect(await agent.unsupported()).toContain('pi-kit service uninstall --level boot');
+    } finally {
+      await rm(home, { recursive: true, force: true });
+      await rm(daemons, { recursive: true, force: true });
     }
   });
 

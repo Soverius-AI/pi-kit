@@ -357,6 +357,22 @@ describe('ServiceHost with a desktop on its socket', () => {
     expect(code).toBe(0);
   });
 
+  it('keeps the boot registration the only one: plain install changes nothing, plain uninstall removes it', async () => {
+    const steps: string[] = [];
+    const registration = (kind: string, installed: boolean) =>
+      ({
+        unsupported: async () => undefined,
+        installed: () => installed,
+        install: async () => (steps.push(`${kind} install`), true),
+        uninstall: async () => void steps.push(`${kind} uninstall`),
+        registered: () => undefined,
+      }) as unknown as ServiceManager;
+    const atBoot = { ...cli, manager: registration('agent', false), bootManager: registration('daemon', true) };
+    expect(await runCli(['service', 'install'], io([]), atBoot)).toBe(0);
+    expect(await runCli(['service', 'uninstall'], io([]), atBoot)).toBe(0);
+    expect(steps).toEqual(['daemon uninstall']);
+  });
+
   it('exits `pi-kit service status` with 3 when nothing runs, for scripts', async () => {
     expect(await runCli(['service', 'status'], io([]), cli)).toBe(NOT_RUNNING);
   });
