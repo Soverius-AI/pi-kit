@@ -171,7 +171,9 @@ installed**: every install carries its own runtime.
 - **Linux**: the systemd user unit; starting at boot with linger, whose command `service install` prints when it is off.
 - **macOS**: the LaunchAgent while someone is signed in. Starting at boot with nobody signed in: a LaunchDaemon in
   `/Library/LaunchDaemons` with `UserName` set to the owner, never root, installed once with `sudo`. The login keychain
-  is locked there, so the instance key needs the file opt-in of §4.
+  is locked there, so the instance key needs the file opt-in of §4. The newest install runs there too: `service install
+  --level boot` refuses an older install, and the desktop, which cannot change a root-owned daemon, only becomes the
+  newer version the daemon runs first.
 - **Windows**: the desktop keeps its sign-in entry and windowless supervisor. A server install, whose `node.exe` would
   open a console window from a sign-in entry, registers a Task Scheduler task that starts at boot, runs whether the
   owner is signed in or not, restarts on failure, and shows no window; Task Scheduler stores the account password, so

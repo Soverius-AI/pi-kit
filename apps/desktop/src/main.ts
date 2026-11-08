@@ -14,6 +14,7 @@ import {
   systemPreferences,
   Tray,
 } from 'electron';
+import { spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { APP_ORIGIN, registerAppScheme, serveRenderer } from './app-protocol';
@@ -35,6 +36,7 @@ import {
   isNewerVersion,
   liveDiscovery,
   otherInstall,
+  ownAppImage,
   loginShellPath,
   type ServiceManager,
   spawnServiceHost,
@@ -405,6 +407,29 @@ function broadcast(status: WatchdogStatus): void {
   if (status.state === 'failed') void offerRetry(status);
 }
 
+/**
+ * Starts the app again. An AppImage's files live in a mount that goes away with this process, and Electron's relaunch helper
+ * runs from there too: a shell outside the mount waits for this process to end (it holds the single-instance lock) and then
+ * starts the image itself. The shell first closes what it inherited, which would otherwise keep the old mount busy and its
+ * sockets bound in every process of the new app; bash, which the image's AppRun needs anyway, since dash names no
+ * descriptor above 9.
+ */
+function relaunch(): void {
+  const image = ownAppImage(__dirname);
+  if (image) {
+    const script = [
+      'for fd in /proc/$$/fd/*; do fd=${fd##*/}; ((fd > 2)) && exec {fd}>&-; done 2>/dev/null',
+      'while kill -0 "$0" 2>/dev/null; do sleep 0.2; done',
+      'exec "$@"',
+    ].join('\n');
+    spawn('bash', ['-c', script, String(process.pid), image, ...process.argv.slice(1)], {
+      detached: true,
+      stdio: 'ignore',
+    }).unref();
+  } else app.relaunch();
+  app.quit();
+}
+
 /** The backend crashed too often in a row: the renderer says so in a toast, and the user decides here. */
 async function offerRetry(status: WatchdogStatus): Promise<void> {
   const { response } = await dialog.showMessageBox({
@@ -419,8 +444,7 @@ async function offerRetry(status: WatchdogStatus): Promise<void> {
   if (response === 0 && host?.connected) host.retry();
   // The host itself is gone: a fresh start of the app finds or starts the next one.
   else if (response === 0) {
-    app.relaunch();
-    app.quit();
+    relaunch();
   } else app.quit();
 }
 
@@ -637,23 +661,13 @@ async function openHost(status: (text: string) => void): Promise<HostClient> {
   // Windows its scheduled task rather than this app's sign-in entry). The newest install runs it, and one of this version
   // keeps it (§5).
   const supported = !!background && !(await background.unsupported());
-  const other = supported && background ? otherInstall(background, HOST_ENTRY) : undefined;
+  const other = background ? otherInstall(background, ownAppImage(__dirname) ?? HOST_ENTRY) : undefined;
   if (background && supported && (background.installed() || other)) {
     mainLog?.line('background service registered: attaching to it');
     const peek = liveDiscovery(dataDir);
     const handover = serviceHandover(app.getVersion(), peek?.version, other);
     if (handover.action === 'update-first') {
-      // Become that version first, so the window has every native feature the newer server expects; without such a
-      // release, attach as this version.
-      mainLog?.line(`the service runs ${handover.version}, newer than this app`);
-      status(`Updating pi-kit to ${handover.version} to match the background service…`);
-      if (
-        await appUpdates()
-          .updateTo(handover.version)
-          .catch(() => false)
-      )
-        return new Promise<never>(() => undefined);
-      mainLog?.line(`no app release of ${handover.version} or newer: attaching without moving the service`);
+      if (await becomeVersion(handover.version, status)) return new Promise<never>(() => undefined);
       if (!peek) await background.start();
     } else if (handover.action === 'attach') {
       mainLog?.line(`the service belongs to ${other?.entry}, this app's version: leaving it there`);
@@ -672,6 +686,12 @@ async function openHost(status: (text: string) => void): Promise<HostClient> {
     mainLog?.line(`attached to the ${discovery.level} host, pid ${discovery.pid}`);
     return client;
   }
+  // macOS at boot: the LaunchDaemon is root's, so the app cannot take it over, only become the newer version it runs.
+  if (other && !supported) {
+    const handover = serviceHandover(app.getVersion(), liveDiscovery(dataDir)?.version, other);
+    if (handover.action === 'update-first' && (await becomeVersion(handover.version, status)))
+      return new Promise<never>(() => undefined);
+  }
   const spawned = spawnServiceHost(HOST_ENTRY, { ...process.env, ...env });
   hostProcess = spawned;
   mainLog?.line(`service host started, pid ${spawned.pid}`);
@@ -685,6 +705,23 @@ async function openHost(status: (text: string) => void): Promise<HostClient> {
   hostOwned = discovery.pid === spawned.pid;
   if (!hostOwned) mainLog?.line(`attached to the ${discovery.level} host, pid ${discovery.pid}`);
   return client;
+}
+
+/**
+ * The service runs a newer install: the app becomes that version first, so the window has every native feature the newer
+ * server expects. `false` when no such release exists; the app then attaches as it is.
+ */
+async function becomeVersion(version: string, status: (text: string) => void): Promise<boolean> {
+  mainLog?.line(`the service runs ${version}, newer than this app`);
+  status(`Updating pi-kit to ${version} to match the background service…`);
+  if (
+    await appUpdates()
+      .updateTo(version)
+      .catch(() => false)
+  )
+    return true;
+  mainLog?.line(`no app release of ${version} or newer: attaching without moving the service`);
+  return false;
 }
 
 /** Settings › General: moves the backend into the operating system's service or back into this app, through a restart of the app. */
@@ -703,8 +740,7 @@ async function switchBackground(enabled: unknown): Promise<void> {
   } catch (error) {
     mainLog?.line(`background service could not switch: ${error instanceof Error ? error.message : String(error)}`);
   }
-  app.relaunch();
-  app.quit();
+  relaunch();
 }
 
 /**
@@ -717,8 +753,7 @@ async function followHost(previousPid: number | undefined): Promise<void> {
     const next = liveDiscovery(app.getPath('userData'));
     if (next && next.pid !== previousPid) {
       mainLog?.line(`the service host is now pid ${next.pid}: restarting onto it`);
-      app.relaunch();
-      app.quit();
+      relaunch();
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -852,8 +887,7 @@ async function boot(): Promise<void> {
   // Settings › Computer use: macOS applies a new Screen Recording grant only to an app that starts again.
   ipcMain.handle('pi-kit:relaunch', (event) => {
     if (!fromRenderer(event)) throw new Error('forbidden');
-    app.relaunch();
-    app.quit();
+    relaunch();
   });
   // The folder picker behind `piKit.showOpenDialog` (the sidebar's "Add project", Settings › Projects, the onboarding's Open a folder).
   ipcMain.handle('pi-kit:open-folder', async (event) => {
@@ -971,6 +1005,11 @@ app
     if (err instanceof StartupCancelled) {
       mainLog?.line('could not start: the user quit');
       app.quit();
+      return;
+    }
+    // The service's host went away while this app started (a restart or an update elsewhere): its close handler follows it.
+    if (host && !host.connected && !hostOwned) {
+      mainLog?.line(`could not start: ${err.message}; waiting for the service host to come back`);
       return;
     }
     mainLog?.line(`could not start: ${err.message}`);

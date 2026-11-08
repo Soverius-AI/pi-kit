@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { existsSync, lstatSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -8,6 +9,7 @@ import {
   LaunchdService,
   launchAgentArguments,
   launchAgentPlist,
+  type RunCommand,
   type ServiceManager,
   type ServiceSpec,
   SystemdService,
@@ -17,9 +19,12 @@ import {
 import {
   otherCommand,
   otherInstall,
+  ownAppImage,
   scheduledTaskXml,
   serviceBatch,
   serviceHandover,
+  serviceSpec,
+  WindowsRunService,
   WindowsTaskService,
 } from './service-spec';
 
@@ -68,6 +73,105 @@ describe('what a registration starts', () => {
     expect(systemdExecStart(systemdUnit(odd))).toEqual([odd.program, ...odd.args]);
     expect(launchAgentArguments(launchAgentPlist(odd))).toEqual([odd.program, ...odd.args]);
   });
+
+  it('Linux: an AppImage service starts where AppRun adds --no-sandbox, which Node refuses as an option', () => {
+    const appImage = serviceSpec({
+      name: 'dev.pi-kit.app.service',
+      program: '/tmp/.mount_pi-kit/pi-kit',
+      hostEntry: '/tmp/.mount_pi-kit/resources/backend/service-host.cjs',
+      dataDir: '/home/ana/.config/pi-kit',
+      logDir: '/home/ana/.config/pi-kit/logs',
+      appImage: '/home/ana/pi-kit.AppImage',
+    });
+    // electron-builder's AppRun, on Ubuntu 24.04 and later: --no-sandbox first, unless the arguments hold one.
+    const appRun = (args: string[]) => (args.includes('--no-sandbox') ? args : ['--no-sandbox', ...args]);
+    const probe = 'process.stdout.write(JSON.stringify(process.argv.slice(1)))';
+    const argv = appRun(appImage.args).map((arg, i, all) => (all[i - 1] === '-e' ? probe : arg));
+    expect(JSON.parse(execFileSync(process.execPath, argv, { encoding: 'utf8' }))).toEqual(['--no-sandbox']);
+  });
+
+  it.skipIf(process.platform === 'win32')(
+    'Linux: a stopped AppImage service clears the mount its runtime could not unmount, and no live one',
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), 'pk-mounts-'));
+      try {
+        const appImage = serviceSpec({
+          name: 'dev.pi-kit.app.service',
+          program: '/tmp/.mount_pi-kit/pi-kit',
+          hostEntry: '/tmp/.mount_pi-kit/resources/backend/service-host.cjs',
+          dataDir: '/home/ana/.config/pi-kit',
+          logDir: '/home/ana/.config/pi-kit/logs',
+          appImage: '/home/ana/pi-kit-0.10.9-linux-arm64.AppImage',
+        });
+        const unit = systemdUnit(appImage);
+        expect(unit).toContain('KillMode=mixed\n');
+        const afterStop = systemdExecStart(unit.replace(/^ExecStart=.*$/m, '').replace('ExecStopPost=', 'ExecStart='));
+        expect(afterStop).toEqual(appImage.afterStop);
+
+        // A dead FUSE mount fails `ls` like this dangling link; fusermount, faked, turns it into the folder an unmount leaves.
+        const bin = join(root, 'bin');
+        await mkdir(bin);
+        await writeFile(
+          join(bin, 'fusermount'),
+          '#!/bin/sh\necho "$@" >> "$TMPDIR/unmounted"\nrm "$2" && mkdir "$2"\n',
+          {
+            mode: 0o755,
+          },
+        );
+        await symlink(join(root, 'gone'), join(root, '.mount_pi-kitDEAD01'));
+        await mkdir(join(root, '.mount_pi-kitGONE02'));
+        await mkdir(join(root, '.mount_pi-kitLIVE03'));
+        await writeFile(join(root, '.mount_pi-kitLIVE03', 'app.asar'), '');
+        await symlink(join(root, 'gone'), join(root, '.mount_otherXDEAD04'));
+        execFileSync(afterStop[0], afterStop.slice(1), {
+          env: { PATH: `${bin}:${process.env['PATH']}`, TMPDIR: root },
+        });
+
+        expect(await readFile(join(root, 'unmounted'), 'utf8')).toBe(`-uz ${join(root, '.mount_pi-kitDEAD01')}\n`);
+        expect(existsSync(join(root, '.mount_pi-kitDEAD01'))).toBe(false);
+        expect(existsSync(join(root, '.mount_pi-kitGONE02'))).toBe(false);
+        expect(existsSync(join(root, '.mount_pi-kitLIVE03', 'app.asar'))).toBe(true);
+        expect(lstatSync(join(root, '.mount_otherXDEAD04')).isSymbolicLink()).toBe(true);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'Linux: names an AppImage the registration starts by asking the image for its version, which only it can read',
+    async () => {
+      const root = await mkdtemp(join(tmpdir(), 'pk-appimage-'));
+      try {
+        const image = join(root, 'pi-kit.AppImage');
+        await writeFile(image, '#!/bin/sh\nprintf 3.1.0\n', { mode: 0o755 });
+        const registration = serviceSpec({
+          name: 'dev.pi-kit.app.service',
+          program: '/tmp/.mount_pi-kit/pi-kit',
+          hostEntry: '/tmp/.mount_pi-kit/resources/backend/service-host.cjs',
+          dataDir: '/home/ana/.config/pi-kit',
+          logDir: '/home/ana/.config/pi-kit/logs',
+          appImage: image,
+        });
+        const starting = {
+          registered: () => [registration.program, ...registration.args],
+        } as unknown as ServiceManager;
+        const server = '/home/ana/pi-kit-server/backend/service-host.cjs';
+
+        expect(otherInstall(starting, server)).toEqual({ entry: image, version: '3.1.0' });
+        expect(otherInstall(starting, image)).toBeUndefined();
+        await rm(image);
+        expect(otherInstall(starting, server)).toEqual({ entry: image, version: 'unknown' });
+
+        // Only code inside the image's mount is the AppImage: a server's pi-kit run from the app's terminal inherits $APPIMAGE.
+        const env = { APPIMAGE: image, APPDIR: '/tmp/.mount_pi-kitAb12' };
+        expect(ownAppImage('/tmp/.mount_pi-kitAb12/resources/backend', env)).toBe(image);
+        expect(ownAppImage('/home/ana/pi-kit-server/backend', env)).toBeUndefined();
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('names another install the registration starts, by its service host and version', async () => {
     const root = await mkdtemp(join(tmpdir(), 'pk-installs-'));
@@ -131,7 +235,8 @@ describe('starting at boot', () => {
         if (file === 'rm') await rm(args[args.length - 1], { force: true });
         return { code: 0, output: '' };
       };
-      const daemon = new LaunchDaemonService(spec, sudo, 'ana', '/Users/ana', root);
+      const unloaded = async () => ({ code: 113, output: '' });
+      const daemon = new LaunchDaemonService(spec, sudo, 'ana', '/Users/ana', root, unloaded);
       const plist = join(root, `${spec.name}.plist`);
 
       // Nothing to boot out yet: launchctl would print "Boot-out failed: 3: No such process" into the terminal.
@@ -157,11 +262,13 @@ describe('starting at boot', () => {
   });
 
   it.each([
-    ['running', []],
-    ['not running', [['launchctl', 'kickstart', `system/${spec.name}`]]],
+    ['running', 0, () => []],
+    ['not running', 0, () => [['launchctl', 'kickstart', `system/${spec.name}`]]],
+    // Its bootstrap failed: launchd has no such job, so kickstart could not start it.
+    ['not loaded', 113, (plist: string) => [['launchctl', 'bootstrap', 'system', plist]]],
   ])(
     'macOS: re-installing an unchanged LaunchDaemon that is %s asks sudo only to start it',
-    async (state, expected) => {
+    async (state, code, expected) => {
       const root = await mkdtemp(join(tmpdir(), 'pk-daemons-'));
       try {
         const commands: string[][] = [];
@@ -170,26 +277,67 @@ describe('starting at boot', () => {
           if (file === 'install') await copyFile(args[args.length - 2], args[args.length - 1]);
           return { code: 0, output: '' };
         };
-        const print = async () => ({ code: 0, output: `system/${spec.name} = {\n\tstate = ${state}\n}` });
+        const print = async () => ({ code, output: `system/${spec.name} = {\n\tstate = ${state}\n}` });
         const daemon = new LaunchDaemonService(spec, sudo, 'ana', '/Users/ana', root, print);
         await daemon.install();
         commands.length = 0;
         expect(await daemon.install()).toBe(false);
-        expect(commands).toEqual(expected);
+        expect(commands).toEqual(expected(join(root, `${spec.name}.plist`)));
       } finally {
         await rm(root, { recursive: true, force: true });
       }
     },
   );
 
-  it('macOS: a LaunchAgent is refused while the LaunchDaemon of the same name is installed', async () => {
+  it.each([
+    [
+      'LaunchDaemon',
+      (s: ServiceSpec, launchctl: RunCommand, dir: string) =>
+        new LaunchDaemonService(s, launchctl, 'ana', '/Users/ana', dir, launchctl),
+    ],
+    [
+      'LaunchAgent',
+      (s: ServiceSpec, launchctl: RunCommand, dir: string) => new LaunchdService(s, launchctl, dir, 501, dir),
+    ],
+  ])('macOS: a %s that changes is loaded again only once launchd has let go of the old job', async (_, manager) => {
+    const dir = await mkdtemp(join(tmpdir(), 'pk-launchd-'));
+    try {
+      // launchd answers a bootstrap with error 5 while the job it booted out is still going away.
+      let loaded = false;
+      let goingAway = 0;
+      const launchctl: RunCommand = async (file, args) => {
+        if (file === 'install') await copyFile(args[args.length - 2], args[args.length - 1]);
+        if (args[0] === 'print')
+          return goingAway > 0 ? (goingAway--, { code: 0, output: '' }) : { code: loaded ? 0 : 113, output: '' };
+        if (args[0] === 'bootout') [loaded, goingAway] = [false, 2];
+        if (args[0] === 'bootstrap' && goingAway > 0) return { code: 5, output: '' };
+        if (args[0] === 'bootstrap') loaded = true;
+        return { code: 0, output: '' };
+      };
+      await manager(spec, launchctl, dir).install();
+      const server = { ...spec, args: ['/srv/pi-kit-server/backend/service-host.cjs'] };
+      expect(await manager(server, launchctl, dir).install()).toBe(true);
+      expect(loaded).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('macOS: the LaunchDaemon of the same name refuses a LaunchAgent and is the install the service starts', async () => {
     const home = await mkdtemp(join(tmpdir(), 'pk-home-'));
     const daemons = await mkdtemp(join(tmpdir(), 'pk-daemons-'));
     try {
       const agent = new LaunchdService(spec, async () => ({ code: 0, output: '' }), home, 501, daemons);
       expect(await agent.unsupported()).toBeUndefined();
-      await writeFile(join(daemons, `${spec.name}.plist`), '');
+      const server = '/srv/pi-kit-server/backend/service-host.cjs';
+      await writeFile(join(daemons, `${spec.name}.plist`), launchAgentPlist({ ...spec, args: [server] }));
       expect(await agent.unsupported()).toContain('pi-kit service uninstall --level boot');
+      // So an older install never takes the boot service from a newer one, and the app updates to the newer one first.
+      expect(otherInstall(agent, '/Applications/pi-kit.app/Contents/Resources/backend/service-host.cjs')).toMatchObject(
+        {
+          entry: server,
+        },
+      );
     } finally {
       await rm(home, { recursive: true, force: true });
       await rm(daemons, { recursive: true, force: true });
@@ -281,6 +429,24 @@ describe('starting at boot', () => {
 });
 
 describe('two installs on one profile', () => {
+  it('Windows: a desktop that starts the service starts the server install’s task when that is what is registered', async () => {
+    // Its own entry would start its own host, which the server's task host then finds holding the profile.
+    let started = 0;
+    const desktop = new WindowsRunService(
+      'dev.pi-kit.test.unregistered',
+      join(tmpdir(), 'no-such-app', 'pi-kit.exe'),
+      ['--pi-kit-service'],
+      async () => undefined,
+    );
+    desktop.sibling = {
+      registered: () => ['C:\\pi-kit-server\\runtime\\node.exe', 'C:\\pi-kit-server\\backend\\pi-kit.cjs'],
+      uninstall: async () => undefined,
+      start: async () => void started++,
+    };
+    await desktop.start();
+    expect(started).toBe(1);
+  });
+
   it.each([
     ['a newer host runs', '1.0.0', '2.0.0', undefined, { action: 'update-first', version: '2.0.0' }],
     ['a newer install is registered', '1.0.0', undefined, '2.0.0', { action: 'update-first', version: '2.0.0' }],

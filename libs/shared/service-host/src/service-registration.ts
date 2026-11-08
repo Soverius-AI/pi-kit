@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir, userInfo } from 'node:os';
 import { dirname, join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 
 /** What the operating system starts at sign-in: the program, its arguments and its whole environment. */
 export interface ServiceSpec {
@@ -12,6 +13,11 @@ export interface ServiceSpec {
   args: string[];
   env: Record<string, string>;
   logDir: string;
+  /**
+   * systemd: what runs once the service has stopped. With it, the stop signal goes to the host alone and what is left goes
+   * after it, so an AppImage's host keeps its mount while it stops.
+   */
+  afterStop?: string[];
 }
 
 export type RunCommand = (file: string, args: string[]) => Promise<{ code: number; output: string }>;
@@ -49,7 +55,10 @@ export interface ServiceManager {
   bootNote?(): Promise<string | undefined>;
   /** It starts at boot, whether anyone is signed in or not (Windows server installs). */
   readonly startsAtBoot?: boolean;
-  /** Windows: what the other kind of install registered for this profile (a desktop's sign-in entry, a server's task). */
+  /**
+   * The profile's other kind of registration: on Windows a desktop's sign-in entry or a server's task, on macOS the
+   * LaunchDaemon beside the sign-in LaunchAgent.
+   */
   otherRegistration?(): string[] | undefined;
 }
 
@@ -111,6 +120,7 @@ export function systemdUnit(spec: ServiceSpec): string {
   const env = Object.entries(spec.env)
     .map(([key, value]) => `Environment=${unitWord(`${key}=${value}`)}`)
     .join('\n');
+  const afterStop = spec.afterStop ? `KillMode=mixed\nExecStopPost=${spec.afterStop.map(unitWord).join(' ')}\n` : '';
   return `[Unit]
 Description=${spec.description}
 
@@ -118,7 +128,7 @@ Description=${spec.description}
 Type=simple
 ExecStart=${[spec.program, ...spec.args].map(unitWord).join(' ')}
 ${env}
-Restart=on-failure
+${afterStop}Restart=on-failure
 RestartSec=5
 
 [Install]
@@ -142,6 +152,14 @@ function writeIfChanged(path: string, content: string, mode: number): boolean {
 }
 
 /** macOS: a LaunchAgent in the user's domain; launchd starts it at sign-in and again after a crash. */
+/**
+ * `launchctl bootout` can return while launchd still takes the job down (the host takes a moment to stop its backend), and a
+ * bootstrap of the same label before the job is gone fails with "5: Input/output error".
+ */
+async function untilUnloaded(run: RunCommand, job: string): Promise<void> {
+  for (let i = 0; i < 100 && (await run('launchctl', ['print', job])).code === 0; i++) await delay(200);
+}
+
 export class LaunchdService implements ServiceManager {
   private readonly plist: string;
   private readonly daemon: string;
@@ -176,18 +194,27 @@ export class LaunchdService implements ServiceManager {
     return existsSync(this.plist) ? launchAgentArguments(readFileSync(this.plist, 'utf8')) : undefined;
   }
 
+  otherRegistration(): string[] | undefined {
+    return existsSync(this.daemon) ? launchAgentArguments(readFileSync(this.daemon, 'utf8')) : undefined;
+  }
+
   async install(): Promise<boolean> {
     const changed = writeIfChanged(this.plist, launchAgentPlist(this.spec), 0o644);
     const loaded = (await this.run('launchctl', ['print', this.job])).code === 0;
     if (loaded && !changed) return false;
-    if (loaded) await this.run('launchctl', ['bootout', this.job]);
+    if (loaded) await this.bootout();
     await this.must(['bootstrap', this.domain, this.plist]);
     return true;
   }
 
   async uninstall(): Promise<void> {
-    await this.run('launchctl', ['bootout', this.job]);
+    await this.bootout();
     rmSync(this.plist, { force: true });
+  }
+
+  private async bootout(): Promise<void> {
+    await this.run('launchctl', ['bootout', this.job]);
+    await untilUnloaded(this.run, this.job);
   }
 
   async start(): Promise<void> {
@@ -305,14 +332,16 @@ export class LaunchDaemonService implements ServiceManager {
     if (existsSync(this.plist) && readFileSync(this.plist, 'utf8') === content) {
       // Reading the job's state needs no root, so a daemon that already runs costs no password prompt.
       const state = await this.run('launchctl', ['print', this.job]);
-      if (!/^\s*state = running$/m.test(state.output)) await this.start();
+      // A plist launchd never loaded (its bootstrap failed) is bootstrapped; kickstart would not find the job.
+      if (state.code !== 0) await this.must('launchctl', ['bootstrap', 'system', this.plist]);
+      else if (!/^\s*state = running$/m.test(state.output)) await this.start();
       return false;
     }
     const staging = mkdtempSync(join(tmpdir(), 'pi-kit-daemon-'));
     try {
       const staged = join(staging, `${this.spec.name}.plist`);
       writeFileSync(staged, content, { mode: 0o644 });
-      if (existsSync(this.plist)) await this.sudo('launchctl', ['bootout', this.job]);
+      if (existsSync(this.plist)) await this.bootout();
       await this.must('install', ['-m', '644', '-o', 'root', '-g', 'wheel', staged, this.plist]);
       await this.must('launchctl', ['bootstrap', 'system', this.plist]);
     } finally {
@@ -323,8 +352,13 @@ export class LaunchDaemonService implements ServiceManager {
 
   async uninstall(): Promise<void> {
     if (!existsSync(this.plist)) return;
-    await this.sudo('launchctl', ['bootout', this.job]);
+    await this.bootout();
     await this.must('rm', ['-f', this.plist]);
+  }
+
+  private async bootout(): Promise<void> {
+    await this.sudo('launchctl', ['bootout', this.job]);
+    await untilUnloaded(this.run, this.job);
   }
 
   async start(): Promise<void> {

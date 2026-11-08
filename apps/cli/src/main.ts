@@ -19,6 +19,7 @@ import {
   loginShellPath,
   liveDiscovery,
   otherInstall,
+  ownAppImage,
   runCli,
   stopHost,
   serviceManager,
@@ -30,8 +31,12 @@ import {
 
 // pi-kit from a terminal: on the desktop app's binary run as Node, or on a server install's own Node runtime.
 
-// A script run directly has its path in argv[1]; loaded with `-e` (the AppImage launcher) it has not.
-const args = require.main === module ? process.argv.slice(2) : process.argv.slice(1);
+// A script run directly has its path in argv[1]; loaded with `-e` (the AppImage launcher) it has not, and gets AppRun's
+// --no-sandbox first (APPRUN_NO_SANDBOX).
+const args =
+  require.main === module
+    ? process.argv.slice(2)
+    : process.argv.slice(1).filter((arg, i) => i > 0 || arg !== '--no-sandbox');
 
 // Packaged (the app's Resources/backend, a server install's backend/), this bundle sits beside the host; in a checkout it is dist/apps/cli.
 const packaged = existsSync(join(__dirname, 'service-host.cjs'));
@@ -193,7 +198,8 @@ function commandOnPath(): boolean {
  */
 function putOnPath(): string | undefined {
   const install = serverInstall();
-  if (!install || commandOnPath()) return undefined;
+  // npm puts its own `pi-kit` on PATH, which survives npm's updates; the package's bin folder is npm's to place.
+  if (!install || install.npm || commandOnPath()) return undefined;
   const bin = join(install.root, 'bin');
   if (process.platform === 'win32') {
     // The registry value as it is (REG_EXPAND_SZ, %USERPROFILE% entries unexpanded): .NET's SetEnvironmentVariable would
@@ -294,7 +300,7 @@ if (args[0] === FINISH_UPDATE_FLAG) {
       sleep,
       openUrl,
       serve,
-      otherInstall: () => (manager ? otherInstall(manager, hostEntry) : undefined),
+      otherInstall: () => (manager ? otherInstall(manager, ownAppImage(__dirname) ?? hostEntry) : undefined),
       ...(serverInstall() ? { serverInstall: serverInstall() } : {}),
       ...(process.platform === 'win32' ? { startFinisher } : {}),
       putOnPath,

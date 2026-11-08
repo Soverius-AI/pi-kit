@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { type HostDiscovery, isNewerVersion } from './discovery';
 import type { RpcPeer } from './host-channel';
 import { stopHost, waitFor } from './cli-host';
@@ -10,6 +10,7 @@ import { PEERS_USAGE, runPeersCli } from './peers-cli';
 import { bundledVersion } from './service-host';
 import { REMOTE_USAGE, runDevicesCli, runPairCli, runRemoteCli } from './remote-cli';
 import type { ServiceManager } from './service-registration';
+import { installOf } from './service-spec';
 import { runLoginCli, runLogoutCli, runModelCli, SETTINGS_USAGE } from './settings-cli';
 import { type FinishPlan, runUpdateCli, UPDATE_USAGE } from './update-cli';
 
@@ -208,7 +209,7 @@ async function status(io: CliIo, ctx: CliContext, json = false): Promise<number>
     : installed
       ? `installed (${ctx.serviceName})`
       : registered
-        ? `installed by another pi-kit (${dirname(dirname(registered.entry))})`
+        ? `installed by another pi-kit (${installOf(registered.entry)})`
         : 'not installed';
   io.out(`Background service: ${registration}\n`);
   const host = ctx.discover();
@@ -222,13 +223,15 @@ async function status(io: CliIo, ctx: CliContext, json = false): Promise<number>
     `Host: running, pid ${host.pid}, run by ${owner}, version ${host.version}, since ${host.startedAt}` +
       `${host.install ? `, from ${host.install}` : ''}\n`,
   );
-  // npm and `pi-kit update` replace an install in place: the running host is then older than its folder.
-  const onDisk = host.install ? bundledVersion(join(host.install, 'backend')) : 'unknown';
+  // npm and `pi-kit update` replace an install in place: the running host is then older than its folder. An AppImage's
+  // files are not on disk to read.
+  const install = host.install && statSync(host.install, { throwIfNoEntry: false })?.isDirectory() ? host.install : '';
+  const onDisk = install ? bundledVersion(join(install, 'backend')) : 'unknown';
   if (onDisk !== 'unknown' && onDisk !== host.version)
     io.out(`  ${host.install} now holds ${onDisk}; run "pi-kit service restart" to run it.\n`);
   if (registered && !existsSync(registered.entry))
     io.out(
-      `  The registered install (${dirname(dirname(registered.entry))}) is gone; run "pi-kit service install" to register this one.\n`,
+      `  The registered install (${installOf(registered.entry)}) is gone; run "pi-kit service install" to register this one.\n`,
     );
   const state = await hostStatus(ctx, host);
   if (!state) {
@@ -268,29 +271,36 @@ async function install(io: CliIo, ctx: CliContext, boot = false): Promise<number
     return 0;
   }
   const manager = await supported(io, ctx);
-  if (!manager) return 1;
-  // The newest install runs the service: an older one never takes its registration back.
-  const other = ctx.otherInstall?.();
-  if (other && isNewerVersion(other.version, ctx.version)) {
-    io.err(
-      `pi-kit: the service starts a newer install, ${other.version} in ${dirname(dirname(other.entry))}; this ${ctx.version} changes nothing.\n`,
-    );
-    return 1;
-  }
+  if (!manager || newerRegistered(io, ctx)) return 1;
   const changed = await manager.install();
   const when = manager.startsAtBoot ? 'at boot, whether anyone is signed in or not' : 'when you sign in';
   io.out(changed ? `Installed: the backend now starts ${when}.\n` : 'Already installed.\n');
-  // A server zip or tarball has no installer to put `pi-kit` on PATH; npm and the desktop app do it themselves.
-  const command = ctx.serverInstall ? ctx.putOnPath?.() : undefined;
-  if (command) io.out(`${command}\n`);
+  putOnPath(io, ctx);
   const code = reportStarted(io, await waitFor(ctx, () => ctx.discover()));
   const note = await manager.bootNote?.();
   if (note) io.out(`${note}\n`);
   return code;
 }
 
+/** The newest install runs the service: an older one never takes its registration back. */
+function newerRegistered(io: CliIo, ctx: CliContext): boolean {
+  const other = ctx.otherInstall?.();
+  if (!other || !isNewerVersion(other.version, ctx.version)) return false;
+  io.err(
+    `pi-kit: the service starts a newer install, ${other.version} in ${installOf(other.entry)}; this ${ctx.version} changes nothing.\n`,
+  );
+  return true;
+}
+
+/** A server zip or tarball has no installer to put `pi-kit` on PATH; npm and the desktop app do it themselves. */
+function putOnPath(io: CliIo, ctx: CliContext): void {
+  const command = ctx.serverInstall ? ctx.putOnPath?.() : undefined;
+  if (command) io.out(`${command}\n`);
+}
+
 /** macOS: the LaunchDaemon replaces the sign-in LaunchAgent, which goes first so that its host does not keep the folder. */
 async function installAtBoot(io: CliIo, ctx: CliContext, daemon: ServiceManager): Promise<number> {
+  if (newerRegistered(io, ctx)) return 1;
   const host = ctx.discover();
   if (ctx.manager?.installed()) {
     if (host?.level === 'login') await stopHost(ctx, host);
@@ -302,6 +312,7 @@ async function installAtBoot(io: CliIo, ctx: CliContext, daemon: ServiceManager)
           'for instance pairing, run "pi-kit peers key-file --yes".\n'
       : 'Already installed: pi-kit starts at boot on this Mac.\n',
   );
+  putOnPath(io, ctx);
   return reportStarted(io, await waitFor(ctx, () => ctx.discover()));
 }
 
@@ -341,7 +352,8 @@ async function stop(io: CliIo, ctx: CliContext): Promise<number> {
     io.err(`pi-kit: the host (pid ${host.pid}) did not stop in time.\n`);
     return 1;
   }
-  io.out('Stopped. It starts again at the next sign-in, or with `pi-kit service start`.\n');
+  const atBoot = ctx.bootManager?.installed() || (ctx.manager?.startsAtBoot && ctx.manager.installed());
+  io.out(`Stopped. It starts again at the next ${atBoot ? 'boot' : 'sign-in'}, or with \`pi-kit service start\`.\n`);
   return 0;
 }
 

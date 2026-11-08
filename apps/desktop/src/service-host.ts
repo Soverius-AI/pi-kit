@@ -21,6 +21,7 @@ import {
   OWNER_PORT,
   OwnerGateway,
   OwnerStateFile,
+  ownAppImage,
   RemoteAccess,
   RemoteAccessStores,
   removeDiscovery,
@@ -109,7 +110,7 @@ void (async () => {
     socket,
     token,
     startedAt: new Date().toISOString(),
-    install: dirname(__dirname),
+    install: ownAppImage(__dirname) ?? dirname(__dirname),
   });
   process.on('exit', () => {
     removeDiscovery(config.dataDir, process.pid);

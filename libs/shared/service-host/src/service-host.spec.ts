@@ -313,26 +313,33 @@ describe('ServiceHost with a desktop on its socket', () => {
   it.each([
     ['newer', '2.0.0', false],
     ['older', '0.0.1', true],
-  ])('leaves the registration of a %s install alone only when it is newer', async (_, version, replaced) => {
-    let installs = 0;
-    const manager = {
-      unsupported: async () => undefined,
-      installed: () => true,
-      install: async () => (++installs, true),
-      registered: () => undefined,
-    } as unknown as ServiceManager;
-    const other = { entry: '/srv/pi-kit-server/backend/service-host.cjs', version };
-    const code = await runCli(['service', 'install'], io([]), {
-      ...cli,
-      version: '1.0.0',
-      manager,
-      otherInstall: () => other,
-      sleep: async () => undefined,
-      discover: () => ({ pid: 1, version, level: 'login', socket: 's', token: 't', startedAt: 'now' }),
-    });
-    expect(installs).toBe(replaced ? 1 : 0);
-    expect(code).toBe(replaced ? 0 : 1);
-  });
+  ])(
+    'leaves the registration of a %s install alone only when it is newer, at sign-in and at boot',
+    async (_, version, replaced) => {
+      for (const level of [[], ['--level', 'boot']]) {
+        let installs = 0;
+        const registration = (installed: boolean) =>
+          ({
+            unsupported: async () => undefined,
+            installed: () => installed,
+            install: async () => (++installs, true),
+            registered: () => undefined,
+          }) as unknown as ServiceManager;
+        const other = { entry: '/srv/pi-kit-server/backend/service-host.cjs', version };
+        const code = await runCli(['service', 'install', ...level], io([]), {
+          ...cli,
+          version: '1.0.0',
+          manager: registration(level.length === 0),
+          bootManager: registration(false),
+          otherInstall: () => other,
+          sleep: async () => undefined,
+          discover: () => ({ pid: 1, version, level: 'login', socket: 's', token: 't', startedAt: 'now' }),
+        });
+        expect(installs).toBe(replaced ? 1 : 0);
+        expect(code).toBe(replaced ? 0 : 1);
+      }
+    },
+  );
 
   it('replaces the sign-in registration with the boot one before starting it, on macOS', async () => {
     const steps: string[] = [];

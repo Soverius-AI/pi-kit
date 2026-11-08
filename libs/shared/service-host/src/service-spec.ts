@@ -86,9 +86,28 @@ export function serviceSpec(inputs: SpecInputs): ServiceSpec {
   const base = { name: inputs.name, description: 'pi-kit background service', env, logDir: inputs.logDir };
   // An AppImage's files live in a mount that moves at every start: run the image and find the host beside its binary.
   return inputs.appImage
-    ? { ...base, program: inputs.appImage, args: ['-e', besideBinary('service-host.cjs')] }
+    ? {
+        ...base,
+        program: inputs.appImage,
+        args: ['-e', besideBinary('service-host.cjs'), ...APPRUN_NO_SANDBOX],
+        afterStop: ['/bin/sh', '-c', UNMOUNT_DEAD, 'sh', basename(inputs.appImage).slice(0, 6)],
+      }
     : { ...base, program: inputs.program, args: [inputs.hostEntry] };
 }
+
+/**
+ * An AppImage's runtime mounts it at `$TMPDIR/.mount_` and the image name's first six characters, and unmounts it when the
+ * host exits; systemd kills it before it can. A dead mount fails `ls` ("Transport endpoint is not connected"), a live one
+ * (the app's own) lists, and an emptied folder is removed.
+ */
+const UNMOUNT_DEAD =
+  'for m in "${TMPDIR:-/tmp}/.mount_$1"*; do ls "$m/" >/dev/null 2>&1 || fusermount -uz "$m" 2>/dev/null || fusermount3 -uz "$m" 2>/dev/null; rmdir "$m" 2>/dev/null; done; true';
+
+/**
+ * An AppImage's AppRun puts `--no-sandbox` before every argument where user namespaces are off (Ubuntu 24.04 and later),
+ * which Node refuses as an option. It adds none when the arguments hold one, and after `--` Node leaves it to the script.
+ */
+const APPRUN_NO_SANDBOX = ['--', '--no-sandbox'];
 
 /** `-e` code that loads a bundle from the app's `resources/backend`, wherever the binary is mounted. */
 function besideBinary(file: string): string {
@@ -98,7 +117,7 @@ function besideBinary(file: string): string {
 const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
 
 /** Windows: the other kind of registration for the same profile, which installing one removes (§5: one registration). */
-type Sibling = Pick<ServiceManager, 'registered' | 'uninstall'>;
+type Sibling = Pick<ServiceManager, 'registered' | 'uninstall' | 'start'>;
 
 /** Windows: a value in the user's Run key that starts the app as the supervisor; no admin, no stored password. */
 export class WindowsRunService implements ServiceManager {
@@ -162,7 +181,9 @@ export class WindowsRunService implements ServiceManager {
     await this.reg(['delete', RUN_KEY, '/v', this.name, '/f']).catch(() => undefined);
   }
 
+  /** Starts the profile's service: a server install's task when that, not this entry, is what is registered. */
   async start(): Promise<void> {
+    if (!this.installed() && this.sibling?.registered()) return this.sibling.start();
     spawn(this.program, this.args, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
   }
 
@@ -426,12 +447,19 @@ export interface BackgroundServiceStatus {
 }
 
 /**
- * The other install a registration starts: its service host and version, or undefined when the registration starts `entry`
- * itself or no service host at all. An install that is gone has the version `unknown`, so it never counts as newer.
+ * The other install a registration starts: its service host (or AppImage) and version, or undefined when the registration
+ * starts `entry` itself or no service host at all. An install that is gone has the version `unknown`, so it never counts as
+ * newer.
  */
 export function otherInstall(manager: ServiceManager, entry: string): { entry: string; version: string } | undefined {
   const registration = manager.registered() ?? manager.otherRegistration?.();
   if (!registration?.length) return undefined;
+  // An AppImage registers the image itself, whose files exist only in its own mount: only the image can tell its version.
+  if (registration[1] === '-e') {
+    const image = registration[0];
+    if (resolve(image) === resolve(entry)) return undefined;
+    return { entry: image, version: existsSync(image) ? appImageVersion(image) : 'unknown' };
+  }
   // A Windows server install registers its supervisor, the CLI bundle beside the host; a Windows desktop registers its .exe,
   // whose host is in its resources.
   const part = registration.find((arg) => ['service-host.cjs', 'pi-kit.cjs'].includes(basename(arg)));
@@ -442,6 +470,33 @@ export function otherInstall(manager: ServiceManager, entry: string): { entry: s
       : undefined;
   if (!host || resolve(host) === resolve(entry)) return undefined;
   return { entry: host, version: existsSync(host) ? bundledVersion(dirname(host)) : 'unknown' };
+}
+
+function appImageVersion(image: string): string {
+  const read = `process.stdout.write(require(require('path').join(process.execPath, '..', 'resources', 'package.json')).version)`;
+  try {
+    const version = execFileSync(image, ['-e', read, ...APPRUN_NO_SANDBOX], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 15_000,
+    }).trim();
+    return /^\d+\.\d+\.\d+/.test(version) ? version : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/** The AppImage this code runs from, when it does: its files then live in that image's mount, `$APPDIR`. */
+export function ownAppImage(dir: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const image = env['APPIMAGE'];
+  const mount = env['APPDIR'];
+  return image && mount && dir.startsWith(mount) ? image : undefined;
+}
+
+/** Where a person finds the install `otherInstall` named: the folder that holds its backend, or its AppImage. */
+export function installOf(entry: string): string {
+  return basename(entry) === 'service-host.cjs' ? dirname(dirname(entry)) : entry;
 }
 
 export type ServiceHandover =
@@ -475,7 +530,7 @@ export function cliLauncher(
   }
   const quote = (text: string) => `'${text.replace(/'/g, `'\\''`)}'`;
   const run = target.appImage
-    ? `${quote(target.appImage)} -e ${quote(besideBinary('pi-kit.cjs'))} --`
+    ? `${quote(target.appImage)} -e ${quote(besideBinary('pi-kit.cjs'))} ${APPRUN_NO_SANDBOX.join(' ')}`
     : `${quote(target.runtime)} ${quote(target.script)}`;
   return `#!/bin/sh\n# Written by pi-kit (Settings > General > Background).\nELECTRON_RUN_AS_NODE=1 exec ${run} "$@"\n`;
 }
