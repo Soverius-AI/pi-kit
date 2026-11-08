@@ -351,7 +351,7 @@ jobs:
           version="$(node -p "require('./package.json').version")"
           mkdir packs
           npm pack ./npm/linux-x64 ./npm/pi-kit --pack-destination packs
-          npm install -g --prefix "$RUNNER_TEMP/pi-kit" packs/*.tgz
+          npm install -g --prefix "$RUNNER_TEMP/pi-kit" ./packs/*.tgz # without ./ npm reads packs/<file> as a GitHub repository
           reported="$(PI_KIT_DATA_DIR="$RUNNER_TEMP/pi-kit-data" "$RUNNER_TEMP/pi-kit/bin/pi-kit" --version)"
           echo "$reported"
           [ "$reported" = "pi-kit $version" ]
