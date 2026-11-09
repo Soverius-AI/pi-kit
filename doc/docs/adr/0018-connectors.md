@@ -9,19 +9,18 @@ pi connects to remote MCP servers natively: an HTTP entry with a `url` in `mcp.j
 browser sign-in, tokens in `~/.pi/agent/mcp-auth.json` that pi refreshes, and an `exposure` per server. pi-kit already
 has the MCP panel and MCP Apps. What a person still does by hand is find the vendor's endpoint, write the entry and
 learn which command signs in. A connector is that, as one click.
-Constraints that already hold: no secret in plain text in pi-kit's database or in a file a store could hold; a
-project's `.pi/mcp.json` is read only for a trusted folder; the backend on loopback with a per-launch token; renderer
-state in NgRx SignalStores; dependencies pinned and latest, so none are added.
+The project's `.pi/mcp.json` is read only for a trusted folder. The backend listens on loopback with a
+per-launch token, and renderer state uses NgRx SignalStores. Credential-store support avoids writing connector
+secrets directly into configuration when a store is available; the plaintext fallback is reported explicitly.
 
 ## Decision
 
-- The catalog is data, validated by a zod schema in `libs/protocol/src/connectors.ts` and built into the release. An entry
+- The catalog is data, validated by a zod schema in `libs/shared/protocol/src/connectors.ts` and built into the release. An entry
   has an `id` (the server's name in `mcp.json`), vendor, a monochrome logo as SVG path data only (never markup), an https
   endpoint with optional read-only variants, a sign-in mode (`oauth`, `cimd`, `oauth-client`, `bearer`), a suggested
   `exposure`, highlights and a verification mark. An endpoint not checked against the vendor's own documentation is
   `unverified` and the card says so; an endpoint is never guessed.
-- The backend serves the catalog at `GET /api/connectors/catalog`. The schema carries an optional ed25519 `signature` so a
-  signed catalog can replace the built-in one later; nothing fetches one yet.
+- The backend serves the built-in catalog at `GET /api/connectors/catalog`; it does not fetch catalog updates.
 - Connect writes pi's own configuration and lets pi do the rest: `POST /api/connectors/connect` builds the `mcpServers`
   entry in pi's format, writes it to the user's `mcp.json` (or the folder's `.pi/mcp.json` for "Project only"), reloads
   the thread's session and, for a sign-in connector, starts pi's own `/mcp login <name>`. The writer replaces only
@@ -43,10 +42,10 @@ state in NgRx SignalStores; dependencies pinned and latest, so none are added.
 
 ## Consequences
 
-- One click from nothing to a signed-in server, and the pi command line sees exactly the same servers and tokens.
+- The gallery writes configuration and starts sign-in; the user still completes any required authorization.
+  The pi command line sees the same servers and tokens.
 - A connector is pi configuration plus a card; there is nothing in pi-kit to migrate or back up.
 - Remote servers run with the person's account and can write; the exposure menu and read-only variants are pi-kit's
-  controls, pi's permission extensions still apply to every call.
+  controls, model-initiated calls use pi's tool hooks, while MCP App relay calls execute tool definitions directly (ADR-0011).
 - The catalog is only as correct as the vendors' documentation; each entry says what was read, and an unreadable one is
   marked rather than filled in. Figma accepts only clients in its catalog, under a client name it may stop accepting.
-- The attendant agent does not yet suggest a connector when a prompt names a vendor.

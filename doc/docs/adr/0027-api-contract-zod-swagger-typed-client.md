@@ -29,7 +29,7 @@ tooltip delays) lives in module-level constants no application can override, and
 - `GET /api/openapi.json` is a controller behind the bearer guard; Swagger UI is mounted at `/api/docs` only when `NODE_ENV=development`. The AG-UI endpoint (`@ApiExcludeController()`) and the development-only token route are not in the document.
 - Secret fields carry `.meta({ secret: true })`; the document writes `writeOnly` / `x-secret`, and `redactSecrets(schema, value)` turns a marked field, and anything
   the schema does not describe, into `[secret]` before the pipe prints it. Query flags use `QueryFlagSchema` (`0`, `1`, `true`, `false`); nothing parses by hand.
-- `pnpm run api:openapi` builds the backend, scans the application module with `preview: true` (nothing listens), writes `docs/api/openapi.yaml` and generates the SDK
+- `pnpm run api:openapi` builds the backend, scans the application module with `preview: true` (nothing listens), writes `doc/api/openapi.yaml` and generates the SDK
   from it; `--check` compares the committed files against a fresh generation and the repository check runs it. Document and SDK are generated and reviewed, never
   hand-edited; generated files are committed, compiled and excluded from handwritten lint conventions.
 - The renderer's HTTP SDK is `libs/shared/api` (`@pi-kit/api`): one backend contract, transport and authentication shared across domains. `@hey-api/openapi-ts` generates
@@ -51,8 +51,8 @@ tooltip delays) lives in module-level constants no application can override, and
 - A renamed route, parameter or field breaks the build on both sides; a route change is one regeneration, and a drift between backend and committed SDK fails the check.
 - A response is parsed, so a handler that returns more than its schema names loses the extra fields; a drift shows in the production log as paths.
 - Requests are stricter: a flag that is not `0`, `1`, `true` or `false`, an out-of-range `limit` or a missing `?thread=` is a 400 with zod's sentence.
-- Response validation costs about as much as the `JSON.stringify` Express does anyway; `docs/api/openapi.yaml` is the first thing an outside script reads.
+- Response validation adds a schema parse to handler responses; `doc/api/openapi.yaml` is the first thing an outside script reads.
 - One transport, one authentication path and one error mapping for every domain; binary bodies and response narrowing move to the call site.
 - Applications and tests change renderer timing and capacity through tokens and inputs instead of editing constants.
-- `@nestjs/swagger` brings `swagger-ui-dist` into the backend's production closure although the UI is never mounted there; packaging can prune it.
+- `@nestjs/swagger` brings `swagger-ui-dist` into the backend's production closure although the UI is never mounted there; it remains a packaging dependency.
 - Nothing changes for pi: the backend's contract with pi stays the SDK.

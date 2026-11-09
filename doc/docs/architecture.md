@@ -7,9 +7,11 @@ sidebar_position: 1
 
 pi-kit is a server with clients around one agent. The service host runs the backend and outlives any window
 ([Server and CLI](server.md)); Electron main is one client and owns the window; the Angular renderer is the page every client
-shows; the NestJS backend runs pi's SDK in-process and is the only thing that touches the file system, the network and the
-keychain. The renderer and the backend talk over HTTP on the loopback interface, with a token minted per host start
-([ADR-0007](adr/0007-local-security.md)).
+shows; the NestJS backend runs pi's SDK in-process and owns session, workspace and model operations. The service host also
+uses the file system and network for discovery, gateways and remote access; Electron owns native windows and desktop integration.
+The backend accepts protected requests over loopback HTTP with a token minted per host start
+([ADR-0007](adr/0007-local-security.md)). Gateways authenticate their browser or peer clients separately and add the backend
+token when forwarding requests.
 
 ```mermaid
 flowchart LR
@@ -73,8 +75,8 @@ Packaging, code signing and the in-app update of pi-kit itself live here too.
 middle, the thread sidebar on the left and one side panel on the right, switched by `UiStore`. State is in ngrx SignalStores
 ([ADR-0024](adr/0024-ngrx-signal-store.md)); the transcript and composer are CopilotKit's Angular components with pi-kit's own slots
 ([ADR-0021](adr/0021-copilotkit-components-first.md)). The renderer never
-reads a file or calls a model: everything comes from the backend over the generated, typed SDK
-([ADR-0027](adr/0027-api-contract-zod-swagger-typed-client.md), [ADR-0027](adr/0027-api-contract-zod-swagger-typed-client.md)).
+reads workspace files or calls a model directly: those operations go through the backend. REST operations use the generated, typed SDK
+([ADR-0027](adr/0027-api-contract-zod-swagger-typed-client.md)); chat uses AG-UI and desktop-only operations use the preload bridge.
 
 **The backend** (`apps/backend`) is a NestJS application with one folder per domain (`threads`, `session`, `agui`, `bg-agents`,
 `settings`, `setup`, `mcp`, `learn`, `worktree`, `terminal`, `browser`, `db`, `secrets`, ...). It hosts the CopilotKit runtime
@@ -111,8 +113,7 @@ sequenceDiagram
 
 A run belongs to the thread, not to the HTTP request: a client that closes the window or reloads does not stop it, and a client
 that connects later replays the log from a cursor and then follows the live feed
-([ADR-0010](adr/0010-durable-threads.md), [ADR-0032](adr/0032-thread-hydration-and-virtual-transcript.md),
-[ADR-0032](adr/0032-thread-hydration-and-virtual-transcript.md)). A thread that pi started by itself (an extension's turn, an
+([ADR-0010](adr/0010-durable-threads.md), [ADR-0032](adr/0032-thread-hydration-and-virtual-transcript.md)). A turn that pi started by itself (an extension's turn, an
 agent's report) is announced over the status channel, and the renderer joins it the same way.
 
 AG-UI is extended in two places ([ADR-0005](adr/0005-custom-events-and-activities.md)): `Custom` events carry pi's signals
@@ -154,7 +155,7 @@ flowchart TB
   settings -. "api" .-> chat
 ```
 
-Every domain is the same five kinds of library: `api` (what other domains may import), `feature-*` (lazy entries, one per chunk),
+Domain libraries use five kinds: `api` (what other domains may import), `feature-*` (container components, including lazy entries),
 `ui` (presentational), `data` (SignalStores and generated operations) and `util` (pure functions). A lint rule enforces the import
 directions ([ADR-0026](adr/0026-domain-structure-and-boundaries.md)); [Repository structure](structure.md) has the tree and the
 rule table. Where two domains need each other, one side declares a **port** (an abstract class in its `data`) that the
@@ -170,8 +171,8 @@ on it. `ChatStore` is CopilotKit's agent store wrapped with pi-kit's state: the 
 ## Background agents
 
 A thread may spawn durable background agents ([ADR-0033](adr/0033-durable-background-agents.md)). They run on `pi-durable`, a
-harness that commits every model turn, tool call and task to storage before it is shown, so an agent survives a restart of the
-backend and goes on where it stopped. The main agent spawns one with a brief, a role and a permission mode (`read-only`, `edit`,
+harness that persists conversations and task state so unfinished agents can resume after a backend restart. Recovery holds
+agents with an unfinished bash cleanup intent or repeated interruptions until the user resumes them. The main agent spawns one with a brief, a role and a permission mode (`read-only`, `edit`,
 or `isolated` in a worktree of its own); the agent reports back into the thread, asks the main agent or the user when it is
 blocked, and shows its turns, tokens and spend as it goes; it has no budget or cap of its own.
 

@@ -4,7 +4,14 @@ title: Remote access
 
 # Remote access
 
-pi-kit can be used from a phone, and one pi-kit can work on the projects of another, without any server in between. The desktop app publishes itself on the user's own [Tailscale](https://tailscale.com) network and nowhere else; a phone or a second computer reaches it only as a member of that tailnet, and only after the owner approved it on the desktop. Nothing is reachable from the public internet, no account exists anywhere, and no traffic passes through pi-kit infrastructure ([ADR-0035](adr/0035-remote-access-over-the-tailnet.md)). The public site at `remote.pi-kit.dev` is only a guide for setting this up ([onboarding site](remote-onboarding-site.md)).
+A phone can use pi-kit, and paired pi-kit instances can access each other's projects, over the owner's
+[Tailscale](https://tailscale.com) network. The service host publishes a private HTTPS endpoint through Tailscale Serve.
+Tailnet membership alone is not enough: the owner must also approve each device or instance in pi-kit.
+
+pi-kit operates no application relay or account service for this feature. Tailscale supplies network identity, connectivity,
+and TLS; a Tailscale account and a connected tailnet are required. pi-kit does not enable public internet access through
+Funnel ([ADR-0035](adr/0035-remote-access-over-the-tailnet.md)). `remote.pi-kit.dev` is a separate static
+[setup guide](remote-onboarding-site.md), not the remote application.
 
 ## How it works
 
@@ -26,7 +33,7 @@ flowchart LR
 ```
 
 1. **Publication is explicit.** Nothing listens until the owner turns on **Settings › Remote access** and chooses a port (on a server: `pi-kit remote enable`). The service host then opens a gateway on a random loopback port and runs `tailscale serve --https=<port> http://127.0.0.1:<gateway port>` in the foreground. Tailscale terminates TLS with the computer's own `*.ts.net` certificate; the gateway sees plain HTTP from the Serve process on loopback only.
-2. **The backend never changes.** It keeps listening on loopback with its per-launch bearer token ([ADR-0007](adr/0007-local-security.md)). The gateway is the only client that knows that token, and it adds it to each upstream request after authenticating the caller on its own terms. No backend address or token ever appears in a QR code, a page, browser storage or a phone response.
+2. **The backend stays private.** It listens on loopback with a per-launch bearer token ([ADR-0007](adr/0007-local-security.md)). The remote gateway authenticates each caller and adds the backend token to upstream requests. Remote browsers receive the gateway address and device credentials, not the backend's address or token. The attached desktop app and authorized local CLI also use the backend endpoint; it is not exclusive to the remote gateway.
 3. **Devices are approved by the owner.** A phone pairs once with a short-lived code and a six-digit confirmation that must match on both screens. From then on it holds an `HttpOnly` session cookie and fetches a CSRF nonce per page load; both are required on every API call. Approvals are stored in the profile's database and last until the owner revokes them.
 4. **Only reviewed routes go through.** The gateway forwards a request only when its path and method are on the allowlist generated from the API contract: routes a controller marks `@Remote()` become `x-remote` in the OpenAPI document and from there the list in `libs/shared/protocol`. Everything administrative, every HTML document and the embedded browser, MCP apps and sandbox routes stay desktop-only.
 5. **Instances pair with each other the same way**, with keys instead of cookies. Two computers exchange an invitation, both owners approve the same confirmation code, and from then on each may open short sessions on the other, signed with an Ed25519 key the service host keeps sealed: in the OS keychain, or on a machine without one in an owner-only file (`pi-kit peers key-file --yes`). A phone approved at one computer may use that computer's paired peers through it.
@@ -42,7 +49,10 @@ flowchart LR
 On a server without the desktop app, `pi-kit remote enable`, `pi-kit pair` and `pi-kit devices approve <request>` do the same
 ([Server and CLI](server.md)).
 
-The computer must be awake and pi-kit running; this is remote control of a running desktop, not an always-on service. The phone must be connected to Tailscale, being on the same Wi-Fi is not enough, and the tailnet policy must allow the chosen port. Serve is private to the tailnet; pi-kit never enables Funnel.
+The computer must be awake, with the service host, backend, and Tailscale running. An installed background service keeps
+remote access available without an open desktop app; without that service, closing the app stops its host. Boot and
+sign-in behavior depends on the platform and installation ([Server and CLI](server.md)). The phone must be connected to
+Tailscale; sharing Wi-Fi is not enough, and tailnet policy must allow the chosen HTTPS port.
 
 ### On the Home Screen
 
@@ -94,13 +104,19 @@ A phone follows the same rule one hop deep: a device approved at instance A may 
 - **Upstream**: a literal loopback HTTP URL. Browser cookies, authorization and forwarding headers are stripped, the backend token is added privately, and upstream cookies, CORS headers, redirects and executable document types are blocked on the way back.
 - **Static files**: realpath-confined to the packaged renderer. No traversal, no symlinks outside the root, no source maps, no hidden paths, no arbitrary HTML.
 - **Content Security Policy**: scripts and connections from the same origin only, no framing or object embedding; the only page that may use the camera is the unauthenticated pairing page.
-- **Instance keys**: an Ed25519 key per profile, generated on the first invitation, sealed with the OS keychain (Electron `safeStorage`; on Linux only a real keyring backend is accepted, never the plaintext fallback) and never written in the clear. Proofs are JWTs with a 30-second lifetime bound to the peer, the purpose, a nonce and the pair's identities. A key that cannot be unsealed stops pairing with a clear message; it is never replaced behind the owner's back.
+- **Instance keys**: one Ed25519 key per profile, generated when pairing first needs it. The host seals the private key with AES-256-GCM under a wrapping key in the OS credential store. `pi-kit peers key-file --yes` explicitly selects an owner-only wrapping-key file beside the profile for machines without a usable credential store. Existing keys sealed by Electron `safeStorage` can be opened through an attached desktop and migrated to host sealing; desktop sealing remains a fallback when host sealing is unavailable. Proofs are JWTs with a 30-second lifetime bound to the peer, purpose, nonce, and pair identities. An unavailable key blocks pairing rather than silently creating a replacement. The file option relies on local filesystem access controls; it is not keychain-equivalent protection.
 
 ## Tailscale lifecycle
 
-The desktop finds an installed Tailscale CLI, including the one inside the macOS app bundle, and calls it with argument arrays, never through a shell. Every subprocess gets `TAILSCALE_BE_CLI=1` in its own copied environment, because the bundled executable otherwise starts in GUI mode when launched from Finder without a shell's `SHLVL`; nothing in the user's environment or Tailscale configuration changes.
+The service host finds an installed Tailscale CLI, including the one inside the macOS app bundle, and calls it with argument arrays, never through a shell. Every subprocess gets `TAILSCALE_BE_CLI=1` in its own copied environment, because the bundled executable otherwise starts in GUI mode when launched from Finder without a shell's `SHLVL`; nothing in the user's environment or Tailscale configuration changes.
 
-Opening Settings only reads status. Publication is the foreground `tailscale serve` above: the app first checks that nothing else listens on the chosen port, verifies after starting that the HTTPS mapping points at its own gateway, and reports ready only then. It never runs `up`, `down`, `funnel`, `reset` or a persistent `--bg` session. Stop and quit end the foreground process and close the gateway without touching the VPN. If the daemon keeps a mapping after that, the app names that mapping for manual review instead of deleting a listener it might not own. Enable and the chosen port are remembered per profile; a restart resumes access only if it was on, and never for a fresh profile.
+Opening Settings reads status; it does not enable publication. To publish, the host checks the chosen port, starts the
+foreground `tailscale serve` process, and verifies that the HTTPS mapping points at its gateway before reporting ready.
+It does not run `up`, `down`, `funnel`, `reset`, or a persistent `--bg` session. Disabling remote access or stopping the host
+ends the Serve process and closes the gateway without disconnecting the VPN. Closing the desktop app alone does not
+stop publication when the background service is running. If Tailscale retains a mapping after shutdown, pi-kit reports
+it for manual review instead of deleting a listener it might not own. Enablement and the port are saved per profile;
+a host restart attempts to restore access only when it was previously enabled.
 
 ## Troubleshooting
 
@@ -116,7 +132,7 @@ Opening Settings only reads status. Publication is the foreground `tailscale ser
 
 ## Validation
 
-- Desktop unit tests cover the gateway (pairing, codes, approval, rejection, expiry, cookie and nonce requirements, route policy, static confinement, streaming and revocation), the Tailscale lifecycle with a fake CLI, the key store and the IPC surface.
+- `libs/shared/service-host/src/*.spec.ts` covers the gateway, device authentication, route policy, static-file confinement, streaming, revocation, Tailscale lifecycle, and key sealing. Desktop tests cover Electron IPC and setup integration.
 - Backend tests pair two in-memory instances through every step, including restarts, offline peers, replaced keys and unpairing from either side.
 - Renderer tests cover the phone transport, the settings sections and the environment switch.
 - `e2e/remote-access.desktop.e2e.mjs` drives a real iPhone-sized Electron browser through pairing and use against the production frontend and an isolated backend behind a loopback TLS proxy; `e2e/instances.desktop.e2e.mjs` pairs two isolated instances the same way and checks relayed reads and revocation.

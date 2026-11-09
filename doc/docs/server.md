@@ -7,8 +7,7 @@ sidebar_position: 2
 
 pi-kit is a server with clients. A **service host** runs the backend and outlives any window; the desktop app, a browser on
 the same computer and paired phones are clients of it, and the `pi-kit` command manages it. The desktop installers and the
-server installs ship the same server ([design](https://github.com/Soverius-AI/pi-kit/blob/main/doc/designs/headless-cli-server.md),
-[ADR-0036](adr/0036-always-on-service.md)).
+server installs use the same service-host implementation ([ADR-0036](adr/0036-always-on-service.md)).
 
 ```mermaid
 flowchart LR
@@ -16,7 +15,7 @@ flowchart LR
   subgraph host["Service host (libs/shared/service-host)"]
     watchdog["Watchdog: starts and restarts the backend"]
     backend["Backend (NestJS)\n127.0.0.1, per-launch token"]
-    owner["Owner gateway\n127.0.0.1:47800"]
+    owner["Owner gateway\nloopback, preferred port 47800"]
     remote["Remote gateway\nbehind Tailscale Serve"]
   end
   desktop["Desktop app (Electron)"]
@@ -26,7 +25,7 @@ flowchart LR
   manager -->|starts| host
   desktop -->|host channel| host
   cli -->|host channel| host
-  browser -->|one-time link, then a cookie| owner
+  browser -->|one-time link, then owner token| owner
   phone --> remote
   watchdog --> backend
 ```
@@ -39,7 +38,9 @@ flowchart LR
 - **The desktop app is a client.** It attaches over the host channel, gets the backend's address and token, and answers the
   backend's requests for what only Electron can do. When the service moves (a restart, an update, another install taking
   over), the app restarts onto the next host.
-- **A browser** gets the full UI through the owner gateway: `pi-kit open` makes a one-time link, which sets an owner cookie.
+- **A browser** loads the UI through the owner gateway. `pi-kit open --browser` makes a link that can be exchanged once,
+  within two minutes, for an owner token. Browser API requests use that token, not the backend's token. Features that need
+  Electron, such as the embedded browser, require an attached desktop app.
 - **Phones and other instances** reach the remote gateway over the tailnet ([Remote access](remote-access.md)).
 
 ## Installs
@@ -54,9 +55,10 @@ npm installs only the package for the machine, `@soverius-ai/pi-kit-<os>-<arch>`
 x64. On a server install, `pi-kit desktop install` adds the desktop app of the same version: it downloads it from the
 release, checks it against the sha512 the app's updater trusts, installs it for this user and starts it.
 
-**One machine, several installs.** They share the profile, and **the newest install runs the service**. An older install's
-`pi-kit service install` changes nothing and names the newer one. The desktop app, at each start, becomes the newer version
-the service runs first, attaches to a service of its own version, and registers itself otherwise.
+**One machine, several installs.** Installs using the same profile coordinate through its service registration. Version
+checks prevent an older install from replacing a newer registered service. On startup, the desktop app checks that
+registration and either attaches to the matching host, starts the newer installed app, or updates the registration to
+its own newer version.
 
 ## The service
 
@@ -67,7 +69,12 @@ the service runs first, attaches to a service of its own version, and registers 
 | Windows | the desktop app: a `Run` key and a windowless supervisor | a server install: a Task Scheduler task (asks for the account password once) |
 
 **Settings › General › Background** in the app does what `pi-kit service install` and `uninstall` do. The host restarts its
-backend after a crash; launchd, systemd and the Windows supervisor restart the host.
+backend after a crash; launchd, systemd and the Windows supervisor restart the host. Turning the background service off
+makes the host follow the desktop app's lifetime instead.
+
+Boot startup does not bypass disk encryption, suspend, network policy, or credential-store locks. A macOS LaunchDaemon
+runs as the owning user, but the login keychain may be locked before sign-in. Linux boot startup requires lingering;
+Windows server registration requires an account password for Task Scheduler.
 
 ## A server, step by step
 
@@ -75,12 +82,14 @@ backend after a crash; launchd, systemd and the Windows supervisor restart the h
 npm install -g @soverius-ai/pi-kit   # or unpack a server archive and run its bin/pi-kit
 pi-kit service install               # start the backend at sign-in, and now
 pi-kit login                         # sign in to a model provider
-pi-kit open                          # the full UI in this computer's browser
+pi-kit open --browser                # open the UI in this computer's browser
 pi-kit remote enable                 # publish it on your tailnet
 pi-kit pair                          # pair a phone
 ```
 
-Over SSH, `pi-kit open` prints the link and the `ssh -L` forward that reaches it from your own computer.
+Over SSH, `pi-kit open --browser` prints the one-time link and an `ssh -L` command for reaching it from your own computer.
+The owner gateway binds to loopback; it is not a public HTTP listener. For phone access, use the separately authenticated
+Tailscale gateway described in [Remote access](remote-access.md).
 
 ## Commands
 

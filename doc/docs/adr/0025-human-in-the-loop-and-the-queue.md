@@ -18,7 +18,7 @@ Every way pi asks must be an interactive block, the message toolbars must do wha
 - Every block says who asked: "Asked by an extension · <name> · while running <tool>". `UiBridge` names the extension from the call stack (`extensionNameFromStack`: the first frame under an `extensions/` folder, named as the settings list names it) and the tool from the session's `tool_execution_start` / `_end` events. A dialog opened by pi's own code shows only "Asked by an extension".
 - Cancel resolves with the interrupt's `cancelled` status, which becomes `false` for confirm and `undefined` for the others; Deny and Esc on confirm answer `{ confirmed: false }`.
 - pi's `timeout` is not enforced while nobody watches: an approval that expires silently is worse than one that waits. The request carries `timeoutMs` and `expiresAt` (epoch ms from the moment the extension asked, so a reload keeps the countdown); a block that is shown counts down on `ClockStore`'s tick and answers "cancelled" for the user at zero, with a notice.
-- Questions in prose: when the newest answer ends in a question, nothing is running and no dialog is open (`ChatStore.proseQuestion`), the composer's placeholder and hint row say so and the suggestion pills start with Reply (focuses the composer) followed by one pill per listed option, which sends it. `endsWithQuestion` and `replyOptions` (`libs/protocol/src/prose-question.ts`) are heuristics that err toward showing no pill. `ThreadSummary.waiting` is "a dialog is pending, or the open session's last message ends in a question and nothing is streaming" (`PiSessionService.askedAQuestion`).
+- Questions in prose: when the newest answer ends in a question, nothing is running and no dialog is open (`ChatStore.proseQuestion`), the composer's placeholder and hint row say so and the suggestion pills start with Reply (focuses the composer) followed by one pill per listed option, which sends it. `endsWithQuestion` and `replyOptions` (`libs/shared/protocol/src/prose-question.ts`) are heuristics that err toward showing no pill. `ThreadSummary.waiting` is "a dialog is pending, or the open session's last message ends in a question and nothing is streaming" (`PiSessionService.askedAQuestion`).
 - Message toolbars: Copy puts the message's markdown source, or what the user typed, on the clipboard; Regenerate re-prompts from the parent turn and the sibling shows in branch navigation; thumbs show their state, replace each other and clear on a repeat; read-aloud is not drawn.
 - Queue event: `queue_update` maps to `pi.queue { steer, followUp, steerTexts, followUpTexts }`; the counts stay for older logs.
 - The bar is pi's queue: `ChatStore.queue` follows `pi.queue` and is read again from `GET /api/threads/:id/queue` after a replay and after every action, so a reload shows what pi holds.
@@ -28,10 +28,10 @@ Every way pi asks must be an interactive block, the message toolbars must do wha
 
 ## Consequences
 
-- `PiDialogRequest` and `pi.queue` grew optional fields; old logs and old clients keep working, and the earlier confirm and select tests run unchanged.
+- `PiDialogRequest` and `pi.queue` grew optional fields; older logs can omit these fields.
 - A dialog that pi's own code opens cannot be attributed; the stack read is a heuristic that never throws and could miss a bundled extension without an `extensions/` folder.
 - Auto-answering at the timeout happens in the renderer: a client that is not watching leaves the dialog waiting, and a window open on another thread answers when its thread is shown.
 - Merge and Steer now re-run pi's queueing of a message; an extension that rewrites input sees the re-queue.
 - The SDK has no atomic batch edit, so its own delivery can progress during a re-queue; an input held by an extension input handler is not in the queue until released, so it can arrive after a Clear. Images an extension queues outside pi-kit's input API are not tracked.
-- MCP elicitation has no path until pi declares the capability; when it does, the mapping is a schema-to-fields function in `UiBridge` onto these blocks.
-- A turn an extension starts with `pi.sendUserMessage` after its command returned has no run attached and neither streams nor logs until the session is read again.
+- MCP elicitation is not supported by this dialog bridge.
+- Extension-started turns on an idle thread receive their own AG-UI run from `PiAgentRunner`, so they stream and enter the replay log too.

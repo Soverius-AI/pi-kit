@@ -2,23 +2,39 @@
 title: Onboarding site
 ---
 
-# remote.pi-kit.dev onboarding site
+# Remote-access setup guide
 
-A static guide at `https://remote.pi-kit.dev` that walks a user through installing pi-kit and Tailscale, enabling [remote access](remote-access.md), pairing a device and adding the private address to the Home Screen. It can remember the user's own `https://…ts.net` address in the browser, open it, and scan the pairing QR code with the device camera. It serves no application routes and holds no credentials; the chat app stays on the private tailnet address.
+`https://remote.pi-kit.dev` serves a static guide for installing pi-kit and Tailscale, enabling
+[remote access](remote-access.md), pairing a device, and adding the private address to the Home Screen.
+It can save the user's `https://…ts.net` address in browser storage, open that address, and scan a pairing QR code
+with the device camera. It does not proxy application traffic or hold pi-kit credentials. The application runs at
+the computer's private tailnet address.
 
-Source: `apps/onboarding-site/`, a small Angular app (`pk-onboarding`, English and German through `@pi-kit/i18n`, QR decoding with `jsqr`) served by nginx. Its strings live under `remoteSite` in the shared translation files; the `i18n` target extracts that section into `public/i18n` before each build and test. The download button points at the latest GitHub release.
+## Source and local development
+
+`apps/onboarding-site/` is an Angular app (`pk-onboarding`) served by nginx. It uses English and German translations
+from `@pi-kit/i18n` and decodes QR codes with `jsqr`. Its `i18n` target extracts the `remoteSite` section of the shared
+translations into `public/i18n` before builds and tests. The download link points to the latest GitHub release.
 
 ```sh
 pnpm exec nx serve onboarding-site
 pnpm exec nx test onboarding-site
 ```
 
-## Deploy
+## Deployment workflow
 
-Every `v*` tag deploys the site: the `deploy-onboarding` job in `.github/workflows/release.yml` runs after the GitHub release is published, pins the Coolify application to the tagged commit (`PATCH /api/v1/applications/{uuid}` with `git_commit_sha`) and triggers a build (`POST /api/v1/deploy?uuid=…&force=true`). Coolify then builds `apps/onboarding-site/Dockerfile` from the repository root and routes `remote.pi-kit.dev` to it. Until the secrets below exist the job prints a notice and does nothing, so releases are never blocked by the site.
+The `deploy-onboarding` job in `.github/workflows/release.yml` runs on `v*` tag pushes after the release is published.
+It uses the Coolify API to pin the configured application to the release commit and request a deployment. The repository
+contains `apps/onboarding-site/Dockerfile` for building from the repository root; nginx listens on port `8080`.
 
-### Coolify setup (done on 2026-11-04)
+The job reads three GitHub repository secrets:
 
-The Coolify application `onboarding` (`wtymbsuvufvd9wtvpiauejrs`) lives in the project `remote.pi-kit.dev` on the `localhost` server of https://appz.coderabbit.at: public repository `Soverius-AI/pi-kit`, branch `main`, Dockerfile build pack with `apps/onboarding-site/Dockerfile` from base directory `/`, port 8080, domain `https://remote.pi-kit.dev`, no auto deploy. The instance API is enabled and the token `github-release remote.pi-kit.dev` (write and deploy, scoped to the `remote.pi-kit.dev` project only, no expiry) is stored with the URL and the application UUID as the repository secrets `COOLIFY_URL`, `COOLIFY_TOKEN` and `COOLIFY_ONBOARDING_UUID`.
+| Secret | Purpose |
+|---|---|
+| `COOLIFY_URL` | The Coolify instance URL. |
+| `COOLIFY_TOKEN` | An API token permitted to update and deploy the application. |
+| `COOLIFY_ONBOARDING_UUID` | The target Coolify application's identifier. |
 
-To rotate the token, create a new one under Keys & Tokens in Coolify and replace `COOLIFY_TOKEN`.
+If any secret is missing, the job emits a notice and skips deployment. Triggering the API does not prove that the
+external deployment completed successfully; its status is managed in Coolify. Domain routing and credentials are
+operational configuration, not values maintained in the source tree.

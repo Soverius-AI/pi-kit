@@ -13,7 +13,6 @@ const sidebars: SidebarsConfig = {
     'agui-events',
     'background-agents',
     'structure',
-    'refactoring',
     'design-system',
     'plugins',
     {

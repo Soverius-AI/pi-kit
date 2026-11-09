@@ -10,12 +10,12 @@ pi has four kinds of `/` input: `/skill:name args` and `/template args` (expande
 `prompt()` immediately, even mid-run, may open `ctx.ui` dialogs), and built-in TUI commands
 (`/model`, `/tree`, `/fork`, `/compact`, `/settings`, ...), which are interactive-mode only and
 do not execute when sent through `prompt()`. The first three kinds are discoverable through the
-SDK (`SlashCommandInfo { name, description, source, sourceInfo }`); the SDK also exports
-`BUILTIN_SLASH_COMMANDS` (name, description, argumentHint).
+SDK (`SlashCommandInfo { name, description, source, sourceInfo }`); pi declares `BUILTIN_SLASH_COMMANDS` (name, description, argumentHint), but the pinned SDK does not
+export that table at runtime, so pi-kit maintains its own built-in table.
 
 ## Decision
 
-- Nest `CommandsService` merges pi's discovered commands with an own built-in table and serves
+- Nest `CommandsService` merges pi's discovered commands with pi-kit's built-in table and serves
   `GET /api/threads/:id/commands`. Each entry: `name, description, source, argumentHint,
   kind: "prompt" | "action"`.
 - `kind: "prompt"` (skills, templates, extension commands): the composer sends the raw text
@@ -44,4 +44,4 @@ SDK (`SlashCommandInfo { name, description, source, sourceInfo }`); the SDK also
 ## Consequences
 
 - Parity with the CLI is a table that can be audited; a missing built-in is a visible gap.
-- Extension argument completion (`AutocompleteProviderFactory`) is a later addition.
+- Extension argument completion uses the SDK autocomplete provider through the session API.

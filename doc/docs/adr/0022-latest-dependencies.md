@@ -13,15 +13,15 @@ must match the user's CLI because they share session files.
 
 ## Decision
 
-- Every dependency is the latest published version the toolchain accepts, pinned exactly (no `^`).
-- Upgrades happen as a dedicated wave, not piecemeal. A wave records in this ADR what changed in the APIs pi-kit uses.
-- Any package held back is an exception, named in this ADR with its reason; the list below is that record.
+- The application dependencies are pinned exactly (no `^`) and updated together toward current compatible releases. The documentation site has its own dependency manifest.
+- Upgrades happen as a dedicated wave, not piecemeal. API adaptations and version changes are recorded in the change itself.
+- Compatibility exceptions have explicit reasons; the list below records the main constraints.
 - The package manager is pnpm with a hoisted
   `node_modules`, `strictPeerDependencies: false`, `autoInstallPeers: true`, an `allowBuilds` list and a
-  `minimumReleaseAge`. A version published inside that window is taken with the next wave.
+  `minimumReleaseAge`. Versions inside that window are deferred.
 - One copy of a shared class: a package that CopilotKit or AG-UI pins exactly stays on that version.
 - Exact-version pnpm patches may adapt a dependency (zod 4 for A2UI and the SDK, KaTeX fonts, the grammar registry;
-  [patches/README.md](https://github.com/wolfmanfx/pi-kit/blob/main/patches/README.md)); zod resolves to one pinned
+  [patches/README.md](https://github.com/Soverius-AI/pi-kit/blob/main/patches/README.md)); zod resolves to one pinned
   4.x everywhere; there is no zod 3 boundary.
 - GitHub Actions are referenced by major version; this is the one place where "exact" is not applied.
 - Named exceptions, held back on purpose:
@@ -33,7 +33,7 @@ must match the user's CLI because they share session files.
   - `@ag-ui/client`, `@ag-ui/core` 1.0.2: CopilotKit's runtime pins 1.0.2; one `AbstractAgent`.
   - `katex` 0.16.x: CopilotKit declares `^0.16.22`; the 0.19 line is outside that range.
   - `mermaid` 11.17.2, overridden in `doc/`: `@mermaid-js/layout-elk` is built against Mermaid 11; with 12 only the first diagram of a page renders.
-  - `@nestjs/swagger` 12.0.2: the next patch was published inside `minimumReleaseAge`; taken with the next wave.
+  - `@nestjs/swagger` 12.0.2: pinned alongside NestJS 12 and the schema converter.
   - `pnpm` 11.x, not 12: the line whose `allowBuilds` the workspace file uses.
   - `better-sqlite3-multiple-ciphers` replaces `better-sqlite3` on the same version line; Drizzle's `better-sqlite3` import is an npm alias of it.
   - `nestjs-zod`: tried and not kept; it writes a nullable DTO property as an array and fails on schemas with an `id` under swagger 12 and zod 4.
@@ -42,7 +42,7 @@ must match the user's CLI because they share session files.
 ## Consequences
 
 - A wave is blocking: features are written against the upgraded API from the start.
-- The bundled pi moves with waves; Settings › General shows when the user's CLI is older and offers `pi update`.
+- The bundled pi moves with dependency upgrades; Settings › General exposes the managed pi update workflow.
 - Risk concentrates in the packages that pin each other (CopilotKit, AG-UI, zod, A2UI); recorded fixtures and the AG-UI
   stream verifier catch breakage there.
 - The `outdated` warning keeps the exceptions visible; each is revisited at the next wave.

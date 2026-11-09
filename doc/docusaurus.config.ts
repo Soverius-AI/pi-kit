@@ -9,7 +9,7 @@ import { themes as prismThemes } from 'prism-react-renderer';
  */
 const config: Config = {
   title: 'pi-kit',
-  tagline: 'A desktop UI for the pi coding agent',
+  tagline: 'A workspace for the pi coding agent',
   favicon: 'img/mark-gold-256.png',
   url: 'https://soverius-ai.github.io',
   baseUrl: '/pi-kit/',
@@ -31,6 +31,7 @@ const config: Config = {
       {
         docs: {
           path: 'docs',
+          // Research and proposals live in doc/designs/, outside the published documentation root.
           routeBasePath: '/',
           sidebarPath: './sidebars.ts',
           // The ADR index is the "Decision records" group's own entry (sidebars.ts), so it is not listed inside the group as well.

@@ -29,6 +29,8 @@ libs/
     testing/         thread and graph-row fixtures, fakeThreads (specs only)    @pi-kit/testing       type:util
     pi-adapter/      pi SDK events to AG-UI (backend kernel)                    @pi-kit/pi-adapter     type:util
     secret-store/    keychain and encrypted file store (backend kernel)         @pi-kit/secret-store   type:util
+    service-host/    backend spawning/watchdog, discovery, desktop host channel, owner and remote gateways, service/CLI helpers
+                     @pi-kit/service-host (Node/Electron host code)             type:util
   threads/          the thread list, projects, worktrees, trust, the attendant's suggestions
     api/             ThreadsStore, TrustStore, AttendantStore, WorktreeStore, CoordinationStore, threadLabel, the ports ThreadShell and WorktreeReview
     data/            threads.store, trust.store, attendant.store, worktree.store, coordination.store, changed-count.store, outcome-menu.store, score.store, learn.store, learned.store (the record of learned skills), new-thread.store, ports
@@ -120,7 +122,7 @@ one `depConstraints` block (`@nx/enforce-module-boundaries`); a violation is a l
 | Type | One line | May depend on (inside the scope rule above) |
 |---|---|---|
 | `type:api` | What other domains import: a facade over the domain's store, selected types | `data`, `util`, `scope:shared` |
-| `type:feature` | A lazy entry: container components wired to stores, one per lazy chunk | `feature`, `ui`, `data`, `util`, `scope:shared`, other domains' `api` |
+| `type:feature` | Container components wired to stores; lazy entry points and eager shell features | `feature`, `ui`, `data`, `util`, `scope:shared`, other domains' `api` |
 | `type:ui` | Presentational components: inputs and outputs only, no store, no HTTP | `ui`, `util`, `scope:shared` |
 | `type:data` | SignalStores, direct generated operations, mappers | `data`, `util`, `scope:shared`, other domains' `api` |
 | `type:util` | Pure functions of the domain | `util`, `scope:shared` |
@@ -163,14 +165,13 @@ new domain to it).
   generated library is in the gate as soon as it exists. The Angular unit-test builder fails when a project has no
   spec at all, so a library without specs has no `test` target (delete it from `project.json` after generating, add it
   back from a sibling when the first spec lands).
-- Lazy chunks stay lazy by structure: a `feature-*` library is loaded through a `@defer` block in `apps/renderer` (or,
+- To keep a feature lazy, load its entry through a `@defer` block in `apps/renderer` (or,
   for the settings window, in the `SettingsDialog` host of its own library) or through a slot's dynamic `import()`
-  (below); nothing else imports it.
+  (below), and avoid other static imports of that entry. Not every `feature-*` library is lazy: the sidebar is part of the eager shell.
 - Barrels and the bundle: write `src/index.ts` of every library as `export * from './lib/x'` (and `export * from
-  '@pi-kit/<domain>/data'` in an `api`), never as `export { X } from '...'`. In the Angular application build a named
-  re-export clause keeps the module of every listed name in the bundle of whoever imports the barrel, even for names
-  that only a lazy chunk uses; measured during the split, it moved the settings store, the API-key dialog and the provider cards
-  (about 70 kB) into the initial bundle. `export *` is tree-shaken as it should be. A lazy component that is the entry
+  '@pi-kit/<domain>/data'` in an `api`). The existing barrels use this form to preserve the lazy split. Do not assume
+  that barrel syntax alone guarantees a chunk boundary: static imports and the application build determine what ships
+  in each chunk. A lazy component that is the entry
   of its chunk (the settings window) is not exported from the barrel at all, because the barrel would import it
   statically; the host that `@defer`s it imports it by relative path. Name clashes between a barrel's `export *`
   sources are a compile error (`TS2308`), which is how a state interface called `KeyWorkflow` and a component of the
@@ -228,7 +229,8 @@ Stores call generated operations directly; do not add endpoint wrapper classes o
 remains the public domain facade. Regenerate with `pnpm run api:openapi`; the full
 check compares every generated file. The transport layer cannot import stores.
 
-Each data library exports a typed `*_POLICY` injection token for its runtime behavior.
+Data libraries use typed policy injection tokens for configurable runtime behavior (for example, `THREADS_POLICY`,
+`SETTINGS_POLICY` and `VOICE_POLICY`); the naming and number of tokens vary by domain.
 Use component inputs for instance behavior, tokens for application/domain defaults,
 and reactive preference stores for user settings. `CONTEXT_POLICY` is shared by chat
 and thread context indicators. Keep pure functions independent of DI by passing the

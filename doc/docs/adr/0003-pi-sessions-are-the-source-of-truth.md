@@ -13,9 +13,9 @@ an app schema would create two sources of truth and break CLI interop.
 
 ## Decision
 
-- Conversation content, branches, compaction, labels and model changes live in pi's session
-  files only.
-- SQLite (`better-sqlite3`, file under Electron `userData`) holds:
+- pi's session files are canonical for conversation content, branches, compaction, labels and
+  model changes. SQLite also caches conversation events for replay.
+- SQLite (`better-sqlite3-multiple-ciphers`, `pi-kit.sqlite` under the backend data folder, configured by `PI_KIT_DATA_DIR`; desktop launches use Electron `userData`, while server installs supply their own data folder) holds:
   - `threads`: id (== pi session id), session_path, cwd, title, pinned, archived,
     last_opened_at, updated_at.
   - `thread_events`: AG-UI replay log.
@@ -24,12 +24,12 @@ an app schema would create two sources of truth and break CLI interop.
   - `workspaces`: known cwds.
 - Thread listing is served from `threads`; a background job reconciles it with
   `SessionManager.listAll()` so sessions created by the CLI appear in the app.
-- The app does not lock session files. External modification is detected by mtime and the UI
-  offers "reload".
+- The app does not lock session files. Reconciliation detects external changes by mtime, and
+  connecting to an idle thread rebuilds stale replay history from the session file.
 - Deleting a thread in the app deletes its JSONL, via trash when available, as pi does.
 
 ## Consequences
 
-- Export, share and `/bug` reuse pi's own code paths (`export_html`).
+- Export uses pi's HTML exporter. `/share` and `/bug` are disabled commands.
 - Schema migrations cover only the metadata tables; pi migrates its own format on load.
 - While the app holds a thread open, concurrent CLI writes are detected, not prevented.

@@ -23,13 +23,13 @@ encoding on the GUI process would stall the desktop window.
   hosts rather than becoming parentless; zero-area/offscreen rectangles never become native bounds. Bounds-only updates
   retain the native attachment. A viewport owner stops old cleanup from hiding a newer panel. All hosts close with the main
   window. The dock is resizable by pointer and keyboard.
-- Browser actions and state go through the backend's desktop IPC channel: `GET /api/threads/:id/browser` and
+- Browser actions and state go through the backend's desktop bridge, forwarded by the service host to an attached desktop: `GET /api/threads/:id/browser` and
   `POST /api/threads/:id/browser/action`. Electron owns a bounded action deadline and bounded native/CDP steps;
   `DesktopBridge` owns process listeners and propagates cancellation without a competing transport deadline. Typed
   browser errors cross IPC and an exception filter maps them to 400, 503, 504, 408 and 502, so the agent sees the original
   error. The component-scoped store calls the generated SDK directly and rejects answers from an earlier chat or navigation.
-- Every desktop pi session registers the built-in `pi_browser` tool with a `pi_kit_browser` system-prompt section and the
-  bundled `assets/skills/pi-browser/SKILL.md`; a web-only backend registers neither. Page content is untrusted data.
+- Sessions with a desktop bridge register the built-in `pi_browser` tool with a `pi_kit_browser` system-prompt section and the
+  bundled `assets/skills/pi-browser/SKILL.md`; a backend without that bridge registers neither. A service-host bridge can exist with no desktop attached; browser actions then return an unavailable error. Page content is untrusted data.
 - Commands run sequentially per chat. Accessibility snapshots issue references scoped to the latest snapshot; navigation
   invalidates them. Interaction and inspection use Chromium's debugger protocol (Overlay/DOM), never injected page code.
   Evaluate runs only in the sandboxed project page. Requests have a deadline and propagate agent cancellation.
@@ -50,7 +50,7 @@ encoding on the GUI process would stall the desktop window.
 - Pages that forbid framing work, at the cost of a native view that must track the panel's geometry and the window's dialogs.
 - Project pages are isolated from pi-kit's origins and credentials; the agent can only act through the typed action API.
 - Final screenshot encoding stays off the GUI process; a tiny compositor primer and one extra encoder renderer per capture
-  are the price. Real Electron regressions cover hidden/visible/hidden-again pixels, AX freshness, scrolled selection,
-  below-fold fullpage capture, and recovery after permanently pending navigation/native capture.
+  are the price. The repository includes Electron regression scenarios for hidden/visible/hidden-again pixels, AX freshness, scrolled
+  selection, below-fold fullpage capture and recovery after pending navigation/native capture.
 - Stale references, stale captures and answers from an earlier chat are rejected rather than applied.
 - The certificate preference is for development only; the UI says so and that pages need reopening.

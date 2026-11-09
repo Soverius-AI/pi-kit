@@ -46,5 +46,5 @@ thread touches (`change_baselines`) and each thread's state.
 - The coordination section adds a few hundred tokens only when several threads are active in one place.
 - A model can still edit a leased file; the lease is information plus a visible chip.
 - What a thread read is kept in memory per backend run, so no notice follows a restart until the file is touched again.
-- The attendant's "about to collide" pause suggestion is not built; the chip, the notice and the section carry it.
+- Coordination provides chips, notices and prompt context, not automatic collision pauses.
 - A setup command that fails or takes minutes shows only in the terminal; nothing else tells the thread.

@@ -29,8 +29,8 @@ compatible place.
 - Checks run shortly after launch and every six hours (`PI_OFFLINE` and `PI_SKIP_VERSION_CHECK` turn them off); a
   timer re-reads the install folders, so an update made in a terminal becomes "Restart to use …" without a new check.
   "What is installed" for pi is what the `pi` command runs.
-- A running backend keeps its loaded version. `POST /api/update/restart` ends the process and the desktop watchdog
-  starts it again on the same port and token; threads replay from the runner log. Outside the desktop app the endpoint
+- A running backend keeps its loaded version. `POST /api/update/restart` ends the process and the service-host watchdog
+  starts it again on the same port and token; threads replay from the runner log. Without an available desktop bridge the endpoint
   refuses unless `PI_KIT_ALLOW_RESTART=1`. A managed release above `piSdk.max` is listed with a note, not loaded, until
   a pi-kit update raises the range; the bundled copy keeps working.
 - "Install the pi command" writes pi's launcher and symlink when the entry point does not lead to one; it replaces a
@@ -43,10 +43,10 @@ compatible place.
 
 ## Consequences
 
-- The terminal and the app run the same pi version and share session files without skew.
+- The managed CLI release and backend SDK can align without modifying the app bundle; compatibility bounds and an explicit pin can keep the backend on a different release.
 - The bundled pi is a fallback and a bootstrap source, not the running copy once an update happened; releases still
   bump it.
 - Two files in pi-kit's data folder: `pi-release.json` (the pin) and `update-state.json` (last refresh times).
 - A restart ends a run in progress as aborted, like any restart.
 - The earlier update check leaves `SettingsState`; `GET /api/about/pi-update` stays and `UpdateService` calls it.
-- The release repository must be set before the first release is cut.
+- App updates depend on the configured release repository and an attached desktop; server installs have a separate CLI update path.

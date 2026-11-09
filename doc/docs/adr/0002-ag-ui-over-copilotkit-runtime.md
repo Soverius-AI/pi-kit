@@ -40,6 +40,6 @@ and register an `AbstractAgent` subclass in its `agents` map; the frontend then 
 
 - The app depends on CopilotKit's open-source packages (`@copilotkit/runtime`,
   `@copilotkit/angular`, `@ag-ui/*`). Versions are pinned and upgraded together.
-- `CopilotRuntime` exposes a fetch-style handler; if mounting it in Nest fails, the fallback is a
-  Hono app in the same process on a sibling path.
-- Reconnect and replay rely on the runtime's `AgentRunner`.
+- `CopilotRuntime` is mounted by the Nest AG-UI controller and service; `PiAgentRunner` owns
+  durable replay and run locks.
+- Reconnect and replay use pi-kit's `PiAgentRunner`, registered with the runtime.

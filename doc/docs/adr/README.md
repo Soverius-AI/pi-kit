@@ -1,20 +1,18 @@
 # Architecture decision records
 
-One record per architecturally significant decision, in the form Michael Nygard proposed: title, status, context,
-decision, consequences. A record says what was decided and why, in the present tense, in under about sixty lines,
-and stands on its own: it does not cite other records. It does not report how the work went: no build logs, test
-counts, screenshots, phase or plan numbers, "as built" notes or dated appendices. Those belong in commits and in the
-guides.
+These records describe architectural decisions implemented in this repository: the problem, the chosen approach,
+and its consequences. They complement the guides with rationale and known limitations, rather than acting as a roadmap
+or a record of test runs.
 
-When a decision changes, the record is rewritten to state the decision as it now stands; git keeps the history. A
-record that no longer decides anything is deleted and the others are renumbered.
+When an implementation changes, update the relevant record to match it; Git preserves the earlier text. Keep record
+numbers stable so links continue to work. Research and unimplemented proposals belong in `doc/designs/`, outside this site.
 
 Template:
 
 ```
 # ADR-NNNN: Title
 
-Status: Proposed | Accepted
+Status: Accepted
 Date: YYYY-MM-DD
 
 ## Context
@@ -31,7 +29,7 @@ Date: YYYY-MM-DD
 | [0005](0005-custom-events-and-activities.md) | Extend AG-UI with Custom events for signals and Activity for surfaces |
 | [0006](0006-slash-commands.md) | One command registry: pi's discovered commands plus reimplemented built-ins |
 | [0007](0007-local-security.md) | Backend binds to loopback with a per-launch token |
-| [0008](0008-design-system-lib.md) | A minimal design system library ships six stylesheets |
+| [0008](0008-design-system-lib.md) | A shared design system supplies stylesheets and Angular primitives |
 | [0009](0009-build-and-dev-tooling.md) | Nx build and dev tooling with pnpm and a hoisted node_modules |
 | [0010](0010-durable-threads.md) | Durable threads: replay, SQLite layout, run locks and reconcile |
 | [0011](0011-generative-ui-and-mcp.md) | Generative UI through CopilotKit's A2UI renderer and pi-kit's MCP Apps host |
@@ -59,4 +57,4 @@ Date: YYYY-MM-DD
 | [0033](0033-durable-background-agents.md) | Durable background agents per thread, on pi-durable, shown through AG-UI |
 | [0034](0034-backend-domain-folders-four-roles.md) | Backend folders are one module per domain with four roles |
 | [0035](0035-remote-access-over-the-tailnet.md) | Remote access over the user's tailnet, with paired devices and reciprocal instances |
-| [0036](0036-always-on-service.md) | An always-on service at sign-in or at boot: the backend outlives the window (proposed) |
+| [0036](0036-always-on-service.md) | A shared service host: the backend outlives the window |

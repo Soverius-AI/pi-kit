@@ -30,7 +30,7 @@ Runtime discovery replaces an explicitly configured local agent with a standard 
 - Row rendering, batched height measurements and scroll correction commit in one transaction before paint; ResizeObserver invalidations use the same transaction on the next animation frame. Visited threads keep their measured heights and exact visible message/offset for fifteen minutes and restore that position before paint on revisit.
 - New threads open at the end. **Latest** pins the viewport to the measured end, including later height changes; upward navigation releases following, downward wheel input and typing in the composer keep it, reaching the end resumes it. During a native scrollbar-thumb drag the scroll range stays fixed with mounted coverage expanded for short rows; the release restores the held message against updated measurements on the next frame. CopilotKit's automatic mutation scrolling is disabled; its scroll container, message/tool components, composer and Latest button stay in use.
 - An opaque composer/footer cover hides transcript content behind the input and leaves the native scrollbar lane clear; the overlay lets pointer events through outside its controls.
-- The desktop main process loads a small allowlisted UI-preference cache before renderer bootstrap and migrates existing localStorage preferences once in a hidden renderer, excluding credentials and backend tokens; the chat renderer reads the memory cache and writes through asynchronous IPC. Browser development keeps the localStorage fallback. Initial redaction prepares the snapshot cooperatively in short work slices with a bounded exact-value cache, and chat bootstrap is deferred from the shell.
+- The desktop main process loads a small allowlisted UI-preference cache before renderer bootstrap and migrates existing localStorage preferences once in a hidden renderer, excluding credentials and backend tokens; the chat renderer reads the memory cache and writes through asynchronous IPC. Browser clients keep the localStorage fallback. Initial redaction prepares the snapshot cooperatively in short work slices with a bounded exact-value cache, and chat bootstrap is deferred from the shell.
 
 ## Consequences
 
@@ -39,5 +39,5 @@ Runtime discovery replaces an explicitly configured local agent with a standard 
 - Pending questions survive a reconnect without a second replay, because control state is restored from the cache when the delta carries no terminal event.
 - The replay cache is renderer memory only; a legacy client still pays a full replay on a cold start, a backend restart or a log rebuild.
 - A thread of thousands of messages mounts a few dozen rows; scroll position, thumb drags and Latest behave like a native list.
-- Two transports coexist until legacy clients are gone: cursor-based delta replay and hydration.
+- Two transports coexist: cursor-based delta replay and hydration.
 - Transport changes need a real Core discovery test rather than an isolated subclass test, because discovery can silently replace the agent.

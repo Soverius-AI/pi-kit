@@ -24,10 +24,13 @@ the pi CLI has to keep working without pi-kit running.
   on a click) or `secret-tool` on Linux, so the pi CLI keeps working without pi-kit.
 - Stores: `MacKeychainSecretStore` on macOS (`keychain-store`, user-presence access control, the signed app's access
   group; an ad-hoc build reports the signing requirement instead of weakening storage), `@napi-rs/keyring` elsewhere
-  and as `legacy`; `PI_KIT_SECRET_STORE` selects `macos`, `legacy`, `memory`, `file:<path>` or `none`.
+  and as `legacy`; `PI_KIT_SECRET_STORE` selects `macos`, `macos-unattended`, `legacy`, `memory`, `file:<path>` or `none`.
 - With the store off or absent, `keep()` hands the literal key to pi and the UI says so; a cancelled or denied native
   operation never falls back to plaintext. Existing keys and configs migrate only on an explicit action, never at startup.
 - OAuth tokens stay where pi puts them, refreshed by pi. Connector secrets follow the key rules under `connector-<id>`.
+- Instance identity has separate sealing: the service host encrypts it with AES-256-GCM under an OS-store wrapping key,
+  or an explicitly enabled owner-only key file beside the profile. Electron `safeStorage` is a legacy migration/fallback
+  path, not a requirement for headless signing. This protects identity independently of provider-key storage.
 - Reads are deliberate: `available()` loads the native module without touching credentials, status reports capability
   separately (`unknown`, `ready`, `locked`, `denied`, `unavailable`, `failed`), a failed operation is kept until an
   explicit retry, secrets are never cached, operations are serialized, and Settings never reads a stored secret.
@@ -35,10 +38,10 @@ the pi CLI has to keep working without pi-kit running.
   256-bit key stored as `pi-kit/db`; a plaintext file is encrypted by copy, rekey, verify and swap. An unreadable store
   is never reset and never gets a replacement key; `PI_KIT_DB_KEY` and "Export recovery key" (shown once) are the way
   back. Opting out never decrypts existing data. Terminal replay and change baselines live in the database too.
-- Redaction is a pure function (`libs/protocol/src/redact.ts`, `[redacted <kind> …a1b2]`) applied to every AG-UI event
+- Redaction is a pure function (`libs/shared/protocol/src/redact.ts`, `[redacted <kind> …a1b2]`) applied to every AG-UI event
   before it is written, to previews and titles, the saved terminal screen, the transcript as drawn, and exports; not to
   pi's session file, the live terminal or `change_baselines`. A per-project switch and user patterns exist in Settings.
-  It is independent of the credential store. A plaintext key is handled only inside the key workflow, never logged or
+  It is independent of the credential store. Plugin outcome diffs and arbitrary plugin-supplied model prompts are not guaranteed to pass through this redaction boundary. A plaintext key is handled only inside the key workflow, never logged or
   returned to the renderer; transport stays loopback with the per-launch token.
 
 ## Consequences
@@ -48,6 +51,6 @@ the pi CLI has to keep working without pi-kit running.
 - Protection is a visible choice, not an automatic fallback; a fresh macOS profile is plain text until the person opts in.
 - A lost store entry means an unreadable database; the recovery key and pi's session files are the way
   back, never a silent reset.
-- Encrypted writes cost: the background compaction after a run is several times slower; opening a thread is unchanged.
+- Encryption adds work to database writes and compaction; pi session files remain outside the encrypted database.
 - Redaction can hide text that only looks like a key; the transcript marks redactions and the pass can be turned off.
 - Three native modules must load under Node and Electron's Node, and macOS needs a signed build.

@@ -1,8 +1,14 @@
 # Plugins
 
-A pi-kit plugin is a **pi package** that talks to pi-kit through events on pi's shared bus. There is no second extension system: the package is a normal pi package (`pi install`, `pi list`, `pi remove`, `pi config`), its extension is a normal pi extension, and the events are how it asks pi-kit for what only pi-kit has: a thread's transcript and outcome, a model call under the attendant's cost cap, a place to hand a result back. The first plugin is [`@pi-kit/learn`](https://github.com/wolfmanfx/pi-kit/tree/main/packages/pi-kit-learn) ([ADR-0028](adr/0028-learning-from-finished-threads.md)); the second is `@pi-kit/meat-proxy`. This page is the contract; the schemas are in [`libs/shared/protocol/src/plugins.ts`](https://github.com/wolfmanfx/pi-kit/blob/main/libs/shared/protocol/src/plugins.ts) and every request is validated against them.
+A pi-kit plugin is a **pi package** that uses pi's in-process event bus to request application data or actions. It uses the
+normal pi package commands (`pi install`, `pi list`, `pi remove`) rather than a separate extension system. The bundled
+[`@pi-kit/learn`](https://github.com/Soverius-AI/pi-kit/tree/main/packages/pi-kit-learn) and `@pi-kit/meat-proxy` packages
+use these events to read transcripts and outcomes, request attendant model calls, and return drafts or annotations.
+`@pi-kit/computer-use` also registers composer controls.
 
-Status: built for `@pi-kit/learn` (with `pi-kit:learn:verified`) and extended for `@pi-kit/meat-proxy` (`thread:baselines`, `thread:annotate`, the transcript `turns`, the `score` task). Nothing is reserved any more.
+This page documents the implemented events. Request schemas are in
+[`libs/shared/protocol/src/plugins.ts`](https://github.com/Soverius-AI/pi-kit/blob/main/libs/shared/protocol/src/plugins.ts).
+The host validates requests against those schemas.
 
 ## The shape of a call
 
@@ -19,10 +25,13 @@ pi.events.on('pi-kit:thread:transcript:reply', (reply) => {
 - `requestId` is the caller's own string; the reply carries it back, so several requests can be in flight.
 - `thread` is a thread id, or the start of one when it is unique. Left out, it is the thread the extension is running in.
 - A failure has a `code` for the caller's decision and an `error` sentence for the person: `invalid` (the request does not fit its schema), `not-found`, `consent`, `off`, `cap`, `no-model`, `conflict`, `failed`.
-- Only pi-kit answers, and it says so first: pi's bus is synchronous, and pi-kit emits `<channel>:accepted` with `{ requestId }` **inside the request's `emit`**, before it works on the request. Subscribe to `<channel>:accepted` and `<channel>:reply` before emitting; when the `emit` returns and nothing was accepted, nobody is listening (the pi command line, or pi-kit without that host) and the command says that pi-kit is needed, at once. No clock decides that, and the reply has no deadline: a slow model is given its time. [`ask()` in `extensions/meat-proxy.ts`](https://github.com/wolfmanfx/pi-kit/tree/main/packages/pi-kit-meat-proxy/extensions/meat-proxy.ts) is the worked example; copy it.
+- Only pi-kit answers, and it says so first: pi's bus is synchronous, and pi-kit emits `<channel>:accepted` with `{ requestId }` **inside the request's `emit`**, before it works on the request. Subscribe to `<channel>:accepted` and `<channel>:reply` before emitting; when the `emit` returns and nothing was accepted, nobody is listening (the pi command line, or pi-kit without that host) and the command says that pi-kit is needed, at once. No clock decides that, and the reply has no deadline: a slow model is given its time. [`ask()` in `extensions/meat-proxy.ts`](https://github.com/Soverius-AI/pi-kit/blob/main/packages/pi-kit-meat-proxy/extensions/meat-proxy.ts) is the worked example; copy it.
 - A request belongs to the session it was emitted in. When that session closes (the thread is closed, the backend quits, the session is opened again) while a request is open, pi-kit aborts what it started for it (a model call) and answers `{ requestId, ok: false, code: 'failed', error: 'The session closed before pi-kit answered.' }` on the session's `<channel>:reply`; nothing of the old session reaches the next one.
 - Pressing Stop aborts the session's open requests and answers `{ requestId, ok: false, code: 'failed', error: 'The request was cancelled before pi-kit answered.' }`. The session stays open and accepts fresh requests. A verification replay has its own thread and Stop; ending the original request's wait does not end that independent job.
 - A request that has no `requestId` is not answered (there is nobody to answer to).
+
+The host must be bound to the same in-process bus as the extension. Running the standalone `pi` CLI beside pi-kit does
+not connect its bus to the application; it can share session files, but that alone does not provide these events.
 
 ## The events
 
@@ -50,7 +59,8 @@ The thread reduced for analysis, **after the redaction pass** ([ADR-0019](adr/00
 
 `draft` is the thread's skill draft (`{ id, name, state }`) or `null`, so a package can stop before it spends a model call on a thread that has one.
 
-**`turns`.** The same messages as `prompts`, with what came of each, for a package that measures the person's part. One entry per user message, in order:
+**`turns`.** A per-message view for attribution, containing up to the first 60 user messages and their subsequent activity.
+It has a different limit from the 12-entry `prompts` summary. Entries are in message order:
 
 | Field | What |
 |---|---|
@@ -72,7 +82,7 @@ How the thread ended ([ADR-0028](adr/0028-learning-from-finished-threads.md) §1
 - Request: `{ requestId, thread?, diff? }`; `diff: true` adds the unified diff.
 - Reply: `{ ok: true, outcome, diff? }`. `outcome` is `ThreadOutcome` (`kind`, `base`, `head`, `merge`, `prUrl`, `at`, `files`, `baseBranch`, `baseSource`) or `null`.
 - `annotations: true`  adds `annotations: { hunkLabels, scores }`: what plugins stored with the outcome through `pi-kit:thread:annotate`, including the person's corrections of the labels (`hunkLabels.corrections`), so a package can show them to its model as examples. Both are `null` for a thread nobody scored.
-- The diff is `git diff --no-renames --relative -U3 base..head` in the project's folder: paths relative to the folder, the same hunks the Outcome view shows. **Hunk ids** (below) are derived from it.
+- The diff is `git diff --no-renames --relative -U3 base..head` in the project's folder: paths relative to the folder, the same hunks the Outcome view shows. **Hunk ids** (below) are derived from it. Unlike the reduced transcript, this raw Git diff is not passed through transcript redaction.
 
 ### `pi-kit:attendant:run`
 
@@ -85,7 +95,9 @@ One model call through the attendant: its model (Settings › Attendant), its da
 
 ### `pi-kit:learn:draft`
 
-Hands a draft skill back. pi-kit validates it, adds the provenance (`x-pi-kit`: the thread, the outcome's base and head commits, `verified: null`), and keeps it as **pending** in its database, with a card at the end of the thread and a chip on the sidebar row. **It never writes a skills folder**: only the person's Approve does.
+Hands a draft skill back. pi-kit validates it, adds provenance (`x-pi-kit`: the source thread, outcome base and head,
+`verified: null`), and stores it as **pending** in the database. A source-thread card and sidebar action open the persistent
+Learn chat, where the person reviews the draft. Storing a draft does not create a skill folder; Approve does.
 
 - Request: `{ requestId, thread?, text, model? }`; `text` is a `SKILL.md`.
 - Reply: `{ ok: true, draft }` (`SkillDraft`), or `invalid` (not a skill pi would load), `conflict` (the thread has a draft already: one per thread).
@@ -115,8 +127,8 @@ Replays the thread's draft skill from the commit the thread started at and answe
 - Request: `{ requestId, thread?, start?, prompt? }`. `start: false` only reads the last report without starting a replay. `prompt` replaces the thread's first prompt for this run.
 - Reply: `{ ok: true, draft: { id, name, state }, verification }`. `verification` is `SkillVerification`: `state` (`done`, `stopped`, `error`, or `running` for a read), and for `done` the `result` (`pass` | `partial` | `failed`), the `score` of the whole diff (0 to 1), `files` (`{ reproduced, expected, extra }`), `hunks` (`{ matched, expected, actual }`), `fileList` (path, status `same | similar | different | missing | extra`, similarity, hunks), `checks` (the command, whether it passed in the thread, whether it passed again, the exit code, the last lines of its output), `summary` (one sentence with the numbers), `warnings`, the replayed `prompt`, `model`, the verification `threadId` and `base` / `head`. `error` is a replay that could not be carried out (the project is not trusted, no worktree could be made, the model failed, pi stopped to ask a question): it says nothing about the skill.
 - Failures: `not-found` (no thread, or the thread has no draft: run `/learn` first), `conflict` (no outcome to replay from, a discarded draft, or that draft is being verified already; replays of different drafts run side by side), `invalid`, `off`, `failed`.
-- **What counts.** A file is *reproduced* when the lines it added and removed are at least 80 % the same as the outcome's (Dice coefficient over the changed lines, trailing blanks ignored); a hunk is matched one to one the same way. `pass`: every file reproduced, the whole diff at least 90 % alike, and no check that passed in the thread fails now. `failed`: no file reproduced, or the whole diff under 30 % alike. Anything between is `partial`. The same words are in the review dialog and, as `x-pi-kit.verified` (`result`, `at`, `files`, `hunks`, `checks`, `similarity`, `replayedFrom`), in the draft's frontmatter and in the `SKILL.md` Approve writes, only for a replay of exactly that text.
-- **Safe by construction.** The replay's session works in the scratch worktree, not in the project; it is a normal pi session, so nothing stops a tool from writing elsewhere by absolute path, and pi-kit looks at the main checkout before and after and warns when it changed. Nothing is pushed or merged. A verification thread is marked as one, never gets an outcome, is not drafted from and is left alone by the attendant. It is archived afterwards as the record of the run and cannot run again.
+- **What counts.** A file is *reproduced* when the lines it added and removed are at least 80 % the same as the outcome's (Dice coefficient over the changed lines, trailing blanks ignored); a hunk is matched one to one the same way. `pass`: every file reproduced, the whole diff at least 90 % alike, and no check that passed in the thread fails now. `failed`: no file reproduced, or the whole diff under 30 % alike. Anything between is `partial`. The report appears on the Learn page and, as `x-pi-kit.verified` (`result`, `at`, `files`, `hunks`, `checks`, `similarity`, `replayedFrom`), in the draft's frontmatter and in the `SKILL.md` Approve writes, only for a replay of exactly that text.
+- **Scratch worktree, not a security sandbox.** The replay runs in a separate worktree, but its tools still have the host user's permissions and can access paths outside it. pi-kit compares the main checkout before and after and warns if it changed; that check does not prevent access to other files or services. The verification workflow does not push or merge. Its thread is excluded from outcome detection and attendant learning, then archived as a read-only record.
 
 
 ## Worked example: `@pi-kit/learn`
@@ -131,7 +143,7 @@ packages/pi-kit-learn/
   templates/SKILL.md      the shape the model is asked to write
 ```
 
-`/learn` in the composer (or `pi` with pi-kit running):
+`/learn` in a pi-kit-hosted session:
 
 1. `pi-kit:thread:transcript` for the thread (stops if it already has a draft);
 2. `analysis.buildAnalysisPrompt(transcript)`;
@@ -139,7 +151,10 @@ packages/pi-kit-learn/
 4. `analysis.parseDraftReply(text)`: a `SKILL.md`, or `SKIP: reason` when nothing generalises;
 5. `pi-kit:learn:draft`; then `ctx.ui.notify` says to read the card.
 
-`/learn verify [thread]`  asks the other way round: `pi-kit:learn:verified` for the thread's draft (waits for the report), then `describeVerification(report, name)` (`lib/verification.mjs`, no dependencies) turns it into one sentence and a level for `ctx.ui.notify`: "replay-notes: partial. Reproduced 5 of 6 files and 5 of 6 hunks; 1 of 1 check passes again. Read the report in the review dialog, then approve or discard the draft." The same replay starts from the review dialog (Approve with "Verify first" on, or *Verify now*), where the report is shown with its files and checks.
+`/learn verify [thread]` requests `pi-kit:learn:verified`, waits for the report, and uses
+`describeVerification(report, name)` (`lib/verification.mjs`) to produce a notification with the result and counts.
+The Learn page exposes the same replay through Verify first and Verify now, and shows the file and check results.
+Verification does not approve the draft; approval remains a separate action.
 
 **The attendant's own trigger.** With the attendant on, an outcome (a worktree merged back, a commit made in the folder, a pull request) starts the same analysis without a session: pi-kit's backend loads `lib/analysis.mjs` from the installed package, so the prompt and the parsing stay in one place. It runs only when the thread looks worth it: at least 6 tool calls, at least 10 changed lines in the outcome, and no skill pi already lists whose name and description share at least 3 of the first prompt's key terms (words of four letters or more, without the common ones). It runs in the attendant's queue, under its cap and its per-project opt-out, and is listed in the activity as `learn`. Remove the package and nothing is drafted.
 
@@ -161,7 +176,7 @@ packages/pi-kit-meat-proxy/
   prompts/attribute.md    the attribution prompt (system and user sections)
 ```
 
-`/score` in the composer (or `pi` with pi-kit running):
+`/score` in a pi-kit-hosted session:
 
 1. `pi-kit:thread:outcome` with `diff: true, annotations: true`, then `pi-kit:thread:transcript` (its `turns`), and `pi-kit:thread:baselines`;
 2. `splitDiff(diff)` and `buildLedger(...)`: per message its specificity (named files, line numbers, commands, code), whether it corrects (a small rule set: "no", "not that", "instead", "undo", "revert", quoting pi's own words, a review comment), its chips, answers, tool calls and time; per file what led to it; the files only the person's hand changed, which are `manual` by rule and never shown to the model;
@@ -171,7 +186,7 @@ packages/pi-kit-meat-proxy/
 
 `lib/pipeline.mjs` is written once against a `host` (`outcome()`, `transcript()`, `baselines()`, `run(prompt, progress)`, `annotate(body)`): the extension's host asks over the event bus; pi-kit's backend, which scores after an outcome lands (the attendant on) and from the badge menu without a pi session, loads the same file from the installed package and answers the same questions from its own records. `progress` identifies the current batch and total batch count; the backend records that activity for each model call. The person's relabelling in the Outcome view does not call the model: pi-kit loads `computeScores` and `effectiveLabels` from the package and recomputes.
 
-## Removable without a trace
+## Removing a plugin
 
 A plugin's data stays in pi-kit's database, but **core draws it only while the package is installed in pi**. `pi remove <folder>` of `@pi-kit/meat-proxy` (pi-kit looks at pi's settings every five seconds and when a score is asked for) leaves the badge with the outcome alone (no second line, no "Score this thread" in its menu), the Outcome view with plain hunks (no meter, no labels, no relabel control), Settings › Projects and trust without the histogram, and `GET /api/threads/:id/score` answering 404. `pi install <folder>` brings all of it back from what was stored. The same package installer serves every package that ships with the app, `@pi-kit/computer-use` included (`apps/backend/src/plugins/pi-kit-package.ts`): the first start adds each shipped copy to the user's pi settings once (`PI_KIT_LEARN_PACKAGE=off`, `PI_KIT_MEAT_PROXY_PACKAGE=off`, `PI_KIT_COMPUTER_USE_PACKAGE=off` skip it; installs run one after the other so no entry is lost), and a package the user removed stays removed.
 
@@ -181,9 +196,13 @@ A package needs `keywords: ["pi-package"]`, a `pi` key in `package.json` naming 
 
 What a plugin may rely on:
 
-- **Nothing reaches a skills folder, a thread or the person's files without their decision.** A draft is data until Approve.
-- **Redaction first.** A transcript is masked before it leaves pi-kit's backend, whatever the plugin asks.
+- **Draft approval is explicit.** The draft event stores data; the approval workflow writes the skill folder.
+- **Transcript redaction has a defined scope.** The reduced transcript is masked before it is returned. Raw outcome diffs and arbitrary plugin-supplied model prompts are not automatically covered by that pass.
 - **Cost is capped.** A model call is the attendant's, listed with its cost; at the day's cap the call answers `cap`.
 - **Consent while the attendant is off.** The transcript goes to a model only after the person agreed for that thread.
 - **Outside pi is derived, not tracked.** A file of the outcome that no run of the thread changed (`pi-kit:thread:baselines` does not list it) was changed outside pi; an edit made by hand during a run counts as the run's.
-- **A plugin never reaches into pi-kit's database.** What it lacks is added to the events and documented here (added `baselines`, `annotate`, the transcript's `turns` and the outcome's `annotations` for this reason).
+- **The supported integration uses events, not database access.** Plugins use the documented requests rather than depending on pi-kit's storage schema.
+
+These are API contracts, not containment guarantees. Pi extensions execute as host code with the user's permissions.
+The event bus does not sandbox an extension, prevent direct file or network access, or sanitize every string an extension
+chooses to send to a model.

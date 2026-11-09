@@ -7,7 +7,7 @@ title: Background agents
 A thread's pi can hand work to **background agents** (subagents): named helpers that run next to the main conversation,
 in the same backend, and report back when they are done. This page describes how they work. The decision behind the design
 is [ADR-0033](adr/0033-durable-background-agents.md); where the code and that record disagree, this page follows the code
-and says so.
+rather than treating the record as a list of implemented features.
 
 ## What a background agent is
 
@@ -72,7 +72,7 @@ that call.
 - **Working folder.** `NodeExecutionEnv({ cwd })` with the agent's worktree, or the thread's current folder; resolved
   on every call.
 - **Restart.** `recover()` runs before `harness.resume()`. For every `active` or `blocked` row it holds the agent with
-  reason `cleanup` when `cleanup_json` is set; holds it with reason `crash-loop` when it has started three times within ten
+  reason `cleanup` when `cleanup_json` is set; holds it with reason `crash-loop` after three recorded recovery interruptions within ten
   minutes (`process-job.ts`); otherwise marks it `active`. In every case it re-attaches the event stream, follows the
   stored submission again, warms the record and reloads the question cache. Holds are in memory; the hooks wait on
   them, so the durable task stays parked until the user resumes it.
@@ -81,9 +81,13 @@ that call.
 
 | Mode | `write` / `edit` | `bash` | Folder |
 | --- | --- | --- | --- |
-| `read-only` | Blocked | One allow-listed program (`ls`, `cat`, `grep`, `rg`, `find`, `git status/diff/log/…`, test and lint runners) with no shell operators, control characters, substitutions or expansions, and none of the flags that make it write or run something else (`readOnlyRefusal` in `read-only-command.ts`) | Thread folder |
+| `read-only` | Blocked | A command-prefix allow-list and a shell-operator check in `permissionBlock` (`agent-extension.ts`); not full shell or argument validation | Thread folder |
 | `edit` | Allowed | Allowed | Thread folder |
 | `isolated` | Allowed | Allowed | Its own worktree, removed when the agent is deleted |
+
+**Limitation:** read-only mode is a tool-level permission check, not an OS sandbox. The bash check uses regular
+expressions; it does not prove that an allowed command or its arguments cannot modify files or execute other code.
+`edit` and `isolated` also have no OS-level confinement; the isolated worktree supplies a separate working directory.
 
 A blocked call becomes a `user` question `block:<callId>` with the choices **Allow once**, **Allow all** (switches the
 agent to `edit`) and **Deny** (`permissionBlock` in `agent-extension.ts`).
@@ -132,7 +136,7 @@ stateDiagram-v2
 ```
 
 `failed` and `stopped` refuse new messages. `blocked` is only set by `recover()`. An open question does not change the
-status; the panel derives "waiting for you" / "waiting for main" from it (`libs/agents/util/agent-labels.ts`).
+status; the panel derives "waiting for you" / "waiting for main" from it (`libs/agents/util/src/lib/agent-labels.ts`).
 
 **Stop** releases the hold, sets `stopped` and `finishedAt`, refreshes cost and aborts the conversation in the
 background (pi-durable kills the bash process group). **Delete** stops a running agent, detaches it, discards its

@@ -6,7 +6,7 @@ title: AG-UI events
 
 The chat runs on [AG-UI](https://docs.ag-ui.com): the backend turns what pi does into AG-UI events, stores them, and
 streams them to CopilotKit in the renderer. This page follows one run from the request to the screen, lists every event
-pi-kit emits, explains how a thread is replayed after a reload, and closes with a review of the pipeline. Background
+pi-kit emits, explains how a thread is replayed after a reload, and describes interrupts and generated UI. Background
 agents use the same machinery under the agent id `pi-bg`; they have [their own page](background-agents.md).
 
 ## The pieces
@@ -62,9 +62,9 @@ sequenceDiagram
    chips as `pi.review` / `pi.skills` activities, expands `@file` references, then prompts pi.
 2. **Queued input.** pi is streaming and `forwardedProps.streamingBehavior` is `steer` or `followUp`: the text goes to pi's
    queue and the run ends at once. These requests skip the lock and are not logged.
-3. **Resume.** `input.resume[]` answers interrupts. The whole batch is validated (no duplicates, ids must be pending,
-   payloads must fit the dialog), the stream is attached before answering so nothing is lost, and dialogs still open
-   are advertised again. Background-agent questions (`agent-question:<agentId>:<questionId>`) are answered and end at once.
+3. **Resume.** `input.resume[]` answers interrupts. For session dialogs, the batch is validated before answers are
+   applied: no duplicates, ids must match while dialogs are pending, and payloads must fit the dialog. Stale ids are
+   tolerated when no dialogs remain. The stream is attached before answering, and dialogs still open are advertised again. Background-agent questions (`agent-question:<agentId>:<questionId>`) are answered and end at once.
 4. **Followed turn.** pi started a turn by itself (a steer that arrived at the end, an extension); the runner opens a
    run with `forwardedProps.followTurn` so it streams like any other.
 5. **MCP App relay.** `forwardedProps.__proxiedMCPRequest` from an app's iframe goes to `McpService.relay`, which allows
@@ -98,8 +98,8 @@ same way.
 
 ### Custom events
 
-The names are registered in `libs/shared/protocol/src/custom-events.ts`; the renderer applies them in
-`with-chat-events.ts` unless noted.
+The pi signal names are registered in `libs/shared/protocol/src/custom-events.ts`; the renderer applies them in
+`with-chat-events.ts` unless noted. Replay and hydration events have separate protocol definitions; the checkpoint is renderer-local.
 
 | Name | Payload | Source | What the renderer does |
 | --- | --- | --- | --- |
@@ -125,7 +125,7 @@ The names are registered in `libs/shared/protocol/src/custom-events.ts`; the ren
 ## Replay and persistence
 
 pi's JSONL session file is the source of truth. The event log is a cache that adds what the file lacks: streamed
-activities, usage, aborted markers, interrupts and composer registrations. Every run that is not an interrupt ends with
+activities, usage, aborted markers, interrupts and composer registrations. When session entries are available, a non-interrupt main-thread run ends with
 a `MESSAGES_SNAPSHOT` built from the file, and a log older than the file is rebuilt from it.
 
 - **Sequence numbers.** `thread_events.seq` is `AUTOINCREMENT`: global, increasing, with gaps between threads, never
@@ -139,12 +139,13 @@ a `MESSAGES_SNAPSHOT` built from the file, and a log older than the file is rebu
 - **Compaction** (`log-compactor.ts`). After a run ends, events before the newest snapshot are reduced to run
   boundaries, block starts and ends, tool results and custom events: older snapshots, activities (except `pi.widget`)
   and the deltas of finished blocks go. A log over 2,000 rows keeps only the newest 10 runs; composer registrations held
-  by deleted runs are appended again. Interrupt runs are never compacted.
+  by deleted runs are appended again. An interrupt does not trigger compaction immediately, but its stored events
+  can be included in a later compaction pass.
 - **Redaction.** `RedactionService` redacts every string before it is written; live events go to the client
   unredacted and the renderer redacts when it draws.
 - **Renderer cache.** `ThreadReplayAgent` restores a thread's cached messages, state and interrupts at once, connects
-  with its cursor, and records a checkpoint after every event that carries one. Entries expire after 15 minutes idle,
-  or when the heap is above 80 %.
+  with its cursor, and records a checkpoint after every event that carries one. Inactive entries are pruned after 15 minutes idle. Memory-pressure events, or a reported heap usage above 80 %
+  where `performance.memory` is available, evict inactive entries; the active thread is retained.
 
 ## People in the loop
 

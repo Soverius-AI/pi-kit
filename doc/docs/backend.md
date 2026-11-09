@@ -6,8 +6,8 @@ sidebar_position: 2
 # Backend
 
 `apps/backend` is one NestJS 12 process on Node 24. The service host starts it with a random loopback port and a
-per-start token, the renderer reaches it over HTTP, and it is the only process that touches the file system, the
-network, pi's SDK and the keychain ([Architecture](architecture.md)). This page is the map of that process for the
+per-host-start token, and clients reach it over HTTP. It owns pi's SDK, workspace operations and credential policy;
+the service host and Electron also perform file, network and OS integration work ([Architecture](architecture.md)). This page is the map of that process for the
 people who change it: how the code is cut, what each folder owns, what a request goes through, and the steps for the
 changes that come up most.
 
@@ -22,25 +22,25 @@ measured in the code and the two deviations that are tolerated are in
 and the keychain whose weight is orchestration, so feature folders with four roles are the right cut and a
 `domain / application / infrastructure` layer per folder would move files without adding a boundary anything crosses.
 
-Four of the thirty folders drawn as columns; the others follow the same shape, only smaller. Every slice stands on
+Four example folders are drawn as columns; the others follow the same shape, only smaller. Every slice stands on
 the shared kernel.
 
 ![The backend as vertical slices: four example folders as columns of controller, service, domain functions and repository, over the shared kernel and the protocol library](/img/backend-slices.svg)
 
-The four roles, with the file suffix that names each:
+The four roles, with their file suffixes and authoring conventions (not all of these boundaries are lint-enforced):
 
 | Role | File | What it does | What it must not do |
 |---|---|---|---|
-| Controller | `*.controller.ts` | Names the route, parses the request against a protocol schema, calls one service method, returns a value the response schema describes. | Hold logic. A controller method is three to six lines. |
+| Controller | `*.controller.ts` | Names the route, parses the request against a protocol schema, calls one service method, returns a value the response schema describes. | Own domain decisions; stream handlers also manage transport lifetime. |
 | Service | `*.service.ts` | The behaviour of the domain: orchestration, pi calls, git, the file system, subscriptions to other services. One `@Injectable()` class per concern. | Import another domain's internals. It injects what the other module exports. |
 | Pure functions | plain names (`thread-state.ts`, `outcome-rules.ts`, `questions.ts`) | The decisions that need no I/O: state machines, rules, parsers. Tested without a database or pi. | Import Nest or a service. |
-| Repository | `*.repository.ts` | One table or two: the row type, the SQL, the mapping between the two. Lives in `db/`, not in the domain, because every repository shares one connection and one schema file. | Contain a decision. A repository reads and writes. |
+| Repository | `*.repository.ts` | The row types, SQL and mapping for a related set of tables. Most live in `db/`; `BgAgentsRepository` lives in `bg-agents/`. They share the app database connection and migrations. | Contain a decision. A repository reads and writes. |
 
 Three facts about the folders that are easy to get wrong:
 
 - **A folder is a module.** `<domain>.module.ts` lists the folder's controllers and providers, imports the modules it
   needs and exports only the services another module injects. `app/app.module.ts` imports every feature module; that
-  list is the one place a new domain is registered. Four modules are `@Global()` and nothing else should be: config,
+  list is the one place a new domain is registered. Four modules are `@Global()`: config,
   the secret store, the secrets policy and the desktop bridge, because the database needs the store before any
   module initialises and every service may need the config.
 - **Domains reach each other through exports.** `bg-agents` injects `ThreadsService`, `learn` injects `AguiService`,
@@ -73,9 +73,10 @@ App sandbox proxy, both iframe pages that cannot send a header, and the developm
 marks them `security: []`.
 
 **The pipe.** A parameter that names a schema is parsed with it, so the handler receives the parsed value with
-defaults applied and unknown keys dropped. A missing body counts as `{}` where a schema is named, so an action route
+defaults applied and unknown keys of non-strict object schemas dropped. A missing body counts as `{}` where a schema is named, so an action route
 without a payload needs none. A rejected request is a 400 whose `message` lists one `path: reason` per problem. The
-log line names paths, never values; a field marked `.meta({ secret: true })` in the schema is printed as `[secret]`.
+warning log names paths and reasons. A separate debug log includes the input after `redactSecrets`; fields marked
+`.meta({ secret: true })` are replaced with `[secret]`.
 
 **The controller.** This is the whole of a typical route, from `threads/threads.controller.ts`:
 
@@ -108,18 +109,18 @@ and answered with a 500 so the drift is seen the day it is made; in production i
 One domain, `browser`, maps a typed domain error to HTTP in a filter of its own (`browser-exception.filter.ts`),
 because the same error type is also returned to pi tools, which need it untouched.
 
-**Streams.** Eight operations keep the connection open: the thread status channel, the folder's live refresh, a shell
+**Streams.** The documented streaming operations include the thread status channel, the folder's live refresh, a shell
 command's output, a terminal, a provider sign-in, update progress and two transcription streams. A stream handler
-takes `@Res() res`, writes the headers itself, writes one JSON value per line (or one SSE event), sends an empty or
-`ping` line every 20 seconds so proxies keep the connection, and unsubscribes in `res.on('close')`. The pattern is
+takes `@Res() res`, writes the headers itself, writes one JSON value per line (or one SSE event), and cleans up on close. Long-lived feeds such as thread status
+also send periodic pings. The pattern is
 `ThreadsController.events` in `threads/threads.controller.ts`; copy it.
 
 **The document.** `GET /api/openapi.json` serves the OpenAPI 3.1 document built from the decorators above, behind the
 token like every route; `dev:web` also mounts the Swagger UI at `/api/docs`. `pnpm run api:openapi` builds the
 backend, scans the module graph without starting it (no database, keychain or pi folder is touched) and writes
-`doc/api/openapi.yaml` (208 paths today) and the typed client in `libs/shared/api`. `pnpm run check` regenerates
-both and fails on a diff, so the committed contract is never behind the code
-([ADR-0027](adr/0027-api-contract-zod-swagger-typed-client.md), [ADR-0027](adr/0027-api-contract-zod-swagger-typed-client.md)).
+`doc/api/openapi.yaml` and the typed client in `libs/shared/api`. `pnpm run check` regenerates
+both and fails on a diff to detect stale generated files
+([ADR-0027](adr/0027-api-contract-zod-swagger-typed-client.md)).
 
 Two surfaces are not REST and not in the document: the AG-UI run endpoint that CopilotKit's runtime serves at
 `/api/copilotkit/*` (`AguiController` forwards Express to the runtime's fetch handler and pipes the SSE run stream),
@@ -148,7 +149,7 @@ Nest 12 calls the hooks by component hierarchy level, so a service must not rely
 `onModuleInit` having run inside its own; the subscriptions above are all set up through methods that are safe to
 call in any order (`PiSessionService` keeps listener sets, nothing is dispatched at registration).
 
-`ParentProcessMonitor` (in `app/`) polls the parent pid Electron passes and sends the process `SIGTERM` when the
+`ParentProcessMonitor` (in `app/`) polls the parent pid the service host passes and sends the process `SIGTERM` when the
 parent is gone, and arms a grace deadline on `SIGINT`/`SIGTERM` so a shutdown hook that hangs cannot keep the
 process alive ([ADR-0013](adr/0013-packaging-crash-recovery-and-updates.md)).
 
@@ -179,9 +180,9 @@ are implementation owners in the existing folder, without additional Nest module
 **`db/`: SQLite.** `DatabaseService` owns the one connection (`pi-kit.sqlite` in the data folder), in WAL mode, and
 applies the SQL files of `db/migrations/` in name order at construction, each once, all in one `BEGIN IMMEDIATE`
 transaction (two processes opening a fresh file do not both create the tables), recorded in `schema_migrations` with a
-hash of the SQL (comments and spacing left out). The schema is one file, `0001_init.sql`: the numbered migrations were
-squashed into it before 1.0. A database that recorded a file the folder no longer has, or a different text of one, came
-from another pi-kit version and is refused with a message to delete it. `MaintenanceRepository` prunes what grows with use
+hash of the SQL (comments and spacing left out). `0001_init.sql` is followed by migrations for run snapshots, agent spans, instance identity and reciprocal peers.
+A database that recorded a missing migration or a different SQL hash is refused and retained; the error advises using
+the matching app version or restoring a compatible backup, not deleting the database. `MaintenanceRepository` prunes what grows with use
 once a day: attendant activity after 90 days, finished runs but each thread's newest, settled follow-up prompts but each
 thread's newest, terminal screens of folders that are gone or unopened for 30 days, and replay logs whose thread or
 background agent is gone. Deleting a thread is one transaction in `ThreadsRepository.delete`, used by both the Delete
@@ -193,10 +194,10 @@ is already encrypted stays encrypted and needs its original key; nothing is decr
 
 `EventLogRepository` uses Drizzle on `DatabaseService.orm`, which shares the same connection.
 SQLite generates replay event IDs; IDs increase within each thread and may have gaps when other threads write.
-The SQL file, not Drizzle, owns the schema.
+The SQL migrations, not Drizzle, own the schema.
 
-Twelve repositories each own a table or two and, with `MaintenanceRepository`, are provided and exported by
-`DbModule`; the thirteenth lives with its domain:
+`DbModule` provides and exports the app repositories below. It also provides `MaintenanceRepository` for scheduled
+cleanup without exporting it. `BgAgentsRepository` is provided by its own domain module:
 
 | Repository | Tables |
 |---|---|
@@ -211,6 +212,9 @@ Twelve repositories each own a table or two and, with `MaintenanceRepository`, a
 | `SignalsRepository` | `thread_outside_edits`, `thread_dialog_answers` |
 | `SkillDraftsRepository`, `SkillUsesRepository` | `skill_drafts`, `skill_uses` |
 | `TerminalReplayRepository` | `terminal_replay` |
+| `AgentSpansRepository` | `agent_spans`, background-agent workspace snapshots |
+| `InstanceRepository` | `instance_identity`, `instance_access_preferences`, `instance_device_grants` |
+| `PeersRepository` | `instance_peer_identity`, `instance_peers`, `instance_device_peers` |
 | `BgAgentsRepository` (in `bg-agents/`) | `bg_agents`, the index of the durable store |
 
 `RedactionService` runs before text a person typed is kept: titles, previews and exports are masked with the
@@ -241,7 +245,7 @@ What each folder owns, its HTTP surface, and what is particular about it. The ro
 
 | Folder | Owns | Routes | Particular |
 |---|---|---|---|
-| `agui` | CopilotKit's runtime route and `PiAgentRunner`, the durable runner behind it: `run()` takes the thread's lock and appends every AG-UI event to `thread_events`; `connect()` replays the log from a cursor and follows the live run. `thread-hydration.ts` builds the current pi state from the log on the server; `log-compactor.ts` compacts a run after it ends. | `ALL copilotkit/*`, `GET genui-sandbox/frame.html` | A run belongs to the thread, not the request: closing the window does not stop it ([ADR-0010](adr/0010-durable-threads.md), [ADR-0032](adr/0032-thread-hydration-and-virtual-transcript.md), [ADR-0032](adr/0032-thread-hydration-and-virtual-transcript.md)). `AguiService.runHeadless` starts a run with no browser (skill verification). |
+| `agui` | CopilotKit's runtime route and `PiAgentRunner`, the durable runner behind it: `run()` takes the thread's lock and appends every AG-UI event to `thread_events`; `connect()` replays the log from a cursor and follows the live run. `thread-hydration.ts` builds the current pi state from the log on the server; `log-compactor.ts` compacts a run after it ends. | `ALL copilotkit/*`, `GET genui-sandbox/frame.html` | A run belongs to the thread, not the request: closing the window does not stop it ([ADR-0010](adr/0010-durable-threads.md), [ADR-0032](adr/0032-thread-hydration-and-virtual-transcript.md)). `AguiService.runHeadless` starts a run with no browser (skill verification). |
 | `threads` | The thread list as a cache of pi's session files plus pi-kit's own flags, kept honest by `reconcile()` every 30 s; the status stream every client keeps open; projects; the app's own settings; the worktree routes; outcomes (the base commit a thread started from and whether it was merged, committed or became a PR). | `threads`, `threads/events` (stream), `threads/:id/*`, `workspaces`, `settings`, `threads/:id/worktree/*`, `threads/:id/outcome` | `ThreadStatusService` computes every thread's state (running, waiting, unread, context share) from subscriptions and pushes `snapshot`, `state`, `gone`, `list` lines ([ADR-0015](adr/0015-projects-and-thread-state.md)). |
 | `session` | The REST face of an open session: the command list, models and thinking level, compaction, reload, export, stats, the context piece by piece, `!shell` commands as a stream, `@file` search, the Files panel tree and the folder's live refresh stream, file operations inside a workspace. | `threads/:id/commands|stats|context|usage|model|compact|reload|export|bash`, `models`, `workspaces/:id/files|tree|watch|fs/*`, `threads/:id/queue/*`, `threads/:id/complete|composer` | Everything that is conversation stays in AG-UI; this folder is what the composer needs beside it. `safe-path.ts` keeps every path inside the workspace. |
 | `bg-agents` | Background agents of a thread on pi-durable: one harness per backend on `bg-agents.sqlite` (protected like the app database) behind a cross-process owner lock with fencing epochs, the index table, the `pi-bg` AG-UI agent whose events land in the same log as the threads', the `agent_*` tools every main session carries, questions routed to the user, holds after a crash and a crash-loop limit. | `threads/:id/agents`, `threads/:id/agents/:agent/message|answer|resume|stop`, `DELETE threads/:id/agents/:agent` | Only five adapter files (`bg-agents.service.ts`, `agent-questions.ts`, `durable-storage.ts`, `agent-extension.ts`, `agent-events.ts`) and their specs may import pi-durable or chord; a lint rule enforces it ([ADR-0033](adr/0033-durable-background-agents.md)). The service disables itself and logs a warning when the store cannot be opened, and the backend still starts. |
@@ -251,7 +255,7 @@ What each folder owns, its HTTP surface, and what is particular about it. The ro
 | `terminal` | One convenience shell per workspace on a pty, kept while the backend runs, its last screen saved for replay. | `workspaces/:id/terminal`, `.../stream` (stream), `.../input|resize` | Not pi's bash tool. |
 | `mcp` | The MCP panel: a session's servers, their tools and MCP Apps, the `mcp.json` editor, add/change/remove a server, reconnect, sign-in; the connector catalog that turns a click into an `mcp.json` entry with its token in the credential store; the MCP App sandbox proxy page. | `mcp`, `mcp/servers/:name/*`, `mcp/file`, `connectors/*`, `mcp-sandbox/proxy.html` | Status is read from pi's own `/mcp` command text, parsed by `mcp-status.ts`, which a test pins to pi's format. `mcp-tap.ts` wraps the transports to record tools and resource metadata ([ADR-0018](adr/0018-connectors.md)). |
 | `skills`, `packages`, `computer-use` | The person's own skill folders and their `SKILL.md`; pi packages in Settings (list, install, update, remove, search, the Add a package wizard); the opt-in computer-use package and macOS permissions. | `skills`, `skills/file`, `packages/*`, `computer-use/*` | `packages` never runs a package's code. The three bundled packages (`learn`, `meat-proxy`, `computer-use`) are installed into pi's settings once, on first start, by `PiKitPackage`. |
-| `browser` | The browser artifact the desktop app keeps per thread, read and driven through `DesktopBridge`; the `pi_browser` tool in `pi/browser-extension.ts` uses the same service. | `threads/:id/browser`, `threads/:id/browser/action` | Answers only when Electron hosts the backend ([ADR-0029](adr/0029-browser-artifacts.md)). |
+| `browser` | The browser artifact the desktop app keeps per thread, read and driven through `DesktopBridge`; the `pi_browser` tool in `pi/browser-extension.ts` uses the same service. | `threads/:id/browser`, `threads/:id/browser/action` | Requires an attached Electron desktop through the service host ([ADR-0029](adr/0029-browser-artifacts.md)). |
 | `settings`, `secrets` (routes) | pi's settings, provider sign-in as a replayable stream, logout, key validation, keybindings, the resource inventory, trust decisions, session import, diagnostics; the secret store's status, credential storage choice, moving keys, the recovery key, redaction settings. | `pi-settings`, `auth/*`, `providers/*`, `pi-keybindings`, `resources`, `trust`, `workspaces/:id/trust`, `import`, `diagnostics`, `about`, `secrets/*`, `redaction` | The controllers are thin over `PiConfigService`, `TrustService`, `SecretsService`; `DiagnosticsService` is the read-only object the bug-report dialog shows, with nothing secret in it. |
 | `setup` | First-run onboarding: detect what is installed, record how onboarding ended, test and save a local model server, the LiteLLM connection, and the local runtime wizard (`LocalRuntimeModule`): hardware, the GGUF catalogue pinned by revision and SHA, cancellable downloads, llama-swap config, process, doctor and repair, one setup job at a time. | `setup`, `setup/*`, `setup/litellm/*`, `setup/local-runtime/*` | The largest folder by routes. `LocalLlamaSwapProcessService` owns only the process it started, never one it found ([ADR-0030](adr/0030-guided-local-model-runtime.md)). |
 | `update` | Updates from inside the app: one background job (`pi update --all`, `--models`), a check every six hours, the managed releases and pinning, the restart; the app's own update goes through Electron main. | `update/*`, `update/events` (stream) | Output goes to listeners and to `update.log` ([ADR-0023](adr/0023-pi-updates-in-app.md)). |
@@ -263,6 +267,7 @@ What each folder owns, its HTTP surface, and what is particular about it. The ro
 | `usage` | Provider usage for Settings, one small adapter per provider, cached for a minute. | `providers/:id/usage` | The credential is read for the call and never kept or logged. |
 | `snapshots` | A private git repository per project (in the data folder, borrowing the project's objects, its own index) and the trees taken of a thread's folder before pi gets a run's prompt and when the run ends, kept on the `runs` row. What a thread changed is what changed between those pairs. | | Imported by `changes`, `threads` (commit attribution), `score`, `agui` (a run waits for its snapshot). |
 | `folder-changes` | What changed in a workspace folder, passed from whoever learns it to whoever needs it; nothing watches or polls the folder: a run that ended publishes the files it changed, a moved `HEAD` publishes `headMoved`. No routes; the stream is `GET workspaces/:id/watch` in `session`. | | Imported by `snapshots`, `threads`, `session`. The only file watched is the reflog `.git/logs/HEAD` of the folder opened last (`threads/head-watcher.ts`), for commits made in a terminal. |
+| `peers` | Reciprocal instance pairing, peer sessions and proofs, project listings and proxying requests to paired instances. | `instances/*`, `peer/*`, `project-folders` | Uses `InstanceRepository` and `PeersRepository`; the service host owns the external remote gateway. |
 | `workspace` | Rules about a workspace folder that several domains share: the folders never offered or recorded (`ignore.ts`). | | Imported by `session` (the file index) and `snapshots`. |
 
 ## How to extend it
@@ -300,7 +305,7 @@ What each folder owns, its HTTP surface, and what is particular about it. The ro
 
 ### Add a table
 
-1. Write `db/migrations/<next number>_<what>.sql` after `0001_init.sql`, plain SQL (it runs once, in name order,
+1. Write `db/migrations/<next number>_<what>.sql` after the existing migrations, plain SQL (it runs once, in name order,
    on every database that has not recorded it). Do not change the SQL of a file that shipped: its hash is recorded,
    and a database made from another text is refused (comments may change freely).
 2. Add a repository in `db/`: the `Row` interface, the raw row type with SQLite's column names, one mapping function
@@ -356,21 +361,20 @@ the backend is a background agent on the durable harness, not a job.
 plain name; a spec sits next to the file it tests as `*.spec.ts`. No `dto`, `entity` or `interface` folders: types live beside their one user, schemas in
 the protocol library.
 
-**Comments.** Every exported class, interface and non-trivial function carries a TSDoc block that says what it is for
-and the decision behind it, in prose, so the file can be read top to bottom. The source has no `TODO` markers; what
-is not built is in a decision record. A comment that explains a line sits above it.
+**Comments.** Use TSDoc for exported classes, interfaces and non-trivial functions to explain their purpose and
+important decisions. Put comments that explain a line above it. These are authoring conventions, not runtime or lint guarantees.
 
-**Errors and logs.** Exceptions carry a sentence for the person. The `Logger` is Nest's, named after the class. No
-request body, query or credential is ever logged as a value; a rejected request logs its schema paths, and
-`redactSecrets(schema, value)` is what may print the rest at debug level.
+**Errors and logs.** Use readable exception messages and Nest's class-named `Logger`. The contract pipe logs
+rejection paths and reasons at warning level and a `redactSecrets(schema, value)`-processed input at debug level.
+Mark sensitive schema fields explicitly; this is not a blanket guarantee that arbitrary logged values are secret-free.
 
 **Environment.** `loadConfig()` reads `PI_KIT_TOKEN` (required, 16 characters or more), `PI_KIT_PORT` (required),
 `PI_KIT_ORIGIN` (CORS, comma separated), `PI_KIT_CWD`, `PI_KIT_DATA_DIR`, `PI_KIT_PARENT_PID` and `NODE_ENV`. The
-other `PI_KIT_*` variables are read where they matter and are for development and tests: `PI_KIT_HOME` (a scratch
+other `PI_KIT_*` variables are read where they matter; examples include `PI_KIT_HOME` (a scratch
 home for pi), `PI_KIT_PI_DIR` (which pi to load), `PI_KIT_SECRET_STORE` (which credential store, scratch ones in
 tests), `PI_KIT_DB_KEY` (a recovery key), `PI_KIT_WORKTREE_ROOT` (where worktrees go), `PI_KIT_RECONCILE_MS`, `PI_KIT_TRANSCRIBE_ENGINE`, `PI_KIT_TRUSTED_CWDS` (ignored
-in production), and the `PI_KIT_*_PACKAGE=off` switches that skip a bundled package. `PI_KIT_DESKTOP=1` is what
-Electron sets so the desktop bridge opens its IPC channel.
+in production), and the `PI_KIT_*_PACKAGE=off` switches that skip a bundled package. `PI_KIT_DESKTOP=1` is set by the service host when spawning the backend so the desktop bridge opens its IPC channel.
+The host relays desktop requests to an attached Electron client or returns an unavailable answer.
 
 **Tests.** vitest, `environment: node`, `nx test backend`. Specs construct services with `new` and real repositories
 on a temporary database; what they cannot have (pi, the desktop, a model) is a stub object or a port class

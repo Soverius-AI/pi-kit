@@ -19,13 +19,13 @@ and tree navigation, which the RPC surface does not expose completely.
   `createAgentSession({ cwd, sessionManager, resourceLoader })`.
 - MCP, codemode and tool search are added through `DefaultResourceLoader.extensionFactories`, so
   the UI sees the same tool set as the CLI.
-- All pi access goes through one Nest service, `PiSessionService`. Nothing else imports the pi
-  package.
-- `rpc-entry` stays available as a fallback for running an agent in a sandboxed subprocess.
+- Session lifecycle is owned by `PiSessionService`; configuration, trust and attendant services
+  also use pi through the shared loader in `apps/backend/src/pi/load-pi.ts`.
 
 ## Consequences
 
-- A pi crash takes the backend down. Electron restarts the backend process; threads survive
+- A pi crash can take the backend down. The service host restarts the backend process; threads survive
   because pi persists sessions on every entry.
-- pi major-version upgrades are absorbed in one service.
+- The shared loader resolves the configured, managed or bundled pi installation and checks the
+  supported SDK range declared in `package.json`.
 - The CLI's built-in slash commands are TUI-only and are reimplemented on SDK methods.
