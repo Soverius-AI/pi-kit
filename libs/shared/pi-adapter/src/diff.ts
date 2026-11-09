@@ -6,11 +6,19 @@ const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
  * Hunks of a unified patch, as pi's `edit` tool reports it in `result.details.patch` (jsdiff's
  * `createTwoFilesPatch`: an `Index:` line, a rule, `---` / `+++` headers, then `@@` hunks). Anything
  * before the first hunk header is ignored; a `\ No newline at end of file` marker is dropped.
+ * Counts bound each hunk's body and file sections reset it, so later file headers cannot become changes.
+ * Partial tool patches keep the available lines and the header's original coordinates/counts.
  */
 export function parseUnifiedPatch(patch: string): PiDiffHunk[] {
   const hunks: PiDiffHunk[] = [];
   let current: PiDiffHunk | undefined;
+  let oldLeft = 0;
+  let newLeft = 0;
   for (const line of patch.split('\n')) {
+    if (line.startsWith('diff --git ') || line.startsWith('Index: ')) {
+      current = undefined;
+      continue;
+    }
     const header = HUNK_HEADER.exec(line);
     if (header) {
       current = {
@@ -20,9 +28,16 @@ export function parseUnifiedPatch(patch: string): PiDiffHunk[] {
         newLines: header[4] === undefined ? 1 : Number(header[4]),
         lines: [],
       };
+      oldLeft = current.oldLines;
+      newLeft = current.newLines;
       hunks.push(current);
-    } else if (current && (line.startsWith(' ') || line.startsWith('+') || line.startsWith('-'))) {
-      current.lines.push(line);
+    } else if (current && (oldLeft > 0 || newLeft > 0)) {
+      const sign = line[0];
+      if (sign === ' ' || sign === '+' || sign === '-') {
+        current.lines.push(line);
+        if (sign !== '+') oldLeft -= 1;
+        if (sign !== '-') newLeft -= 1;
+      }
     }
   }
   return hunks;

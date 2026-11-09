@@ -47,7 +47,18 @@ export function parseDiff(text: string): FileDiff[] {
       const parsed = parsePatch(section);
       const patch = parsed[0];
       const path = patch?.newFileName === '/dev/null' ? patch.oldFileName : patch?.newFileName;
-      if (parsed.length !== 1 || !patch.isGit || !path)
+      if (
+        parsed.length !== 1 ||
+        !patch.isGit ||
+        !path ||
+        // jsdiff may skip malformed @@ headers or return NaN coordinates. Verification must fail closed.
+        patch.hunks.length !== (section.match(/^@@/gm)?.length ?? 0) ||
+        patch.hunks.some((hunk) =>
+          [hunk.oldStart, hunk.oldLines, hunk.newStart, hunk.newLines].some(
+            (value) => !Number.isSafeInteger(value) || value < 0,
+          ),
+        )
+      )
         throw new Error('The verification diff could not be read completely.');
       // jsdiff owns filenames and hunks. Git's final blob identity and executable-mode change remain comparison facts.
       const binary = /^Binary files .* differ$|^GIT binary patch$/m.test(section);

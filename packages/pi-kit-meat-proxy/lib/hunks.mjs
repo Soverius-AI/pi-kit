@@ -13,7 +13,9 @@ function unquote(text) {
   for (let i = 0; i < body.length; i++) {
     const c = body[i];
     if (c !== '\\') {
-      for (const b of Buffer.from(c, 'utf8')) bytes.push(b);
+      const character = String.fromCodePoint(body.codePointAt(i));
+      for (const b of Buffer.from(character, 'utf8')) bytes.push(b);
+      i += character.length - 1;
       continue;
     }
     const n = body[i + 1];
@@ -21,7 +23,7 @@ function unquote(text) {
       bytes.push(parseInt(body.slice(i + 1, i + 4), 8));
       i += 3;
     } else {
-      bytes.push({ n: 10, t: 9, r: 13, '"': 34, '\\': 92 }[n] ?? n.charCodeAt(0));
+      bytes.push({ a: 7, b: 8, f: 12, n: 10, t: 9, r: 13, v: 11, '"': 34, '\\': 92 }[n] ?? n.charCodeAt(0));
       i += 1;
     }
   }
@@ -50,7 +52,10 @@ export function splitDiff(diff) {
   let current;
   let oldLeft = 0;
   let newLeft = 0;
-  for (const line of String(diff).replace(/\r\n/g, '\n').split('\n')) {
+  const lines = String(diff).replace(/\r\n/g, '\n').split('\n');
+  // split's final empty item is a terminator, not an extra context line in a partial hunk.
+  if (lines.at(-1) === '') lines.pop();
+  for (const line of lines) {
     if (current && (oldLeft > 0 || newLeft > 0)) {
       const sign = line[0];
       if (sign === '+') {

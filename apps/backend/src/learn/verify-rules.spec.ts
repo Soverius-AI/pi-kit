@@ -77,6 +77,13 @@ describe('parseDiff', () => {
   it('refuses an unreadable nonempty diff instead of treating the outcome as empty', () => {
     expect(() => parseDiff('diff --git "unterminated quoted path\n')).toThrow();
   });
+
+  it.each(['@@ nonsense @@', '@@garbage', '@@ -1,1 +nope @@', '@@ -9007199254740992 +1 @@'])(
+    'refuses invalid hunk coordinates rather than scoring their lines: %s',
+    (header) => {
+      expect(() => parseDiff(`diff --git a/x b/x\n--- a/x\n+++ b/x\n${header}\n-old\n+new\n`)).toThrow();
+    },
+  );
 });
 
 describe('dice', () => {

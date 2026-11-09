@@ -1,4 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { excerptOf, hunkId, splitDiff, weightOf } from './hunks.mjs';
 
@@ -70,6 +73,53 @@ describe('splitDiff', () => {
     expect(cut[0].added).toBe(1);
     expect(splitDiff('')).toEqual([]);
     expect(splitDiff(null)).toEqual([]);
+  });
+
+  // These valid POSIX filenames cannot be created on Windows.
+  it.skipIf(process.platform === 'win32').each(['true', 'false'])(
+    'keeps real Git filenames and hunk ids with core.quotepath=%s',
+    (quotePath) => {
+      const cwd = mkdtempSync(join(tmpdir(), 'pk-score-paths-'));
+      const git = (...args) => execFileSync('git', args, { cwd, encoding: 'utf8' });
+      const names = [
+        'bell\x07.txt',
+        'back\bspace.txt',
+        'form\ffeed.txt',
+        'vertical\vtab.txt',
+        '😀\t.txt',
+        'quote"backslash\\名.txt',
+        'line\nbreak.txt',
+        'plain b/tricky b/file',
+      ];
+      try {
+        git('init', '-q');
+        for (const name of names) {
+          mkdirSync(dirname(join(cwd, name)), { recursive: true });
+          writeFileSync(join(cwd, name), 'before\n');
+        }
+        git('add', '.');
+        const added = splitDiff(git('-c', `core.quotepath=${quotePath}`, 'diff', '--cached', '--no-renames', '-U0'));
+        expect(added.map((hunk) => hunk.file).sort()).toEqual([...names].sort());
+        for (const hunk of added) {
+          expect(hunk.id).toBe(`${hunk.file}@0:1`);
+          expect(hunk.lines).toEqual(['+before']);
+        }
+        for (const name of names) rmSync(join(cwd, name));
+        const deleted = splitDiff(git('-c', `core.quotepath=${quotePath}`, 'diff', '--no-renames', '-U0'));
+        expect(deleted.map((hunk) => hunk.file).sort()).toEqual([...names].sort());
+        for (const hunk of deleted) {
+          expect(hunk.id).toBe(`${hunk.file}@1:0`);
+          expect(hunk.lines).toEqual(['-before']);
+        }
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('does not invent a context line from the trailing newline of a truncated hunk', () => {
+    const [hunk] = splitDiff('diff --git a/x b/x\n@@ -1,5 +1,5 @@\n-a\n+b\n');
+    expect(hunk.lines).toEqual(['-a', '+b']);
   });
 
   it('excerpt: the first changed lines, signs kept and long lines cut', () => {
