@@ -42,7 +42,9 @@ export interface PkMenuGroup {
     }
     <div class="items">
       @for (group of groups(); track group.title) {
-        <div class="group">{{ group.title }}</div>
+        @if (group.title) {
+          <div class="group">{{ group.title }}</div>
+        }
         @for (item of group.items; track item.id) {
           <div
             class="item"

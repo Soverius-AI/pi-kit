@@ -21,6 +21,8 @@ const { EventLogRepository } = await jiti.import('../../db/event-log.repository.
 const { BgAgentsRepository } = await jiti.import('../bg-agents.repository.ts');
 const { BgAgentRunner } = await jiti.import('../bg-agent-runner.ts');
 const { BgAgentsService } = await jiti.import('../bg-agents.service.ts');
+const { ThreadProtectionRepository } = await jiti.import('../../db/thread-protection.repository.ts');
+const { ThreadProtectionService } = await jiti.import('../../pi/thread-protection.service.ts');
 
 setInterval(() => undefined, 1000); // a waiting Harness holds no handle of its own; the backend's server does this
 const database = new DatabaseService({ dataDir: dir }, { key });
@@ -39,6 +41,7 @@ const service = new BgAgentsService(
     discard: async () => undefined,
   },
   new BgAgentRunner(new EventLogRepository(database)),
+  new ThreadProtectionService(new ThreadProtectionRepository(database), { dataDir: dir }),
 );
 const models = createModels();
 const faux = fauxProvider();

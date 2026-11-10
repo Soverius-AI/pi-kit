@@ -46,6 +46,7 @@ export const REMOTE_ROUTES: readonly (readonly [method: string, path: string])[]
   ['POST', '/api/threads/{id}/navigate'],
   ['GET', '/api/threads/{id}/outcome'],
   ['POST', '/api/threads/{id}/placement'],
+  ['GET', '/api/threads/{id}/protection'],
   ['GET', '/api/threads/{id}/queue'],
   ['POST', '/api/threads/{id}/queue/clear'],
   ['POST', '/api/threads/{id}/queue/merge'],

@@ -14,6 +14,9 @@ import {
   PutFeedbackSchema,
   type ThreadDetail,
   ThreadDetailSchema,
+  ThreadProtectionSchema,
+  SetThreadProtectionSchema,
+  type ThreadProtection,
   type ThreadsEvent,
   ThreadsEventSchema,
   type ThreadSummary,
@@ -142,6 +145,52 @@ export class ThreadsController {
   @Fails({ 404: NO_THREAD })
   get(@Param('id') id: string): ThreadDetail {
     return this.threads.open(id);
+  }
+
+  @Remote()
+  @Get('threads/:id/protection')
+  @ApiOperation({
+    summary: 'Get thread protection',
+    description: 'Returns the thread’s mode (Bypass unless it was changed) and the state of its sandbox.',
+  })
+  @ApiParam(THREAD_ID)
+  @Responds(ThreadProtectionSchema)
+  @Fails({ 404: NO_THREAD })
+  getProtection(@Param('id') id: string): ThreadProtection {
+    return this.threads.protectionOf(id);
+  }
+
+  @Put('threads/:id/protection')
+  @ApiOperation({
+    summary: 'Set thread protection',
+    description:
+      'Changes an idle thread between Bypass and Sandboxed; a sandbox that fails to start leaves the thread Sandboxed and unavailable. Not remote.',
+  })
+  @ApiParam(THREAD_ID)
+  @Responds(ThreadProtectionSchema)
+  @Fails({
+    404: NO_THREAD,
+    409: 'The thread or its agents are busy, or a downgrade or recovery was not confirmed.',
+  })
+  async setProtection(
+    @Param('id') id: string,
+    @Body({ schema: SetThreadProtectionSchema }) body: z.infer<typeof SetThreadProtectionSchema>,
+  ): Promise<ThreadProtection> {
+    return this.threads.setProtection(id, body);
+  }
+
+  @Post('threads/:id/protection/windows-setup')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Set up the Windows sandbox',
+    description:
+      'Runs the sandbox runtime’s one-time machine setup on Windows (one administrator prompt), then starts the thread’s sandbox again. Not remote.',
+  })
+  @ApiParam(THREAD_ID)
+  @Responds(ThreadProtectionSchema)
+  @Fails({ 404: NO_THREAD, 409: 'Not Windows, the thread needs recovery, or the setup failed or was declined.' })
+  setupWindowsProtection(@Param('id') id: string): Promise<ThreadProtection> {
+    return this.threads.setupWindowsProtection(id);
   }
 
   /** The user looked at the thread: clears its unread dot and "cli" badge. */

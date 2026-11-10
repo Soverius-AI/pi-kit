@@ -6,6 +6,7 @@ import { DatabaseService } from '../db/database.service';
 import { MetaRepository } from '../db/meta.repository';
 import { ThreadsRepository } from '../db/threads.repository';
 import { ThreadsService } from './threads.service';
+import { ThreadProtectionTesting } from '../pi/thread-protection.testing';
 
 let base: string;
 let project: string;
@@ -51,6 +52,7 @@ beforeEach(() => {
     {} as never,
     outcomes as never,
     { defaultCwd: project } as never,
+    ThreadProtectionTesting.bypass(),
   );
 });
 

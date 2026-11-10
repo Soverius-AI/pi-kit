@@ -18,6 +18,7 @@ export * from './lib/empty-state';
 export * from './lib/omarchy/pixel-field';
 export * from './lib/logo';
 export * from './lib/outcome-badge';
+export * from './lib/protection-badge';
 export * from './lib/changes-pill';
 export * from './lib/diff-totals';
 export * from './lib/skill-draft-card';

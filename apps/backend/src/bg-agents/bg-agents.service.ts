@@ -13,6 +13,9 @@ import {
   UsageDoc,
   watchEvents,
 } from '@earendil-works/pi-durable';
+import type { ExecutionEnv } from '@earendil-works/pi-durable/env';
+import { type ProtectionBinding, ProtectionBindingSchema } from '../db/thread-protection.repository';
+import { SandboxPackage, ThreadProtectionService } from '../pi/thread-protection.service';
 import { NodeExecutionEnv } from '@earendil-works/pi-durable/env/node';
 import { SqliteStorage } from '@earendil-works/pi-durable/storage/sqlite';
 import type { Models } from '@earendil-works/pi-ai';
@@ -93,6 +96,10 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
   private work: AgentWorkWatch | undefined;
   /** `<agentId>/<ref>` of the synthetic reports already handed over by this process. */
   private readonly endings = new Set<string>();
+  /** The sandboxed environments of agents, by agent id. */
+  private readonly environments = new Map<string, Promise<ExecutionEnv>>();
+  /** Sandboxed agents a restart interrupted: their commands cannot be reattached or replayed, so they can only be stopped. */
+  private readonly protectionRecovery = new Set<string>();
 
   constructor(
     @Inject(CONFIG) private readonly config: Pick<BackendConfig, 'dataDir'>,
@@ -100,7 +107,11 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     private readonly agents: BgAgentsRepository,
     @Inject(THREAD_HOST) private readonly threads: ThreadHost,
     private readonly runner: BgAgentRunner,
+    private readonly protection: ThreadProtectionService,
   ) {
+    this.protection.setAgentGuard((id) =>
+      this.agents.byThread(id).some((agent) => agent.status === 'active' || agent.status === 'blocked'),
+    );
     this.questions = new AgentQuestions(
       () => this.require(),
       this.agents,
@@ -216,7 +227,10 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
           env: async ({ conversationId, read }, context) => {
             const agent = await read.snapshot(AgentDoc, conversationId, context);
             const cwd = agent?.worktree?.path ?? (agent?.threadId ? this.folderOf(agent.threadId) : undefined);
-            return cwd ? new NodeExecutionEnv({ cwd }) : undefined;
+            if (!cwd) return undefined;
+            const binding = this.savedProtection(agent);
+            if (binding.mode === 'bypass') return new NodeExecutionEnv({ cwd });
+            return this.protectedEnvironment(String(conversationId), cwd, binding);
           },
           onReport: (error) =>
             this.logger.warn(`pi-durable reported: ${error instanceof Error ? error.message : String(error)}`),
@@ -232,7 +246,7 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
           this.harness = undefined;
         }
       });
-      this.recover();
+      await this.recover();
       this.harness.resume();
       this.logger.log(`Background agents ready (store owner epoch ${lock.epoch}).`);
     } catch (error) {
@@ -253,6 +267,9 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
             `Closing the agents store failed: ${error instanceof Error ? error.message : String(error)}`,
           ),
         );
+    const releases = await Promise.allSettled([...this.environments.keys()].map((id) => this.releaseProtection(id)));
+    for (const result of releases)
+      if (result.status === 'rejected') this.logger.warn(`An agent's sandbox did not stop: ${String(result.reason)}`);
     this.lock?.release();
     this.lock = undefined;
   }
@@ -293,6 +310,7 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
       permission,
       worktree: null,
       turns: 0,
+      protection: this.protection.binding(input.threadId),
     };
     const slash = input.model?.indexOf('/') ?? -1;
     const [provider, modelId] =
@@ -326,6 +344,16 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     this.records.set(id, record);
     if (permission === 'isolated')
       await this.writeRecord(id, { worktree: await this.threads.isolate(input.threadId, id, input.name) });
+    if (record.protection?.mode === 'sandboxed') {
+      const cwd = (await this.recordOf(id)).worktree?.path ?? this.folderOf(input.threadId);
+      try {
+        if (!cwd) throw new Error('The sandboxed agent has no folder to work in.');
+        await this.protectedEnvironment(id, cwd, record.protection);
+      } catch (error) {
+        await this.stop(id);
+        throw error;
+      }
+    }
     await this.settingToWork(id, input.threadId);
     const submission = await conversation.submit(
       { type: 'input', content: input.brief, requestId: `spawn:${id}` },
@@ -339,6 +367,7 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
 
   /** More instructions for a running agent, through its inbox; `requestId` keeps a retried call from sending twice. */
   async send(id: string, text: string, mode: 'steer' | 'followUp', requestId: string): Promise<void> {
+    this.assertNotHeld(id);
     const conversation = await this.require().conversation(conversationId(id), ctx);
     const row = this.agents.get(id);
     if (!conversation || !row) throw new Error(`Agent ${id} does not exist.`);
@@ -496,6 +525,9 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     if (this.harness && (row.status === 'active' || row.status === 'blocked'))
       await this.stop(id).catch(() => undefined);
     await this.runner.forget(id);
+    this.environments.delete(id);
+    await this.protection.forget(`agent:${id}`);
+    this.protectionRecovery.delete(id);
     const worktree = (this.harness ? await this.recordOf(id).catch(() => undefined) : undefined)?.worktree;
     if (worktree)
       await this.threads
@@ -547,9 +579,14 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
   /** Aborts the agent's work, background tasks included; its row stays for History. */
   async stop(id: string): Promise<void> {
     const conversation = await this.require().conversation(conversationId(id), ctx);
-    this.holds.release(id);
     this.patch(id, { status: 'stopped', finishedAt: Date.now(), cost: await this.refreshUsage(id) });
-    await conversation?.abort(ctx, { background: true });
+    try {
+      await conversation?.abort(ctx, { background: true });
+    } finally {
+      this.holds.release(id);
+      await this.releaseProtection(id);
+    }
+    this.protectionRecovery.delete(id);
   }
 
   /** Reads the records of a thread's agents that are not cached yet (finished ones after a restart), so `toAgent` has their turns and tokens. */
@@ -574,6 +611,7 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
 
   /** The user says the processes of the interrupted command are gone (or may be): the agent goes on. */
   discardCleanup(id: string): void {
+    this.assertNotHeld(id);
     if (!this.agents.get(id)) throw new Error(`Agent ${id} does not exist.`);
     this.patch(id, { cleanup: null, status: 'active' });
     this.holds.release(id);
@@ -581,12 +619,52 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
 
   /** The user lets an agent go on after the crash-loop limit paused it. */
   resumeAgent(id: string): void {
+    this.assertNotHeld(id);
     if (!this.agents.get(id)) throw new Error(`Agent ${id} does not exist.`);
     this.patch(id, { failures: [], status: 'active' });
     this.holds.release(id);
   }
 
   // ---- internals
+
+  /** The mode the agent started with; a record from before protection existed ran in Bypass. */
+  private savedProtection(record: AgentRecord | undefined): ProtectionBinding {
+    if (!record) throw new Error('The agent’s record is unavailable.');
+    if (record.protection === undefined) return ThreadProtectionService.BYPASS;
+    const parsed = ProtectionBindingSchema.safeParse(record.protection);
+    if (!parsed.success) throw new Error('The agent’s protection record is unreadable; it does not run on the host.');
+    return parsed.data;
+  }
+
+  private assertNotHeld(id: string): void {
+    if (this.protectionRecovery.has(id))
+      throw new Error(
+        'A restart interrupted this sandboxed agent and its work cannot be replayed. Stop it and start a new one.',
+      );
+  }
+
+  private protectedEnvironment(id: string, cwd: string, binding: ProtectionBinding): Promise<ExecutionEnv> {
+    let owned = this.environments.get(id);
+    if (!owned) {
+      owned = (async () => {
+        this.assertNotHeld(id);
+        const client = await this.protection.owner(`agent:${id}`, cwd, binding);
+        const { DurableSandbox } = await SandboxPackage.load('durable');
+        return DurableSandbox.environment(client, {
+          cwd,
+          namespaceId: 'node:local',
+          release: () => this.releaseProtection(id),
+        });
+      })();
+      this.environments.set(id, owned);
+    }
+    return owned;
+  }
+
+  private async releaseProtection(id: string): Promise<void> {
+    this.environments.delete(id);
+    await this.protection.release(`agent:${id}`);
+  }
 
   private get epoch(): number {
     return this.lock?.epoch ?? 0;
@@ -654,10 +732,18 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
   }
 
   /** What a start does with the agents the last process left: hold what must wait, follow the rest. */
-  private recover(): void {
+  private async recover(): Promise<void> {
     const now = Date.now();
     for (const row of this.agents.unfinished()) {
-      if (row.cleanup) {
+      const sandboxed = await this.recordOf(row.id)
+        .then((record) => this.savedProtection(record).mode === 'sandboxed')
+        .catch(() => true);
+      if (sandboxed) {
+        this.protectionRecovery.add(row.id);
+        this.holds.hold(row.id, 'cleanup');
+        this.patch(row.id, { status: 'blocked' });
+        this.logger.warn(`Sandboxed agent ${row.id} held after the restart: it can only be stopped.`);
+      } else if (row.cleanup) {
         this.holds.hold(row.id, 'cleanup');
         this.patch(row.id, { status: 'blocked' });
         this.logger.warn(

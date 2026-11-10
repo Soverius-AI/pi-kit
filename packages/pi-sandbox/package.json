@@ -1,0 +1,35 @@
+{
+  "name": "@pi-kit/sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "pi-kit's SRT sandbox for pi's file, search and shell tools",
+  "license": "MIT",
+  "exports": {
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js"
+    },
+    "./pi": {
+      "types": "./dist/pi.d.ts",
+      "import": "./dist/pi.js"
+    },
+    "./durable": {
+      "types": "./dist/durable.d.ts",
+      "import": "./dist/durable.js"
+    }
+  },
+  "scripts": {
+    "build": "nx build pi-sandbox",
+    "typecheck": "nx run pi-sandbox:typecheck",
+    "test": "nx test pi-sandbox"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.81",
+    "@types/node": "24.19.2",
+    "typescript": "6.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

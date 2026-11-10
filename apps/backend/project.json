@@ -4,7 +4,7 @@
   "sourceRoot": "apps/backend/src",
   "projectType": "application",
   "tags": ["scope:backend"],
-  "implicitDependencies": ["secret-cli", "backend-runtime"],
+  "implicitDependencies": ["secret-cli", "backend-runtime", "pi-sandbox"],
   "targets": {
     "build": {
       "executor": "@nx/esbuild:esbuild",
@@ -16,7 +16,8 @@
         "{workspaceRoot}/scripts/backend-runtime.cjs",
         "{workspaceRoot}/packages/pi-kit-learn/**/*",
         "{workspaceRoot}/packages/pi-kit-meat-proxy/**/*",
-        "{workspaceRoot}/packages/pi-computer-use/{package.json,README.md,extensions/*.ts,lib/*.mjs}"
+        "{workspaceRoot}/packages/pi-computer-use/{package.json,README.md,extensions/*.ts,lib/*.mjs}",
+        "{workspaceRoot}/pnpm-lock.yaml"
       ],
       "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
@@ -59,8 +60,14 @@
             "input": "packages/pi-computer-use",
             "glob": "{package.json,README.md,extensions/*.ts,lib/{computer-use,host}.mjs}",
             "output": "packages/pi-computer-use"
+          },
+          {
+            "input": "packages/pi-sandbox/dist",
+            "glob": "{*.js,package.json,vendor/**/*}",
+            "output": "packages/pi-sandbox/dist"
           }
-        ]
+        ],
+        "includeIgnoredAssetFiles": true
       },
       "configurations": {
         "production": {
@@ -94,6 +101,12 @@
     "test": {
       "executor": "nx:run-commands",
       "cache": true,
+      "dependsOn": [
+        {
+          "target": "build",
+          "projects": ["pi-sandbox"]
+        }
+      ],
       "inputs": ["default", "^production"],
       "options": {
         "command": "vitest run",

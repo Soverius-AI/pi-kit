@@ -120,6 +120,7 @@
     "@angular/forms": "22.2.3",
     "@angular/platform-browser": "22.2.3",
     "@angular/router": "22.2.3",
+    "@anthropic-ai/sandbox-runtime": "0.0.81",
     "@copilotkit/angular": "0.6.0",
     "@copilotkit/core": "1.79.1",
     "@copilotkit/runtime": "1.79.1",

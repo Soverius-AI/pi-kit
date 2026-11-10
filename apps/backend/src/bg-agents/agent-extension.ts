@@ -12,6 +12,7 @@ import {
 } from '@earendil-works/pi-durable';
 import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@earendil-works/pi-durable/tools';
 import { Type } from '@earendil-works/pi-ai';
+import type { ProtectionBinding } from '../db/thread-protection.repository';
 import type { AgentPermission } from './bg-agents.repository';
 import { type CleanupIntent, cleanupIntent, type Holds } from './process-job';
 import { answerLine, type AskInput, isOpen, newQuestion, type QuestionRecord } from './questions';
@@ -26,6 +27,8 @@ export type AgentRecord = JsonObject & {
   role: string;
   brief: string;
   permission: AgentPermission;
+  /** The thread's protection when the agent started; missing on records from before protection existed (Bypass). */
+  protection?: ProtectionBinding;
   /** The folder it works in when not the thread's: its own worktree (`isolated`), kept with its facts for the removal. */
   worktree: { path: string; branch: string | null; projectCwd: string; base: string } | null;
   /** Model requests so far. */

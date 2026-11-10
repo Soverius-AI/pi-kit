@@ -42,6 +42,7 @@ import { type SkillUse, skillsUsedBy } from './skill-use';
 import { TrustService } from './trust.service';
 import type { DialogAnswer } from './ui-bridge';
 import type { SessionUiHooks } from './session-ui';
+import { ThreadProtectionService } from './thread-protection.service';
 
 export { loadPi };
 export type { PiThreadInfo } from './session-lifecycle';
@@ -134,15 +135,21 @@ export class PiSessionService implements OnModuleDestroy {
     trust: TrustService,
     private readonly plugins: PiPluginService,
     liteLlm: LiteLlmService,
+    private readonly protection: ThreadProtectionService,
   ) {
     this.sessionModels = new SessionModels(liteLlm);
-    this.lifecycle = new SessionLifecycle(trust, plugins, {
-      coordination: () => this.coordination,
-      browser: () => this.browser,
-      agents: () => this.agents,
-      ui: (id, cwd) => this.uiHooks(id, cwd),
-      opened: (thread) => this.followTurns(thread),
-    });
+    this.lifecycle = new SessionLifecycle(
+      trust,
+      plugins,
+      {
+        coordination: () => this.coordination,
+        browser: () => this.browser,
+        agents: () => this.agents,
+        ui: (id, cwd) => this.uiHooks(id, cwd),
+        opened: (thread) => this.followTurns(thread),
+      },
+      protection,
+    );
   }
 
   /** The backend's answers for the coordination extension every session carries; sessions read it when they run, so it may arrive after they open. */
@@ -461,6 +468,7 @@ export class PiSessionService implements OnModuleDestroy {
    * It is also kept as `whenPromptDone()`, so the run that resumes the dialog can wait for the same thing.
    */
   prompt(threadId: string, text: string, options: { images?: PiImage[] } = {}): Promise<void> {
+    this.protection.assertAdmitted(threadId);
     const thread = this.lifecycle.get(threadId);
     const { session } = thread;
     this.noteSkills(threadId, text, thread);
@@ -897,13 +905,15 @@ export class PiSessionService implements OnModuleDestroy {
   }
 
   /** `!command`: runs the shell command through pi (recorded in the session, sent to the model with the next prompt). */
-  executeBash(
+  async executeBash(
     threadId: string,
     command: string,
     onChunk: (chunk: string) => void,
     excludeFromContext = false,
   ): Promise<BashRun> {
-    return this.lifecycle.get(threadId).session.executeBash(command, onChunk, { excludeFromContext });
+    this.protection.assertAdmitted(threadId);
+    const { session, bash } = this.lifecycle.get(threadId);
+    return session.executeBash(command, onChunk, { excludeFromContext, ...(bash ? { operations: bash } : {}) });
   }
 
   abortBash(threadId: string): void {
@@ -912,6 +922,12 @@ export class PiSessionService implements OnModuleDestroy {
 
   isBashRunning(threadId: string): boolean {
     return this.lifecycle.threads.get(threadId)?.session.isBashRunning ?? false;
+  }
+
+  /** A turn, a `!command` or an extension dialog is in flight. */
+  isBusy(threadId: string): boolean {
+    const thread = this.lifecycle.threads.get(threadId);
+    return !!thread && (thread.session.isStreaming || thread.session.isBashRunning || !!thread.prompting);
   }
 
   /** Subscribes to the session's events; returns the unsubscribe function. */

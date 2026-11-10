@@ -30,15 +30,17 @@ export interface CoordinationHook {
  */
 export function createCoordinationExtension(
   pi: PiModule,
-  options: { threadId: string; cwd: string; hook: () => CoordinationHook | undefined },
+  options: { threadId: string; cwd: string; hook: () => CoordinationHook | undefined; registerBash?: boolean },
 ): ExtensionFactory {
   const { threadId, cwd } = options;
   return (api: ExtensionAPI) => {
-    api.registerTool(
-      pi.createBashToolDefinition(cwd, {
-        spawnHook: (context) => ({ ...context, env: { ...context.env, PI_KIT: '1', PI_KIT_THREAD_ID: threadId } }),
-      }),
-    );
+    if (options.registerBash !== false) {
+      api.registerTool(
+        pi.createBashToolDefinition(cwd, {
+          spawnHook: (context) => ({ ...context, env: { ...context.env, PI_KIT: '1', PI_KIT_THREAD_ID: threadId } }),
+        }),
+      );
+    }
 
     api.on('before_agent_start', (event) => {
       const hook = options.hook();

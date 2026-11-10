@@ -2090,6 +2090,19 @@ export type SetComputerUse = {
     enabled: boolean;
 };
 
+export type SetThreadProtection = {
+    mode: 'bypass' | 'sandboxed';
+    experimentalWindowsAccepted?: boolean;
+    /**
+     * Required to downgrade a protected thread.
+     */
+    confirmBypass?: boolean;
+    /**
+     * Required while recovery is needed: the person checked that earlier sandbox work stopped.
+     */
+    confirmRecovery?: boolean;
+};
+
 export type SettingsModel = {
     provider: string;
     id: string;
@@ -2403,6 +2416,21 @@ export type ThreadOutcomeBadge = {
 export type ThreadPlacement = {
     local?: NewLocal;
     worktree?: NewWorktree;
+};
+
+export type ThreadProtection = {
+    mode: 'bypass' | 'sandboxed';
+    state: 'bypass' | 'idle' | 'starting' | 'active' | 'experimental' | 'unavailable' | 'setup-required' | 'recovery-required';
+    generation: number;
+    experimentalWindowsAccepted: boolean;
+    /**
+     * Platform of the backend, not of the browser.
+     */
+    platform: string;
+    /**
+     * Technical detail of an unavailable or held sandbox.
+     */
+    reason: string | null;
 };
 
 export type ThreadScoreBadge = {
@@ -3756,6 +3784,120 @@ export type ThreadsPatchResponses = {
 };
 
 export type ThreadsPatchResponse = ThreadsPatchResponses[keyof ThreadsPatchResponses];
+
+export type ThreadsGetProtectionData = {
+    body?: never;
+    path: {
+        /**
+         * The thread id (the pi session id).
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/threads/{id}/protection';
+};
+
+export type ThreadsGetProtectionErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * There is no such thread.
+     */
+    404: Problem;
+};
+
+export type ThreadsGetProtectionError = ThreadsGetProtectionErrors[keyof ThreadsGetProtectionErrors];
+
+export type ThreadsGetProtectionResponses = {
+    /**
+     * OK
+     */
+    200: ThreadProtection;
+};
+
+export type ThreadsGetProtectionResponse = ThreadsGetProtectionResponses[keyof ThreadsGetProtectionResponses];
+
+export type ThreadsSetProtectionData = {
+    body: SetThreadProtection;
+    path: {
+        /**
+         * The thread id (the pi session id).
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/threads/{id}/protection';
+};
+
+export type ThreadsSetProtectionErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * There is no such thread.
+     */
+    404: Problem;
+    /**
+     * The thread or its agents are busy, or a downgrade or recovery was not confirmed.
+     */
+    409: Problem;
+};
+
+export type ThreadsSetProtectionError = ThreadsSetProtectionErrors[keyof ThreadsSetProtectionErrors];
+
+export type ThreadsSetProtectionResponses = {
+    /**
+     * OK
+     */
+    200: ThreadProtection;
+};
+
+export type ThreadsSetProtectionResponse = ThreadsSetProtectionResponses[keyof ThreadsSetProtectionResponses];
+
+export type ThreadsSetupWindowsProtectionData = {
+    body?: never;
+    path: {
+        /**
+         * The thread id (the pi session id).
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/threads/{id}/protection/windows-setup';
+};
+
+export type ThreadsSetupWindowsProtectionErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * There is no such thread.
+     */
+    404: Problem;
+    /**
+     * Not Windows, the thread needs recovery, or the setup failed or was declined.
+     */
+    409: Problem;
+};
+
+export type ThreadsSetupWindowsProtectionError = ThreadsSetupWindowsProtectionErrors[keyof ThreadsSetupWindowsProtectionErrors];
+
+export type ThreadsSetupWindowsProtectionResponses = {
+    /**
+     * OK
+     */
+    200: ThreadProtection;
+};
+
+export type ThreadsSetupWindowsProtectionResponse = ThreadsSetupWindowsProtectionResponses[keyof ThreadsSetupWindowsProtectionResponses];
 
 export type ThreadsSeenData = {
     body?: never;

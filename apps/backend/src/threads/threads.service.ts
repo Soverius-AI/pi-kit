@@ -16,8 +16,10 @@ import type {
   NewLocal,
   NewWorktree,
   PatchWorkspace,
+  SetThreadProtection,
   ThreadDetail,
   ThreadPlacement,
+  ThreadProtection,
   ThreadSummary,
   WorktreeKeep,
   Workspace,
@@ -30,6 +32,7 @@ import { type ThreadRow, ThreadsRepository, type WorktreeFacts } from '../db/thr
 import type { PiSessionEntry } from '@pi-kit/pi-adapter';
 import { type NewPiSession, type PiThreadInfo, PiSessionService } from '../pi/pi-session.service';
 import { WorktreeService } from '../worktree/worktree.service';
+import { ThreadProtectionService } from '../pi/thread-protection.service';
 import { normalizePrefix } from '../worktree/worktree-paths';
 import { currentBranch } from './branch';
 import { OutcomesService } from './outcomes.service';
@@ -73,6 +76,7 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly worktrees: WorktreeService,
     private readonly outcomes: OutcomesService,
     @Inject(CONFIG) private readonly config: BackendConfig,
+    private readonly protection: ThreadProtectionService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -311,8 +315,9 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     if (this.events.lastRun(id)?.status === 'running') {
       throw new ConflictException('Stop the run before deleting the thread.');
     }
-    if (row.worktreePath && worktree !== 'keep') await this.worktrees.remove(row, { force: worktree === 'force' });
     this.sessions.dispose(id);
+    await this.protection.forgetThread(id);
+    if (row.worktreePath && worktree !== 'keep') await this.worktrees.remove(row, { force: worktree === 'force' });
     const how = this.sessions.trashSession(row.sessionPath);
     this.forget(id);
     this.status.listChanged();
@@ -380,7 +385,12 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     this.status.listChanged();
   }
 
-  private async adopt(session: NewPiSession, source: Pick<ThreadRow, 'sessionPath'>): Promise<ThreadDetail> {
+  private async adopt(
+    session: NewPiSession,
+    source: Pick<ThreadRow, 'sessionPath'> & { id?: string },
+  ): Promise<ThreadDetail> {
+    const sourceId = source.id ?? this.threads.all().find((row) => row.sessionPath === source.sessionPath)?.id;
+    if (sourceId) this.protection.copy(sourceId, session.id);
     this.threads.insertDraft({
       id: session.id,
       sessionPath: session.path,
@@ -417,6 +427,23 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
   /** Throws a 404 for a thread the app does not know. */
   assertExists(id: string): void {
     this.require(id);
+  }
+
+  protectionOf(id: string): ThreadProtection {
+    this.require(id);
+    return this.protection.status(id);
+  }
+
+  setupWindowsProtection(id: string): Promise<ThreadProtection> {
+    return this.protection.setupWindows(id, this.workFolder(this.require(id)));
+  }
+
+  /** Changes the mode of an idle thread: its open session closes, and the next run starts in the new mode. */
+  async setProtection(id: string, change: SetThreadProtection): Promise<ThreadProtection> {
+    const row = this.require(id);
+    if (this.events.lastRun(id)?.status === 'running' || this.sessions.isBusy(id))
+      throw new ConflictException('Stop this thread before changing its protection.');
+    return this.protection.set(id, this.workFolder(row), change, () => this.sessions.dispose(id));
   }
 
   /** The folder the thread works in, if the thread exists: its worktree while it has one, else the project's folder. */

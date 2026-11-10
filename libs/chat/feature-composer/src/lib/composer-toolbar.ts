@@ -5,6 +5,7 @@ import { ChatStore, ComposerExtensions } from '@pi-kit/chat/data';
 import { ContextRing } from './context-ring';
 import { DeliverChip } from '@pi-kit/chat/ui';
 import { ModelPicker } from './model-picker';
+import { ThreadProtectionPicker } from './thread-protection-picker';
 import { VoiceButton } from './voice-button';
 import { PkIcon } from '@pi-kit/design-system';
 
@@ -19,7 +20,16 @@ import { PkIcon } from '@pi-kit/design-system';
  */
 @Component({
   selector: 'pk-composer-toolbar',
-  imports: [CopilotChatToolsMenu, ContextRing, DeliverChip, ModelPicker, VoiceButton, TranslocoPipe, PkIcon],
+  imports: [
+    CopilotChatToolsMenu,
+    ContextRing,
+    DeliverChip,
+    ModelPicker,
+    ThreadProtectionPicker,
+    VoiceButton,
+    TranslocoPipe,
+    PkIcon,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'pk-toolbar compact' },
   template: `
@@ -74,6 +84,7 @@ import { PkIcon } from '@pi-kit/design-system';
       [attr.aria-label]="'chat.composerToolbar.messageSettings' | transloco"
     >
       <pk-model-picker />
+      <pk-thread-protection-picker />
       @if (chat.running()) {
         <pk-deliver-chip [mode]="chat.behavior()" (pick)="chat.setBehavior($event)" />
       }

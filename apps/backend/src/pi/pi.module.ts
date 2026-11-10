@@ -5,6 +5,8 @@ import { PiUpdateService } from './pi-update.service';
 import { PiPluginService } from './pi-plugin.service';
 import { PiSessionService } from './pi-session.service';
 import { ResourcesService } from './resources.service';
+import { DbModule } from '../db/db.module';
+import { ThreadProtectionService } from './thread-protection.service';
 import { TrustService } from './trust.service';
 
 /**
@@ -12,7 +14,9 @@ import { TrustService } from './trust.service';
  * picker needs.
  */
 @Module({
+  imports: [DbModule],
   providers: [
+    ThreadProtectionService,
     LiteLlmService,
     PiPluginService,
     TrustService,
@@ -22,6 +26,7 @@ import { TrustService } from './trust.service';
     ResourcesService,
   ],
   exports: [
+    ThreadProtectionService,
     LiteLlmService,
     PiPluginService,
     PiSessionService,

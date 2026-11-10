@@ -1194,6 +1194,50 @@
     "followUp": {
       "accept": "Vorschlag übernehmen →",
       "dismiss": "Verwerfen · Esc"
+    },
+    "threadProtection": {
+      "label": "Thread-Schutz",
+      "bypass": "Bypass",
+      "sandboxed": "Sandboxed",
+      "bypassDescription": "Werkzeuge laufen auf dem Host",
+      "sandboxedDescription": "Werkzeuge laufen in einer Sandbox",
+      "current": "Aktuell",
+      "loading": "Schutz wird geprüft…",
+      "saving": "Schutz wird gespeichert…",
+      "unknown": "Schutz unbekannt",
+      "cancel": "Abbrechen",
+      "confirm": "Änderung bestätigen",
+      "confirmTitle": "Thread-Schutz ändern?",
+      "enableWarning": "Die Sandbox begrenzt die Agent-Ausführung, aber nicht die Host-Erweiterungen: Erweiterungen laufen weiterhin auf dem Host und müssen vertrauenswürdig sein. Sandboxed bleibt ausgewählt, auch wenn die Sandbox nicht starten kann; vor der Ausführung den Status prüfen.",
+      "bypassWarning": "Zu Bypass wechseln? Die Agent-Ausführung verwendet das bisherige Host-Verhalten ohne Thread-Sandbox. Dadurch wird der Sandbox-Schutz dieses Threads entfernt.",
+      "recoveryWarning": "Frühere Sandbox-Arbeit dieses Threads wurde möglicherweise nicht beendet. Prüfe, dass sie beendet ist, bevor du fortfährst.",
+      "recoveryConsent": "Ich habe geprüft, dass frühere Sandbox-Arbeit dieses Threads beendet ist.",
+      "windowsConsent": "Ich akzeptiere, dass die Sandbox unter Windows experimentell ist: Netzwerkisolation und Leseisolation zwischen Threads sind nicht garantiert.",
+      "notApplied": "Der Schutz wurde nicht geändert: Der Thread hat gewechselt oder ist beschäftigt.",
+      "saveFailed": "Der Schutz wurde nicht geändert: {{value1}}",
+      "refresh": "Status aktualisieren",
+      "setup": "Windows-Sandbox einrichten",
+      "setupTitle": "Windows-Sandbox einrichten?",
+      "setupConfirm": "Einrichten",
+      "setupWarning": "Windows fragt einmal nach Administratorrechten. Die Einrichtung legt ein lokales Windows-Konto namens srt-sandbox und Firewall-Regeln dafür an; beides gilt für den ganzen Rechner und wird mit anderen Apps geteilt, die dieselbe Sandbox-Laufzeit verwenden. Dein Benutzerprofil bleibt für die Sandbox unlesbar. Sie später zu entfernen ist ein eigener Schritt.",
+      "setupConsent": "Ich akzeptiere, dass die Einrichtung das Konto srt-sandbox und seine Firewall-Regeln für den ganzen Rechner anlegt.",
+      "settingUp": "Windows-Sandbox wird eingerichtet; bestätige die Administrator-Abfrage…",
+      "setupFailed": "Die Windows-Sandbox wurde nicht eingerichtet: {{value1}}",
+      "coverage": {
+        "bypass": "Werkzeuge laufen auf dem Host mit den bestehenden Vertrauens- und Workflow-Berechtigungen.",
+        "sandboxed": "Werkzeuge laufen in einer Sandbox; Host-Erweiterungen gelten als vertrauenswürdig. Netzwerk ist standardmäßig gesperrt. MCP und Host-Automatisierung sind nicht verfügbar.",
+        "sandboxedWindows": "Werkzeuge laufen in einer Sandbox; Host-Erweiterungen gelten als vertrauenswürdig. Netzwerk ist standardmäßig gesperrt. MCP und Host-Automatisierung sind nicht verfügbar. Unter Windows experimentell: Netzwerk- und Leseisolation zwischen Threads sind nicht garantiert."
+      },
+      "status": {
+        "bypass": "Keine Sandbox (Bypass)",
+        "idle": "Sandbox startet vor dem nächsten Lauf",
+        "starting": "Sandbox startet",
+        "active": "Sandbox aktiv",
+        "experimental": "Sandbox experimentell",
+        "unavailable": "Sandbox nicht verfügbar",
+        "setup-required": "Windows-Sandbox muss eingerichtet werden",
+        "recovery-required": "Sandbox-Wiederherstellung erforderlich"
+      }
     }
   },
   "threads": {

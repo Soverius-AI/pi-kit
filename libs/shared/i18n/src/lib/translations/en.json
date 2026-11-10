@@ -1194,6 +1194,50 @@
     "followUp": {
       "accept": "Accept suggestion →",
       "dismiss": "Dismiss · Esc"
+    },
+    "threadProtection": {
+      "label": "Thread protection",
+      "bypass": "Bypass",
+      "sandboxed": "Sandboxed",
+      "bypassDescription": "Tools run on the host",
+      "sandboxedDescription": "Tools run in a sandbox",
+      "current": "Current",
+      "loading": "Checking protection…",
+      "saving": "Saving protection…",
+      "unknown": "Protection unknown",
+      "cancel": "Cancel",
+      "confirm": "Confirm change",
+      "confirmTitle": "Change thread protection?",
+      "enableWarning": "Sandboxing limits agent execution, not host extensions: extensions still run on the host and must be trusted. Sandboxed stays selected even if the sandbox cannot start; check the status before running.",
+      "bypassWarning": "Switch to Bypass? Agent execution will use current host behavior without thread sandboxing. This removes this thread’s sandbox protection.",
+      "recoveryWarning": "Earlier sandbox work for this thread may not have stopped. Check that it has stopped before you continue.",
+      "recoveryConsent": "I checked that earlier sandbox work for this thread has stopped.",
+      "windowsConsent": "I accept that sandboxing on Windows is experimental: network isolation and read isolation between threads are not guaranteed.",
+      "notApplied": "Protection was not changed: the thread changed or became busy.",
+      "saveFailed": "Protection was not changed: {{value1}}",
+      "refresh": "Refresh status",
+      "setup": "Set up Windows sandbox",
+      "setupTitle": "Set up the Windows sandbox?",
+      "setupConfirm": "Set up",
+      "setupWarning": "Windows asks once for administrator permission. The setup creates a local Windows account named srt-sandbox and firewall rules for it; both apply to the whole machine and are shared with other apps that use the same sandbox runtime. Your user profile stays unreadable to the sandbox. Removing them later is a separate step.",
+      "setupConsent": "I accept that the setup creates the srt-sandbox account and its firewall rules for the whole machine.",
+      "settingUp": "Setting up the Windows sandbox; approve the administrator prompt…",
+      "setupFailed": "The Windows sandbox was not set up: {{value1}}",
+      "coverage": {
+        "bypass": "Tools run on the host with the existing trust and workflow permissions.",
+        "sandboxed": "Tools run in a sandbox; host extensions are trusted. Network is denied by default. MCP and host automation are unavailable.",
+        "sandboxedWindows": "Tools run in a sandbox; host extensions are trusted. Network is denied by default. MCP and host automation are unavailable. Experimental on Windows: network and read isolation between threads are not guaranteed."
+      },
+      "status": {
+        "bypass": "No sandbox (Bypass)",
+        "idle": "Sandbox starts before the next run",
+        "starting": "Sandbox starting",
+        "active": "Sandbox active",
+        "experimental": "Sandbox experimental",
+        "unavailable": "Sandbox unavailable",
+        "setup-required": "Windows sandbox needs setup",
+        "recovery-required": "Sandbox recovery required"
+      }
     }
   },
   "threads": {

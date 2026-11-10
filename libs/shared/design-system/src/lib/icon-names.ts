@@ -51,6 +51,7 @@ export const PK_ICON_NAMES = [
   'key',
   'key-round',
   'lock',
+  'lock-open',
   'mic',
   'monitor',
   'moon',

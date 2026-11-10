@@ -18,6 +18,9 @@ import { BgAgentRunner } from './bg-agent-runner';
 import { type BgAgentRow, BgAgentsRepository } from './bg-agents.repository';
 import { BgAgentsService } from './bg-agents.service';
 import { LOCK_FILE } from './durable-storage';
+import type { ProtectionBinding } from '../db/thread-protection.repository';
+import { SandboxPackage, type ThreadProtectionService } from '../pi/thread-protection.service';
+import { ThreadProtectionTesting } from '../pi/thread-protection.testing';
 
 const key = 'cd'.repeat(32);
 let dir: string;
@@ -43,7 +46,7 @@ const until = async (check: () => boolean, label: string, timeoutMs = 15_000): P
 };
 const delivered: { threadId: string; content: string; details: unknown }[] = [];
 let runner: BgAgentRunner;
-const make = (): BgAgentsService => {
+const make = (protection = ThreadProtectionTesting.bypass()): BgAgentsService => {
   runner = new BgAgentRunner(new EventLogRepository(database));
   return new BgAgentsService(
     { dataDir: dir },
@@ -60,6 +63,7 @@ const make = (): BgAgentsService => {
       discard: async () => undefined,
     },
     runner,
+    protection,
   );
 };
 
@@ -75,12 +79,143 @@ beforeEach(() => {
   service = make();
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await service.close();
   database.onApplicationShutdown();
   rmSync(dir, { recursive: true, force: true });
 });
 
 describe('BgAgentsService', () => {
+  function protectionFixture(mode: 'bypass' | 'sandboxed' = 'sandboxed') {
+    let binding: ProtectionBinding = { version: 1, mode, generation: 7, experimentalWindowsAccepted: false };
+    const client = {
+      request: vi.fn(async () => ({ ok: true, value: undefined })),
+      close: vi.fn(async () => undefined),
+    };
+    const owner = vi.fn(async () => client);
+    const release = vi.fn(async () => undefined);
+    const setAgentGuard = vi.fn();
+    const protection = {
+      binding: () => ({ ...binding }),
+      owner,
+      release,
+      forget: release,
+      setAgentGuard,
+    } as unknown as ThreadProtectionService;
+    vi.spyOn(SandboxPackage, 'load').mockImplementation(async (entry) => {
+      if (entry !== 'durable') throw new Error('The agents never load the sandbox core directly.');
+      return (await import('@pi-kit/sandbox/durable')) as never;
+    });
+    return {
+      protection,
+      owner,
+      release,
+      setAgentGuard,
+      change: (mode: 'bypass' | 'sandboxed') => {
+        binding = { ...binding, mode, generation: 8 };
+      },
+    };
+  }
+
+  it('persists child protection before submission and keeps it after parent opt-out and restart', async () => {
+    const fixture = protectionFixture();
+    service = make(fixture.protection);
+    const first = faux([fauxAssistantMessage('First task done.')]);
+    await service.open(first.models);
+    const row = await service.spawn({
+      threadId: 'protected',
+      name: 'one',
+      role: 'worker',
+      brief: 'Work.',
+      model: first.model,
+    });
+    await until(() => service.get(row.id)?.status === 'done', 'protected task done');
+    expect(fixture.owner).toHaveBeenCalledWith(
+      `agent:${row.id}`,
+      project,
+      expect.objectContaining({ mode: 'sandboxed', generation: 7 }),
+    );
+    fixture.change('bypass');
+    await service.close();
+    expect(fixture.release).toHaveBeenCalledWith(`agent:${row.id}`);
+    fixture.owner.mockClear();
+    service = make(fixture.protection);
+    await service.open(faux([fauxAssistantMessage('Second task done.')]).models);
+    await service.send(row.id, 'More work.', 'followUp', 'second');
+    await until(() => fixture.owner.mock.calls.length > 0, 'saved owner binding');
+    expect(fixture.owner).toHaveBeenCalledWith(
+      `agent:${row.id}`,
+      project,
+      expect.objectContaining({ mode: 'sandboxed', generation: 7 }),
+    );
+  });
+
+  it('keeps saved Bypass children off the sandbox even when the parent opts in later', async () => {
+    const fixture = protectionFixture('bypass');
+    service = make(fixture.protection);
+    const first = faux([fauxAssistantMessage('First task done.')]);
+    await service.open(first.models);
+    const row = await service.spawn({
+      threadId: 'off',
+      name: 'legacy',
+      role: 'worker',
+      brief: 'Work.',
+      model: first.model,
+    });
+    await until(() => service.get(row.id)?.status === 'done', 'bypass task done');
+    fixture.change('sandboxed');
+    await service.close();
+    service = make(fixture.protection);
+    await service.open(faux([fauxAssistantMessage('Second task done.')]).models);
+    await service.send(row.id, 'More work.', 'followUp', 'second');
+    await until(() => service.get(row.id)?.status === 'done', 'saved bypass task done');
+    expect(fixture.owner).not.toHaveBeenCalled();
+  });
+
+  it('holds interrupted protected work before resume and generic resume cannot replay it', async () => {
+    const fixture = protectionFixture();
+    service = make(fixture.protection);
+    const first = faux([
+      fauxAssistantMessage([fauxToolCall('ask', { question: 'Wait for review?', kind: 'user' })], {
+        stopReason: 'toolUse',
+      }),
+    ]);
+    await service.open(first.models);
+    const row = await service.spawn({
+      threadId: 'protected',
+      name: 'held',
+      role: 'worker',
+      brief: 'Work.',
+      model: first.model,
+    });
+    await until(() => service.userQuestions('protected').length === 1, 'question waiting');
+    expect(fixture.setAgentGuard.mock.calls[0][0]('protected')).toBe(true);
+    await service.close();
+    fixture.owner.mockClear();
+    service = make(fixture.protection);
+    await service.open(faux([]).models);
+    expect(service.get(row.id)?.status).toBe('blocked');
+    expect(() => service.resumeAgent(row.id)).toThrow(/cannot be replayed/);
+    expect(() => service.discardCleanup(row.id)).toThrow(/cannot be replayed/);
+    await expect(service.send(row.id, 'retry', 'steer', 'retry')).rejects.toThrow(/cannot be replayed/);
+    expect(fixture.owner).not.toHaveBeenCalled();
+    await service.stop(row.id);
+    expect(fixture.release).toHaveBeenCalledWith(`agent:${row.id}`);
+  });
+
+  it('stops an agent whose sandbox fails to start instead of leaving it at work', async () => {
+    const fixture = protectionFixture();
+    fixture.owner.mockRejectedValueOnce(new Error('The sandbox is unavailable.'));
+    service = make(fixture.protection);
+    const first = faux([fauxAssistantMessage('Never.')]);
+    await service.open(first.models);
+    await expect(
+      service.spawn({ threadId: 'protected', name: 'one', role: 'worker', brief: 'Work.', model: first.model }),
+    ).rejects.toThrow('The sandbox is unavailable.');
+    expect(fixture.setAgentGuard.mock.calls[0][0]('protected')).toBe(false);
+    expect(fixture.release).toHaveBeenCalled();
+  });
+
   it('keeps background agents available without a credential store', async () => {
     await service.close();
     database.onApplicationShutdown();
@@ -425,6 +560,7 @@ describe('BgAgentsService', () => {
         discard: async () => undefined,
       },
       new BgAgentRunner(new EventLogRepository(database)),
+      ThreadProtectionTesting.bypass(),
     );
     await service.open(models);
     const row = await service.spawn({ threadId: 't1', name: 'tester', role: 'tester', brief: 'Test.', model });
@@ -641,6 +777,7 @@ describe('BgAgentsService', () => {
         discard: async () => undefined,
       },
       new BgAgentRunner(new EventLogRepository(database)),
+      ThreadProtectionTesting.bypass(),
     );
     await service.open(models);
     await expect(service.spawn({ threadId: 't1', name: 'a', role: 'r', brief: 'b', model })).rejects.toThrow(
