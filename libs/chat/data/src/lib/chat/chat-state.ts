@@ -45,6 +45,7 @@ export interface ChatStoreState {
   lastAborted: boolean;
   /** Authoritative hydration/lifecycle status; cached session statistics can still describe an earlier prompt. */
   promptActive: boolean | undefined;
+  syncRun: boolean;
   statuses: Record<string, string>;
   notices: Notice[];
   /** Locally consumed predictions are hidden before the status channel acknowledges them. */
@@ -120,6 +121,7 @@ export const initial: ChatSessionState = {
   runError: undefined,
   lastAborted: false,
   promptActive: undefined,
+  syncRun: false,
   statuses: {},
   notices: [],
   hiddenFollowUps: [],

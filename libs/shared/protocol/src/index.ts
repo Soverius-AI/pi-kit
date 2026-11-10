@@ -1,4 +1,5 @@
 export * from './activities';
+export * from './agent-live';
 export * from './environments';
 export * from './peers';
 export * from './remote-api';

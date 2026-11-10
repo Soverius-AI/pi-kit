@@ -11,7 +11,6 @@ import {
   type Submission,
   type SubmissionId,
   UsageDoc,
-  watchEvents,
 } from '@earendil-works/pi-durable';
 import type { ExecutionEnv } from '@earendil-works/pi-durable/env';
 import { type ProtectionBinding, ProtectionBindingSchema } from '../db/thread-protection.repository';
@@ -25,6 +24,7 @@ import { DatabaseService } from '../db/database.service';
 import { loadPi } from '../pi/load-pi';
 import { createModelRuntime } from '../pi/model-runtime';
 import { type AgentTokens, type AgentQuestionDialog, type BgAgent, type PiDialogAnswer } from '@pi-kit/protocol';
+import { AgentViews } from './agent-events';
 import { AgentDoc, agentMessage, type AgentRecord, createAgentExtension } from './agent-extension';
 import type { AgentsHook } from './agent-tools';
 import { BgAgentRunner } from './bg-agent-runner';
@@ -96,6 +96,8 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
   private work: AgentWorkWatch | undefined;
   /** `<agentId>/<ref>` of the synthetic reports already handed over by this process. */
   private readonly endings = new Set<string>();
+  /** What `follow` does once a submission settles, by submission id, until it has recorded how the run ended. */
+  private readonly following = new Map<string, Promise<void>>();
   /** The sandboxed environments of agents, by agent id. */
   private readonly environments = new Map<string, Promise<ExecutionEnv>>();
   /** Sandboxed agents a restart interrupted: their commands cannot be reattached or replayed, so they can only be stopped. */
@@ -232,15 +234,15 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
             if (binding.mode === 'bypass') return new NodeExecutionEnv({ cwd });
             return this.protectedEnvironment(String(conversationId), cwd, binding);
           },
-          onReport: (error) =>
-            this.logger.warn(`pi-durable reported: ${error instanceof Error ? error.message : String(error)}`),
+          onReport: ({ kind, error }) =>
+            this.logger.warn(`pi-durable reported ${kind}: ${error instanceof Error ? error.message : String(error)}`),
         },
         ctx,
       );
       this.lock = lock;
       this.disabled = undefined;
       void this.harness.closed.then((end) => {
-        if (end.reason === 'failed') {
+        if (end.kind === 'failed') {
           this.disabled = `The agents store failed: ${end.error instanceof Error ? end.error.message : String(end.error)}`;
           this.logger.error(this.disabled);
           this.harness = undefined;
@@ -397,7 +399,7 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
     try {
       const submission = await this.require().submission(submissionId(row.submissionId), waiting.context);
       await submission?.wait(waiting.context);
-      await new Promise((resolve) => setImmediate(resolve)); // `follow` records the end right after the wait settles
+      await this.following.get(row.submissionId); // `follow` records the end once the wait settled, after commits of its own
       return this.agents.get(id)?.status ?? row.status;
     } finally {
       waiting.cancel();
@@ -568,6 +570,7 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
       answered: this.questions.lastAnswer(id),
       turns: record?.turns ?? 0,
       worktree: record?.worktree?.path ?? null,
+      liveSyncs: this.runner.liveSyncsOf(id),
       tokens: record?.tokens ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       context:
         live && live.contextTokens !== null && (status === 'active' || status === 'blocked')
@@ -717,7 +720,9 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
   private async attach(id: string): Promise<void> {
     if (!this.harness) return;
     try {
-      this.runner.attach(id, await watchEvents(this.harness, conversationId(id), ctx));
+      const conversation = await this.harness.conversation(conversationId(id), ctx);
+      if (!conversation) throw new Error('Its conversation does not exist.');
+      this.runner.attach(id, await AgentViews.open(conversation, this.harness, ctx));
     } catch (error) {
       this.logger.warn(`Could not follow agent ${id}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -778,7 +783,8 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
    * never called `report`, is told to the main agent, which waits for a report and does not poll; a stopped one is not (someone chose it).
    */
   private follow(id: string, submission: Submission): void {
-    void submission
+    const key = String(submission.id);
+    const following = submission
       .wait(ctx)
       .then(async (settled) => {
         const row = this.agents.get(id);
@@ -810,7 +816,11 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
       })
       .catch((error: unknown) =>
         this.logger.debug(`Following agent ${id} ended: ${error instanceof Error ? error.message : String(error)}`),
-      );
+      )
+      .finally(() => {
+        if (this.following.get(key) === following) this.following.delete(key);
+      });
+    this.following.set(key, following);
   }
 
   /**

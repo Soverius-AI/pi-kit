@@ -1238,6 +1238,34 @@
         "setup-required": "Windows-Sandbox muss eingerichtet werden",
         "recovery-required": "Sandbox-Wiederherstellung erforderlich"
       }
+    },
+    "agentLive": {
+      "pending": "Wartet",
+      "running": "Läuft",
+      "failed": "Fehlgeschlagen",
+      "droppedLines": "… {{value1}} frühere Zeilen nicht angezeigt",
+      "droppedBytes": "… {{value1}} frühere Bytes nicht angezeigt",
+      "inTime": "in {{value1}}",
+      "now": "jetzt",
+      "retry": "Die Anfrage ist fehlgeschlagen; neuer Versuch {{value1}}",
+      "deferred": "Wartet auf den Anbieter; prüft erneut {{value1}}",
+      "compacting": "Kontext wird verdichtet…",
+      "compactionRetry": "Verdichten fehlgeschlagen; neuer Versuch {{value1}}",
+      "compactionFailed": "Verdichten fehlgeschlagen",
+      "working": "Der Agent arbeitet",
+      "failure": {
+        "model_error": "Das Modell hat einen Fehler gemeldet",
+        "no_model": "Für diesen Agenten ist kein Modell verfügbar",
+        "aborted": "Der Lauf wurde gestoppt",
+        "reset": "Der Lauf wurde zurückgesetzt",
+        "faulted": "Der Agent hatte einen internen Fehler",
+        "orphaned": "Der Lauf hat seinen Prozess verloren und wurde beendet",
+        "interrupted": "Der Lauf wurde unterbrochen",
+        "restart_limit": "Der Agent hat nach zu vielen Neustarts aufgehört",
+        "nothing_to_answer": "Es gab nichts zu beantworten",
+        "turn_limit": "Der Agent hat sein Limit an Runden erreicht",
+        "unknown": "Der Lauf endete ohne Antwort ({{value1}})"
+      }
     }
   },
   "threads": {

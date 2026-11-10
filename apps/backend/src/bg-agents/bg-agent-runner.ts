@@ -1,11 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AbstractAgent, type AgentCapabilities, type BaseEvent, EventType } from '@ag-ui/client';
 import type { AgentRunnerConnectRequest, AgentRunnerRunRequest, AgentRunnerStopRequest } from '@copilotkit/runtime/v2';
-import { REPLAY_CURSOR_HEADER, REPLAY_CURSOR_METADATA, REPLAY_RESET_EVENT } from '@pi-kit/protocol';
+import {
+  AGENT_LIVE_SYNC_RUN,
+  REPLAY_CURSOR_HEADER,
+  REPLAY_CURSOR_METADATA,
+  REPLAY_RESET_EVENT,
+} from '@pi-kit/protocol';
 import { Observable, Subject, type Subscription } from 'rxjs';
 import { EventLogRepository } from '../db/event-log.repository';
 import { COMPACTION, LogCompactor } from '../agui/log-compactor';
-import { AgentEventMapper, type AgentLive, type DurableEventStream } from './agent-events';
+import { AgentEventMapper, type AgentLive, type AgentViewStream } from './agent-events';
 
 export const BG_AGENT_ID = 'pi-bg';
 
@@ -36,7 +41,7 @@ interface Followed {
   agentId: string;
   mapper: AgentEventMapper;
   live: Subject<{ seq: number; event: BaseEvent }>;
-  stream: DurableEventStream;
+  stream: AgentViewStream;
   /** The AG-UI run the stored events belong to right now. */
   run?: string;
 }
@@ -49,7 +54,7 @@ export interface BgAgentActions {
 
 /**
  * The runner of the AG-UI agent `pi-bg`: a background agent's transcript, with the agent id as thread id. `attach` follows
- * the agent's durable events, maps them (`agent-events.ts`) and stores them in the same log as the threads', so `connect` replays them
+ * the agent's durable views, maps them (`agent-events.ts`) and stores them in the same log as the threads', so `connect` replays them
  * with the cursors and follows the live feed; `run` is only a message to the agent, `stop` ends it. `PiAgentRunner` hands the
  * requests of this agent id here.
  */
@@ -59,7 +64,9 @@ export class BgAgentRunner {
   private readonly followed = new Map<string, Followed>();
   private readonly compactor: LogCompactor;
   private actions: BgAgentActions | undefined;
-  /** Told when an agent's live state changed (the panel's "running", "tool" and "idle"). */
+  /** The sync runs written to each agent's log by this process: a transcript that is not connected while idle joins when it moves. */
+  private readonly syncs = new Map<string, number>();
+  /** Told when an agent's live state changed (the panel's "running", "tool" and "idle", or a sync run in its log). */
   onLive: ((agentId: string) => void) | undefined;
 
   constructor(private readonly log: EventLogRepository) {
@@ -70,25 +77,24 @@ export class BgAgentRunner {
     this.actions = actions;
   }
 
-  /** Follows an agent until `detach`: its snapshot now, its events as they are committed, all into the log. */
-  attach(agentId: string, stream: DurableEventStream): void {
+  /** Follows an agent until `detach`: its snapshot now, its views as they are committed, all into the log. */
+  attach(agentId: string, stream: AgentViewStream): void {
     if (this.followed.has(agentId)) return;
     const mapper = new AgentEventMapper(agentId);
     const entry: Followed = { agentId, mapper, live: new Subject(), stream };
     this.followed.set(agentId, entry);
     // A new attachment starts the log over: the snapshot is the whole transcript, and the old rows would replay before it.
     this.log.clear(agentId);
-    this.store(entry, mapper.snapshot(stream.snapshot));
-    stream.start(async (events) => {
+    this.store(entry, mapper.snapshot(stream.view, stream.timing));
+    stream.start(async (view, ops, timing) => {
       const before = { ...mapper.live };
-      this.store(
-        entry,
-        events.flatMap((event) => mapper.map(event)),
-      );
+      const syncs = this.liveSyncsOf(agentId);
+      this.store(entry, mapper.map(view, ops, timing));
       if (
         before.activity !== mapper.live.activity ||
         before.tool !== mapper.live.tool ||
-        before.contextTokens !== mapper.live.contextTokens
+        before.contextTokens !== mapper.live.contextTokens ||
+        syncs !== this.liveSyncsOf(agentId)
       )
         this.onLive?.(agentId);
     });
@@ -112,10 +118,16 @@ export class BgAgentRunner {
   async forget(agentId: string): Promise<void> {
     await this.detach(agentId);
     this.log.clear(agentId);
+    this.syncs.delete(agentId);
   }
 
   liveOf(agentId: string): AgentLive | undefined {
     return this.followed.get(agentId)?.mapper.live;
+  }
+
+  /** How many sync runs (`AGENT_LIVE_SYNC_RUN`) this process wrote to the agent's log. */
+  liveSyncsOf(agentId: string): number {
+    return this.syncs.get(agentId) ?? 0;
   }
 
   /** Whether the id is a followed agent's (a thread id never is: threads are UUIDs, agents numbers). */
@@ -195,7 +207,11 @@ export class BgAgentRunner {
 
   private store(entry: Followed, events: BaseEvent[]): void {
     for (const event of events) {
-      if (event.type === EventType.RUN_STARTED) entry.run = (event as unknown as { runId: string }).runId;
+      if (event.type === EventType.RUN_STARTED) {
+        entry.run = (event as unknown as { runId: string }).runId;
+        if (entry.run.startsWith(AGENT_LIVE_SYNC_RUN))
+          this.syncs.set(entry.agentId, this.liveSyncsOf(entry.agentId) + 1);
+      }
       const seq = this.log.append(entry.agentId, entry.run ?? 'bg', event);
       entry.live.next({ seq, event: this.withCursor(entry.agentId, seq, event) });
       if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) {

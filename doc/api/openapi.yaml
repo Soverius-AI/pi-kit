@@ -10331,6 +10331,10 @@ components:
           type:
             - string
             - 'null'
+        liveSyncs:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
       required:
         - id
         - threadId
@@ -10353,6 +10357,7 @@ components:
         - answered
         - turns
         - worktree
+        - liveSyncs
       additionalProperties: false
     BrowserInspection:
       type: object

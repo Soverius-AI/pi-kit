@@ -5,6 +5,7 @@ import type { PiActivityContent } from '@pi-kit/protocol';
 import { type PkActivityState } from '@pi-kit/design-system';
 import { formatDuration } from '@pi-kit/ui';
 import { ChatStore } from '@pi-kit/chat/data';
+import { AgentLiveState } from '@pi-kit/chat/util';
 import { PkToolCall } from './tool-call-scope';
 import { ClockStore } from '@pi-kit/data-access';
 
@@ -29,12 +30,22 @@ export abstract class ToolRowBase {
     () => this.session.activities().get(`tool:${this.callId()}`)?.content as PiActivityContent<'pi.tool'> | undefined,
   );
   protected readonly result = computed(() => this.session.results().get(this.callId()));
+  protected readonly live = computed(() => this.session.agentLive().tools.get(this.callId()));
+  private readonly timing = computed(() => this.session.agentLive().timing.get(this.callId()));
+  protected readonly liveOutput = computed(() => {
+    const live = this.live();
+    return live?.output && !this.result()
+      ? { text: live.output, note: AgentLiveState.note(this.i18n.t, live) }
+      : undefined;
+  });
 
   protected readonly state = computed<PkActivityState>(() => {
     const info = this.info();
     if (info) return info.status;
     const result = this.result();
     if (result) return result.error ? 'error' : 'done';
+    const live = this.live();
+    if (live) return AgentLiveState.running(live) ? 'running' : 'done';
     // No result and nothing running: the call was cut off.
     return this.session.running() ? 'running' : 'error';
   });
@@ -42,7 +53,7 @@ export abstract class ToolRowBase {
 
   protected readonly elapsedMs = computed(() => {
     const info = this.info();
-    if (!info) return undefined;
+    if (!info) return AgentLiveState.elapsed(this.timing(), this.running(), this.clock.now());
     if (info.durationMs !== undefined) return info.durationMs;
     return info.status === 'running' ? Math.max(0, this.clock.now() - info.startedAt) : undefined;
   });
@@ -51,8 +62,9 @@ export abstract class ToolRowBase {
   protected readonly sub = computed(() => {
     if (this.state() === 'running') {
       const elapsed = this.elapsedMs();
+      const live = this.live();
       return [
-        this.info()?.progress ?? this.i18n.t('chat.toolRowBase.running'),
+        this.info()?.progress ?? (live && AgentLiveState.progress(live)) ?? this.i18n.t('chat.toolRowBase.running'),
         elapsed !== undefined ? formatDuration(elapsed) : undefined,
       ]
         .filter(Boolean)
@@ -65,7 +77,8 @@ export abstract class ToolRowBase {
 
   /** "1.2s" for a finished call that took a while. */
   protected readonly took = computed(() => {
-    const ms = this.info()?.durationMs;
+    const info = this.info();
+    const ms = info ? info.durationMs : this.running() ? undefined : this.elapsedMs();
     return ms !== undefined && ms >= 1000 ? formatDuration(ms) : undefined;
   });
 

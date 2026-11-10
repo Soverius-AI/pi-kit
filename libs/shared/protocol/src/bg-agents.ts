@@ -89,6 +89,8 @@ export const BgAgentSchema = z
     turns: z.number().int(),
     /** The folder of an `isolated` agent's own worktree; null when it works in the thread's folder. */
     worktree: z.string().nullable(),
+    /** Counts the live-state changes made while the agent was idle (`AGENT_LIVE_SYNC_RUN` runs): a transcript joins again when it moves. */
+    liveSyncs: z.number().int(),
   })
   .meta({ id: 'BgAgent' });
 export type BgAgent = z.infer<typeof BgAgentSchema>;

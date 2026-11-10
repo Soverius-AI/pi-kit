@@ -30,15 +30,16 @@ overrides:
   zod: 4.6.7
 minimumReleaseAgeExclude:
   - electron@44.9.0
-  - '@earendil-works/chord@1.4.0'
-  - '@earendil-works/pi-agent-core@1.4.0'
-  - '@earendil-works/pi-ai@1.4.0'
-  - '@earendil-works/pi-codemode@1.4.0'
-  - '@earendil-works/pi-coding-agent@1.4.0'
-  - '@earendil-works/pi-durable@1.4.0'
-  - '@earendil-works/pi-mcp@1.4.0'
-  - '@earendil-works/pi-telemetry@1.4.0'
-  - '@earendil-works/pi-tui@1.4.0'
+  - '@earendil-works/chord@1.5.2'
+  - '@earendil-works/pi-agent-core@1.5.2'
+  - '@earendil-works/pi-ai@1.5.2'
+  - '@earendil-works/pi-codemode@1.5.2'
+  - '@earendil-works/pi-coding-agent@1.5.2'
+  - '@earendil-works/pi-durable@1.5.2'
+  - '@earendil-works/pi-mcp@1.5.2'
+  - '@earendil-works/pi-schema@1.5.2'
+  - '@earendil-works/pi-telemetry@1.5.2'
+  - '@earendil-works/pi-tui@1.5.2'
 patchedDependencies:
   '@a2ui/web_core@0.10.4': patches/@a2ui__web_core@0.10.4.patch
   '@ag-ui/client@1.0.2': patches/@ag-ui__client@1.0.2.patch

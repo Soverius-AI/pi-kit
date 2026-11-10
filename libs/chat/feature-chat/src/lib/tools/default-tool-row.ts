@@ -1,12 +1,12 @@
 import { TranslocoPipe } from '@pi-kit/i18n';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { PkActivityRow, PkLightboxService } from '@pi-kit/design-system';
+import { PkActivityRow, PkLightboxService, PkToolOutput } from '@pi-kit/design-system';
 import { ToolRowBase } from './tool-row-base';
 
 /** Every other tool (MCP tools, extension tools): the name, a one-line summary of the arguments, the details when expanded. */
 @Component({
   selector: 'pk-default-tool-row',
-  imports: [PkActivityRow, TranslocoPipe],
+  imports: [PkActivityRow, PkToolOutput, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'contents' },
   template: `
@@ -26,6 +26,9 @@ import { ToolRowBase } from './tool-row-base';
             <pre>{{ r.content }}</pre>
           }
         </div>
+        @if (liveOutput(); as out) {
+          <pk-tool-output [text]="out.text" [note]="out.note" [live]="running()" />
+        }
       }
     </pk-activity-row>
     <!-- A screenshot the tool returned (the browser's, computer use): a thumbnail that opens full size in the lightbox. -->

@@ -11,7 +11,7 @@ import {
   ToolTask,
 } from '@earendil-works/pi-durable';
 import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@earendil-works/pi-durable/tools';
-import { Type } from '@earendil-works/pi-ai';
+import { arr, lit, obj, opt, str, union } from '@earendil-works/pi-schema';
 import type { ProtectionBinding } from '../db/thread-protection.repository';
 import type { AgentPermission } from './bg-agents.repository';
 import { type CleanupIntent, cleanupIntent, type Holds } from './process-job';
@@ -141,7 +141,7 @@ export function createAgentExtension(host: AgentHost): Extension {
         name: 'report',
         description:
           'Report to the main agent of your thread, once, when your task is done (or cannot be done): what you did, what you found, what is left. Then stop.',
-        parameters: Type.Object({ text: Type.String({ description: 'The report, one short paragraph.' }) }),
+        parameters: obj({ text: str({ description: 'The report, one short paragraph.' }) }, { open: true }),
         replay: 'safe',
         executionMode: 'sequential',
         execute: async (args, api, context) => {
@@ -158,13 +158,14 @@ export function createAgentExtension(host: AgentHost): Extension {
         name: 'ask',
         description:
           'Ask a question and wait for the answer. kind "main": the main agent of your thread answers (facts about the task, scope, conventions). kind "user": only the user can answer (preferences, credentials, anything destructive or irreversible). Give choices when the answer is one of a few. Waiting costs nothing; ask one question at a time.',
-        parameters: Type.Object({
-          question: Type.String({ description: 'The question, one or two sentences with what you need to decide.' }),
-          kind: Type.Union([Type.Literal('main'), Type.Literal('user')]),
-          choices: Type.Optional(
-            Type.Array(Type.String(), { description: 'The possible answers, when there are a few.' }),
-          ),
-        }),
+        parameters: obj(
+          {
+            question: str({ description: 'The question, one or two sentences with what you need to decide.' }),
+            kind: union([lit('main'), lit('user')]),
+            choices: opt(arr(str(), { description: 'The possible answers, when there are a few.' })),
+          },
+          { open: true },
+        ),
         replay: 'safe',
         executionMode: 'sequential',
         execute: async (args, api, context) => {
@@ -184,7 +185,9 @@ export function createAgentExtension(host: AgentHost): Extension {
             return q && !isOpen(q) ? q : undefined;
           };
           const done = await new Promise<QuestionRecord | undefined>((resolve) => {
-            watch.start(async (value) => void (settledOf(value) && resolve(settledOf(value))));
+            watch.start(
+              async (call) => void (call.kind === 'value' && settledOf(call.value) && resolve(settledOf(call.value))),
+            );
             context.abortSignal?.addEventListener('abort', () => resolve(undefined), { once: true });
             void host
               .asked(String(api.conversationId), id)
@@ -201,11 +204,14 @@ export function createAgentExtension(host: AgentHost): Extension {
         name: 'agent_send',
         description:
           'Send a message to another background agent of your thread (agent_list names them): a steer (now) or a follow-up (after its current task). It is shown to them as a message from you, not as instructions from the user.',
-        parameters: Type.Object({
-          agent: Type.String({ description: 'The agent id from agent_list.' }),
-          text: Type.String(),
-          mode: Type.Optional(Type.Union([Type.Literal('steer'), Type.Literal('followUp')])),
-        }),
+        parameters: obj(
+          {
+            agent: str({ description: 'The agent id from agent_list.' }),
+            text: str(),
+            mode: opt(union([lit('steer'), lit('followUp')])),
+          },
+          { open: true },
+        ),
         executionMode: 'sequential',
         execute: async (args, api) => {
           await host.sendFrom(
@@ -224,7 +230,7 @@ export function createAgentExtension(host: AgentHost): Extension {
       defineTool({
         name: 'agent_list',
         description: 'The other background agents of your thread, with their ids, roles and status.',
-        parameters: Type.Object({}),
+        parameters: obj({}, { open: true }),
         execute: async (_args, api) => ({
           output: [{ type: 'text', text: JSON.stringify(host.listFor(String(api.conversationId))) }],
           details: {},

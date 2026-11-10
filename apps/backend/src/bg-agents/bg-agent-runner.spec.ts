@@ -2,13 +2,15 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { EventType } from '@ag-ui/client';
-import type { AgentEvent, SnapshotEvent, WatchEnd } from '@earendil-works/pi-durable';
-import { REPLAY_CURSOR_METADATA } from '@pi-kit/protocol';
+import type { Op } from '@earendil-works/chord/delta';
+import type { EntryRecord, LiveState, TranscriptView, WatchEnd } from '@earendil-works/pi-durable';
+import { AGENT_LIVE_SYNC_RUN, REPLAY_CURSOR_HEADER, REPLAY_CURSOR_METADATA } from '@pi-kit/protocol';
 import { firstValueFrom, toArray } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { BaseEvent } from '@ag-ui/client';
 import { DatabaseService } from '../db/database.service';
 import { EventLogRepository } from '../db/event-log.repository';
-import type { DurableEventStream } from './agent-events';
+import type { AgentViewStream } from './agent-events';
 import { BgAgentRunner, type BgAgentActions } from './bg-agent-runner';
 
 let dir: string;
@@ -24,24 +26,24 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** A durable event stream a test feeds by hand. */
-function stream(snapshot: Partial<SnapshotEvent> = {}) {
-  let listener: Parameters<DurableEventStream['start']>[0] | undefined;
+/** A view of the whole transcript and `pi.live`, as `AgentViews` hands it on. */
+const view = (entries: EntryRecord[] = [], live: LiveState = {}, docs: Record<string, unknown> = {}): TranscriptView =>
+  ({
+    conversation: {} as never,
+    items: entries.map((entry) => ({ kind: 'entry', entry })),
+    docs: { ...docs, 'pi.live': live },
+  }) as TranscriptView;
+
+/** A durable view stream a test feeds by hand. */
+function stream(first = view()) {
+  let listener: Parameters<AgentViewStream['start']>[0] | undefined;
   return {
-    snapshot: {
-      type: 'snapshot',
-      entries: [],
-      tools: [],
-      nestedTools: [],
-      compactions: [],
-      inbox: [],
-      agent: {},
-      usage: { models: {}, tools: {} },
-      ...snapshot,
-    } as SnapshotEvent,
-    start: (fn: Parameters<DurableEventStream['start']>[0]): void => void (listener = fn),
-    stop: vi.fn(async (): Promise<WatchEnd> => ({ reason: 'closed' }) as unknown as WatchEnd),
-    emit: (events: AgentEvent[]) => listener?.(events, {} as never),
+    view: first,
+    timing: {},
+    start: (fn: Parameters<AgentViewStream['start']>[0]): void => void (listener = fn),
+    stop: vi.fn(async (): Promise<WatchEnd> => ({ kind: 'stopped' }) as const),
+    emit: (next: TranscriptView, ops: Op[] = [['s', ['docs', 'pi.live'], next.docs['pi.live'] ?? {}]]) =>
+      listener?.(next, ops, {}),
   };
 }
 
@@ -53,26 +55,22 @@ describe('BgAgentRunner (the AG-UI agent pi-bg)', () => {
     expect(runner.owns('t1')).toBe(false);
     // A connection stays open while the agent is followed: what is stored comes first, the live feed after it.
     const live = firstValueFrom(runner.connect({ threadId: '7', agentId: 'pi-bg' } as never).pipe(toArray()));
-    await s.emit([
-      { type: 'run_start', inputs: [] },
-      {
-        type: 'message_end',
-        entry: {
-          id: 1,
-          conversationId: 7,
-          kind: 'pi.user',
-          model: [{ role: 'user', content: 'go', timestamp: 1 }],
-        } as never,
-      },
-    ]);
+    const input = {
+      id: 1,
+      conversationId: 7,
+      kind: 'pi.user',
+      model: [{ role: 'user', content: 'go', timestamp: 1 }],
+    } as never;
+    await s.emit(view([input], { run: { taskId: 1, inputs: [1], turns: 0 } } as unknown as LiveState));
     expect(runner.isRunning('7')).toBe(true);
-    await s.emit([{ type: 'run_end', inputs: [] }]);
+    await s.emit(view([input]));
     await runner.detach('7');
     const events = await live;
-    expect(events.slice(0, 4).map((e) => e.type)).toEqual([
+    expect(events.slice(0, 5).map((e) => e.type)).toEqual([
       EventType.CUSTOM,
       EventType.RUN_STARTED,
       EventType.MESSAGES_SNAPSHOT,
+      EventType.ACTIVITY_SNAPSHOT,
       EventType.RUN_FINISHED,
     ]);
     expect(events.filter((e) => e.type === EventType.TEXT_MESSAGE_START)).toHaveLength(1);
@@ -89,6 +87,61 @@ describe('BgAgentRunner (the AG-UI agent pi-bg)', () => {
     // Detached: the log still replays, nothing follows.
     const again = await firstValueFrom(runner.connect({ threadId: '7', agentId: 'pi-bg' } as never).pipe(toArray()));
     expect(again.filter((e) => e.type === EventType.RUN_STARTED)).toHaveLength(2);
+  });
+
+  it('keeps a live state change made while the agent is idle in its log, in a run of its own, counts it and tells, so a client joins and a replay ends in it', async () => {
+    const s = stream();
+    const told = vi.fn();
+    runner.onLive = told;
+    runner.attach('7', s);
+    expect(runner.liveSyncsOf('7')).toBe(0);
+    // A client that saw the attachment and left: the agent is idle, so it is not connected when the change comes.
+    const seen: BaseEvent[] = [];
+    runner
+      .connect({ threadId: '7', agentId: 'pi-bg' } as never)
+      .subscribe((event) => seen.push(event))
+      .unsubscribe();
+    const cursor = (seen.at(-1)?.metadata as Record<string, string>)[REPLAY_CURSOR_METADATA];
+    const inbox = { items: [{ id: 5, mode: 'followUp' }] };
+    await s.emit(view([], {}, { 'pi.inbox': inbox }), [['s', ['docs', 'pi.inbox'], inbox]]);
+    expect(runner.liveSyncsOf('7')).toBe(1);
+    expect(told).toHaveBeenCalledWith('7');
+    // Told, it joins again from its cursor and gets the sync run from the log.
+    const joined: BaseEvent[] = [];
+    runner
+      .connect({ threadId: '7', agentId: 'pi-bg', headers: { [REPLAY_CURSOR_HEADER]: cursor } } as never)
+      .subscribe((event) => joined.push(event))
+      .unsubscribe();
+    expect(joined.map((event) => event.type)).toEqual([
+      EventType.CUSTOM,
+      EventType.RUN_STARTED,
+      EventType.ACTIVITY_DELTA,
+      EventType.RUN_FINISHED,
+    ]);
+    const log = new EventLogRepository(database);
+    const stored = log.read('7').map(({ event }) => event as { type: EventType; runId?: string; patch?: unknown });
+    expect(stored.map((event) => event.type)).toEqual([
+      EventType.RUN_STARTED,
+      EventType.MESSAGES_SNAPSHOT,
+      EventType.ACTIVITY_SNAPSHOT,
+      EventType.RUN_FINISHED,
+      EventType.RUN_STARTED,
+      EventType.ACTIVITY_DELTA,
+      EventType.RUN_FINISHED,
+    ]);
+    expect(stored[4].runId?.startsWith(AGENT_LIVE_SYNC_RUN)).toBe(true);
+    expect(stored[5].patch).toEqual([{ op: 'add', path: '/docs/pi.inbox', value: inbox }]);
+    // A later run's end supersedes it: its activity snapshot, which a compaction keeps, holds the change.
+    const run = { run: { taskId: 1, inputs: [1], turns: 0 } } as unknown as LiveState;
+    await s.emit(view([], run, { 'pi.inbox': inbox }), [['s', ['docs', 'pi.live', 'run'], run.run as never]]);
+    await s.emit(view([], {}, { 'pi.inbox': inbox }), [['d', ['docs', 'pi.live', 'run']]]);
+    const replay = log.read('7').map(({ event }) => event as { type: EventType; content?: unknown });
+    expect(replay.at(-2)).toMatchObject({
+      type: EventType.ACTIVITY_SNAPSHOT,
+      content: { docs: { 'pi.inbox': inbox } },
+    });
+    expect(replay.filter((event) => event.type === EventType.ACTIVITY_DELTA)).toEqual([]);
+    await runner.detach('7');
   });
 
   it('a run of pi-bg is a message to the agent, a stop ends it', async () => {

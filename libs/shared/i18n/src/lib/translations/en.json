@@ -1238,6 +1238,34 @@
         "setup-required": "Windows sandbox needs setup",
         "recovery-required": "Sandbox recovery required"
       }
+    },
+    "agentLive": {
+      "pending": "Waiting",
+      "running": "Running",
+      "failed": "Failed",
+      "droppedLines": "… {{value1}} earlier lines not shown",
+      "droppedBytes": "… {{value1}} earlier bytes not shown",
+      "inTime": "in {{value1}}",
+      "now": "now",
+      "retry": "The request failed; retrying {{value1}}",
+      "deferred": "Waiting for the provider; checking again {{value1}}",
+      "compacting": "Compacting context…",
+      "compactionRetry": "Compaction failed; retrying {{value1}}",
+      "compactionFailed": "Compaction failed",
+      "working": "The agent is working",
+      "failure": {
+        "model_error": "The model returned an error",
+        "no_model": "No model is available for this agent",
+        "aborted": "The run was stopped",
+        "reset": "The run was reset",
+        "faulted": "The agent ran into an internal error",
+        "orphaned": "The run lost its process and was ended",
+        "interrupted": "The run was interrupted",
+        "restart_limit": "The agent stopped after restarting too often",
+        "nothing_to_answer": "There was nothing to answer",
+        "turn_limit": "The agent reached its turn limit",
+        "unknown": "The run ended without an answer ({{value1}})"
+      }
     }
   },
   "threads": {

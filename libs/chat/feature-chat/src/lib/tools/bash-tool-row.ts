@@ -1,7 +1,7 @@
 import { TranslocoPipe } from '@pi-kit/i18n';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { ApiClient } from '@pi-kit/api';
-import { PkActivityRow, PkAnsiText } from '@pi-kit/design-system';
+import { PkActivityRow, PkAnsiText, PkToolOutput } from '@pi-kit/design-system';
 import type { PiActivityContent } from '@pi-kit/protocol';
 
 import { ToolRowBase, firstLine, tail } from './tool-row-base';
@@ -13,7 +13,7 @@ import { ToolRowBase, firstLine, tail } from './tool-row-base';
  */
 @Component({
   selector: 'pk-bash-tool-row',
-  imports: [PkActivityRow, PkAnsiText, TranslocoPipe],
+  imports: [PkActivityRow, PkAnsiText, PkToolOutput, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'contents' },
   template: `
@@ -32,7 +32,9 @@ import { ToolRowBase, firstLine, tail } from './tool-row-base';
           {{ 'chat.bashToolRow.stop' | transloco }}
         </button>
       }
-      @if (shown()) {
+      @if (shown() && agentOutput(); as out) {
+        <pk-tool-output [text]="out.text" [note]="out.note" [live]="running()" />
+      } @else if (shown()) {
         <div class="pk-out term">
           @if (output().omitted > 0) {
             <div class="meta">
@@ -50,6 +52,7 @@ export class BashToolRow extends ToolRowBase {
   protected readonly bash = computed(
     () => this.session.activities().get(`bash:${this.callId()}`)?.content as PiActivityContent<'pi.bash'> | undefined,
   );
+  protected readonly agentOutput = computed(() => (this.bash() ? undefined : this.liveOutput()));
   protected readonly command = computed(() => firstLine(this.bash()?.command ?? this.str('command')) ?? '');
   protected readonly output = computed(() => tail(this.bash()?.output ?? this.result()?.content ?? ''));
   protected readonly shown = computed(() => this.toggled() ?? (this.running() || this.state() === 'error'));

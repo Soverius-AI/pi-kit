@@ -166,6 +166,7 @@ export type BgAgent = {
     answered: AgentAnswer | null;
     turns: number;
     worktree: string | null;
+    liveSyncs: number;
 };
 
 export type BrowserInspection = {

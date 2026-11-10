@@ -147,6 +147,7 @@ export default [
       'apps/backend/src/bg-agents/durable-storage.ts',
       'apps/backend/src/bg-agents/agent-extension.ts',
       'apps/backend/src/bg-agents/agent-events.ts',
+      'apps/backend/src/bg-agents/docs-patch.ts',
       'apps/backend/src/bg-agents/*.spec.ts',
       'packages/pi-sandbox/lib/durable.ts',
       'packages/pi-sandbox/lib/durable-worker.ts',

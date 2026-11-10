@@ -3,19 +3,21 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type BaseEvent, verifyEvents } from '@ag-ui/client';
+import { type BaseEvent, EventType, verifyEvents } from '@ag-ui/client';
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
+import { applyPatch, type Operation } from 'fast-json-patch';
 import { firstValueFrom, from, toArray } from 'rxjs';
 import { createModels } from '@earendil-works/pi-ai/models';
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai/providers/faux';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemorySecretStore } from '@pi-kit/secret-store';
-import { DB_KEY_ACCOUNT } from '@pi-kit/protocol';
+import { AGENT_LIVE_SYNC_RUN, DB_KEY_ACCOUNT } from '@pi-kit/protocol';
 import { isPlainDatabase } from '../db/encryption';
 import { DatabaseService } from '../db/database.service';
 import { EventLogRepository } from '../db/event-log.repository';
 import { BgAgentRunner } from './bg-agent-runner';
 import { type BgAgentRow, BgAgentsRepository } from './bg-agents.repository';
+import { DocsPatch } from './docs-patch';
 import { BgAgentsService } from './bg-agents.service';
 import { LOCK_FILE } from './durable-storage';
 import type { ProtectionBinding } from '../db/thread-protection.repository';
@@ -44,6 +46,24 @@ const until = async (check: () => boolean, label: string, timeoutMs = 15_000): P
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 };
+/** The `pi.agent_live` content a client holds after `events`, as they come over the wire: a snapshot replaces it, a delta patches it. */
+const activityAfter = (events: BaseEvent[]): { docs: Record<string, Record<string, unknown>> } | undefined =>
+  (
+    JSON.parse(JSON.stringify(events)) as {
+      type: EventType;
+      activityType?: string;
+      content?: unknown;
+      patch?: Operation[];
+    }[]
+  )
+    .filter((event) => event.activityType === 'pi.agent_live')
+    .reduce<{ docs: Record<string, Record<string, unknown>> } | undefined>(
+      (content, event) =>
+        event.type === EventType.ACTIVITY_SNAPSHOT
+          ? (event.content as { docs: Record<string, Record<string, unknown>> })
+          : applyPatch(content, event.patch ?? []).newDocument,
+      undefined,
+    );
 const delivered: { threadId: string; content: string; details: unknown }[] = [];
 let runner: BgAgentRunner;
 const make = (protection = ThreadProtectionTesting.bypass()): BgAgentsService => {
@@ -362,6 +382,34 @@ describe('BgAgentsService', () => {
       content: expect.stringMatching(/^Agent "broken" failed: /),
       details: { agentId: row.id, name: 'broken', ref: expect.stringMatching(/^end:/) },
     });
+    // Its transcript replays to the live state it ended in: why the run ended without an answer, nothing in flight.
+    const replayed = () =>
+      activityAfter(new EventLogRepository(database).read(row.id).map((stored) => stored.event))?.docs['pi.live'];
+    await until(() => replayed()?.['runFailure'] !== undefined, 'the failure in the replayed live state');
+    expect(replayed()).toMatchObject({ runFailure: { reason: 'model_error' } });
+    expect(replayed()?.['run']).toBeUndefined();
+    // A change while it is idle is a sync run in its log: counted on the agent, and the thread's list told, so a transcript joins.
+    const syncs = service.toAgent(service.get(row.id)!).liveSyncs;
+    expect(syncs).toEqual(expect.any(Number));
+    const told: string[] = [];
+    const quiet = service.onChange((threadId) => void told.push(threadId));
+    await (await service.conversationOf(row.id))!.configure({ maxTurns: 3 }, BACKGROUND_CONTEXT);
+    await until(() => service.toAgent(service.get(row.id)!).liveSyncs === syncs + 1, 'the sync run');
+    quiet();
+    expect(told).toContain('t1');
+    const logged = new EventLogRepository(database).read(row.id).map((stored) => stored.event);
+    const sync = logged
+      .map(
+        (event) =>
+          event.type === EventType.RUN_STARTED &&
+          String((event as { runId?: string }).runId).startsWith(AGENT_LIVE_SYNC_RUN),
+      )
+      .lastIndexOf(true);
+    expect(logged.slice(sync + 1).map((event) => event.type)).toEqual([
+      EventType.ACTIVITY_DELTA,
+      EventType.RUN_FINISHED,
+    ]);
+    expect(JSON.stringify(logged[sync + 1])).toContain('/docs/pi.agent/maxTurns');
     // A restart follows only unfinished agents: the failure is not said again.
     await service.close();
     await service.open(models);
@@ -530,6 +578,51 @@ describe('BgAgentsService', () => {
       'the live follower to get the answer',
     );
     following.unsubscribe();
+  });
+
+  it('carries what an agent does as its pi.agent_live activity: a snapshot after every messages snapshot, deltas that add up to its documents (without the streamed answer) and its tool timing, a replay that ends in them', async () => {
+    const { models, model } = faux([
+      fauxAssistantMessage([fauxToolCall('bash', { command: 'cat README.md' })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage('Read it.'),
+    ]);
+    await service.open(models);
+    const row = await service.spawn({ threadId: 't1', name: 'reader', role: 'docs', brief: 'Read.', model });
+    const live: BaseEvent[] = [];
+    const following = runner
+      .connect({ threadId: row.id, agentId: 'pi-bg' } as never)
+      .subscribe((event) => live.push(event));
+    await until(
+      () => service.get(row.id)?.status === 'done' && runner.liveOf(row.id) === undefined,
+      'the agent to finish',
+    );
+    following.unsubscribe();
+    const watch = await (await service.conversationOf(row.id))!.watch(BACKGROUND_CONTEXT);
+    const docs = JSON.parse(JSON.stringify(DocsPatch.strip(watch.value.docs))) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    await watch.stop();
+    expect(docs['pi.live']['run']).toBeUndefined();
+    const patches = live.flatMap((event) =>
+      event.type === EventType.ACTIVITY_DELTA ? (event as unknown as { patch: Operation[] }).patch : [],
+    );
+    expect(patches.length).toBeGreaterThan(0);
+    expect(patches.find((op) => op.path.startsWith('/timing/') && op.op !== 'remove')).toMatchObject({
+      value: { startedAt: expect.any(Number) },
+    });
+    const replay = new EventLogRepository(database).read(row.id).map((stored) => stored.event);
+    for (const events of [live, replay]) {
+      const activity = events.filter((event) => (event as { activityType?: string }).activityType === 'pi.agent_live');
+      expect(activity[0]).toMatchObject({ type: EventType.ACTIVITY_SNAPSHOT, messageId: `agent-live:${row.id}` });
+      const snapshots = events.flatMap((event, index) => (event.type === EventType.MESSAGES_SNAPSHOT ? [index] : []));
+      expect(snapshots.length).toBeGreaterThan(0);
+      for (const index of snapshots)
+        expect(events[index + 1]).toMatchObject({ type: EventType.ACTIVITY_SNAPSHOT, activityType: 'pi.agent_live' });
+      expect(activityAfter(events)).toEqual({ docs, timing: {} });
+      await firstValueFrom(
+        from(events.filter((event) => event.type !== EventType.CUSTOM)).pipe(verifyEvents(false), toArray()),
+      );
+    }
   });
 
   it('settles a main question the main agent answers within the very turn that delivers it (the delivery waits for the turn)', async () => {
