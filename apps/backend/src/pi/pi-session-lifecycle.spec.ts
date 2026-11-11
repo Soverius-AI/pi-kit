@@ -113,6 +113,29 @@ it('opens no session and starts no extension of a Sandboxed thread whose sandbox
   }
 }, 15000);
 
+it('stops the sandbox of a thread that never opened a session, so it can start in another folder', async () => {
+  const close = vi.fn(async () => undefined);
+  const create = vi.fn(async () => ({ state: 'active' as const, exec: vi.fn(), request: vi.fn(), close }));
+  vi.spyOn(SandboxPackage, 'load').mockResolvedValue({ Sandbox: { create } } as never);
+  const protection = new ThreadProtectionTesting().service();
+  const sessions = new PiSessionService(
+    new TrustService(),
+    new PiPluginService(),
+    { refreshCatalog: async () => undefined } as unknown as LiteLlmService,
+    protection,
+  );
+  const id = randomUUID();
+  try {
+    await protection.set(id, join(tmpdir(), 'draft'), { mode: 'sandboxed' }, () => sessions.dispose(id));
+    sessions.dispose(id);
+    await expect(protection.prepare(id, join(tmpdir(), 'worktree'))).resolves.toBeDefined();
+    expect(close).toHaveBeenCalledOnce();
+  } finally {
+    vi.restoreAllMocks();
+    sessions.onModuleDestroy();
+  }
+});
+
 describe('open session ownership', () => {
   let base: string;
   let sessions: PiSessionService;

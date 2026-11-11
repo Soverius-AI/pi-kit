@@ -1,12 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import {
-  provideMockApi,
-  threadsGetProtection,
-  threadsSetProtection,
-  threadsSetupWindowsProtection,
-  WORKBENCH,
-} from '@pi-kit/api';
+import { provideMockApi, threadsGetProtection, threadsSetProtection, WORKBENCH } from '@pi-kit/api';
 import { ToastStore } from '@pi-kit/data-access';
 import type { ThreadProtection } from '@pi-kit/protocol';
 import { ChatStore } from './chat.store';
@@ -41,7 +35,6 @@ describe('ThreadProtectionStore', () => {
   const waitingForAnswer = signal(false);
   const get = vi.fn<(id: string) => Promise<ThreadProtection>>();
   const put = vi.fn<(id: string, body: unknown) => Promise<ThreadProtection>>();
-  const setup = vi.fn<(id: string) => Promise<ThreadProtection>>();
   const toasts = { show: vi.fn() };
   const sandboxed = Protection.of({ mode: 'sandboxed', state: 'active', generation: 1 });
 
@@ -51,7 +44,6 @@ describe('ThreadProtectionStore', () => {
     waitingForAnswer.set(false);
     get.mockReset().mockResolvedValue(Protection.of());
     put.mockReset().mockResolvedValue(sandboxed);
-    setup.mockReset();
     toasts.show.mockReset();
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
@@ -61,7 +53,6 @@ describe('ThreadProtectionStore', () => {
         ...provideMockApi([
           [threadsGetProtection, get, (o) => [o.path?.['id']]],
           [threadsSetProtection, put, (o) => [o.path?.['id'], o.body]],
-          [threadsSetupWindowsProtection, setup, (o) => [o.path?.['id']]],
         ]),
       ],
     });
@@ -141,35 +132,24 @@ describe('ThreadProtectionStore', () => {
     expect(store.pending()).toBe(false);
   });
 
-  it('runs the Windows setup as a pending write, applies its result and toasts its failure', async () => {
-    get.mockResolvedValueOnce(
-      Protection.of({ mode: 'sandboxed', state: 'setup-required', generation: 1, platform: 'win32' }),
-    );
-    const store = await ready();
-    const settingUp = new Deferred<ThreadProtection>();
-    setup.mockReturnValueOnce(settingUp.promise);
-    const done = store.setupWindows('a');
-    expect(setup).toHaveBeenCalledWith('a');
-    expect(store.pendingStatus()).toBe('settingUp');
-    expect(store.canChange()).toBe(false);
-    settingUp.resolve(Protection.of({ mode: 'sandboxed', state: 'experimental', generation: 1, platform: 'win32' }));
-    await done;
-    expect(store.protection()?.state).toBe('experimental');
-    expect(store.pending()).toBe(false);
-
-    setup.mockRejectedValueOnce(new Error('The administrator prompt was declined.'));
-    await store.setupWindows('a');
-    expect(toasts.show).toHaveBeenCalledWith(
-      'error',
-      'The Windows sandbox was not set up: The administrator prompt was declined.',
-    );
-    expect(store.protection()?.state).toBe('experimental');
-    await store.setupWindows('other');
-    expect(setup).toHaveBeenCalledTimes(2);
-    expect(toasts.show).toHaveBeenLastCalledWith(
-      'warning',
-      expect.stringContaining('the thread changed or became busy'),
-    );
+  it('runs the Linux setup in the desktop app, then starts the sandbox again, and toasts a failed setup', async () => {
+    const setUpLinuxSandbox = vi.fn(async () => undefined);
+    window.piKit = { setUpLinuxSandbox } as never;
+    try {
+      get.mockResolvedValueOnce(Protection.of({ mode: 'sandboxed', state: 'setup-required', platform: 'linux' }));
+      const store = await ready();
+      expect(store.canSetUpLinux).toBe(true);
+      await store.setUpLinux('a');
+      expect(setUpLinuxSandbox).toHaveBeenCalledOnce();
+      expect(put).toHaveBeenCalledWith('a', { mode: 'sandboxed' });
+      expect(store.protection()?.state).toBe('active');
+      setUpLinuxSandbox.mockRejectedValueOnce(new Error('The setup was cancelled.'));
+      await store.setUpLinux('a');
+      expect(put).toHaveBeenCalledOnce();
+      expect(toasts.show).toHaveBeenCalledWith('error', 'The Linux sandbox was not set up: The setup was cancelled.');
+    } finally {
+      delete window.piKit;
+    }
   });
 
   it('surfaces a change dropped because the thread moved or became busy', async () => {

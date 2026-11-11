@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -84,7 +85,6 @@ test('Electron Node mode is a controlled literal, not forwarded host environment
 
 const helpers = {
   seccomp: '/helpers/apply-seccomp',
-  srtWin: 'C:\\helpers\\srt-win.exe',
   javaAgent: '/helpers/agent.jar',
 };
 
@@ -108,9 +108,92 @@ test('compiled policy: workspace and temp writes only, empty network allowlist, 
   for (const p of ['/trusted/state', '/workspace/node_modules', '/workspace/.env'])
     assert.ok(writeDenied.includes(p), p);
   assert.equal(policy.seccomp?.applyPath, helpers.seccomp);
-  assert.equal(policy.windows?.srtWin?.path, helpers.srtWin);
   assert.equal(policy.javaAgentJarPath, helpers.javaAgent);
   assert.equal(SandboxPolicy.compile({ cwd: '/workspace' }, '/private/scope-temp', {}).seccomp, undefined);
+});
+
+test('on Windows the profile is denied except the way to the workspace, under MXC', () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor;
+  const home = mkdtempSync(path.join(os.tmpdir(), 'pi-profile-'));
+  const previousHome = process.env.HOME;
+  for (const dir of ['source/repos/project', 'source/repos/other', 'Documents', 'temp/scope'])
+    mkdirSync(path.join(home, dir), { recursive: true });
+  writeFileSync(path.join(home, 'secret.txt'), 'x');
+  Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+  process.env.HOME = home;
+  try {
+    const cwd = path.join(home, 'source', 'repos', 'project');
+    const policy = SandboxPolicy.compile({ cwd }, path.join(home, 'temp', 'scope'), {});
+    assert.deepEqual(
+      [...(policy.filesystem.denyRead ?? [])].sort(),
+      ['Documents', 'secret.txt', 'source/repos/other'].map((p) => path.join(home, p)).sort(),
+    );
+    assert.deepEqual(
+      SandboxPolicy.compile({ cwd: '/elsewhere/project' }, path.join(home, 'temp', 'scope'), {}).filesystem.denyRead,
+      [home],
+    );
+    const readable = (policy.filesystem.allowRead ?? []).map((entry) =>
+      typeof entry === 'object' ? entry.path : entry,
+    );
+    for (const p of [cwd, path.dirname(process.execPath)]) assert.ok(readable.includes(p), p);
+    const writeDenied = policy.filesystem.denyWrite.map((entry) => (typeof entry === 'object' ? entry.path : entry));
+    assert.ok(writeDenied.includes(path.join(cwd, 'node_modules')));
+    assert.ok(!writeDenied.includes(path.dirname(process.execPath)), 'the runtime stays readable');
+    assert.equal(policy.windows?.backend, 'mxc');
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+    process.env.HOME = previousHome;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a workspace inside a credential or protected folder (a scratch project) stays usable; its siblings stay denied', () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'pi-config-'));
+  const previousHome = process.env.HOME;
+  for (const dir of ['.config/pi-kit/scratch/try-1', '.config/pi-kit/scratch/try-2', '.config/gh', '.ssh'])
+    mkdirSync(path.join(home, dir), { recursive: true });
+  writeFileSync(path.join(home, '.config', 'pi-kit', 'auth.json'), 'x');
+  process.env.HOME = home;
+  try {
+    const cwd = path.join(home, '.config', 'pi-kit', 'scratch', 'try-1');
+    const policy = SandboxPolicy.compile(
+      { cwd, protectedPaths: [path.join(home, '.config', 'pi-kit')] },
+      '/private/scope-temp',
+      {},
+    );
+    const denied = (policy.credentials?.files ?? []).map((f) => f.path);
+    const writeDenied = policy.filesystem.denyWrite.map((entry) => (typeof entry === 'object' ? entry.path : entry));
+    for (const p of ['.config/gh', '.config/pi-kit/auth.json', '.config/pi-kit/scratch/try-2', '.ssh'])
+      assert.ok(denied.includes(path.join(home, p)), p);
+    for (const p of ['.config/pi-kit/auth.json', '.config/pi-kit/scratch/try-2'])
+      assert.ok(writeDenied.includes(path.join(home, p)), p);
+    for (const p of ['.config', '.config/pi-kit', '.config/pi-kit/scratch', '.config/pi-kit/scratch/try-1']) {
+      assert.ok(!denied.includes(path.join(home, p)), p);
+      assert.ok(!writeDenied.includes(path.join(home, p)), p);
+    }
+  } finally {
+    process.env.HOME = previousHome;
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a macOS app bundle is readable as a whole, so its executable finds its frameworks', () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform') as PropertyDescriptor;
+  const execPath = process.execPath;
+  Object.defineProperty(process, 'platform', { ...platform, value: 'darwin' });
+  process.execPath = '/Applications/pi-kit.app/Contents/MacOS/pi-kit';
+  try {
+    const policy = SandboxPolicy.compile({ cwd: '/workspace' }, '/private/scope-temp', {});
+    const readable = (policy.filesystem.allowRead ?? []).map((entry) =>
+      typeof entry === 'object' ? entry.path : entry,
+    );
+    assert.ok(readable.includes('/Applications/pi-kit.app/Contents'));
+    const writeDenied = policy.filesystem.denyWrite.map((entry) => (typeof entry === 'object' ? entry.path : entry));
+    assert.ok(writeDenied.includes('/Applications/pi-kit.app/Contents'));
+  } finally {
+    process.execPath = execPath;
+    Object.defineProperty(process, 'platform', platform);
+  }
 });
 
 test('a runtime inside a protected path fails fast instead of starting an unreadable worker', () => {

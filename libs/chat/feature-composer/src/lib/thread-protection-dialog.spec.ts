@@ -72,23 +72,6 @@ describe('ThreadProtectionDialog', () => {
     expect(apply).toHaveBeenCalledOnce();
   });
 
-  it('gates the Windows setup on its machine-wide consent', async () => {
-    const { fixture, page } = await open({
-      title: 'setupTitle',
-      confirmLabel: 'setupConfirm',
-      warnings: ['setupWarning'],
-      consents: ['setupConsent'],
-    });
-    expect(page.root.textContent).toContain('Set up the Windows sandbox?');
-    expect(page.root.textContent).toContain('srt-sandbox');
-    expect(page.confirm.textContent?.trim()).toBe('Set up');
-    expect(page.confirm.disabled).toBe(true);
-    page.check('setupConsent');
-    await fixture.whenStable();
-    page.confirm.click();
-    expect(apply).toHaveBeenCalledOnce();
-  });
-
   it('keeps Tab inside the dialog and closes on Escape', async () => {
     const { page } = await open({ ...change, warnings: ['bypassWarning'], consents: ['recoveryConsent'] });
     const close = vi.spyOn(TestBed.inject(DialogStore), 'close');

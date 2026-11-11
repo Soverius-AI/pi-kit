@@ -63,7 +63,13 @@ export interface PkMenuGroup {
             <code>{{ item.name }}</code>
             <span class="desc">{{ item.description }}</span>
             @if (item.badge) {
-              <span class="badge badge-xs" [class]="item.badgeClass ?? 'badge-ghost'">{{ item.badge }}</span>
+              <span
+                class="badge badge-xs max-w-40"
+                [class]="item.badgeClass ?? 'badge-ghost'"
+                [attr.title]="item.badge"
+              >
+                <span class="truncate">{{ item.badge }}</span>
+              </span>
             }
           </div>
         }

@@ -42,8 +42,6 @@ try {
   scope temp directory was retired. It rejects with `TEARDOWN_UNCONFIRMED` (or the reported error) otherwise.
 - If `Sandbox.create` fails, the error has `cleanupConfirmed: true` only when teardown was acknowledged (or nothing
   was started).
-- `Sandbox.setupWindows()` runs SRT's machine-wide
-  Windows install (`skipProfileGrant: true`, no loopback). It is a separate, explicit step.
 
 ### Requests
 
@@ -129,16 +127,18 @@ This is a pi-durable `ExecutionEnv` whose calls are RPCs to a `NodeExecutionEnv`
 - There are no CPU, memory, disk or process quotas, and no exactly-once mutations.
 - Hard links, rename races and files created after startup are not systematically tested.
 - Only macOS arm64 (Node 24) has been exercised.
-- Windows is experimental: network and cross-workspace read containment are not guaranteed. Token impersonation,
-  SMB, WSL and system DNS bypass filtering. Account, ACL and WFP setup and teardown are untested. Creation refuses to
-  start without `experimentalWindowsAccepted`, or when a broad profile read grant already exists.
+- Windows uses SRT's experimental MXC backend: the worker runs in an MXC BaseContainer started by
+  `SandboxManager.spawnSandboxed()`, with no machine setup. The profile is read-denied entry by entry except the folders
+  leading to the workspace and the runtime. Network and read containment outside the profile are not guaranteed.
+  Creation refuses to start without `experimentalWindowsAccepted`.
 
 ## Bundle
 
 `nx build pi-sandbox` bundles each entry (`core`, `pi`, `durable`, `supervisor`, `worker`, `durable-worker`) with
 esbuild, SRT and the pi-durable and chord code included. SRT's helper binaries for every target
-(`apply-seccomp` for Linux x64/arm64, `srt-win.exe` for Windows x64/arm64, the Java proxy agent) are emitted by
-esbuild under `dist/vendor/` and passed to SRT by path.
+(`apply-seccomp` for Linux x64/arm64, the Java proxy agent) are emitted by esbuild under `dist/vendor/` and passed to
+SRT by path. Windows needs none: SRT loads `@microsoft/mxc-sdk` at run time, which release staging installs into the
+backend's `node_modules` with its container helpers (`scripts/natives.mjs`).
 
 That default build serves every platform (development and tests). A release builds one bundle per target with
 `PI_SANDBOX_TARGET=<platform>-<arch>` (for example `linux-x64`): `process.platform` and `process.arch` become

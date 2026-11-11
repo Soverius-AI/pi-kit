@@ -24,7 +24,7 @@ export interface SandboxClient {
   request<T = unknown>(operation: string, args: unknown[], options?: { signal?: AbortSignal }): Promise<T>;
   close(): Promise<void>;
 }
-type Action = 'create' | 'setup';
+type Action = 'create';
 type Incoming =
   | { type: 'ready' }
   | { type: 'closed'; error?: WireError }
@@ -54,13 +54,6 @@ export class Sandbox {
       throw e;
     }
     return SupervisorConnection.open('create', options);
-  }
-
-  /** SRT's one-time machine setup on Windows: Windows asks for administrator permission once. */
-  static async setupWindows(): Promise<void> {
-    if (process.platform !== 'win32')
-      throw new SandboxError('Windows setup is only supported on native Windows', 'UNSUPPORTED_PLATFORM');
-    await (await SupervisorConnection.open('setup', {})).close();
   }
 }
 
@@ -95,9 +88,9 @@ class SupervisorConnection implements SandboxClient {
   private readonly channel: IpcChannel<Incoming, Outgoing>;
   private readonly startTimer: NodeJS.Timeout;
 
-  private constructor(action: Action) {
+  private constructor() {
     this.child = spawn(process.execPath, [SupervisorConnection.SUPERVISOR], {
-      env: SandboxPolicy.cleanEnv(),
+      env: SandboxPolicy.supervisorEnv(),
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });
@@ -123,12 +116,12 @@ class SupervisorConnection implements SandboxClient {
     );
     this.startTimer = setTimeout(
       () => this.fail(new SandboxError('Sandbox startup timed out', 'STARTUP_TIMEOUT')),
-      action === 'setup' ? 180_000 : 45_000,
+      45_000,
     );
   }
 
   static async open(action: Action, options: SandboxOptions | Record<string, never>): Promise<SupervisorConnection> {
-    const connection = new SupervisorConnection(action);
+    const connection = new SupervisorConnection();
     try {
       await Promise.all([connection.channel.send({ type: 'init', action, options }), connection.ready.promise]);
       return connection;

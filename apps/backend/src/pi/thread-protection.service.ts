@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ConflictException, ForbiddenException, Inject, Injectable, OnModuleDestroy } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { SetThreadProtection, ThreadProtection, ThreadProtectionState } from '@pi-kit/protocol';
 import type { SandboxClient, SandboxError } from '@pi-kit/sandbox/core';
 import type { BackendConfig } from '../app/config';
@@ -46,11 +46,12 @@ interface Owner {
   ready: Promise<SandboxClient>;
   client?: SandboxClient;
   error?: string;
-  /** Windows: the sandbox needs SRT's one-time machine setup first. */
   setupRequired?: boolean;
 }
 
 const HELD = 'An earlier sandbox of this thread did not confirm its shutdown; its processes may still run.';
+const LINUX_SETUP_REQUIRED =
+  'This machine needs a one-time Linux sandbox setup. Choose Set up Linux sandbox in the thread’s protection control; it asks for your password once.';
 
 /** A thread's protection mode and the sandboxes of its sessions and agents. Sandboxed work never falls back to the host. */
 @Injectable()
@@ -61,10 +62,12 @@ export class ThreadProtectionService implements OnModuleDestroy {
     generation: 0,
     experimentalWindowsAccepted: false,
   });
+  private readonly logger = new Logger(ThreadProtectionService.name);
   private readonly owners = new Map<string, Owner>();
+  /** A reopen waits for these instead of reusing the closing client. */
+  private readonly releasing = new Map<string, Promise<void>>();
   private readonly failedCleanup = new Map<string, string>();
   private readonly changing = new Set<string>();
-  private windowsSetup: Promise<void> | undefined;
   private agentGuard: ((threadId: string) => boolean) | undefined;
 
   constructor(
@@ -135,6 +138,12 @@ export class ThreadProtectionService implements OnModuleDestroy {
 
   /** One sandbox per owner (`thread:<id>`, `agent:<id>`), bound to its folder and generation. */
   async owner(ownerId: string, cwd: string, binding: ProtectionBinding): Promise<SandboxClient> {
+    const releasing = this.releasing.get(ownerId);
+    if (releasing) {
+      await releasing.catch(() => undefined);
+      const failed = this.failedCleanup.get(ownerId);
+      if (failed) throw new ConflictException(failed);
+    }
     const key = JSON.stringify([resolve(cwd), binding.generation, binding.experimentalWindowsAccepted]);
     const existing = this.owners.get(ownerId);
     if (existing && (existing.error === undefined || this.failedCleanup.has(ownerId))) {
@@ -145,9 +154,10 @@ export class ThreadProtectionService implements OnModuleDestroy {
     if (held) throw new Error(held);
     const owner: Owner = { key, ready: this.start(ownerId, cwd, binding, (client) => (owner.client = client)) };
     owner.ready = owner.ready.catch((error: unknown) => {
-      owner.error = ThreadProtectionService.messageOf(error);
-      owner.setupRequired = (error as Partial<SandboxError>).code === 'WINDOWS_SETUP_REQUIRED';
-      throw error;
+      owner.setupRequired = (error as Partial<SandboxError>).code === 'LINUX_SETUP_REQUIRED';
+      if (owner.setupRequired) this.logger.warn(ThreadProtectionService.messageOf(error));
+      owner.error = owner.setupRequired ? LINUX_SETUP_REQUIRED : ThreadProtectionService.messageOf(error);
+      throw new ConflictException(owner.error);
     });
     this.owners.set(ownerId, owner);
     return owner.ready;
@@ -190,23 +200,6 @@ export class ThreadProtectionService implements OnModuleDestroy {
     }
   }
 
-  /** Runs SRT's machine setup on Windows (one administrator prompt), then starts the thread's sandbox again. */
-  async setupWindows(threadId: string, cwd: string): Promise<ThreadProtection> {
-    if (process.platform !== 'win32') throw new ConflictException('Only Windows needs a sandbox setup.');
-    this.assertAdmitted(threadId);
-    this.windowsSetup ??= SandboxPackage.load('core')
-      .then(({ Sandbox }) => Sandbox.setupWindows())
-      .finally(() => (this.windowsSetup = undefined));
-    try {
-      await this.windowsSetup;
-    } catch (error) {
-      throw new ConflictException(`The Windows sandbox setup failed: ${ThreadProtectionService.messageOf(error)}`);
-    }
-    const binding = this.binding(threadId);
-    if (binding.mode === 'sandboxed') await this.owner(`thread:${threadId}`, cwd, binding).catch(() => undefined);
-    return this.status(threadId);
-  }
-
   /** A fork, clone or import starts in its source's mode, with its own sandbox. */
   copy(sourceId: string, targetId: string): void {
     const source = this.store.binding(sourceId);
@@ -214,7 +207,16 @@ export class ThreadProtectionService implements OnModuleDestroy {
   }
 
   /** Stops the owner's sandbox; a shutdown that is not confirmed holds the owner for recovery. */
-  async release(ownerId: string): Promise<void> {
+  release(ownerId: string): Promise<void> {
+    let pending = this.releasing.get(ownerId);
+    if (!pending) {
+      pending = this.stop(ownerId).finally(() => this.releasing.delete(ownerId));
+      this.releasing.set(ownerId, pending);
+    }
+    return pending;
+  }
+
+  private async stop(ownerId: string): Promise<void> {
     const owner = this.owners.get(ownerId);
     if (!owner) return;
     await owner.ready.catch(() => undefined);
@@ -285,6 +287,7 @@ export class ThreadProtectionService implements OnModuleDestroy {
 
   /** The person checked that the earlier sandbox stopped: whatever is left of it is closed and forgotten. */
   private async acknowledgeRecovery(ownerId: string): Promise<void> {
+    await this.releasing.get(ownerId)?.catch(() => undefined);
     await this.owners
       .get(ownerId)
       ?.client?.close()

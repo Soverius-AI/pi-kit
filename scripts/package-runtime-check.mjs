@@ -15,12 +15,16 @@ assert.ok(
   'SRT must be bundled into the sandbox supervisor, not imported',
 );
 const helpers = {
-  darwin: ['java-proxy-agent/srt-proxy-agent.jar'],
-  linux: ['java-proxy-agent/srt-proxy-agent.jar', `seccomp/${process.arch}/apply-seccomp`],
-  win32: [`srt-win/${process.arch}/srt-win.exe`],
+  darwin: ['java-proxy-agent/srt-proxy-agent.jar', 'ripgrep/rg'],
+  linux: ['java-proxy-agent/srt-proxy-agent.jar', 'ripgrep/rg', `seccomp/${process.arch}/apply-seccomp`],
+  // MXC needs no SRT helper; its own binaries are a runtime native (scripts/natives.mjs).
+  win32: ['ripgrep/rg.exe'],
 }[process.platform];
 assert.deepEqual(
-  readdirSync(join(sandboxDir, 'vendor'), { recursive: true, withFileTypes: true })
+  (existsSync(join(sandboxDir, 'vendor'))
+    ? readdirSync(join(sandboxDir, 'vendor'), { recursive: true, withFileTypes: true })
+    : []
+  )
     .filter((entry) => entry.isFile())
     .map((entry) => relative(join(sandboxDir, 'vendor'), join(entry.parentPath, entry.name)).replaceAll('\\', '/'))
     .sort(),

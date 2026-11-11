@@ -72,11 +72,15 @@ test('writeFile honours flags and mode; readFile bounds length and size', async 
     await assert.rejects(files.run('rename', [file, file], signal), { code: 'UNSUPPORTED_OPERATION' });
   }));
 
-test('the caller spelling of the workspace maps onto the canonical path', () => {
-  const files = new WorkerFilesystem('/private/var/w', '/var/w', '/private/var/t');
-  assert.equal(files.resolve('/var/w/a'), '/private/var/w/a');
-  assert.equal(files.resolve('a'), '/private/var/w/a');
-  assert.equal(files.resolve('/var/w-other/a'), '/var/w-other/a');
-  assert.equal(files.resolve('/var/w/..x'), '/private/var/w/..x');
-  assert.throws(() => files.resolve('a\0b'), { code: 'INVALID_ARGUMENT' });
-});
+test(
+  'the caller spelling of the workspace maps onto the canonical path',
+  { skip: process.platform === 'win32' },
+  () => {
+    const files = new WorkerFilesystem('/private/var/w', '/var/w', '/private/var/t');
+    assert.equal(files.resolve('/var/w/a'), '/private/var/w/a');
+    assert.equal(files.resolve('a'), '/private/var/w/a');
+    assert.equal(files.resolve('/var/w-other/a'), '/var/w-other/a');
+    assert.equal(files.resolve('/var/w/..x'), '/private/var/w/..x');
+    assert.throws(() => files.resolve('a\0b'), { code: 'INVALID_ARGUMENT' });
+  },
+);

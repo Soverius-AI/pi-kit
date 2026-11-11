@@ -92,6 +92,8 @@ test(
     try {
       await mkdir(path.join(root, 'src'));
       await writeFile(path.join(root, 'src', 'a.ts'), 'const marker = 1;\n');
+      // Denied to the sandbox: ripgrep must not fail the search on it, nor show it.
+      await writeFile(path.join(root, '.env'), 'marker=secret\n');
       await writeFile(path.join(outside, 'secret.txt'), 'marker in a file the sandbox may not read\n');
       client = await Sandbox.create({ cwd: root });
       const sdk = await import('@earendil-works/pi-coding-agent');
@@ -147,7 +149,7 @@ test(
         cwd: path.join(os.tmpdir(), `pi-srt-no-such-project-${Date.now()}`),
         experimentalWindowsAccepted,
       }),
-      (e: unknown) => e instanceof SandboxError && e.code === 'ENOENT' && e.cleanupConfirmed === true,
+      (e: unknown) => e instanceof SandboxError && e.code === 'WORKSPACE_MISSING' && e.cleanupConfirmed === true,
     );
   },
 );

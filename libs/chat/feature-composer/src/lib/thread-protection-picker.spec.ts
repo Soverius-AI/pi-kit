@@ -39,7 +39,7 @@ describe('ThreadProtectionPicker', () => {
   const canChange = signal(true);
   const loading = signal(false);
   const pending = signal(false);
-  const pendingStatus = signal<'saving' | 'settingUp' | undefined>(undefined);
+  const pendingStatus = signal<'saving' | undefined>(undefined);
   const threadId = signal<string | undefined>('a');
   const store = {
     protection,
@@ -53,7 +53,8 @@ describe('ThreadProtectionPicker', () => {
     mode: () => protection()?.mode ?? 'bypass',
     remote: false,
     change: vi.fn(),
-    setupWindows: vi.fn(),
+    setUpLinux: vi.fn(),
+    canSetUpLinux: true,
     retry: vi.fn(),
   };
   const { key, menu, option, dialog, apply } = PickerPage;
@@ -84,7 +85,7 @@ describe('ThreadProtectionPicker', () => {
     pendingStatus.set(undefined);
     threadId.set('a');
     store.change.mockReset();
-    store.setupWindows.mockReset();
+    store.setUpLinux.mockReset();
     store.retry.mockReset();
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({ providers: [{ provide: ThreadProtectionStore, useValue: store }] });
@@ -196,7 +197,6 @@ describe('ThreadProtectionPicker', () => {
     trigger.click();
     await fixture.whenStable();
     const detail = document.querySelector('[data-testid="protection-detail"]');
-    expect(document.querySelector('[data-testid="protection-setup"]')).toBeNull();
     expect(detail?.textContent).toContain('spawn EPERM');
     expect(detail?.getAttribute('role')).toBeNull();
     expect(document.querySelector('[data-testid="protection-coverage"]')?.textContent).toContain(
@@ -249,53 +249,43 @@ describe('ThreadProtectionPicker', () => {
     );
   });
 
-  it('offers the Windows setup only while setup is required, and runs it after consent for that thread', async () => {
+  it('offers the Linux setup in the desktop app, runs it for the thread it was opened on, and points a browser to the app', async () => {
     protection.set({
+      ...protection()!,
       mode: 'sandboxed',
       state: 'setup-required',
-      generation: 1,
-      experimentalWindowsAccepted: true,
-      platform: 'win32',
-      reason: 'srt: setup has not been run',
+      platform: 'linux',
+      reason: 'needs setup',
     });
     const { fixture, trigger } = await setup();
-    expect(trigger.getAttribute('aria-label')).toBe('Thread protection: Sandboxed · Windows sandbox needs setup');
-    expect(trigger.querySelector('.bg-warning')).not.toBeNull();
+    expect(trigger.getAttribute('aria-label')).toBe('Thread protection: Sandboxed · Linux sandbox needs setup');
     trigger.click();
     await fixture.whenStable();
-    const action = document.querySelector<HTMLButtonElement>('[data-testid="protection-setup"]')!;
-    expect(document.querySelector('[data-testid="protection-refresh"]')).not.toBeNull();
-    canChange.set(false);
-    await fixture.whenStable();
-    expect(action.disabled).toBe(true);
-    canChange.set(true);
-    await fixture.whenStable();
-    action.click();
-    await fixture.whenStable();
-    expect(menu()).toBeNull();
-    expect(dialog().inputs).toMatchObject({
-      title: 'setupTitle',
-      confirmLabel: 'setupConfirm',
-      warnings: ['setupWarning'],
-      consents: ['setupConsent'],
-    });
+    document.querySelector<HTMLButtonElement>('[data-testid="protection-setup"]')!.click();
+    expect(dialog().inputs).toMatchObject({ title: 'setupTitle', warnings: ['setupWarning'], consents: [] });
     threadId.set('b');
     apply();
-    expect(store.setupWindows).toHaveBeenCalledWith('a');
-    expect(store.change).not.toHaveBeenCalled();
-    pendingStatus.set('settingUp');
-    await fixture.whenStable();
-    expect(trigger.getAttribute('aria-label')).toContain('Setting up the Windows sandbox');
+    expect(store.setUpLinux).toHaveBeenCalledWith('a');
+
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [{ provide: ThreadProtectionStore, useValue: { ...store, canSetUpLinux: false } }],
+    });
+    threadId.set('a');
+    const browser = await setup();
+    browser.trigger.click();
+    await browser.fixture.whenStable();
+    expect(document.querySelector('[data-testid="protection-setup"]')).toBeNull();
+    expect(document.querySelector('[data-testid="protection-setup-in-app"]')?.textContent).toContain('pi-kit app');
   });
 
   it('shows a read-only badge on remote owners', async () => {
-    protection.set({ ...protection()!, mode: 'sandboxed', state: 'setup-required', platform: 'win32' });
+    protection.set({ ...protection()!, mode: 'sandboxed', state: 'unavailable', platform: 'win32' });
     TestBed.overrideProvider(ThreadProtectionStore, { useValue: { ...store, remote: true } });
     const { fixture, trigger } = await setup();
     expect(trigger).toBeNull();
-    expect(document.querySelector('[data-testid="protection-setup"]')).toBeNull();
     const badge = fixture.nativeElement.querySelector('pk-protection-badge');
     expect(badge.getAttribute('role')).toBe('img');
-    expect(badge.getAttribute('aria-label')).toBe('Thread protection: Sandboxed · Windows sandbox needs setup');
+    expect(badge.getAttribute('aria-label')).toBe('Thread protection: Sandboxed · Sandbox unavailable');
   });
 });

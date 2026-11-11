@@ -179,20 +179,6 @@ export class ThreadsController {
     return this.threads.setProtection(id, body);
   }
 
-  @Post('threads/:id/protection/windows-setup')
-  @HttpCode(200)
-  @ApiOperation({
-    summary: 'Set up the Windows sandbox',
-    description:
-      'Runs the sandbox runtime’s one-time machine setup on Windows (one administrator prompt), then starts the thread’s sandbox again. Not remote.',
-  })
-  @ApiParam(THREAD_ID)
-  @Responds(ThreadProtectionSchema)
-  @Fails({ 404: NO_THREAD, 409: 'Not Windows, the thread needs recovery, or the setup failed or was declined.' })
-  setupWindowsProtection(@Param('id') id: string): Promise<ThreadProtection> {
-    return this.threads.setupWindowsProtection(id);
-  }
-
   /** The user looked at the thread: clears its unread dot and "cli" badge. */
   @Remote()
   @Post('threads/:id/seen')

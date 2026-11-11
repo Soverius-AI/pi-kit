@@ -113,7 +113,8 @@ export class SessionLifecycle {
   dispose(threadId: string): void {
     this.epochs.set(threadId, (this.epochs.get(threadId) ?? 0) + 1);
     const thread = this.opened.get(threadId);
-    if (!thread) return;
+    // Choosing Sandboxed starts the sandbox before any session opens; it is bound to the folder it started in.
+    if (!thread) return this.releaseSandbox(threadId);
     this.opened.delete(threadId);
     this.release(thread);
   }
@@ -131,8 +132,12 @@ export class SessionLifecycle {
     thread.mcp.dispose();
     thread.session.dispose();
     thread.bus.clear();
+    this.releaseSandbox(thread.info.threadId);
+  }
+
+  private releaseSandbox(threadId: string): void {
     void this.protection
-      .release(`thread:${thread.info.threadId}`)
+      .release(`thread:${threadId}`)
       .catch((error: unknown) => this.logger.error(`Sandbox cleanup failed: ${String(error)}`));
   }
 

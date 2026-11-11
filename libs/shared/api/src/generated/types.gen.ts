@@ -3862,44 +3862,6 @@ export type ThreadsSetProtectionResponses = {
 
 export type ThreadsSetProtectionResponse = ThreadsSetProtectionResponses[keyof ThreadsSetProtectionResponses];
 
-export type ThreadsSetupWindowsProtectionData = {
-    body?: never;
-    path: {
-        /**
-         * The thread id (the pi session id).
-         */
-        id: string;
-    };
-    query?: never;
-    url: '/api/threads/{id}/protection/windows-setup';
-};
-
-export type ThreadsSetupWindowsProtectionErrors = {
-    /**
-     * The bearer token is missing or wrong.
-     */
-    401: Problem;
-    /**
-     * There is no such thread.
-     */
-    404: Problem;
-    /**
-     * Not Windows, the thread needs recovery, or the setup failed or was declined.
-     */
-    409: Problem;
-};
-
-export type ThreadsSetupWindowsProtectionError = ThreadsSetupWindowsProtectionErrors[keyof ThreadsSetupWindowsProtectionErrors];
-
-export type ThreadsSetupWindowsProtectionResponses = {
-    /**
-     * OK
-     */
-    200: ThreadProtection;
-};
-
-export type ThreadsSetupWindowsProtectionResponse = ThreadsSetupWindowsProtectionResponses[keyof ThreadsSetupWindowsProtectionResponses];
-
 export type ThreadsSeenData = {
     body?: never;
     path: {

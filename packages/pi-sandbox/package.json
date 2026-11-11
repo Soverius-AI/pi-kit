@@ -25,7 +25,7 @@
     "test": "nx test pi-sandbox"
   },
   "devDependencies": {
-    "@anthropic-ai/sandbox-runtime": "0.0.81",
+    "@anthropic-ai/sandbox-runtime": "0.0.82",
     "@types/node": "24.19.2",
     "typescript": "6.0.3"
   },

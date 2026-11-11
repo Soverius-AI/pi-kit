@@ -2,7 +2,7 @@ import { Component, computed, DestroyRef, ElementRef, inject, Injector, input, s
 import { DialogStore } from '@pi-kit/data-access';
 import { keepFocusInside } from '@pi-kit/design-system';
 import { TranslocoPipe } from '@pi-kit/i18n';
-type ThreadProtectionConsent = 'recoveryConsent' | 'windowsConsent' | 'setupConsent';
+type ThreadProtectionConsent = 'recoveryConsent' | 'windowsConsent';
 
 export type ThreadProtectionDialogInputs = {
   title: 'confirmTitle' | 'setupTitle';

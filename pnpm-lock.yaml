@@ -49,8 +49,8 @@ importers:
         specifier: 22.2.3
         version: 22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.1)(zone.js@0.16.3))(rxjs@7.8.1))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.1)(zone.js@0.16.3))(@angular/platform-browser@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.1)(zone.js@0.16.3))(rxjs@7.8.1))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.1)(zone.js@0.16.3)))(rxjs@7.8.1)
       '@anthropic-ai/sandbox-runtime':
-        specifier: 0.0.81
-        version: 0.0.81
+        specifier: 0.0.82
+        version: 0.0.82
       '@copilotkit/angular':
         specifier: 0.6.0
         version: 0.6.0(patch_hash=226f72acf646d5c0e341b2f4998fd9b43f4a781c0ee4922df3b40e2c00cb2fbe)(9a21d114eb24efcd0b5db08e3ef0a1a5)
@@ -748,8 +748,8 @@ packages:
       '@angular/platform-browser': 22.2.3
       rxjs: ^6.5.3 || ^7.4.0
 
-  '@anthropic-ai/sandbox-runtime@0.0.81':
-    resolution: {integrity: sha512-bjHDu87gjIR7+Oxy9jPiK3v8CvSELCzfpXa3fjqfSKdvlZET2iF51xcXILWPayTpowB3xtZeQVf2JR916nVW/w==}
+  '@anthropic-ai/sandbox-runtime@0.0.82':
+    resolution: {integrity: sha512-SCPWkuhLw4ieL+06Jp72yFevltS0s2GD1kMOZdSJ6XxeuqTcoyAa1EDwiLxuONp6szNEOD7x02+vYxPa0oAWwg==}
     engines: {node: '>=22.12.0'}
     hasBin: true
 
@@ -3051,6 +3051,106 @@ packages:
   '@keyv/serialize@1.1.1':
     resolution: {integrity: sha512-dXn3FZhPv0US+7dtJsIi2R+c7qWYiReoEh5zUntWCf4oSpMNib8FDhSoed6m3QyZdx5hK7iLFkYk3rNxwt8vTA==}
 
+  '@koromix/koffi-android-arm64@3.3.7':
+    resolution: {integrity: sha512-330J8SnMF48DwADEbPYb5gAIM0mo3dZAsLUkuhyEPTPF49h73hRO7LMVXPkUmeXkK/J5Uvgsaem6Lx86Uev3GA==}
+    cpu: [arm64]
+    os: [android]
+
+  '@koromix/koffi-android-x64@3.3.7':
+    resolution: {integrity: sha512-CE1LEAsMyChQQNjGVDy56lBEdU70zOOD709mdKtxM6Rn2I7srT8Jyj66kSwnl4gO4+2BlTBXMyEIAEyYiNXNEA==}
+    cpu: [x64]
+    os: [android]
+
+  '@koromix/koffi-darwin-arm64@3.3.7':
+    resolution: {integrity: sha512-xg1nqqhHRo6QxxYZJtYhhEGAbkHCQxvjoId3BCkhIJhRLi7+dDBRpLEi8x/5xrhqjCp+c/XhMrkAvxWy0NEYBg==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@koromix/koffi-darwin-x64@3.3.7':
+    resolution: {integrity: sha512-8KeSrHrxzj+SEvaSMc1ufpgn66AdtorKGGb8HNJN5A435stXZ35oxg2+rsAyhTduvEZ9DkCuU94A0crA8KQ0UA==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@koromix/koffi-freebsd-arm64@3.3.7':
+    resolution: {integrity: sha512-UTo2xw46ctQdcz55I3b5pP1Gs0mGcYZLGAJg7MpEdr8ZEMmmclTzU/WUwWw/lyj5x2Ld2fscjCt69elqfrUBOQ==}
+    cpu: [arm64]
+    os: [freebsd]
+
+  '@koromix/koffi-freebsd-ia32@3.3.7':
+    resolution: {integrity: sha512-5vgirS+XISQHzXiad3KYhZYGvuSbAtyrIm2etO118IjpWi87wbKP8xEdf8s4F+vU0HxGs9hcx5a+blwFMe9TFA==}
+    cpu: [ia32]
+    os: [freebsd]
+
+  '@koromix/koffi-freebsd-x64@3.3.7':
+    resolution: {integrity: sha512-R2POCHtQ46cyhCFtYuq3Uo4MEiMstwLi49fwUgu6Vl38XvqKeje5up5e72LTCXf+ks/y3nua3TYM5oXTBqYAUA==}
+    cpu: [x64]
+    os: [freebsd]
+
+  '@koromix/koffi-linux-arm64@3.3.7':
+    resolution: {integrity: sha512-7ttM8GE2gowelTTyTY0+t79rWaoilZMmW4MYgrIXx5NNShLiHtUNfyGGaNzCd1MD+j+bnNZLJ2lh3lkBS9stfw==}
+    cpu: [arm64]
+    os: [linux]
+
+  '@koromix/koffi-linux-arm@3.3.7':
+    resolution: {integrity: sha512-zUb+N1CvsRikXKs93jNdHTAVFt3Njr7ShIA8QwOh2IH/8aV8bkQnkt7AOJvOK/uP0CHd7bxn82YgGUAcZW/pVw==}
+    cpu: [arm]
+    os: [linux]
+
+  '@koromix/koffi-linux-ia32@3.3.7':
+    resolution: {integrity: sha512-hM6CtBgyWGkYzXIl+ciCWSCWnYh/6ft2FRi17aw345lK3Syl2OH06PPMxMd+AHkNrnYWT3nyrzl2Rcun9IeAiw==}
+    cpu: [ia32]
+    os: [linux]
+
+  '@koromix/koffi-linux-loong64@3.3.7':
+    resolution: {integrity: sha512-plmvZGrC2F02AIDNx3+QcjU39Y9XVgHAHMOM17HJCmxc3f5VpKO0d7aln3/Re6TchBW1h2ldFgI6pp/7vN7IQQ==}
+    cpu: [loong64]
+    os: [linux]
+
+  '@koromix/koffi-linux-ppc64@3.3.7':
+    resolution: {integrity: sha512-bmVe2k1v7tiOGcuX22+HIyOT39bRBrIJd2v6qzSN9Er/f7XI61cbJUnFYWdXpYecU2Ww1LDSkgIifcRyfpipqw==}
+    cpu: [ppc64]
+    os: [linux]
+
+  '@koromix/koffi-linux-riscv64@3.3.7':
+    resolution: {integrity: sha512-IG1cp7agL1Od03NrKy8B0UGHomco0sygtWhWIXTTbjkJZkjE9Ic79IWzA5d16XbVtob+247XYBDcaeJJ644Xiw==}
+    cpu: [riscv64]
+    os: [linux]
+
+  '@koromix/koffi-linux-x64@3.3.7':
+    resolution: {integrity: sha512-1cxuG2zsO71wB3RwYt6AjJD9xQW0lUVw4TX4e3Q2DeffEqrVtE3g4IbQsnijTcSeZmmec1kDuuk4CSHUfhAEJQ==}
+    cpu: [x64]
+    os: [linux]
+
+  '@koromix/koffi-openbsd-arm64@3.3.7':
+    resolution: {integrity: sha512-8qqafiMgdmOTEeZsLSnuKdg82Id8IwcxG8MowVtk0zJ4iNObmg2Ygd1dTtWRwpMBW0gfXoodwRdRqnUur3R/aA==}
+    cpu: [arm64]
+    os: [openbsd]
+
+  '@koromix/koffi-openbsd-ia32@3.3.7':
+    resolution: {integrity: sha512-ZG06vAX5YUyUGAg9brg4maex7uGj1fybhlMrWt5FlocMBlrY05pn84vlCKavHsCficecAVq7yEzU8f+4FC2T7A==}
+    cpu: [ia32]
+    os: [openbsd]
+
+  '@koromix/koffi-openbsd-x64@3.3.7':
+    resolution: {integrity: sha512-jnBD84VCXRmOeJniInO8g5xH2XwVnifp2w35+UbAx8coMIS99YAW9uDNg/U7ooJIyL9hfbatfeNkjNhYhhNpKw==}
+    cpu: [x64]
+    os: [openbsd]
+
+  '@koromix/koffi-win32-arm64@3.3.7':
+    resolution: {integrity: sha512-Sal267u6Mi+UK/Lbu5vECQDtvZCfK57BO1zmc+Tar7Kdy+hHZ8Eqx7SyxTP6js4ofavQ83pVp1SWQqK8XJVpcg==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@koromix/koffi-win32-ia32@3.3.7':
+    resolution: {integrity: sha512-kOPimggBxcLjHM/rHOWZp8fyxu+UjeEkWM26Gb9XCnirmM76xDu+GXCSDoBPPqF8s+XkY3NrhUdgfIXcwmWiPA==}
+    cpu: [ia32]
+    os: [win32]
+
+  '@koromix/koffi-win32-x64@3.3.7':
+    resolution: {integrity: sha512-yVrh4Yzyjm+fH7CGIa8Ts+DSGeU8QrwEtECXxNswh3i86hwZTOKkqojaDFAYJov0B3w4BFcjR4TOKkPOB0ZpZA==}
+    cpu: [x64]
+    os: [win32]
+
   '@langchain/core@1.2.18':
     resolution: {integrity: sha512-ccwixbasSfP0ZGEUsN0/qdA1PK3GBzA1fwSi7PlQpvnT78/chR5FAKcodsvSk8imUNP/SWWeWnBG2VDrR1JLJQ==}
     engines: {node: '>=20'}
@@ -3153,6 +3253,10 @@ packages:
   '@malept/flatpak-bundler@0.4.0':
     resolution: {integrity: sha512-9QOtNffcOF/c1seMCDnjckb3R9WHcG34tky+FHpNKKCW0wc/scYLwMtO+ptyGUfMW0/b/n4qRiALlaFHc9Oj7Q==}
     engines: {node: '>= 10.0.0'}
+
+  '@microsoft/mxc-sdk@1.0.1':
+    resolution: {integrity: sha512-2cP925G5+lQyKzjBVha8uNtVd7XESgDBtgi1yCYYSo9M3xiFyZWtCO4SWPGTk509rdI6nqjyGcZxvEP3t6l8Hg==}
+    engines: {node: '>=24.0.0'}
 
   '@microsoft/tsdoc@0.17.0':
     resolution: {integrity: sha512-p68VexhnH7ojf3U27RdryUDqnKJgKaWUbCL96vJR7N0mqDuhKG5OIECk3sCPPdynxjk+yoVhRkScqtv5KQjzsw==}
@@ -7746,6 +7850,9 @@ packages:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
 
+  koffi@3.3.7:
+    resolution: {integrity: sha512-Vrq4UwAE19HPLMou8m7HGCELiTE3l9D+r1nA7XwVHUTNaRdymPM+kzkkD2VGxlyjI2qZTb9tMDaFn7kfZ72v3Q==}
+
   langchain@1.5.18:
     resolution: {integrity: sha512-JSOQrWvMZ4d7AZH9HXB311cVhGa1nbDVkV5bvIa4WWdxwlHTm0Wi15aGEnutJcs0vW2wTEUk4mAS2ukNHKbIBA==}
     engines: {node: '>=20'}
@@ -11611,12 +11718,14 @@ snapshots:
       rxjs: 7.8.1
       tslib: 2.8.1
 
-  '@anthropic-ai/sandbox-runtime@0.0.81':
+  '@anthropic-ai/sandbox-runtime@0.0.82':
     dependencies:
       '@pondwader/socks5-server': 1.0.10
       commander: 12.1.0
       node-forge: 1.4.3
       zod: 4.6.7
+    optionalDependencies:
+      '@microsoft/mxc-sdk': 1.0.1
 
   '@anthropic-ai/sdk@0.129.0(zod@4.6.7)':
     dependencies:
@@ -14597,6 +14706,66 @@ snapshots:
 
   '@keyv/serialize@1.1.1': {}
 
+  '@koromix/koffi-android-arm64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-android-x64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-darwin-arm64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-darwin-x64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-freebsd-arm64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-freebsd-ia32@3.3.7':
+    optional: true
+
+  '@koromix/koffi-freebsd-x64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-linux-arm64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-linux-arm@3.3.7':
+    optional: true
+
+  '@koromix/koffi-linux-ia32@3.3.7':
+    optional: true
+
+  '@koromix/koffi-linux-loong64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-linux-ppc64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-linux-riscv64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-linux-x64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-openbsd-arm64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-openbsd-ia32@3.3.7':
+    optional: true
+
+  '@koromix/koffi-openbsd-x64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-win32-arm64@3.3.7':
+    optional: true
+
+  '@koromix/koffi-win32-ia32@3.3.7':
+    optional: true
+
+  '@koromix/koffi-win32-x64@3.3.7':
+    optional: true
+
   '@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@7.19.0(@aws-sdk/credential-provider-node@3.972.86)(@smithy/signature-v4@5.7.4)(undici@8.12.3)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0)':
     dependencies:
       '@cfworker/json-schema': 4.1.1
@@ -14696,6 +14865,13 @@ snapshots:
       tmp-promise: 3.0.3
     transitivePeerDependencies:
       - supports-color
+
+  '@microsoft/mxc-sdk@1.0.1':
+    dependencies:
+      koffi: 3.3.7
+      node-pty: 1.1.0
+      semver: 7.8.5
+    optional: true
 
   '@microsoft/tsdoc@0.17.0': {}
 
@@ -19613,6 +19789,30 @@ snapshots:
       shell-exec: 1.0.2
 
   kind-of@6.0.3: {}
+
+  koffi@3.3.7:
+    optionalDependencies:
+      '@koromix/koffi-android-arm64': 3.3.7
+      '@koromix/koffi-android-x64': 3.3.7
+      '@koromix/koffi-darwin-arm64': 3.3.7
+      '@koromix/koffi-darwin-x64': 3.3.7
+      '@koromix/koffi-freebsd-arm64': 3.3.7
+      '@koromix/koffi-freebsd-ia32': 3.3.7
+      '@koromix/koffi-freebsd-x64': 3.3.7
+      '@koromix/koffi-linux-arm': 3.3.7
+      '@koromix/koffi-linux-arm64': 3.3.7
+      '@koromix/koffi-linux-ia32': 3.3.7
+      '@koromix/koffi-linux-loong64': 3.3.7
+      '@koromix/koffi-linux-ppc64': 3.3.7
+      '@koromix/koffi-linux-riscv64': 3.3.7
+      '@koromix/koffi-linux-x64': 3.3.7
+      '@koromix/koffi-openbsd-arm64': 3.3.7
+      '@koromix/koffi-openbsd-ia32': 3.3.7
+      '@koromix/koffi-openbsd-x64': 3.3.7
+      '@koromix/koffi-win32-arm64': 3.3.7
+      '@koromix/koffi-win32-ia32': 3.3.7
+      '@koromix/koffi-win32-x64': 3.3.7
+    optional: true
 
   langchain@1.5.18(@langchain/core@1.2.18(@opentelemetry/api@1.9.1)(openai@7.19.0(@aws-sdk/credential-provider-node@3.972.86)(@smithy/signature-v4@5.7.4)(undici@8.12.3)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0))(@opentelemetry/api@1.9.1)(openai@7.19.0(@aws-sdk/credential-provider-node@3.972.86)(@smithy/signature-v4@5.7.4)(undici@8.12.3)(ws@8.22.0)(zod@4.6.7))(ws@8.22.0):
     dependencies:

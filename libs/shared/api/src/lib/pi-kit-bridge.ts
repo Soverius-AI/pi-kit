@@ -93,6 +93,8 @@ export interface PiKitBridge {
   setBackgroundService?(enabled: boolean): Promise<void>;
   /** Writes the `pi-kit` launcher to a folder on PATH; only on a click. */
   installCommand?(): Promise<CommandStatus>;
+  /** Linux thread protection's one-time root setup; asks for the password. */
+  setUpLinuxSandbox?(): Promise<void>;
   /** Quits and starts the app again: macOS applies a new Screen Recording grant only to a restarted app (Settings › Computer use); absent in a browser. */
   relaunch?(): Promise<void>;
   /** The native folder picker; `undefined` if cancelled. */

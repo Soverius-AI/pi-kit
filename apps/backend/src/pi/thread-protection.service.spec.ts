@@ -26,10 +26,7 @@ class Fixture {
     this.clients.push(client);
     return client;
   });
-  readonly setupWindows = vi.fn(async () => undefined);
-  readonly load = vi
-    .spyOn(SandboxPackage, 'load')
-    .mockResolvedValue({ Sandbox: { create: this.create, setupWindows: this.setupWindows } } as never);
+  readonly load = vi.spyOn(SandboxPackage, 'load').mockResolvedValue({ Sandbox: { create: this.create } } as never);
   readonly service = this.rows.service();
 
   restart() {
@@ -168,29 +165,42 @@ describe('ThreadProtectionService', () => {
     expect((await f.service.set('t', cwd, { mode: 'sandboxed' }, vi.fn())).state).toBe('experimental');
   });
 
-  it('asks for the Windows machine setup, runs it once and starts the sandbox again', async () => {
-    Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'win32' });
+  it('reports a sandbox that cannot start, refuses runs with a conflict and tries again on the next run', async () => {
     const f = new Fixture();
     f.create.mockRejectedValueOnce(
-      Object.assign(new Error('Sandbox user is not provisioned.'), {
-        code: 'WINDOWS_SETUP_REQUIRED',
+      Object.assign(new Error('MXC is not available on this host'), {
+        code: 'backend_unsupported',
         cleanupConfirmed: true,
       }),
     );
-    expect(
-      await f.service.set('t', cwd, { mode: 'sandboxed', experimentalWindowsAccepted: true }, vi.fn()),
-    ).toMatchObject({ state: 'setup-required', reason: 'Sandbox user is not provisioned.' });
-    expect(await f.service.setupWindows('t', cwd)).toMatchObject({ state: 'experimental', reason: null });
-    expect(f.setupWindows).toHaveBeenCalledOnce();
+    expect(await f.service.set('t', cwd, { mode: 'sandboxed' }, vi.fn())).toMatchObject({
+      state: 'unavailable',
+      reason: 'MXC is not available on this host',
+    });
+    f.create.mockRejectedValueOnce(
+      Object.assign(new Error('MXC is not available on this host'), { cleanupConfirmed: true }),
+    );
+    await expect(f.service.prepare('t', cwd)).rejects.toMatchObject({ status: 409 });
+    expect(await f.service.prepare('t', cwd)).toBe(f.clients[0]);
   });
 
-  it('reports a declined Windows setup and refuses it on other platforms', async () => {
-    Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'win32' });
+  it('asks for the Linux setup when the sandbox cannot start without it, with pi-kit’s guidance', async () => {
     const f = new Fixture();
-    f.setupWindows.mockRejectedValueOnce(new Error('The UAC prompt was declined.'));
-    await expect(f.service.setupWindows('t', cwd)).rejects.toThrow(/setup failed: The UAC prompt was declined/);
-    Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'darwin' });
-    await expect(f.service.setupWindows('t', cwd)).rejects.toThrow(/Only Windows/);
+    const missing = () =>
+      Object.assign(new Error('apply-seccomp: nested userns is capability-restricted'), {
+        code: 'LINUX_SETUP_REQUIRED',
+        cleanupConfirmed: true,
+      });
+    f.create.mockRejectedValueOnce(missing());
+    expect(await f.service.set('t', cwd, { mode: 'sandboxed' }, vi.fn())).toMatchObject({
+      state: 'setup-required',
+      reason: expect.stringMatching(/Set up Linux sandbox/),
+    });
+    f.create.mockRejectedValueOnce(missing());
+    await expect(f.service.prepare('t', cwd)).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/Set up Linux sandbox/),
+    });
   });
 
   it('refuses a change while the thread’s background agents work', async () => {
@@ -217,6 +227,25 @@ describe('ThreadProtectionService', () => {
     Object.assign(f.clients[0], { state: 'unavailable', reason: 'worker exited' });
     expect(() => f.service.assertCurrent('t', 1)).toThrow('worker exited');
     expect(f.service.status('t')).toMatchObject({ state: 'unavailable', reason: 'worker exited' });
+  });
+
+  it('reopens a stopping sandbox only once it stopped, and not at all when its stop failed', async () => {
+    const f = new Fixture();
+    await f.service.set('t', cwd, { mode: 'sandboxed' }, vi.fn());
+    let stopped!: () => void;
+    vi.mocked(f.clients[0].close).mockImplementationOnce(() => new Promise<void>((done) => (stopped = done)));
+    const releasing = f.service.release('thread:t');
+    const reopened = f.service.prepare('t', cwd);
+    await vi.waitFor(() => expect(f.clients[0].close).toHaveBeenCalled());
+    expect(f.create).toHaveBeenCalledOnce();
+    stopped();
+    await releasing;
+    expect(await reopened).toBe(f.clients[1]);
+    vi.mocked(f.clients[1].close).mockRejectedValueOnce(new Error('teardown unconfirmed'));
+    const failing = f.service.release('thread:t');
+    await expect(f.service.prepare('t', cwd)).rejects.toThrow('teardown unconfirmed');
+    await expect(failing).rejects.toThrow('teardown unconfirmed');
+    expect(f.create).toHaveBeenCalledTimes(2);
   });
 
   it('forgets a deleted thread’s mode and sandbox', async () => {

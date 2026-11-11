@@ -83,7 +83,7 @@ class Worker {
       let value: unknown;
       if (operation === 'exec') value = await this.exec(files, id, args, signal);
       else if (operation.startsWith('durable.')) value = await this.durableRequest(files, operation, args, signal);
-      else if (operation === 'pi.grep') value = await this.grep(args, signal);
+      else if (operation === 'pi.grep') value = await this.grep(files, args, signal);
       else value = await files.run(operation, args, signal);
       if (signal.aborted)
         throw new SandboxError('aborted; a filesystem mutation may already have completed', 'ABORT_ERR');
@@ -95,12 +95,14 @@ class Worker {
     }
   }
 
-  private async grep([params, cwd]: unknown[], signal: AbortSignal): Promise<unknown> {
+  private async grep(files: WorkerFilesystem, [params, cwd]: unknown[], signal: AbortSignal): Promise<unknown> {
     if (!params || typeof params !== 'object' || typeof cwd !== 'string')
       throw new SandboxError('Invalid grep request', 'INVALID_ARGUMENT');
     // pi reads its package.json and may download ripgrep when it loads: point it at this bundle and keep it offline.
     process.env.PI_PACKAGE_DIR = path.dirname(fileURLToPath(import.meta.url));
     process.env.PI_OFFLINE = '1';
+    // The supervisor put the host's ripgrep here; pi's own agent folder holds credentials the sandbox cannot read.
+    process.env.PI_CODING_AGENT_DIR = path.join(files.temp, '.pi', 'agent');
     const { WorkerGrep } = await import('./worker-grep.js');
     return WorkerGrep.run(params, cwd, signal);
   }

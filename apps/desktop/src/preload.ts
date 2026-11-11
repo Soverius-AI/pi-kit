@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('piKit', {
   setBackgroundService: (enabled: boolean): Promise<void> =>
     ipcRenderer.invoke('pi-kit:background-service-set', enabled),
   installCommand: (): Promise<unknown> => ipcRenderer.invoke('pi-kit:cli-install'),
+  setUpLinuxSandbox: (): Promise<void> => ipcRenderer.invoke('pi-kit:linux-sandbox-setup'),
   /** Quits and starts the app again (Settings › Computer use, after a new macOS permission). */
   relaunch: (): Promise<void> => ipcRenderer.invoke('pi-kit:relaunch'),
   /** The folder picker; `undefined` if cancelled. */

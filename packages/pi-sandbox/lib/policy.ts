@@ -1,5 +1,6 @@
 import type { SandboxRuntimeConfig } from '@anthropic-ai/sandbox-runtime';
 import type { SandboxOptions } from './core.js';
+import { closeSync, existsSync, openSync, readdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +9,26 @@ import { SandboxError } from './protocol.js';
 export class SandboxPolicy {
   private static readonly GLOB = /[\r\n*?[\]{}]/;
   private static readonly ENV = ['LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM', 'COLORTERM'];
+  /** Ubuntu strips /usr/bin/bwrap's capabilities, which SRT's seccomp helper needs; the Linux setup installs this copy. */
+  static readonly LINUX_BWRAP = '/usr/local/libexec/pi-kit/bwrap';
+  private static readonly WINDOWS_SYSTEM_ENV = [
+    'SystemDrive',
+    'ProgramData',
+    'ProgramFiles',
+    'ProgramFiles(x86)',
+    'CommonProgramFiles',
+    'USERPROFILE',
+    'APPDATA',
+    'LOCALAPPDATA',
+    'TEMP',
+    'TMP',
+    'USERNAME',
+    'USERDOMAIN',
+    'COMPUTERNAME',
+    'OS',
+    'PROCESSOR_ARCHITECTURE',
+    'NUMBER_OF_PROCESSORS',
+  ];
   private static readonly CREDENTIALS = [
     '.ssh',
     '.aws',
@@ -57,6 +78,49 @@ export class SandboxPolicy {
       );
   }
 
+  /** Entry by entry, so the folders leading to the workspace stay listable; entries created later are not covered. */
+  static profileDenies(home: string, cwd: string, allowed: string[]): string[] {
+    if (!SandboxPolicy.contains(home, cwd) || !path.relative(home, cwd)) return [home];
+    const denies: string[] = [];
+    let dir = home;
+    for (let rest = path.relative(home, cwd); rest; rest = path.relative(dir, cwd)) {
+      let entries: string[];
+      try {
+        entries = readdirSync(dir);
+      } catch {
+        return [home];
+      }
+      for (const name of entries) {
+        const entry = path.join(dir, name);
+        if (!allowed.some((p) => SandboxPolicy.contains(entry, p)) && !SandboxPolicy.locked(entry)) denies.push(entry);
+      }
+      dir = path.join(dir, rest.split(path.sep)[0]);
+    }
+    return denies;
+  }
+
+  /** macOS: the /usr/bin shims of git, make and clang look this up through /var, which the sandbox cannot read. */
+  private static developerDir(): string | undefined {
+    if (process.platform !== 'darwin') return undefined;
+    try {
+      return realpathSync('/private/var/select/developer_dir');
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** MXC cannot deny a file Windows holds open exclusively (the registry hive), which nothing can read anyway. */
+  private static locked(file: string): boolean {
+    // Elsewhere opening every entry could block on a FIFO.
+    if (process.platform !== 'win32') return false;
+    try {
+      closeSync(openSync(file, 'r'));
+      return false;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === 'EBUSY';
+    }
+  }
+
   static contains(parent: string, child: string): boolean {
     const relative = path.relative(parent, child);
     return (
@@ -82,9 +146,16 @@ export class SandboxPolicy {
       process.platform === 'win32'
         ? `${process.env.SystemRoot || 'C:\\Windows'}\\System32;${path.dirname(process.execPath)}`
         : `/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin:${path.dirname(process.execPath)}`;
+    const developer = SandboxPolicy.developerDir();
+    if (developer) {
+      env.DEVELOPER_DIR = developer;
+      env.PATH = `${path.join(developer, 'usr', 'bin')}:${env.PATH}`;
+    }
     if (process.platform === 'win32') {
       env.SystemRoot = process.env.SystemRoot || 'C:\\Windows';
       env.WINDIR = env.SystemRoot;
+      // Without it PowerShell and cmd cannot resolve `whoami` to whoami.exe.
+      env.PATHEXT = '.COM;.EXE;.BAT;.CMD';
     }
     if (temp) {
       env.TMPDIR = temp;
@@ -99,15 +170,30 @@ export class SandboxPolicy {
     return env;
   }
 
+  /** On Windows MXC's helpers need the system folders. */
+  static supervisorEnv(): NodeJS.ProcessEnv {
+    const env = SandboxPolicy.cleanEnv();
+    if (process.env.PI_CODING_AGENT_DIR) env.PI_CODING_AGENT_DIR = process.env.PI_CODING_AGENT_DIR;
+    if (process.platform === 'win32')
+      for (const key of SandboxPolicy.WINDOWS_SYSTEM_ENV) if (process.env[key]) env[key] = process.env[key];
+    return env;
+  }
+
   static compile(
     { cwd, protectedPaths = [] }: Pick<SandboxOptions, 'cwd' | 'protectedPaths'>,
     temp: string,
-    helpers: { seccomp?: string; srtWin?: string; javaAgent?: string },
+    helpers: { seccomp?: string; javaAgent?: string; ripgrep?: string },
   ): SandboxRuntimeConfig {
     const lib = path.dirname(fileURLToPath(import.meta.url));
     const home = os.homedir();
-    const node = path.dirname(process.execPath);
-    const credentials = [...SandboxPolicy.CREDENTIALS.map((p) => path.join(home, p)), ...protectedPaths];
+    const executable = path.dirname(process.execPath);
+    // An app bundle's executable loads its frameworks from beside MacOS, so the whole Contents is the runtime.
+    const node =
+      process.platform === 'darwin' && path.basename(executable) === 'MacOS' ? path.dirname(executable) : executable;
+    // pi-kit's scratch projects live in its data folder, inside ~/.config or ~/Library: those keep the way to the workspace open.
+    const around = (p: string) => (SandboxPolicy.contains(p, cwd) ? SandboxPolicy.profileDenies(p, cwd, [cwd]) : [p]);
+    const guarded = protectedPaths.flatMap(around);
+    const credentials = [...SandboxPolicy.CREDENTIALS.map((p) => path.join(home, p)).flatMap(around), ...guarded];
     for (const runtime of [lib, node]) {
       const denied = credentials.find((p) => SandboxPolicy.contains(p, runtime));
       if (denied)
@@ -120,26 +206,31 @@ export class SandboxPolicy {
     const envFiles = ['.env', '.env.*', path.join('**', '.env'), path.join('**', '.env.*')].map((p) =>
       path.join(cwd, p),
     );
-    const systems =
-      process.platform === 'win32'
-        ? [process.env.SystemRoot || 'C:\\Windows', process.env.ProgramFiles || 'C:\\Program Files']
-        : [
-            '/usr',
-            '/opt/homebrew',
-            '/bin',
-            '/sbin',
-            '/lib',
-            '/lib64',
-            '/System',
-            '/Library',
-            '/dev',
-            '/proc',
-            '/etc',
-            '/private/etc',
-            // macOS /bin/sh reads this symlink to pick its shell; without it every sh prints EPERM noise.
-            '/private/var/select',
-          ];
-    const immutable = [path.dirname(lib), path.join(cwd, 'node_modules'), node, ...protectedPaths];
+    // MXC reads the whole system drive unless denied, so Windows denies the profile instead of the drive and needs no system allow list.
+    const windows = process.platform === 'win32';
+    const systems = windows
+      ? []
+      : [
+          '/usr',
+          '/opt/homebrew',
+          '/bin',
+          '/sbin',
+          '/lib',
+          '/lib64',
+          '/System',
+          '/Library',
+          '/dev',
+          '/proc',
+          '/etc',
+          '/private/etc',
+          // macOS /bin/sh reads this symlink to pick its shell; without it every sh prints EPERM noise.
+          '/private/var/select',
+        ];
+    const developer = [SandboxPolicy.developerDir()].filter((p) => p !== undefined);
+    const immutable = [path.dirname(lib), path.join(cwd, 'node_modules'), node, ...guarded].filter(
+      // MXC writes nowhere outside the write roots and denies a write-denied path to reads too, which would lock the worker out of its runtime.
+      (p) => !windows || [cwd, temp].some((root) => SandboxPolicy.contains(root, p)),
+    );
     return {
       network: {
         allowedDomains: [],
@@ -150,8 +241,8 @@ export class SandboxPolicy {
         allowAllUnixSockets: false,
       },
       filesystem: {
-        denyRead: [path.parse(cwd).root],
-        allowRead: [...systems, cwd, temp, lib, node].map((p) => ({ path: p, literal: true })),
+        denyRead: windows ? SandboxPolicy.profileDenies(home, cwd, [cwd, temp, lib, node]) : [path.parse(cwd).root],
+        allowRead: [...systems, ...developer, cwd, temp, lib, node].map((p) => ({ path: p, literal: true })),
         allowWrite: [
           { path: cwd, literal: true },
           { path: temp, literal: true },
@@ -161,8 +252,12 @@ export class SandboxPolicy {
       // SRT's allowRead beats a nested denyRead, so .env files and credentials need credential denies to stay unreadable.
       credentials: { files: [...envFiles, ...credentials].map((p) => ({ path: p, mode: 'deny' })) },
       ...(helpers.seccomp ? { seccomp: { applyPath: helpers.seccomp } } : {}),
-      ...(helpers.srtWin ? { windows: { srtWin: { path: helpers.srtWin } } } : {}),
+      ...(windows ? { windows: { backend: 'mxc' as const } } : {}),
       ...(helpers.javaAgent ? { javaAgentJarPath: helpers.javaAgent } : {}),
+      ...(helpers.ripgrep ? { ripgrep: { command: helpers.ripgrep } } : {}),
+      ...(process.platform === 'linux' && existsSync(SandboxPolicy.LINUX_BWRAP)
+        ? { bwrapPath: SandboxPolicy.LINUX_BWRAP }
+        : {}),
       enableWeakerNestedSandbox: false,
       enableWeakerNetworkIsolation: false,
       allowAppleEvents: false,

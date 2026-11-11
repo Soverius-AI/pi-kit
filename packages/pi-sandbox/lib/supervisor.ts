@@ -1,19 +1,19 @@
 // The only module that imports SRT at runtime. One supervisor process serves one sandbox.
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import type { SandboxOptions } from './core.js';
-import { mkdtemp, readdir, realpath, rename, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { copyFile, mkdir, mkdtemp, readdir, realpath, rename, rm } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import type { Readable, Writable } from 'node:stream';
 import { IpcChannel, SandboxError, type WireError } from './protocol.js';
 import { SandboxPolicy } from './policy.js';
 import { ProcessTree } from './process-tree.js';
 import javaAgent from '@anthropic-ai/sandbox-runtime/vendor/java-proxy-agent/srt-proxy-agent.jar';
 import seccompArm64 from '@anthropic-ai/sandbox-runtime/vendor/seccomp/arm64/apply-seccomp';
 import seccompX64 from '@anthropic-ai/sandbox-runtime/vendor/seccomp/x64/apply-seccomp';
-import srtWinArm64 from '@anthropic-ai/sandbox-runtime/vendor/srt-win/arm64/srt-win.exe';
-import srtWinX64 from '@anthropic-ai/sandbox-runtime/vendor/srt-win/x64/srt-win.exe';
 
 interface ClientMessage {
   type: string;
@@ -36,6 +36,13 @@ type SupervisorResponse =
   | { type: 'closed'; error?: WireError };
 type WorkerMessage = ClientMessage | { type: 'init'; cwd: string; aliasCwd: string; temp: string };
 type Manager = typeof import('@anthropic-ai/sandbox-runtime').SandboxManager;
+interface WorkerProcess {
+  readonly stdin: Writable;
+  readonly stdout: Readable;
+  readonly stderr: Readable;
+  readonly exited: Promise<number | null>;
+  kill(): void;
+}
 
 class Supervisor {
   private static readonly TRASH = 'pi-srt-trash-';
@@ -45,12 +52,10 @@ class Supervisor {
       process.platform === 'linux'
         ? Supervisor.bundled(process.arch === 'arm64' ? seccompArm64 : seccompX64)
         : undefined,
-    srtWin:
-      process.platform === 'win32' ? Supervisor.bundled(process.arch === 'arm64' ? srtWinArm64 : srtWinX64) : undefined,
     javaAgent: process.platform === 'win32' ? undefined : Supervisor.bundled(javaAgent),
   };
   private manager?: Manager;
-  private worker?: ChildProcessWithoutNullStreams;
+  private worker?: WorkerProcess;
   private workerChannel?: IpcChannel<WorkerResponse, WorkerMessage>;
   private workerStderr = '';
   private temp?: string;
@@ -87,73 +92,47 @@ class Supervisor {
   private async initialize(message: ClientMessage): Promise<void> {
     const srt = await import('@anthropic-ai/sandbox-runtime');
     const manager = (this.manager = srt.SandboxManager);
-    const srtWin = Supervisor.HELPERS.srtWin ? srt.resolveSrtWin({ path: Supervisor.HELPERS.srtWin }) : undefined;
-    if (message.action === 'setup') {
-      if (!srtWin) throw new SandboxError('Native Windows only', 'UNSUPPORTED_PLATFORM');
-      await srt.installWindowsSandboxAsync({ skipProfileGrant: true, allowLoopback: false, srtWin });
-      return this.channel.send({ type: 'ready' });
-    }
     if (message.action !== 'create') throw new SandboxError('Invalid supervisor action', 'PROTOCOL_ERROR');
     SandboxPolicy.validate(message.options);
     const options: SandboxOptions = message.options;
-    if (srtWin) {
-      // SRT's own check inside initialize() cannot tell a missing machine setup from other failures.
-      const { errors, reinstallRequired } = await srt.checkWindowsDependenciesAsync({ srtWin, allowLoopback: false });
-      if (errors.length)
-        throw new SandboxError(
-          errors.join('\n'),
-          reinstallRequired || errors.some((error) => error.includes('windows-install'))
-            ? 'WINDOWS_SETUP_REQUIRED'
-            : 'DEPENDENCIES_UNAVAILABLE',
-        );
-    }
-    const cwd = await realpath(options.cwd);
+    const cwd = await realpath(options.cwd).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+      throw new SandboxError(`The thread’s folder ${options.cwd} no longer exists.`, 'WORKSPACE_MISSING');
+    });
     SandboxPolicy.assertWorkspace(cwd);
     void Supervisor.sweepTrash();
     this.temp = await realpath(await mkdtemp(path.join(tmpdir(), 'pi-srt-')));
+    const ripgrep = await Supervisor.provideRipgrep(this.temp);
     await manager.initialize(
-      SandboxPolicy.compile({ ...options, cwd }, this.temp, Supervisor.HELPERS),
+      SandboxPolicy.compile({ ...options, cwd }, this.temp, { ...Supervisor.HELPERS, ripgrep }),
       async () => false,
       false,
     );
-    if (
-      process.platform === 'win32' &&
-      (manager.getWindowsProfileRead() === 'granted' || manager.getWindowsProfileReadWarnings().length)
-    )
-      throw new SandboxError(
-        'Existing Windows profile read grant requires manual review/repair; refusing to start',
-        'WINDOWS_PROFILE_GRANT',
-      );
     const workerPath = fileURLToPath(new URL('./worker.js', import.meta.url));
-    const launch = `${ProcessTree.shellQuote(process.execPath)} ${ProcessTree.shellQuote(workerPath)}`;
-    const wrapped = await manager.wrapWithSandboxArgv(
-      process.platform === 'win32' ? `& ${launch}` : `exec ${launch}`,
-      process.platform === 'win32' ? 'powershell' : '/bin/sh',
-      undefined,
-      undefined,
-      cwd,
-      { commandId: randomUUID(), commandText: 'pi-sandbox worker' },
-    );
-    const worker = (this.worker = spawn(wrapped.argv[0], wrapped.argv.slice(1), {
-      cwd,
-      env: { ...SandboxPolicy.cleanEnv({}, { cwd, temp: this.temp }), ...wrapped.env },
-      stdio: ['pipe', 'pipe', 'pipe'],
-      detached: process.platform !== 'win32',
-      windowsHide: true,
-    }));
+    const worker = (this.worker =
+      process.platform === 'win32'
+        ? await Supervisor.startMxc(manager, workerPath, cwd)
+        : await Supervisor.startWrapped(manager, workerPath, cwd, this.temp));
     worker.stderr.on('data', (b: Buffer) => {
       this.workerStderr = (this.workerStderr + b.toString()).slice(-4096);
     });
-    worker.on('error', (error) => void this.fatal(error));
-    worker.on('exit', (code, signal) => {
-      if (!this.stopping)
+    void worker.exited.then(
+      (code) => {
+        if (this.stopping) return;
         void this.fatal(
-          new SandboxError(
-            `Restricted worker exited (${code ?? signal}); unfinished mutations are uncertain. ${this.workerStderr}`.trim(),
-            'WORKER_EXIT',
-          ),
+          Supervisor.needsLinuxSetup(this.workerStderr)
+            ? new SandboxError(
+                `This machine needs the one-time Linux sandbox setup: Ubuntu withholds from bubblewrap's children the capabilities the sandbox needs. ${this.workerStderr}`.trim(),
+                'LINUX_SETUP_REQUIRED',
+              )
+            : new SandboxError(
+                `Restricted worker exited (${code ?? 'signal'}); unfinished mutations are uncertain. ${this.workerStderr}`.trim(),
+                'WORKER_EXIT',
+              ),
         );
-    });
+      },
+      (error: unknown) => void this.fatal(error),
+    );
     this.workerChannel = new IpcChannel<WorkerResponse, WorkerMessage>(
       worker.stdout,
       worker.stdin,
@@ -161,6 +140,74 @@ class Supervisor {
       (error) => void this.fatal(error),
     );
     await this.workerChannel.send({ type: 'init', cwd, aliasCwd: options.cwd, temp: this.temp });
+  }
+
+  private static async startWrapped(
+    manager: Manager,
+    workerPath: string,
+    cwd: string,
+    temp: string,
+  ): Promise<WorkerProcess> {
+    const wrapped = await manager.wrapWithSandboxArgv(
+      `exec ${ProcessTree.shellQuote(process.execPath)} ${ProcessTree.shellQuote(workerPath)}`,
+      '/bin/sh',
+      undefined,
+      undefined,
+      cwd,
+      { commandId: randomUUID(), commandText: 'pi-sandbox worker' },
+    );
+    const child = spawn(wrapped.argv[0], wrapped.argv.slice(1), {
+      cwd,
+      env: { ...SandboxPolicy.cleanEnv({}, { cwd, temp }), ...wrapped.env },
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: true,
+      windowsHide: true,
+    });
+    return {
+      stdin: child.stdin,
+      stdout: child.stdout,
+      stderr: child.stderr,
+      exited: new Promise((resolve, reject) => {
+        child.once('error', reject);
+        child.once('exit', (code, signal) => resolve(signal ? null : code));
+      }),
+      kill: () => {
+        ProcessTree.killGroup(child.pid, 'SIGKILL');
+        child.kill('SIGKILL');
+      },
+    };
+  }
+
+  /** The container gets only a fixed set of Windows variables, so the Node mode goes in the command. */
+  private static async startMxc(manager: Manager, workerPath: string, cwd: string): Promise<WorkerProcess> {
+    for (const part of [process.execPath, workerPath])
+      if (/["%^!]/.test(part))
+        throw new SandboxError(`The sandbox runtime path ${part} cannot be quoted for cmd`, 'INVALID_ARGUMENT');
+    // A runtime inside the profile sits under read-denied folders, which Node's realpath of the module would stat.
+    const launch = `"${process.execPath}" --preserve-symlinks --preserve-symlinks-main "${workerPath}"`;
+    const spawned = await manager.spawnSandboxed?.(
+      process.versions.electron ? `set "ELECTRON_RUN_AS_NODE=1" && ${launch}` : launch,
+      { cwd, commandId: randomUUID(), commandText: 'pi-sandbox worker' },
+    );
+    if (!spawned?.stdin || !spawned.stdout || !spawned.stderr)
+      throw new SandboxError('The MXC sandbox did not give the worker its standard streams', 'WORKER_EXIT');
+    const { stdin, stdout, stderr } = spawned;
+    return {
+      stdin,
+      stdout,
+      stderr,
+      exited: spawned.wait().then(
+        ({ exitCode }) => {
+          spawned.dispose();
+          return exitCode;
+        },
+        (error: unknown) => {
+          spawned.dispose();
+          throw error;
+        },
+      ),
+      kill: () => spawned.kill(),
+    };
   }
 
   private forward(response: WorkerResponse): void {
@@ -223,35 +270,66 @@ class Supervisor {
     process.exit(errors.length ? 1 : 0);
   }
 
-  private async stopWorker(worker: ChildProcessWithoutNullStreams, record: (error: unknown) => void): Promise<void> {
-    void this.workerChannel?.send({ type: 'close' }).catch(record);
-    if (!(await ProcessTree.waitForExit(worker, 1750))) {
-      if (process.platform === 'win32') {
-        const taskkill = ProcessTree.taskkill(worker.pid, SandboxPolicy.cleanEnv());
-        taskkill.on('error', record);
-        if (!(await ProcessTree.waitForExit(taskkill, 1000))) {
-          taskkill.kill();
-          record('taskkill termination unconfirmed');
-        }
-      } else {
-        const error = ProcessTree.killGroup(worker.pid, 'SIGKILL');
-        if (error) record(error);
-      }
-      worker.kill('SIGKILL');
-      if (!(await ProcessTree.waitForExit(worker, 500))) record('Restricted worker termination unconfirmed');
+  private async stopWorker(worker: WorkerProcess, record: (error: unknown) => void): Promise<void> {
+    // A worker that already exited has no stdin left to ask.
+    let code = await Supervisor.within(worker.exited, 0);
+    if (code === undefined) {
+      void this.workerChannel?.send({ type: 'close' }).catch(record);
+      code = await Supervisor.within(worker.exited, 1750);
     }
-    if (worker.exitCode !== 0 || worker.signalCode)
+    if (code === undefined) {
+      worker.kill();
+      code = await Supervisor.within(worker.exited, 1500);
+      if (code === undefined) return void record('Restricted worker termination unconfirmed');
+    }
+    // Without the Linux setup the seccomp helper fails before the worker starts, so nothing ran that could outlive it.
+    if (code !== 0 && !Supervisor.needsLinuxSetup(this.workerStderr))
       record(
         `Restricted worker did not confirm orderly shutdown; command mutations/descendant teardown may be uncertain. ${this.workerStderr}`.trim(),
       );
   }
 
-  /** Removes trash left by supervisors that were killed after acknowledging close; live scope temps are never touched. */
+  /** pi's own agent folder is unreadable in the sandbox, so its ripgrep is copied where the worker's pi looks. */
+  private static async provideRipgrep(temp: string): Promise<string | undefined> {
+    const name = process.platform === 'win32' ? 'rg.exe' : 'rg';
+    const configured = process.env.PI_CODING_AGENT_DIR;
+    const agent = configured ? configured.replace(/^~(?=$|[\\/])/, homedir()) : path.join(homedir(), '.pi', 'agent');
+    const bin = path.join(temp, '.pi', 'agent', 'bin');
+    await mkdir(bin, { recursive: true });
+    for (const source of [Supervisor.bundled(`./vendor/ripgrep/${name}`), path.join(agent, 'bin', name)]) {
+      const copied = await copyFile(source, path.join(bin, name)).then(
+        () => path.join(bin, name),
+        () => undefined,
+      );
+      if (copied) return copied;
+    }
+    return undefined;
+  }
+
+  /** Ubuntu's bwrap-userns-restrict leaves SRT's seccomp helper without CAP_SYS_ADMIN until pi-kit's own bwrap is set up. */
+  private static needsLinuxSetup(stderr: string): boolean {
+    return (
+      process.platform === 'linux' &&
+      stderr.includes('nested userns is capability-restricted') &&
+      !existsSync(SandboxPolicy.LINUX_BWRAP)
+    );
+  }
+
+  /** undefined when the worker is still there after `ms`. */
+  private static within(exited: Promise<number | null>, ms: number): Promise<number | null | undefined> {
+    let timer: NodeJS.Timeout | undefined;
+    return Promise.race([
+      exited.catch(() => null),
+      new Promise<undefined>((resolve) => (timer = setTimeout(() => resolve(undefined), ms))),
+    ]).finally(() => clearTimeout(timer));
+  }
+
   /** esbuild emits SRT's helper binaries next to this bundle and hands their paths out relative to it. */
   private static bundled(asset: string): string {
     return fileURLToPath(new URL(asset, import.meta.url));
   }
 
+  /** Removes trash left by supervisors that were killed after acknowledging close; live scope temps are never touched. */
   private static async sweepTrash(): Promise<void> {
     const entries = await readdir(tmpdir()).catch(() => [] as string[]);
     await Promise.all(

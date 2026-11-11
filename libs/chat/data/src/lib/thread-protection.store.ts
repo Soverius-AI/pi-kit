@@ -3,9 +3,9 @@ import { patchState, signalStore, withComputed, withHooks, withMethods, withProp
 import {
   ApiClient,
   errorMessage,
+  isLocalExecution,
   threadsGetProtection,
   threadsSetProtection,
-  threadsSetupWindowsProtection,
   unwrap,
   WORKBENCH,
 } from '@pi-kit/api';
@@ -35,6 +35,8 @@ export const ThreadProtectionStore = signalStore(
     _toasts: inject(ToastStore),
     _translate: inject(Language).t,
     remote: inject(WORKBENCH).remote,
+    /** Only the desktop app can ask for the password. */
+    canSetUpLinux: isLocalExecution() && typeof window !== 'undefined' && !!window.piKit?.setUpLinuxSandbox,
   })),
   withComputed((store) => ({
     threadId: computed(() => store._chat.threadId()),
@@ -128,10 +130,11 @@ export const ThreadProtectionStore = signalStore(
         );
       },
 
-      setupWindows(threadId: string | undefined): Promise<void> {
-        return write(threadId, 'settingUp', (id) =>
-          unwrap(threadsSetupWindowsProtection({ client: store._api.client, path: { id } })),
-        );
+      setUpLinux(threadId: string | undefined): Promise<void> {
+        return write(threadId, 'settingUp', async (id) => {
+          await window.piKit?.setUpLinuxSandbox?.();
+          return unwrap(threadsSetProtection({ client: store._api.client, path: { id }, body: { mode: 'sandboxed' } }));
+        });
       },
     };
   }),

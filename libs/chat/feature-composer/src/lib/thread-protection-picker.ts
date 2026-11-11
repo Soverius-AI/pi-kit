@@ -57,7 +57,8 @@ import { ThreadProtectionDialog, type ThreadProtectionDialogInputs } from './thr
           <pk-protection-badge
             [mode]="store.mode()"
             [attention]="attention()"
-            [busy]="store.loading() || store.pending()"
+            [active]="active()"
+            [busy]="store.loading() || store.pending() || store.protection()?.state === 'starting'"
           />
         </button>
       </div>
@@ -119,9 +120,14 @@ import { ThreadProtectionDialog, type ThreadProtectionDialogInputs } from './thr
             @if (coverage(); as coverage) {
               <p class="m-0 text-xs leading-relaxed muted" data-testid="protection-coverage">{{ coverage }}</p>
             }
+            @if (store.protection()?.state === 'setup-required' && !store.canSetUpLinux) {
+              <p class="m-0 text-xs leading-relaxed muted" data-testid="protection-setup-in-app">
+                {{ 'chat.threadProtection.setupInApp' | transloco }}
+              </p>
+            }
             @if (refreshable()) {
               <div class="flex flex-wrap gap-2">
-                @if (store.protection()?.state === 'setup-required') {
+                @if (store.protection()?.state === 'setup-required' && store.canSetUpLinux) {
                   <button
                     type="button"
                     class="btn btn-primary btn-xs gap-1.5"
@@ -154,6 +160,7 @@ import { ThreadProtectionDialog, type ThreadProtectionDialogInputs } from './thr
         class="p-2"
         [mode]="store.mode()"
         [attention]="attention()"
+        [active]="active()"
         [label]="label()"
         [pkTip]="label()"
       />
@@ -184,6 +191,7 @@ export class ThreadProtectionPicker {
         this.store.protection()?.state ?? '',
       ),
   );
+  protected readonly active = computed(() => ['active', 'experimental'].includes(this.store.protection()?.state ?? ''));
   protected readonly refreshable = computed(() => this.attention() || this.store.protection()?.state === 'starting');
   protected readonly status = computed(() => {
     const protection = this.store.protection();
@@ -334,8 +342,8 @@ export class ThreadProtectionPicker {
       title: 'setupTitle',
       confirmLabel: 'setupConfirm',
       warnings: ['setupWarning'],
-      consents: ['setupConsent'],
-      apply: () => void this.store.setupWindows(threadId),
+      consents: [],
+      apply: () => void this.store.setUpLinux(threadId),
     });
   }
 

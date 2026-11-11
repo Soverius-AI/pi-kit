@@ -10,10 +10,10 @@ Every thread has its own execution-protection mode. **Bypass is the default on m
 
 The composer has a **lock icon** beside the model and effort controls. An open lock means Bypass; a closed lock means Sandboxed. An amber warning marker means the effective state needs attention. Open the shared design-system popover to choose a mode, inspect status/recovery details, or refresh status. Changing modes requires explicit confirmation and an idle thread without active background agents.
 
-- **Bypass:** existing host-backed tools and workflow permissions. No SRT worker, proxy, dependency check, or privileged setup starts for this mode.
+- **Bypass:** existing host-backed tools and workflow permissions. No SRT worker, proxy or dependency check starts for this mode.
 - **Sandboxed:** this thread's file, search and shell tools use its own SRT supervisor and restricted worker. Other threads, including threads in the same folder, keep their own modes and resources.
 
-The icon shows the **mode**; its tooltip and popover show the state of the sandbox: **starts before the next run**, **starting**, **active**, **experimental** (Windows), **unavailable**, **needs setup** (Windows) or **recovery required**. Unavailable and recovery required never mean Bypass: tools are blocked, and nothing runs on the host instead. A sandbox that failed to start cleanly is tried again on the next run.
+The icon shows the **mode**, green while the sandbox runs and a spinner while it starts; its tooltip and popover show the state of the sandbox: **starts before the next run**, **starting**, **active**, **experimental** (Windows), **unavailable**, **needs setup** (Linux) or **recovery required**. Unavailable and recovery required never mean Bypass: tools are blocked, and nothing runs on the host instead. A sandbox that failed to start cleanly is tried again on the next run.
 
 Selecting Bypass for a protected thread is an explicit downgrade. The backend requires confirmation and confirmed cleanup before saving the downgrade. Backend authentication, renderer isolation, project trust, credential handling, and existing workflow checks remain enabled in both modes.
 
@@ -48,13 +48,40 @@ A sandboxed background agent that a restart interrupted is held: its commands ca
 | Platform | Prerequisites and current assurance |
 | --- | --- |
 | macOS | Seatbelt/`sandbox-exec` and `ripgrep`; local arm64 smoke tests have run, but this is not a security certification |
-| Linux | `bubblewrap`, `socat`, `ripgrep`, and usable namespace/seccomp primitives; native Linux qualification remains outstanding |
-| Windows | Native SRT alpha helper, explicit experimental acceptance, and a one-time machine setup from the protection popover (**Set up Windows sandbox**). Native x64/arm64 execution qualification remains outstanding |
+| Linux | `bubblewrap` and `socat` (pi-kit brings its own ripgrep), and user namespaces with capabilities; on Ubuntu 24.04 and later a one-time setup (below). Tested on Ubuntu 26.04 arm64 |
+| Windows | A Windows build with MXC BaseContainers (SRT's experimental `mxc` backend), and explicit experimental acceptance. No machine setup or administrator prompt. Tested on Windows 11 arm64; x64 qualification remains outstanding |
 
-### Windows setup
+### Linux
 
-SRT's Windows sandbox runs commands as a dedicated local account, so each machine needs a one-time setup. When a Sandboxed thread shows **needs setup**, choose **Set up Windows sandbox** in its protection popover and confirm. Windows asks for administrator permission once; the setup creates the `srt-sandbox` account and firewall (WFP) rules for it, then the thread's sandbox starts. The account and rules apply to the whole machine and are shared with other applications that use SRT, so uninstalling pi-kit does not remove them. Your user profile is not made readable to the sandbox. A later SRT release can ask for the setup again; the same action repeats it.
+Ubuntu 24.04 and later run whatever `/usr/bin/bwrap` starts without capabilities (the `bwrap-userns-restrict` AppArmor profile), and the sandbox's seccomp helper needs them, so a Sandboxed thread there shows **needs setup**. Choose **Set up Linux sandbox** in its protection popover: Ubuntu asks for your password once, and pi-kit installs its own copy of bubblewrap at `/usr/local/libexec/pi-kit/bwrap` with an AppArmor profile, `/etc/apparmor.d/pi-kit-bwrap`, that lets it create user namespaces. pi-kit uses that copy wherever it exists; Ubuntu's own setting for unprivileged user namespaces stays as it is. In a browser the popover points to the app, since only the app on that computer can ask for the password. Other distributions use the system's `bubblewrap` and need no setup.
 
-Native Windows has known network-filter bypasses and shared-account/persistent-grant read limitations. It does **not** guarantee hostile-code network containment or mutually untrusted workspace read isolation. Strict requirements that the backend cannot enforce must be refused. Setup does not grant broad profile reads by default, and cancellation never authorizes host fallback. Machine-wide setup/removal must be coordinated with other SRT applications.
+To set it up by hand, or remove it:
+
+```bash
+sudo install -D -m 0755 /usr/bin/bwrap /usr/local/libexec/pi-kit/bwrap
+sudo tee /etc/apparmor.d/pi-kit-bwrap >/dev/null <<'PROFILE'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile pi-kit-bwrap /usr/local/libexec/pi-kit/bwrap flags=(unconfined) {
+  userns,
+
+  include if exists <local/pi-kit-bwrap>
+}
+PROFILE
+sudo apparmor_parser -r /etc/apparmor.d/pi-kit-bwrap
+
+# removal
+sudo apparmor_parser -R /etc/apparmor.d/pi-kit-bwrap
+sudo rm /etc/apparmor.d/pi-kit-bwrap /usr/local/libexec/pi-kit/bwrap
+```
+
+### Windows
+
+On Windows the sandbox is an MXC BaseContainer: commands run as you, in a container that the operating system confines per command. Nothing is installed on the machine. A Windows build without BaseContainers shows the sandbox as **unavailable**, and nothing runs on the host instead.
+
+The sandbox writes only in the thread's workspace and its own temporary folder, and reaches no network. It reads the system drive, but not your profile: when the workspace is inside the profile, every entry on the way to it is unreadable except the folders that lead there, whose names (not their contents) it can list. An entry created in one of those folders while the sandbox runs is not covered until the next start. Files and folders Windows holds open exclusively, such as the registry hive, are left out; nothing can read them meanwhile.
+
+The MXC backend is experimental. Sandboxed programs can open windows on the desktop; programs built on MSYS2, Git Bash included, do not start; `%TEMP%` is fresh for every command. It does **not** guarantee hostile-code network containment or read isolation between workspaces outside your profile. Strict requirements that the backend cannot enforce must be refused, and a failure never falls back to the host.
 
 POSIX cancellation owns process groups; it does not provide a race-free termination guarantee for hostile daemons that deliberately detach/reparent. Unsupported quotas and generic command replay/reattachment are not provided.

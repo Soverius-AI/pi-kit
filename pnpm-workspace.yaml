@@ -19,6 +19,8 @@ allowBuilds:
   '@scarf/scarf': false
   protobufjs: false
   '@google/genai': false
+  # MXC's FFI (Windows sandbox): release staging copies the target's prebuilt @koromix package; nothing here loads it.
+  koffi: false
 
 # One flat node_modules: Nx, electron-builder and the native-module scripts expect it, and a git worktree
 # install still links from the shared store. Peers are installed automatically and a peer mismatch warns only

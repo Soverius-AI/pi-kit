@@ -61,6 +61,29 @@ afterEach(() => {
   rmSync(base, { recursive: true, force: true });
 });
 
+it('keeps a Sandboxed thread Sandboxed when its worktree cannot be removed', async () => {
+  const protection = new ThreadProtectionTesting();
+  protection.bindings.set('replay', {
+    version: 1,
+    mode: 'sandboxed',
+    generation: 1,
+    experimentalWindowsAccepted: false,
+  });
+  const refused = new ThreadsService(
+    rows,
+    { lastRun: () => undefined } as never,
+    meta,
+    { dispose: vi.fn() } as never,
+    {} as never,
+    { remove: vi.fn(async () => Promise.reject(new Error('The worktree has uncommitted changes.'))) } as never,
+    {} as never,
+    { defaultCwd: project } as never,
+    protection.service(),
+  );
+  await expect(refused.remove('replay', 'remove')).rejects.toThrow('uncommitted changes');
+  expect(protection.bindings.get('replay')?.mode).toBe('sandboxed');
+});
+
 describe('prepareRun and a verification thread', () => {
   it('lets a verification thread run while its scratch worktree is there, in the worktree', async () => {
     meta.markVerificationThread('replay', 'draft-1');

@@ -316,9 +316,11 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
       throw new ConflictException('Stop the run before deleting the thread.');
     }
     this.sessions.dispose(id);
-    await this.protection.forgetThread(id);
+    await this.protection.release(`thread:${id}`);
+    // The mode stays until the thread is gone: a refused worktree removal must not leave it in Bypass.
     if (row.worktreePath && worktree !== 'keep') await this.worktrees.remove(row, { force: worktree === 'force' });
     const how = this.sessions.trashSession(row.sessionPath);
+    await this.protection.forgetThread(id);
     this.forget(id);
     this.status.listChanged();
     this.logger.log(`Deleted thread ${id} (${how})`);
@@ -432,10 +434,6 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
   protectionOf(id: string): ThreadProtection {
     this.require(id);
     return this.protection.status(id);
-  }
-
-  setupWindowsProtection(id: string): Promise<ThreadProtection> {
-    return this.protection.setupWindows(id, this.workFolder(this.require(id)));
   }
 
   /** Changes the mode of an idle thread: its open session closes, and the next run starts in the new mode. */

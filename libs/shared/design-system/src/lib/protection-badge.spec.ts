@@ -11,11 +11,17 @@ describe('PkProtectionBadge', () => {
     expect(root.querySelector('.bg-warning')).toBeNull();
     expect(root.getAttribute('aria-hidden')).toBe('true');
     fixture.componentRef.setInput('mode', 'sandboxed');
+    await fixture.whenStable();
+    expect(root.querySelector('pk-icon')?.classList).not.toContain('active');
+    fixture.componentRef.setInput('active', true);
+    await fixture.whenStable();
+    expect(root.querySelector('pk-icon')?.classList).toContain('active');
     fixture.componentRef.setInput('attention', true);
     fixture.componentRef.setInput('label', 'Sandbox unavailable');
     await fixture.whenStable();
     expect(root.querySelector('pk-icon')?.getAttribute('style')).toContain('--pk-icon-lock)');
     expect(root.querySelector('pk-icon')?.classList).toContain('text-warning');
+    expect(root.querySelector('pk-icon')?.classList).not.toContain('active');
     expect(root.querySelector('.bg-warning')).not.toBeNull();
     expect(root.getAttribute('role')).toBe('img');
     expect(root.getAttribute('aria-label')).toBe('Sandbox unavailable');

@@ -981,45 +981,6 @@ paths:
       summary: Set thread protection
       tags:
         - threads
-  /api/threads/{id}/protection/windows-setup:
-    post:
-      description: Runs the sandbox runtime’s one-time machine setup on Windows (one administrator prompt), then starts the thread’s sandbox again. Not remote.
-      operationId: Threads_setupWindowsProtection
-      parameters:
-        - name: id
-          required: true
-          in: path
-          description: The thread id (the pi session id).
-          schema:
-            type: string
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ThreadProtection'
-        '401':
-          description: The bearer token is missing or wrong.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '404':
-          description: There is no such thread.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '409':
-          description: Not Windows, the thread needs recovery, or the setup failed or was declined.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-      summary: Set up the Windows sandbox
-      tags:
-        - threads
   /api/threads/{id}/seen:
     post:
       description: Clears the thread's unread dot and its "cli" badge.
