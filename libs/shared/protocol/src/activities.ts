@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PiAgentLiveContentSchema } from './agent-live';
 import { ReviewCommentSchema } from './review';
 import { PiSkillsContentSchema } from './skills';
 
@@ -8,7 +9,7 @@ import { PiSkillsContentSchema } from './skills';
  * messages (`role: "activity"`).
  *
  * Message ids are derived so a renderer can find the activity that belongs to a tool call:
- * `tool:<toolCallId>`, `bash:<toolCallId>`, `diff:<toolCallId>`, `widget:<key>`, `compaction:<entryId>`, `branch-summary:<entryId>`, `review:<entryId>`, `skills:<entryId>`, `usage:<assistantMessageId>`.
+ * `tool:<toolCallId>`, `bash:<toolCallId>`, `diff:<toolCallId>`, `widget:<key>`, `compaction:<entryId>`, `branch-summary:<entryId>`, `review:<entryId>`, `skills:<entryId>`, `usage:<assistantMessageId>`, `agent-live:<agentId>`.
  */
 
 export const PiWidgetContentSchema = z.object({
@@ -105,6 +106,7 @@ export const PI_ACTIVITY_TYPES = {
   'pi.review': PiReviewContentSchema,
   'pi.skills': PiSkillsContentSchema,
   'pi.turn_usage': PiTurnUsageContentSchema,
+  'pi.agent_live': PiAgentLiveContentSchema,
 } as const;
 
 export type PiActivityType = keyof typeof PI_ACTIVITY_TYPES;
@@ -121,4 +123,5 @@ export const activityId = {
   review: (entryId: string) => `review:${entryId}`,
   skills: (entryId: string) => `skills:${entryId}`,
   usage: (assistantMessageId: string) => `usage:${assistantMessageId}`,
+  agentLive: (agentId: string) => `agent-live:${agentId}`,
 };

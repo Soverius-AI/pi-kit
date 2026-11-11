@@ -3,21 +3,26 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { type BaseEvent, verifyEvents } from '@ag-ui/client';
+import { type BaseEvent, EventType, verifyEvents } from '@ag-ui/client';
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
+import { applyPatch, type Operation } from 'fast-json-patch';
 import { firstValueFrom, from, toArray } from 'rxjs';
 import { createModels } from '@earendil-works/pi-ai/models';
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai/providers/faux';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemorySecretStore } from '@pi-kit/secret-store';
-import { DB_KEY_ACCOUNT } from '@pi-kit/protocol';
+import { AGENT_LIVE_SYNC_RUN, DB_KEY_ACCOUNT } from '@pi-kit/protocol';
 import { isPlainDatabase } from '../db/encryption';
 import { DatabaseService } from '../db/database.service';
 import { EventLogRepository } from '../db/event-log.repository';
 import { BgAgentRunner } from './bg-agent-runner';
 import { type BgAgentRow, BgAgentsRepository } from './bg-agents.repository';
+import { DocsPatch } from './docs-patch';
 import { BgAgentsService } from './bg-agents.service';
 import { LOCK_FILE } from './durable-storage';
+import type { ProtectionBinding } from '../db/thread-protection.repository';
+import { SandboxPackage, type ThreadProtectionService } from '../pi/thread-protection.service';
+import { ThreadProtectionTesting } from '../pi/thread-protection.testing';
 
 const key = 'cd'.repeat(32);
 let dir: string;
@@ -41,9 +46,27 @@ const until = async (check: () => boolean, label: string, timeoutMs = 15_000): P
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 };
+/** The `pi.agent_live` content a client holds after `events`, as they come over the wire: a snapshot replaces it, a delta patches it. */
+const activityAfter = (events: BaseEvent[]): { docs: Record<string, Record<string, unknown>> } | undefined =>
+  (
+    JSON.parse(JSON.stringify(events)) as {
+      type: EventType;
+      activityType?: string;
+      content?: unknown;
+      patch?: Operation[];
+    }[]
+  )
+    .filter((event) => event.activityType === 'pi.agent_live')
+    .reduce<{ docs: Record<string, Record<string, unknown>> } | undefined>(
+      (content, event) =>
+        event.type === EventType.ACTIVITY_SNAPSHOT
+          ? (event.content as { docs: Record<string, Record<string, unknown>> })
+          : applyPatch(content, event.patch ?? []).newDocument,
+      undefined,
+    );
 const delivered: { threadId: string; content: string; details: unknown }[] = [];
 let runner: BgAgentRunner;
-const make = (): BgAgentsService => {
+const make = (protection = ThreadProtectionTesting.bypass()): BgAgentsService => {
   runner = new BgAgentRunner(new EventLogRepository(database));
   return new BgAgentsService(
     { dataDir: dir },
@@ -60,6 +83,7 @@ const make = (): BgAgentsService => {
       discard: async () => undefined,
     },
     runner,
+    protection,
   );
 };
 
@@ -75,12 +99,143 @@ beforeEach(() => {
   service = make();
 });
 afterEach(async () => {
+  vi.restoreAllMocks();
   await service.close();
   database.onApplicationShutdown();
   rmSync(dir, { recursive: true, force: true });
 });
 
 describe('BgAgentsService', () => {
+  function protectionFixture(mode: 'bypass' | 'sandboxed' = 'sandboxed') {
+    let binding: ProtectionBinding = { version: 1, mode, generation: 7, experimentalWindowsAccepted: false };
+    const client = {
+      request: vi.fn(async () => ({ ok: true, value: undefined })),
+      close: vi.fn(async () => undefined),
+    };
+    const owner = vi.fn(async () => client);
+    const release = vi.fn(async () => undefined);
+    const setAgentGuard = vi.fn();
+    const protection = {
+      binding: () => ({ ...binding }),
+      owner,
+      release,
+      forget: release,
+      setAgentGuard,
+    } as unknown as ThreadProtectionService;
+    vi.spyOn(SandboxPackage, 'load').mockImplementation(async (entry) => {
+      if (entry !== 'durable') throw new Error('The agents never load the sandbox core directly.');
+      return (await import('@pi-kit/sandbox/durable')) as never;
+    });
+    return {
+      protection,
+      owner,
+      release,
+      setAgentGuard,
+      change: (mode: 'bypass' | 'sandboxed') => {
+        binding = { ...binding, mode, generation: 8 };
+      },
+    };
+  }
+
+  it('persists child protection before submission and keeps it after parent opt-out and restart', async () => {
+    const fixture = protectionFixture();
+    service = make(fixture.protection);
+    const first = faux([fauxAssistantMessage('First task done.')]);
+    await service.open(first.models);
+    const row = await service.spawn({
+      threadId: 'protected',
+      name: 'one',
+      role: 'worker',
+      brief: 'Work.',
+      model: first.model,
+    });
+    await until(() => service.get(row.id)?.status === 'done', 'protected task done');
+    expect(fixture.owner).toHaveBeenCalledWith(
+      `agent:${row.id}`,
+      project,
+      expect.objectContaining({ mode: 'sandboxed', generation: 7 }),
+    );
+    fixture.change('bypass');
+    await service.close();
+    expect(fixture.release).toHaveBeenCalledWith(`agent:${row.id}`);
+    fixture.owner.mockClear();
+    service = make(fixture.protection);
+    await service.open(faux([fauxAssistantMessage('Second task done.')]).models);
+    await service.send(row.id, 'More work.', 'followUp', 'second');
+    await until(() => fixture.owner.mock.calls.length > 0, 'saved owner binding');
+    expect(fixture.owner).toHaveBeenCalledWith(
+      `agent:${row.id}`,
+      project,
+      expect.objectContaining({ mode: 'sandboxed', generation: 7 }),
+    );
+  });
+
+  it('keeps saved Bypass children off the sandbox even when the parent opts in later', async () => {
+    const fixture = protectionFixture('bypass');
+    service = make(fixture.protection);
+    const first = faux([fauxAssistantMessage('First task done.')]);
+    await service.open(first.models);
+    const row = await service.spawn({
+      threadId: 'off',
+      name: 'legacy',
+      role: 'worker',
+      brief: 'Work.',
+      model: first.model,
+    });
+    await until(() => service.get(row.id)?.status === 'done', 'bypass task done');
+    fixture.change('sandboxed');
+    await service.close();
+    service = make(fixture.protection);
+    await service.open(faux([fauxAssistantMessage('Second task done.')]).models);
+    await service.send(row.id, 'More work.', 'followUp', 'second');
+    await until(() => service.get(row.id)?.status === 'done', 'saved bypass task done');
+    expect(fixture.owner).not.toHaveBeenCalled();
+  });
+
+  it('holds interrupted protected work before resume and generic resume cannot replay it', async () => {
+    const fixture = protectionFixture();
+    service = make(fixture.protection);
+    const first = faux([
+      fauxAssistantMessage([fauxToolCall('ask', { question: 'Wait for review?', kind: 'user' })], {
+        stopReason: 'toolUse',
+      }),
+    ]);
+    await service.open(first.models);
+    const row = await service.spawn({
+      threadId: 'protected',
+      name: 'held',
+      role: 'worker',
+      brief: 'Work.',
+      model: first.model,
+    });
+    await until(() => service.userQuestions('protected').length === 1, 'question waiting');
+    expect(fixture.setAgentGuard.mock.calls[0][0]('protected')).toBe(true);
+    await service.close();
+    fixture.owner.mockClear();
+    service = make(fixture.protection);
+    await service.open(faux([]).models);
+    expect(service.get(row.id)?.status).toBe('blocked');
+    expect(() => service.resumeAgent(row.id)).toThrow(/cannot be replayed/);
+    expect(() => service.discardCleanup(row.id)).toThrow(/cannot be replayed/);
+    await expect(service.send(row.id, 'retry', 'steer', 'retry')).rejects.toThrow(/cannot be replayed/);
+    expect(fixture.owner).not.toHaveBeenCalled();
+    await service.stop(row.id);
+    expect(fixture.release).toHaveBeenCalledWith(`agent:${row.id}`);
+  });
+
+  it('stops an agent whose sandbox fails to start instead of leaving it at work', async () => {
+    const fixture = protectionFixture();
+    fixture.owner.mockRejectedValueOnce(new Error('The sandbox is unavailable.'));
+    service = make(fixture.protection);
+    const first = faux([fauxAssistantMessage('Never.')]);
+    await service.open(first.models);
+    await expect(
+      service.spawn({ threadId: 'protected', name: 'one', role: 'worker', brief: 'Work.', model: first.model }),
+    ).rejects.toThrow('The sandbox is unavailable.');
+    expect(fixture.setAgentGuard.mock.calls[0][0]('protected')).toBe(false);
+    expect(fixture.release).toHaveBeenCalled();
+  });
+
   it('keeps background agents available without a credential store', async () => {
     await service.close();
     database.onApplicationShutdown();
@@ -227,6 +382,34 @@ describe('BgAgentsService', () => {
       content: expect.stringMatching(/^Agent "broken" failed: /),
       details: { agentId: row.id, name: 'broken', ref: expect.stringMatching(/^end:/) },
     });
+    // Its transcript replays to the live state it ended in: why the run ended without an answer, nothing in flight.
+    const replayed = () =>
+      activityAfter(new EventLogRepository(database).read(row.id).map((stored) => stored.event))?.docs['pi.live'];
+    await until(() => replayed()?.['runFailure'] !== undefined, 'the failure in the replayed live state');
+    expect(replayed()).toMatchObject({ runFailure: { reason: 'model_error' } });
+    expect(replayed()?.['run']).toBeUndefined();
+    // A change while it is idle is a sync run in its log: counted on the agent, and the thread's list told, so a transcript joins.
+    const syncs = service.toAgent(service.get(row.id)!).liveSyncs;
+    expect(syncs).toEqual(expect.any(Number));
+    const told: string[] = [];
+    const quiet = service.onChange((threadId) => void told.push(threadId));
+    await (await service.conversationOf(row.id))!.configure({ maxTurns: 3 }, BACKGROUND_CONTEXT);
+    await until(() => service.toAgent(service.get(row.id)!).liveSyncs === syncs + 1, 'the sync run');
+    quiet();
+    expect(told).toContain('t1');
+    const logged = new EventLogRepository(database).read(row.id).map((stored) => stored.event);
+    const sync = logged
+      .map(
+        (event) =>
+          event.type === EventType.RUN_STARTED &&
+          String((event as { runId?: string }).runId).startsWith(AGENT_LIVE_SYNC_RUN),
+      )
+      .lastIndexOf(true);
+    expect(logged.slice(sync + 1).map((event) => event.type)).toEqual([
+      EventType.ACTIVITY_DELTA,
+      EventType.RUN_FINISHED,
+    ]);
+    expect(JSON.stringify(logged[sync + 1])).toContain('/docs/pi.agent/maxTurns');
     // A restart follows only unfinished agents: the failure is not said again.
     await service.close();
     await service.open(models);
@@ -397,6 +580,51 @@ describe('BgAgentsService', () => {
     following.unsubscribe();
   });
 
+  it('carries what an agent does as its pi.agent_live activity: a snapshot after every messages snapshot, deltas that add up to its documents (without the streamed answer) and its tool timing, a replay that ends in them', async () => {
+    const { models, model } = faux([
+      fauxAssistantMessage([fauxToolCall('bash', { command: 'cat README.md' })], { stopReason: 'toolUse' }),
+      fauxAssistantMessage('Read it.'),
+    ]);
+    await service.open(models);
+    const row = await service.spawn({ threadId: 't1', name: 'reader', role: 'docs', brief: 'Read.', model });
+    const live: BaseEvent[] = [];
+    const following = runner
+      .connect({ threadId: row.id, agentId: 'pi-bg' } as never)
+      .subscribe((event) => live.push(event));
+    await until(
+      () => service.get(row.id)?.status === 'done' && runner.liveOf(row.id) === undefined,
+      'the agent to finish',
+    );
+    following.unsubscribe();
+    const watch = await (await service.conversationOf(row.id))!.watch(BACKGROUND_CONTEXT);
+    const docs = JSON.parse(JSON.stringify(DocsPatch.strip(watch.value.docs))) as Record<
+      string,
+      Record<string, unknown>
+    >;
+    await watch.stop();
+    expect(docs['pi.live']['run']).toBeUndefined();
+    const patches = live.flatMap((event) =>
+      event.type === EventType.ACTIVITY_DELTA ? (event as unknown as { patch: Operation[] }).patch : [],
+    );
+    expect(patches.length).toBeGreaterThan(0);
+    expect(patches.find((op) => op.path.startsWith('/timing/') && op.op !== 'remove')).toMatchObject({
+      value: { startedAt: expect.any(Number) },
+    });
+    const replay = new EventLogRepository(database).read(row.id).map((stored) => stored.event);
+    for (const events of [live, replay]) {
+      const activity = events.filter((event) => (event as { activityType?: string }).activityType === 'pi.agent_live');
+      expect(activity[0]).toMatchObject({ type: EventType.ACTIVITY_SNAPSHOT, messageId: `agent-live:${row.id}` });
+      const snapshots = events.flatMap((event, index) => (event.type === EventType.MESSAGES_SNAPSHOT ? [index] : []));
+      expect(snapshots.length).toBeGreaterThan(0);
+      for (const index of snapshots)
+        expect(events[index + 1]).toMatchObject({ type: EventType.ACTIVITY_SNAPSHOT, activityType: 'pi.agent_live' });
+      expect(activityAfter(events)).toEqual({ docs, timing: {} });
+      await firstValueFrom(
+        from(events.filter((event) => event.type !== EventType.CUSTOM)).pipe(verifyEvents(false), toArray()),
+      );
+    }
+  });
+
   it('settles a main question the main agent answers within the very turn that delivers it (the delivery waits for the turn)', async () => {
     const { models, model } = faux([
       fauxAssistantMessage([fauxToolCall('ask', { question: 'Which runner?', kind: 'main' })], {
@@ -425,6 +653,7 @@ describe('BgAgentsService', () => {
         discard: async () => undefined,
       },
       new BgAgentRunner(new EventLogRepository(database)),
+      ThreadProtectionTesting.bypass(),
     );
     await service.open(models);
     const row = await service.spawn({ threadId: 't1', name: 'tester', role: 'tester', brief: 'Test.', model });
@@ -641,6 +870,7 @@ describe('BgAgentsService', () => {
         discard: async () => undefined,
       },
       new BgAgentRunner(new EventLogRepository(database)),
+      ThreadProtectionTesting.bypass(),
     );
     await service.open(models);
     await expect(service.spawn({ threadId: 't1', name: 'a', role: 'r', brief: 'b', model })).rejects.toThrow(

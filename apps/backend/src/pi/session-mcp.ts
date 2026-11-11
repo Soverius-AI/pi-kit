@@ -54,6 +54,7 @@ export class SessionMcp {
   constructor(
     private readonly session: AgentSession,
     private readonly tap: McpTap,
+    private readonly authorize: () => void,
   ) {}
 
   /** The session is gone: whatever still waits for one of its servers, or runs on one, fails now and stops. */
@@ -125,6 +126,7 @@ export class SessionMcp {
     args: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
+    this.authorize();
     const stop = this.lifetime(signal);
     const label = `${server}/${tool}`;
     const definition = await this.untilRegistered(
@@ -163,6 +165,7 @@ export class SessionMcp {
     uri: string,
     signal?: AbortSignal,
   ): Promise<{ contents: Record<string, unknown>[] }> {
+    this.authorize();
     const { session, tap } = this;
     const stop = this.lifetime(signal);
     const definition = await this.untilRegistered(

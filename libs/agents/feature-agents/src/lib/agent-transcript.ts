@@ -108,7 +108,7 @@ export class AgentTranscript {
   private readonly stand = inject(ThreadsStore) as unknown as ReturnType<typeof agentAsThreads>;
 
   /** What the agent was doing at the last change, so a start is told from a change of anything else. */
-  private last: { activity: BgAgent['activity']; status: BgAgent['status'] } | undefined;
+  private last: Pick<BgAgent, 'activity' | 'status' | 'liveSyncs'> | undefined;
 
   constructor() {
     effect(() => this.stand.agent.set(this.agent()));
@@ -118,15 +118,16 @@ export class AgentTranscript {
     effect(() => {
       const current = this.agent();
       const before = this.last;
-      this.last = { activity: current.activity, status: current.status };
+      this.last = { activity: current.activity, status: current.status, liveSyncs: current.liveSyncs };
       const started =
         before &&
         ((before.activity === 'idle' && current.activity !== 'idle') ||
           (before.status !== 'active' && current.status === 'active'));
+      const synced = before && before.liveSyncs !== current.liveSyncs;
       // A run this store started itself (a message from the composer) is followed already: only a start from elsewhere needs the join.
-      if (started)
+      if (started || synced)
         untracked(() => {
-          if (!this.chat.running()) this.chat.reconnect();
+          if (!this.chat.running()) this.chat.reconnect({ sync: !started });
         });
     });
     // A message to an agent is its next task unless the person picks Steer: the thread's default of steering mid-run does not fit here.

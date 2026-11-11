@@ -1194,6 +1194,78 @@
     "followUp": {
       "accept": "Accept suggestion →",
       "dismiss": "Dismiss · Esc"
+    },
+    "threadProtection": {
+      "label": "Thread protection",
+      "bypass": "Bypass",
+      "sandboxed": "Sandboxed",
+      "bypassDescription": "Tools run on the host",
+      "sandboxedDescription": "Tools run in a sandbox",
+      "current": "Current",
+      "loading": "Checking protection…",
+      "saving": "Saving protection…",
+      "unknown": "Protection unknown",
+      "cancel": "Cancel",
+      "confirm": "Confirm change",
+      "confirmTitle": "Change thread protection?",
+      "enableWarning": "Tools run in a sandbox. Extensions still run on the host, so only use trusted ones.",
+      "bypassWarning": "Tools will run directly on this computer, without the sandbox.",
+      "recoveryWarning": "Earlier sandbox work for this thread may not have stopped. Check that it has stopped before you continue.",
+      "recoveryConsent": "I checked that earlier sandbox work for this thread has stopped.",
+      "windowsConsent": "I understand that the Windows sandbox is experimental and does not fully isolate network or reads.",
+      "notApplied": "Protection was not changed: the thread changed or became busy.",
+      "saveFailed": "Protection was not changed: {{value1}}",
+      "refresh": "Refresh status",
+      "setup": "Set up Linux sandbox",
+      "setupTitle": "Set up the Linux sandbox?",
+      "setupConfirm": "Set up",
+      "setupWarning": "Ubuntu asks for your password once to install pi-kit’s copy of bubblewrap and an AppArmor profile that lets it create sandboxes. Both stay until you remove them.",
+      "settingUp": "Setting up the Linux sandbox; enter your password…",
+      "setupFailed": "The Linux sandbox was not set up: {{value1}}",
+      "setupInApp": "Run this setup from the pi-kit app on this computer.",
+      "coverage": {
+        "bypass": "Tools run on the host with the existing trust and workflow permissions.",
+        "sandboxed": "Tools run in a sandbox; host extensions are trusted. Network is denied by default. MCP and host automation are unavailable.",
+        "sandboxedWindows": "Tools run in a sandbox; host extensions are trusted. Network is denied by default. MCP and host automation are unavailable. Experimental on Windows: network and read isolation between threads are not guaranteed."
+      },
+      "status": {
+        "bypass": "No sandbox (Bypass)",
+        "idle": "Sandbox starts before the next run",
+        "starting": "Sandbox starting",
+        "active": "Sandbox active",
+        "experimental": "Sandbox experimental",
+        "unavailable": "Sandbox unavailable",
+        "setup-required": "Linux sandbox needs setup",
+        "recovery-required": "Sandbox recovery required"
+      }
+    },
+    "agentLive": {
+      "pending": "Waiting",
+      "running": "Running",
+      "failed": "Failed",
+      "droppedLines": "… {{value1}} earlier lines not shown",
+      "droppedBytes": "… {{value1}} earlier bytes not shown",
+      "inTime": "in {{value1}}",
+      "now": "now",
+      "retry": "The request failed; retrying {{value1}}",
+      "deferred": "Waiting for the provider; checking again {{value1}}",
+      "compacting": "Compacting context…",
+      "compactionRetry": "Compaction failed; retrying {{value1}}",
+      "compactionFailed": "Compaction failed",
+      "working": "The agent is working",
+      "failure": {
+        "model_error": "The model returned an error",
+        "no_model": "No model is available for this agent",
+        "aborted": "The run was stopped",
+        "reset": "The run was reset",
+        "faulted": "The agent ran into an internal error",
+        "orphaned": "The run lost its process and was ended",
+        "interrupted": "The run was interrupted",
+        "restart_limit": "The agent stopped after restarting too often",
+        "nothing_to_answer": "There was nothing to answer",
+        "turn_limit": "The agent reached its turn limit",
+        "unknown": "The run ended without an answer ({{value1}})"
+      }
     }
   },
   "threads": {

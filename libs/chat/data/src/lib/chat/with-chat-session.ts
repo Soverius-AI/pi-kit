@@ -172,6 +172,7 @@ export function withChatSession<_>() {
               .finally(() => {
                 // A replay that was cut short by a newer one must not release a caller that waits for the newer one.
                 if (detached) return;
+                patchState(store, { syncRun: false });
                 if (failed) store.requestFailed(translate('chat.withChatSession.theReplayOfTheThreadBroke'));
                 else store.requestDone();
                 // After a reload the bar shows pi's queue, not what the replayed log last said about it.

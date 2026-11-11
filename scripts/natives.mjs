@@ -11,6 +11,8 @@
 //   @earendil-works/pi-tui          `native/<platform>/prebuilds/<platform>-<arch>/` inside the package's own tarball
 //   @trycua/cua-driver              computer use (packages/pi-computer-use): one package per platform (`@trycua/cua-driver-<triple>`, the SDK
 //                                   library and its N-API runtime; glibc on Linux), fetched like the keyring's
+//   @microsoft/mxc-sdk              Windows thread protection (packages/pi-sandbox): `bin/<arch>/` container helpers in its own tarball, and koffi's
+//                                   `@koromix/koffi-win32-<arch>` package, fetched like the keyring's
 //
 // `provisionNatives` puts exactly one triple's binaries into a staged backend `node_modules`; it throws, naming module and triple,
 // when one is missing. `verifyStaged` then checks what was staged: file headers (PE machine, Mach-O cputype, ELF machine) for every
@@ -104,12 +106,32 @@ export const isHost = (triple) => triple === `${process.platform}-${process.arch
 const cuaLibrary = (platform) =>
   ({ win32: 'cua_driver_sdk.dll', darwin: 'libcua_driver_sdk.dylib', linux: 'libcua_driver_sdk.so' })[platform];
 
+/** ripgrep's release builds per target, pinned by the SHA-256 the release publishes (arm64 Linux has a glibc build only). */
+const RIPGREP = {
+  version: '15.1.0',
+  targets: {
+    'darwin-arm64': ['aarch64-apple-darwin', '378e973289176ca0c6054054ee7f631a065874a352bf43f0fa60ef079b6ba715'],
+    'darwin-x64': ['x86_64-apple-darwin', '64811cb24e77cac3057d6c40b63ac9becf9082eedd54ca411b475b755d334882'],
+    'linux-arm64': ['aarch64-unknown-linux-gnu', '2b661c6ef508e902f388e9098d9c4c5aca72c87b55922d94abdba830b4dc885e'],
+    'linux-x64': ['x86_64-unknown-linux-musl', '1c9297be4a084eea7ecaedf93eb03d058d6faae29bbc57ecdaf5063921491599'],
+    'win32-arm64': ['aarch64-pc-windows-msvc', '00d931fb5237c9696ca49308818edb76d8eb6fc132761cb2a1bd616b2df02f8e'],
+    'win32-x64': ['x86_64-pc-windows-msvc', '124510b94b6baa3380d051fdf4650eaa80a302c876d611e9dba0b2e18d87493a'],
+  },
+};
+const RIPGREP_DIR = 'packages/pi-sandbox/dist/vendor/ripgrep';
+const ripgrepName = (platform) => (platform === 'win32' ? 'rg.exe' : 'rg');
+
 /** The `integrity` (sha512, base64) pnpm-lock.yaml records for `name@version`, or undefined. */
 function lockedIntegrity(name, version) {
   // Loaded here, not at the top: scripts/package-npm.mjs reads TRIPLES in a CI job that installs no dependencies.
   const { parse } = createRequire(import.meta.url)('yaml');
   const lock = parse(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8'));
   return lock.packages?.[`${name}@${version}`]?.resolution?.integrity;
+}
+
+function lockedSnapshot(name, version) {
+  const { parse } = createRequire(import.meta.url)('yaml');
+  return parse(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8')).snapshots?.[`${name}@${version}`];
 }
 
 function sri(buffer) {
@@ -343,6 +365,84 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
     }
   }
 
+  // ---- @microsoft/mxc-sdk (Windows thread protection), loaded by SRT at run time, with its locked dependencies (node-pty is staged above).
+  for (const name of ['@microsoft/mxc-sdk', 'koffi', '@koromix', 'semver']) prune(name);
+  if (t.platform === 'win32') {
+    const sdk = installedDir('@microsoft/mxc-sdk');
+    if (!sdk)
+      fail('@microsoft/mxc-sdk', 'it is not installed (an optional dependency of @anthropic-ai/sandbox-runtime)');
+    const version = JSON.parse(readFileSync(join(sdk, 'package.json'), 'utf8')).version;
+    const locked = lockedSnapshot('@microsoft/mxc-sdk', version)?.dependencies ?? {};
+    const koffiPlatform = `@koromix/koffi-win32-${t.arch}`;
+    const parts = [];
+    for (const [name, wanted] of [
+      ['@microsoft/mxc-sdk', version],
+      ['semver', locked.semver],
+      ['koffi', locked.koffi],
+      [koffiPlatform, locked.koffi],
+    ]) {
+      if (!wanted) fail('@microsoft/mxc-sdk', `pnpm-lock.yaml resolves no version of ${name} for it`);
+      try {
+        parts.push({ name, ...(await packageDir(name, wanted, cacheDir, log)) });
+      } catch (error) {
+        fail('@microsoft/mxc-sdk', `${name}@${wanted} could not be fetched (${error.message})`);
+      }
+    }
+    for (const part of parts) cpSync(part.dir, join(modulesOut, part.name), { recursive: true });
+    const bin = join(modulesOut, '@microsoft/mxc-sdk/bin');
+    for (const entry of readdirSync(bin)) if (entry !== t.arch) prune(`@microsoft/mxc-sdk/bin/${entry}`);
+    for (const entry of readdirSync(join(bin, t.arch), { withFileTypes: true }))
+      if (entry.name !== '_manifest' && !/\.(exe|dll)$/.test(entry.name))
+        rmSync(join(bin, t.arch, entry.name), { recursive: true, force: true });
+    for (const [module, file] of [
+      ['@microsoft/mxc-sdk', `@microsoft/mxc-sdk/bin/${t.arch}/mxc_ffi.dll`],
+      ['koffi', `${koffiPlatform}/win32_${t.arch}/koffi.node`],
+    ]) {
+      if (!existsSync(join(modulesOut, file))) fail(module, `${file} is not in the package`);
+      rows.push({ module, file, source: parts.find((part) => file.startsWith(part.name)).source });
+    }
+  }
+
+  // ---- ripgrep (thread protection): the target's release binary, SHA-256 checked, beside the sandbox bundle.
+  {
+    const [target, sha256] = RIPGREP.targets[triple];
+    const archive = `ripgrep-${RIPGREP.version}-${target}${t.platform === 'win32' ? '.zip' : '.tar.gz'}`;
+    const unpacked = join(cacheDir, `ripgrep-${RIPGREP.version}-${target}`);
+    if (!existsSync(unpacked)) {
+      log(`  fetching ${archive}`);
+      const url = `https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP.version}/${archive}`;
+      const response = await fetch(url);
+      if (!response.ok) fail('ripgrep', `${url}: HTTP ${response.status}`);
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const actual = createHash('sha256').update(bytes).digest('hex');
+      if (actual !== sha256) fail('ripgrep', `${archive} is ${actual}, the pinned SHA-256 is ${sha256}`);
+      const work = mkdtempSync(join(tmpdir(), 'pi-kit-rg-'));
+      try {
+        writeFileSync(join(work, archive), bytes);
+        const tar =
+          process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
+        execFileSync(tar, ['-xf', join(work, archive), '-C', work], { stdio: 'inherit' });
+        mkdirSync(unpacked, { recursive: true });
+        cpSync(
+          join(work, archive.replace(/\.(zip|tar\.gz)$/, ''), ripgrepName(t.platform)),
+          join(unpacked, ripgrepName(t.platform)),
+        );
+      } finally {
+        rmSync(work, { recursive: true, force: true });
+      }
+    }
+    const destination = join(dirname(modulesOut), RIPGREP_DIR);
+    rmSync(destination, { recursive: true, force: true });
+    mkdirSync(destination, { recursive: true });
+    cpSync(join(unpacked, ripgrepName(t.platform)), join(destination, ripgrepName(t.platform)));
+    chmodSync(join(destination, ripgrepName(t.platform)), 0o755);
+    rows.push({
+      module: 'ripgrep',
+      file: `${RIPGREP_DIR}/${ripgrepName(t.platform)}`,
+      source: `release ${RIPGREP.version} ${target}, SHA-256 checked`,
+    });
+  }
+
   // ---- pi-tui's clipboard helper: one prebuilt .node per OS and architecture
   const piAssets = join(dirname(modulesOut), 'assets', 'pi');
   const tuiNative = join(piAssets, 'native');
@@ -423,9 +523,18 @@ function expectedFiles(triple) {
     `@napi-rs/keyring-${t.keyring}`,
     `better-sqlite3-multiple-ciphers/prebuilds/${triple}.node`,
     `../assets/pi/native/${t.platform}/prebuilds/${triple}`,
+    `../${RIPGREP_DIR}/${ripgrepName(t.platform)}`,
   ];
   if (t.platform === 'win32')
-    list.push(`node-pty/prebuilds/${triple}/pty.node`, `node-pty/prebuilds/${triple}/conpty.node`);
+    list.push(
+      `node-pty/prebuilds/${triple}/pty.node`,
+      `node-pty/prebuilds/${triple}/conpty.node`,
+      '@microsoft/mxc-sdk/dist/v1/index.js',
+      `@microsoft/mxc-sdk/bin/${t.arch}/mxc_ffi.dll`,
+      'semver/package.json',
+      'koffi/index.cjs',
+      `@koromix/koffi-win32-${t.arch}/win32_${t.arch}/koffi.node`,
+    );
   else if (t.platform === 'darwin')
     list.push(
       `keychain-store/dist/keychain_store.darwin-${t.arch}.node`,
@@ -458,7 +567,10 @@ export function verifyStaged({ backend, triple, electron, log = console.log }) {
   for (const rel of expectedFiles(triple)) if (!existsSync(join(modules, rel))) problems.push(`missing ${rel}`);
 
   // Every native file in the tree has the target's CPU (a leftover of the host, or of another platform, shows up here).
-  const natives = walk(backend, (name) => /\.(node|dll|dylib|exe)$/.test(name) || name === 'spawn-helper');
+  const natives = walk(
+    backend,
+    (name) => /\.(node|dll|dylib|exe)$/.test(name) || ['spawn-helper', 'rg'].includes(name),
+  );
   for (const file of natives) {
     const header = readHeader(file);
     const where = relative(modules, file);

@@ -4,6 +4,7 @@ import { type Message } from '@ag-ui/client';
 import { computed } from '@angular/core';
 import { type SignalStoreFeatureType, signalStoreFeature, type, withComputed } from '@ngrx/signals';
 import {
+  AgentLiveState,
   activityMap,
   buildTranscript,
   contextLevel,
@@ -52,7 +53,7 @@ export function withChatTranscript<_>() {
         const window = contextWindow();
         return limit && window ? (limit / window) * 100 : undefined;
       });
-      const running = computed(() => store._agentStore().isRunning());
+      const running = computed(() => store._agentStore().isRunning() && !store.syncRun());
       const activities = computed(() => activityMap(messages()));
       const chips = computed<readonly ComposerChip[]>(
         () => store.chipsByThread()[store._threads.selectedId() ?? ''] ?? [],
@@ -61,13 +62,14 @@ export function withChatTranscript<_>() {
         /** The skill and prompt-template chips of the open thread's composer, in the order they were added. */
         chips,
         /** The stored log of the selected thread is being replayed. */
-        connecting: computed(() => store.loading()),
+        connecting: computed(() => store.loading() && !store.syncRun()),
         /** The shared AG-UI agent, for the components of generated UI that run requests through it (MCP Apps, A2UI actions). */
         agent: computed(() => store._agentStore().agent),
         threadId: computed(() => store._threads.selectedId()),
         messages,
         /** Complete redacted transcript; the viewport controls which rows are mounted. */
         transcriptMessages: shown,
+        agentLive: computed(() => AgentLiveState.pin(shown(), store._threads.selectedId())),
         /** True while a run streams (or the stored log of a running thread is replayed). */
         running,
         blocks,

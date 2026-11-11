@@ -81,6 +81,7 @@ export function openDurableStore(path: string, key?: string): SqliteDatabase {
     return {
       exec: (sql) => run(() => void connection.exec(sql)),
       run: (sql, ...params: SqliteValue[]) => run(() => void connection.prepare(sql).run(...params)),
+      runCounted: (sql, ...params: SqliteValue[]) => run(() => connection.prepare(sql).run(...params).changes),
       get: <T extends object>(sql: string, ...params: SqliteValue[]) =>
         run(() => connection.prepare(sql).get(...params) as T | undefined),
       all: <T extends object>(sql: string, ...params: SqliteValue[]) =>
@@ -100,6 +101,7 @@ export function openDurableStore(path: string, key?: string): SqliteDatabase {
   return {
     exec: (sql) => enqueue(() => direct.exec(sql)),
     run: (sql, ...params) => enqueue(() => direct.run(sql, ...params)),
+    runCounted: (sql, ...params) => enqueue(() => direct.runCounted(sql, ...params)),
     get: (sql, ...params) => enqueue(() => direct.get(sql, ...params)),
     all: (sql, ...params) => enqueue(() => direct.all(sql, ...params)),
     transaction: (callback) =>

@@ -20,8 +20,11 @@
   <div aria-hidden="true" [style.height.px]="virtual.after()"></div>
 </div>
 <div class="pk-transcript-tail">
+  @if (live(); as state) {
+    <pk-agent-live [live]="state" [nested]="chat.agentLive().nested" [timing]="chat.agentLive().timing" />
+  }
   <ng-container *ngTemplateOutlet="tailTpl" />
-  @if (showCursor() && chat.messages().at(-1)?.role !== 'reasoning') {
+  @if (showCursor() && !live() && chat.messages().at(-1)?.role !== 'reasoning') {
     <ng-container *ngTemplateOutlet="cursorTpl" />
   }
 </div>
@@ -307,6 +310,7 @@
                   [isLoading]="isLoading"
                 />
               </span>
+              <pk-nested-tool-calls [callId]="call.id" />
             }
           </div>
         }

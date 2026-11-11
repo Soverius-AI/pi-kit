@@ -47,9 +47,9 @@ const nativesCache = resolve(
 const rootModules = join(root, 'node_modules');
 const require = createRequire(import.meta.url);
 
-function run(command, args) {
+function run(command, args, env = {}) {
   console.log(`> ${command} ${args.join(' ')}`);
-  execFileSync(command, args, { cwd: root, stdio: 'inherit' });
+  execFileSync(command, args, { cwd: root, stdio: 'inherit', env: { ...process.env, ...env } });
 }
 const seconds = (since) => `${((Date.now() - since) / 1000).toFixed(1)} s`;
 
@@ -146,6 +146,19 @@ for (const triple of triples) {
   mkdirSync(targetRoot, { recursive: true });
   const backend = join(targetRoot, 'backend');
   cpSync(backendOut, backend, { recursive: true, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE });
+  // The sandbox bundle of this target replaces the every-platform one: only its own SRT helper and platform code.
+  run(
+    process.execPath,
+    [
+      join(rootModules, 'nx', 'dist', 'bin', 'nx.js'),
+      'run',
+      'pi-sandbox:build',
+      `--outputPath=${relative(root, join(backend, 'packages/pi-sandbox/dist'))}`,
+      '--declaration=false',
+      '--skipTypeCheck',
+    ],
+    { PI_SANDBOX_TARGET: triple },
+  );
   const rows = await provisionNatives({ modulesOut: join(backend, 'node_modules'), triple, cacheDir: nativesCache });
   verifyStaged({ backend, triple, electron });
   writeFileSync(join(targetRoot, 'natives.json'), JSON.stringify(rows, null, 2));

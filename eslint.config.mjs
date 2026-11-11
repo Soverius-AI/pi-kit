@@ -60,6 +60,8 @@ export default [
       'output/**',
       'coverage/**',
       'libs/shared/api/src/generated/**',
+      'packages/pi-sandbox/dist/**',
+      'packages/pi-sandbox/.test-build/**',
     ],
   },
   {
@@ -145,7 +147,12 @@ export default [
       'apps/backend/src/bg-agents/durable-storage.ts',
       'apps/backend/src/bg-agents/agent-extension.ts',
       'apps/backend/src/bg-agents/agent-events.ts',
+      'apps/backend/src/bg-agents/docs-patch.ts',
       'apps/backend/src/bg-agents/*.spec.ts',
+      'packages/pi-sandbox/lib/durable.ts',
+      'packages/pi-sandbox/lib/durable-worker.ts',
+      'packages/pi-sandbox/tests/durable.test.ts',
+      'packages/pi-sandbox/tests/fixtures/durable-tool-worker.ts',
     ],
     rules: {
       'no-restricted-imports': [

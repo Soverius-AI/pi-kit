@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
-import { copyJson } from '@earendil-works/chord';
 import { BACKGROUND_CONTEXT } from '@earendil-works/chord/context';
+import { copyJson } from '@earendil-works/chord/json';
 import type { ConversationId, Harness as DurableHarness } from '@earendil-works/pi-durable';
 import {
   type AgentAnswer,
@@ -171,7 +171,9 @@ export class AgentQuestions {
       return q && !isOpen(q) ? q : undefined;
     };
     const done = await new Promise<QuestionRecord | undefined>((resolve) => {
-      watch.start(async (value) => void (settledOf(value) && resolve(settledOf(value))));
+      watch.start(
+        async (call) => void (call.kind === 'value' && settledOf(call.value) && resolve(settledOf(call.value))),
+      );
       signal?.addEventListener('abort', () => resolve(undefined), { once: true });
       void this.harness()
         .snapshot(QuestionsDoc, conversationId(id), ctx)

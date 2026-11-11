@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { LiteLlmService } from '../setup/litellm.service';
 import { PiPluginService } from './pi-plugin.service';
 import { PiSessionService } from './pi-session.service';
+import { ThreadProtectionTesting } from './thread-protection.testing';
 import { TrustService } from './trust.service';
 
 // Real SDK and stdio MCP server; no inference and no model response stubs.
@@ -88,9 +89,14 @@ beforeEach(() => {
     }),
   );
   writeFileSync(join(agent, 'settings.json'), JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'unused' }));
-  sessions = new PiSessionService(new TrustService(), new PiPluginService(), {
-    refreshCatalog: async () => undefined,
-  } as unknown as LiteLlmService);
+  sessions = new PiSessionService(
+    new TrustService(),
+    new PiPluginService(),
+    {
+      refreshCatalog: async () => undefined,
+    } as unknown as LiteLlmService,
+    ThreadProtectionTesting.bypass(),
+  );
   id = randomUUID();
 });
 

@@ -897,6 +897,90 @@ paths:
       tags:
         - threads
       x-remote: true
+  /api/threads/{id}/protection:
+    get:
+      description: Returns the thread’s mode (Bypass unless it was changed) and the state of its sandbox.
+      operationId: Threads_getProtection
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: The thread id (the pi session id).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadProtection'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: There is no such thread.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Get thread protection
+      tags:
+        - threads
+      x-remote: true
+    put:
+      description: Changes an idle thread between Bypass and Sandboxed; a sandbox that fails to start leaves the thread Sandboxed and unavailable. Not remote.
+      operationId: Threads_setProtection
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: The thread id (the pi session id).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetThreadProtection'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadProtection'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: There is no such thread.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The thread or its agents are busy, or a downgrade or recovery was not confirmed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Set thread protection
+      tags:
+        - threads
   /api/threads/{id}/seen:
     post:
       description: Clears the thread's unread dot and its "cli" badge.
@@ -10208,6 +10292,10 @@ components:
           type:
             - string
             - 'null'
+        liveSyncs:
+          type: integer
+          minimum: -9007199254740991
+          maximum: 9007199254740991
       required:
         - id
         - threadId
@@ -10230,6 +10318,7 @@ components:
         - answered
         - turns
         - worktree
+        - liveSyncs
       additionalProperties: false
     BrowserInspection:
       type: object
@@ -16402,6 +16491,25 @@ components:
           type: boolean
       required:
         - enabled
+    SetThreadProtection:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+            - bypass
+            - sandboxed
+        experimentalWindowsAccepted:
+          type: boolean
+        confirmBypass:
+          description: Required to downgrade a protected thread.
+          type: boolean
+        confirmRecovery:
+          description: 'Required while recovery is needed: the person checked that earlier sandbox work stopped.'
+          type: boolean
+      required:
+        - mode
+      additionalProperties: false
     SettingsModel:
       type: object
       properties:
@@ -17431,6 +17539,47 @@ components:
           $ref: '#/components/schemas/NewLocal'
         worktree:
           $ref: '#/components/schemas/NewWorktree'
+      additionalProperties: false
+    ThreadProtection:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum:
+            - bypass
+            - sandboxed
+        state:
+          type: string
+          enum:
+            - bypass
+            - idle
+            - starting
+            - active
+            - experimental
+            - unavailable
+            - setup-required
+            - recovery-required
+        generation:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        experimentalWindowsAccepted:
+          type: boolean
+        platform:
+          type: string
+          description: Platform of the backend, not of the browser.
+        reason:
+          description: Technical detail of an unavailable or held sandbox.
+          type:
+            - string
+            - 'null'
+      required:
+        - mode
+        - state
+        - generation
+        - experimentalWindowsAccepted
+        - platform
+        - reason
       additionalProperties: false
     ThreadScoreBadge:
       type: object

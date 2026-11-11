@@ -14,13 +14,14 @@ import {
 import { PkIcon, PkLightboxService, PkMarker, PkSkillDraftCard, PkThink, PkTurn } from '@pi-kit/design-system';
 import type { PiActivityContent } from '@pi-kit/protocol';
 import { RADIUS_FUNDS_URL, formatDuration, isOutOfFunds, newestSentence, thoughtLabel } from '@pi-kit/ui';
-import { type PieceInfo, type StepPiece, type WorkPiece, percentLabel } from '@pi-kit/chat/util';
+import { AgentLiveState, type PieceInfo, type StepPiece, type WorkPiece, percentLabel } from '@pi-kit/chat/util';
 import { GraphStore } from '@pi-kit/session-tree/api';
 import { LearnStore, ThreadsStore, draftCardText, draftVerifiedNote, isNewThread } from '@pi-kit/threads/api';
 import { ViewPrefs, ClockStore } from '@pi-kit/data-access';
 import { ChatStore, EMPTY_THREAD_PAGE, userContent } from '@pi-kit/chat/data';
 import { Interrupts } from '@pi-kit/chat/feature-interrupts';
-import { Prose, SkillChip } from '@pi-kit/chat/ui';
+import { AgentLive, Prose, SkillChip } from '@pi-kit/chat/ui';
+import { NestedToolCalls } from './tools/nested-tool-calls';
 import { PkToolCall } from './tools/tool-call-scope';
 import { ReplayLoading } from './replay-loading';
 import { VirtualTranscript, VirtualRow } from './virtual-transcript';
@@ -74,6 +75,7 @@ function callHint(args: string | undefined, max = 80): string {
 @Component({
   selector: 'pk-transcript',
   imports: [
+    AgentLive,
     CopilotChatAssistantMessage,
     CopilotChatAssistantMessageRegenerateButton,
     CopilotChatAssistantMessageThumbsDownButton,
@@ -82,6 +84,7 @@ function callHint(args: string | undefined, max = 80): string {
     CopilotChatToolCallsView,
     CopilotChatUserMessage,
     Interrupts,
+    NestedToolCalls,
     NgComponentOutlet,
     NgTemplateOutlet,
     PkIcon,
@@ -127,10 +130,17 @@ export class Transcript {
   protected readonly outOfFunds = isOutOfFunds;
   protected readonly fundsUrl = RADIUS_FUNDS_URL;
   protected readonly contextLabel = computed(() => percentLabel(this.chat.contextPercent() ?? 0));
-  protected readonly lastId = computed(() => this.chat.messages().at(-1)?.id);
+  protected readonly live = computed(() => this.chat.agentLive().live);
+  protected readonly lastId = computed(
+    () =>
+      this.chat
+        .messages()
+        .filter((m) => m.role !== 'activity' || m.activityType !== 'pi.agent_live')
+        .at(-1)?.id,
+  );
   /** Activities used as backing state and folded steps do not need an empty virtual row. */
   protected readonly visibleMessages = computed(() =>
-    this.chat.transcriptMessages().filter((message, index, all) => {
+    this.chat.agentLive().messages.filter((message, index, all) => {
       if (message.role === 'user') {
         // A message shown before the backend recorded it (sent to a background agent) goes once its recorded twin follows it.
         if (!this.chat.optimisticIds().includes(message.id)) return true;
@@ -363,11 +373,19 @@ export class Transcript {
     const calls = (message as AssistantMessage).toolCalls ?? [];
     const activities = this.chat.activities();
     let state: 'running' | 'done' | 'error' = 'done';
+    const live = this.chat.agentLive();
     let first = Infinity;
     let end = 0;
     for (const call of calls) {
       const info = activities.get(`tool:${call.id}`)?.content as PiActivityContent<'pi.tool'> | undefined;
-      if (!info) continue;
+      if (!info) {
+        const tool = live.tools.get(call.id);
+        const running = !!tool && AgentLiveState.running(tool);
+        if (running) state = 'running';
+        else if (state !== 'running' && this.chat.results().get(call.id)?.error) state = 'error';
+        [first, end] = this.span(live.timing.get(call.id), running, first, end);
+        continue;
+      }
       if (info.status === 'running') state = 'running';
       else if (info.status === 'error' && state !== 'running') state = 'error';
       if (info.startedAt) first = Math.min(first, info.startedAt);
@@ -431,11 +449,18 @@ export class Transcript {
     const activities = this.chat.activities();
     const calls = message.toolCalls ?? [];
     let done = 0;
+    const live = this.chat.agentLive();
     let first = Infinity;
     let end = 0;
     for (const call of calls) {
       const info = activities.get(`tool:${call.id}`)?.content as PiActivityContent<'pi.tool'> | undefined;
-      if (!info) continue;
+      if (!info) {
+        const tool = live.tools.get(call.id);
+        const running = !!tool && AgentLiveState.running(tool);
+        if (tool ? !running : this.chat.results().has(call.id)) done += 1;
+        [first, end] = this.span(live.timing.get(call.id), running, first, end);
+        continue;
+      }
       if (info.status !== 'running') done += 1;
       if (info.startedAt) first = Math.min(first, info.startedAt);
       end = Math.max(end, info.status === 'running' ? this.clock.now() : info.startedAt + (info.durationMs ?? 0));
@@ -453,6 +478,17 @@ export class Transcript {
       total: n,
       elapsed: Number.isFinite(first) && end - first >= 1000 ? formatDuration(end - first) : '',
     };
+  }
+
+  private span(
+    timing: { startedAt?: number; endedAt?: number } | undefined,
+    running: boolean,
+    first: number,
+    end: number,
+  ): [number, number] {
+    const elapsed = AgentLiveState.elapsed(timing, running, this.clock.now());
+    if (timing?.startedAt === undefined || elapsed === undefined) return [first, end];
+    return [Math.min(first, timing.startedAt), Math.max(end, timing.startedAt + elapsed)];
   }
 
   private toggled(set: ReadonlySet<string>, id: string): ReadonlySet<string> {

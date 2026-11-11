@@ -1,4 +1,5 @@
 export * from './activities';
+export * from './agent-live';
 export * from './environments';
 export * from './peers';
 export * from './remote-api';
@@ -14,6 +15,7 @@ export * from './mcp-file';
 export * from './connectors';
 export * from './session';
 export * from './threads';
+export * from './thread-protection';
 export * from './tree';
 export * from './fuzzy';
 export * from './diff-model';

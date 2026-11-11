@@ -21,6 +21,7 @@ import { SkillDraftsRepository } from './skill-drafts.repository';
 import { SkillUsesRepository } from './skill-uses.repository';
 import { MaintenanceRepository } from './maintenance.repository';
 import { TerminalReplayRepository } from './terminal-replay.repository';
+import { ThreadProtectionRepository } from './thread-protection.repository';
 import { ThreadsRepository } from './threads.repository';
 
 /**
@@ -52,6 +53,7 @@ import { ThreadsRepository } from './threads.repository';
     SignalsRepository,
     AgentSpansRepository,
     MaintenanceRepository,
+    ThreadProtectionRepository,
   ],
   exports: [
     DatabaseService,
@@ -71,6 +73,7 @@ import { ThreadsRepository } from './threads.repository';
     SkillUsesRepository,
     SignalsRepository,
     AgentSpansRepository,
+    ThreadProtectionRepository,
   ],
 })
 export class DbModule {}

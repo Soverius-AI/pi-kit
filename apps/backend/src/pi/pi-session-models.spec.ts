@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { LiteLlmService } from '../setup/litellm.service';
 import { PiPluginService } from './pi-plugin.service';
 import { PiSessionService } from './pi-session.service';
+import { ThreadProtectionTesting } from './thread-protection.testing';
 import { TrustService } from './trust.service';
 
 // Use the installed SDK through Vitest's loader; model listing and selection perform no inference.
@@ -44,9 +45,14 @@ beforeEach(async () => {
     }),
   );
   writeFileSync(join(agent, 'settings.json'), JSON.stringify(settings(['fixture/plain', 'fixture/reasoning'])));
-  sessions = new PiSessionService(new TrustService(), new PiPluginService(), {
-    refreshCatalog: async () => undefined,
-  } as unknown as LiteLlmService);
+  sessions = new PiSessionService(
+    new TrustService(),
+    new PiPluginService(),
+    {
+      refreshCatalog: async () => undefined,
+    } as unknown as LiteLlmService,
+    ThreadProtectionTesting.bypass(),
+  );
   threadId = randomUUID();
   await sessions.open(threadId, { cwd: base });
 });

@@ -23,7 +23,7 @@ import {
 } from '@pi-kit/api';
 import { CONTEXT_POLICY, HealthStore, ProviderUsageStore, ToastStore, UiStore } from '@pi-kit/data-access';
 import type { Command, ModelList, SessionStats } from '@pi-kit/protocol';
-import { THREAD_HYDRATION_EVENT } from '@pi-kit/protocol';
+import { AGENT_LIVE_SYNC_RUN, THREAD_HYDRATION_EVENT } from '@pi-kit/protocol';
 import { fakeThreads, thread } from '@pi-kit/testing';
 import { ThreadsStore } from '@pi-kit/threads/api';
 import { CHAT_AGENT } from './chat-policy';
@@ -265,6 +265,67 @@ describe('ChatStore', () => {
     (chat as unknown as { _internal: { seenRuns: Set<string> } })._internal.seenRuns.add('turn-own');
     runningHere(false);
     expect(chat.reconnects()).toBe(before + 1);
+  });
+
+  it('never shows a live-state sync run or a sync reconnect as busy, and keeps what the last real run left', async () => {
+    const subscribe = vi.spyOn(HttpAgent.prototype, 'subscribe');
+    try {
+      const chat = await make();
+      chat.requestDone();
+      const ours = subscribe.mock.calls
+        .map(([value]) => value)
+        .find(
+          (value): value is AgentSubscriber =>
+            !!value && typeof value === 'object' && 'onSubagentStartedEvent' in value && 'onRunFinishedEvent' in value,
+        )!;
+      const agent = chat.agent() as unknown as {
+        subscribers: Record<string, ((params: unknown) => void) | undefined>[];
+      };
+      const lifecycle = (hook: 'onRunInitialized' | 'onRunFinalized'): void => {
+        for (const subscriber of agent.subscribers) subscriber[hook]?.({ agent, messages: [], state: {}, input: {} });
+        TestBed.tick();
+      };
+      const started = (runId: string): void => {
+        ours.onRunStartedEvent?.({ event: { type: 'RUN_STARTED', threadId: 't1', runId } } as never);
+        TestBed.tick();
+      };
+      chat.setRunError({ message: 'model failed' });
+      lifecycle('onRunInitialized');
+      started(`${AGENT_LIVE_SYNC_RUN}7`);
+      expect(chat.running()).toBe(false);
+      expect(chat.runError()).toEqual({ message: 'model failed' });
+      ours.onRunFinishedEvent?.({
+        event: { type: 'RUN_FINISHED', threadId: 't1', runId: `${AGENT_LIVE_SYNC_RUN}7` },
+      } as never);
+      expect(chat.running()).toBe(false);
+      started('turn-8');
+      expect(chat.running()).toBe(true);
+      lifecycle('onRunFinalized');
+
+      let close!: () => void;
+      (chat as unknown as { _copilotKit: { core: { connectAgent: unknown } } })._copilotKit.core.connectAgent = () =>
+        new Promise<void>((resolve) => (close = resolve));
+      chat.reconnect({ sync: true });
+      TestBed.tick();
+      lifecycle('onRunInitialized');
+      expect(chat.running()).toBe(false);
+      expect(chat.connecting()).toBe(false);
+      started(`${AGENT_LIVE_SYNC_RUN}9`);
+      expect(chat.running()).toBe(false);
+      started('turn-10');
+      expect(chat.running()).toBe(true);
+      lifecycle('onRunFinalized');
+      close();
+      await vi.advanceTimersByTimeAsync(0);
+
+      chat.reconnect();
+      TestBed.tick();
+      lifecycle('onRunInitialized');
+      expect(chat.running()).toBe(true);
+      expect(chat.connecting()).toBe(true);
+    } finally {
+      subscribe.mockRestore();
+    }
   });
 
   it('remembers the names of the background agents the stream announces', async () => {

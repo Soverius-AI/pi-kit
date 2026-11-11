@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { LiteLlmService } from '../setup/litellm.service';
 import { PiPluginService } from './pi-plugin.service';
 import { PiSessionService, QueueStaleError } from './pi-session.service';
+import { ThreadProtectionTesting } from './thread-protection.testing';
 import { TrustService } from './trust.service';
 
 // The installed SDK queues and delivers messages; the shared HTTP fixture only answers model requests.
@@ -21,7 +22,7 @@ let id: string;
 let model: { url: string; requests: unknown[]; stop(): Promise<void> };
 const image = {
   mimeType: 'image/png',
-  data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
+  data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
 };
 const secondImage = { mimeType: 'image/gif', data: 'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7' };
 interface UserMessage {
@@ -88,9 +89,14 @@ beforeEach(async () => {
     }),
   );
   writeFileSync(join(agent, 'settings.json'), JSON.stringify({ defaultProvider: 'fixture', defaultModel: 'queue' }));
-  sessions = new PiSessionService(new TrustService(), new PiPluginService(), {
-    refreshCatalog: async () => undefined,
-  } as unknown as LiteLlmService);
+  sessions = new PiSessionService(
+    new TrustService(),
+    new PiPluginService(),
+    {
+      refreshCatalog: async () => undefined,
+    } as unknown as LiteLlmService,
+    ThreadProtectionTesting.bypass(),
+  );
   id = randomUUID();
   await sessions.open(id, { cwd: base });
 });

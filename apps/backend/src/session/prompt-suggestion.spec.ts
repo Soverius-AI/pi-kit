@@ -80,6 +80,17 @@ describe('PromptSuggestionReader', () => {
 describe('CommandsService.merge with suggestions', () => {
   const service = new CommandsService(undefined as never, undefined as never);
 
+  it('labels an extension command by its file or folder name, from a POSIX or a Windows path', () => {
+    const extension = (name: string, path: string) =>
+      ({ name, description: undefined, source: 'extension', scope: 'user', origin: 'package', path }) as const;
+    const [posix, windows] = service.merge([
+      extension('learn', '/srv/backend/packages/pi-kit-learn/extensions/learn'),
+      extension('score', 'C:\\Users\\me\\backend\\packages\\pi-kit-meat-proxy\\extensions\\meat-proxy\\index.ts'),
+    ]);
+    expect(posix.origin).toBe('learn');
+    expect(windows.origin).toBe('meat-proxy');
+  });
+
   it('adds suggested and suggestionTitle to prompt templates only, and nothing else changes', () => {
     const read = (path: string) =>
       path === '/p/review.md' ? { suggested: true as const, suggestionTitle: 'Review my changes' } : undefined;

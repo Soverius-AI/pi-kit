@@ -10,3 +10,4 @@ export * from './lib/voice-policy';
 export * from './lib/voice.store';
 export * from './lib/thread-replay-agent';
 export * from './lib/thread-replay-cache.store';
+export * from './lib/thread-protection.store';

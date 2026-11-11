@@ -2,11 +2,42 @@
 // node_modules may be needed by these Nx/esbuild outputs.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const [backend, icon] = process.argv.slice(2);
+const sandboxDir = join(backend, 'packages/pi-sandbox/dist');
+assert.ok(
+  !/(?:from\s*|import\s*\(\s*)["']@anthropic-ai\/sandbox-runtime/.test(
+    readFileSync(join(sandboxDir, 'supervisor.js'), 'utf8'),
+  ),
+  'SRT must be bundled into the sandbox supervisor, not imported',
+);
+const helpers = {
+  darwin: ['java-proxy-agent/srt-proxy-agent.jar', 'ripgrep/rg'],
+  linux: ['java-proxy-agent/srt-proxy-agent.jar', 'ripgrep/rg', `seccomp/${process.arch}/apply-seccomp`],
+  // MXC needs no SRT helper; its own binaries are a runtime native (scripts/natives.mjs).
+  win32: ['ripgrep/rg.exe'],
+}[process.platform];
+assert.deepEqual(
+  (existsSync(join(sandboxDir, 'vendor'))
+    ? readdirSync(join(sandboxDir, 'vendor'), { recursive: true, withFileTypes: true })
+    : []
+  )
+    .filter((entry) => entry.isFile())
+    .map((entry) => relative(join(sandboxDir, 'vendor'), join(entry.parentPath, entry.name)).replaceAll('\\', '/'))
+    .sort(),
+  helpers,
+  'The sandbox must ship exactly the SRT helpers of this target',
+);
+const sandboxModule = (file) => import(pathToFileURL(join(sandboxDir, file)).href);
+assert.equal(typeof (await sandboxModule('core.js')).Sandbox.create, 'function');
+assert.equal(typeof (await sandboxModule('pi.js')).PiSandbox.toolDefinitions, 'function');
+assert.equal(typeof (await sandboxModule('durable.js')).DurableSandbox.environment, 'function');
+await (await sandboxModule('durable-worker.js')).DurableWorkerHandler.create(backend).close();
+console.log(`sandbox: bundled SRT and the ${process.platform}-${process.arch} helpers OK`);
+
 const piDir = join(backend, 'assets/pi');
 const load = (path) => import(pathToFileURL(join(piDir, 'dist', path)).href);
 const manifest = JSON.parse(readFileSync(join(piDir, 'package.json'), 'utf8'));

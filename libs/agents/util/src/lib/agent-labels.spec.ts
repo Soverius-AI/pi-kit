@@ -32,6 +32,7 @@ const agent = (over: Partial<BgAgent>): BgAgent => ({
   answered: null,
   turns: 0,
   worktree: null,
+  liveSyncs: 0,
   ...over,
 });
 

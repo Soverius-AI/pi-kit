@@ -136,7 +136,7 @@ function originLabel(c: {
   path: string | undefined;
 }): string | undefined {
   if (c.source === 'extension') {
-    const file = c.path?.split('/').filter(Boolean);
+    const file = c.path?.split(/[\\/]/).filter(Boolean);
     const name = file?.at(-1)?.replace(/\.[cm]?[jt]s$/, '');
     const label = name === 'index' ? file?.at(-2) : name;
     return label ?? c.origin ?? c.scope;

@@ -49,6 +49,7 @@ import {
 } from '@pi-kit/service-host';
 import { backgroundService } from './background-service';
 import { removeDatabases } from './database-reset';
+import { setUpLinuxSandbox } from './linux-sandbox-setup';
 import { configureLoopbackConnections } from './loopback-network';
 import { BrowserArtifacts } from './browser';
 import { BrowserActionSchema, BrowserOperationError, BrowserViewportSchema } from '@pi-kit/protocol';
@@ -569,8 +570,18 @@ let loginPath: string | null | undefined;
  * knows (asked once). A development build was started from a terminal that has it.
  */
 function userPath(): string | undefined {
-  loginPath ??= (app.isPackaged ? loginShellPath() : undefined) ?? process.env['PATH'] ?? null;
+  loginPath ??= withoutAppImageMount((app.isPackaged ? loginShellPath() : undefined) ?? process.env['PATH']) ?? null;
   return loginPath ?? undefined;
+}
+
+/** An AppImage mounts at a new folder on every start, which would change the service's unit and restart it each time. */
+function withoutAppImageMount(path: string | undefined): string | undefined {
+  const mount = process.env['APPDIR'];
+  if (!path || !mount) return path;
+  return path
+    .split(delimiter)
+    .filter((entry) => entry !== mount && !entry.startsWith(`${mount}/`))
+    .join(delimiter);
 }
 
 /** The environment of a host this process spawns: its own, or the Windows supervisor's. */
@@ -880,6 +891,9 @@ async function boot(): Promise<void> {
     chmodSync(status.path, 0o755);
     return commandStatus();
   });
+  ipcMain.handle('pi-kit:linux-sandbox-setup', (event) =>
+    fromRenderer(event) ? setUpLinuxSandbox() : Promise.reject(new Error('forbidden')),
+  );
   ipcMain.handle('pi-kit:background-service-set', (event, enabled: unknown) => {
     if (!fromRenderer(event) || shutdownStarted) throw new Error('forbidden');
     return switchBackground(enabled);

@@ -14,6 +14,9 @@ import {
   PutFeedbackSchema,
   type ThreadDetail,
   ThreadDetailSchema,
+  ThreadProtectionSchema,
+  SetThreadProtectionSchema,
+  type ThreadProtection,
   type ThreadsEvent,
   ThreadsEventSchema,
   type ThreadSummary,
@@ -142,6 +145,38 @@ export class ThreadsController {
   @Fails({ 404: NO_THREAD })
   get(@Param('id') id: string): ThreadDetail {
     return this.threads.open(id);
+  }
+
+  @Remote()
+  @Get('threads/:id/protection')
+  @ApiOperation({
+    summary: 'Get thread protection',
+    description: 'Returns the thread’s mode (Bypass unless it was changed) and the state of its sandbox.',
+  })
+  @ApiParam(THREAD_ID)
+  @Responds(ThreadProtectionSchema)
+  @Fails({ 404: NO_THREAD })
+  getProtection(@Param('id') id: string): ThreadProtection {
+    return this.threads.protectionOf(id);
+  }
+
+  @Put('threads/:id/protection')
+  @ApiOperation({
+    summary: 'Set thread protection',
+    description:
+      'Changes an idle thread between Bypass and Sandboxed; a sandbox that fails to start leaves the thread Sandboxed and unavailable. Not remote.',
+  })
+  @ApiParam(THREAD_ID)
+  @Responds(ThreadProtectionSchema)
+  @Fails({
+    404: NO_THREAD,
+    409: 'The thread or its agents are busy, or a downgrade or recovery was not confirmed.',
+  })
+  async setProtection(
+    @Param('id') id: string,
+    @Body({ schema: SetThreadProtectionSchema }) body: z.infer<typeof SetThreadProtectionSchema>,
+  ): Promise<ThreadProtection> {
+    return this.threads.setProtection(id, body);
   }
 
   /** The user looked at the thread: clears its unread dot and "cli" badge. */

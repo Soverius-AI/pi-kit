@@ -6,6 +6,7 @@ import { DatabaseService } from '../db/database.service';
 import { MetaRepository } from '../db/meta.repository';
 import { ThreadsRepository } from '../db/threads.repository';
 import { ThreadsService } from './threads.service';
+import { ThreadProtectionTesting } from '../pi/thread-protection.testing';
 
 let base: string;
 let project: string;
@@ -51,12 +52,51 @@ beforeEach(() => {
     {} as never,
     outcomes as never,
     { defaultCwd: project } as never,
+    ThreadProtectionTesting.bypass(),
   );
 });
 
 afterEach(() => {
   db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
+});
+
+it('admits no run while or after a thread is deleted, and keeps it Sandboxed and runnable when its worktree cannot be removed', async () => {
+  const protection = new ThreadProtectionTesting();
+  protection.bindings.set('replay', {
+    version: 1,
+    mode: 'sandboxed',
+    generation: 1,
+    experimentalWindowsAccepted: false,
+  });
+  let refuse!: (error: Error) => void;
+  const refreshBase = vi.fn(async () => undefined);
+  const refused = new ThreadsService(
+    rows,
+    { lastRun: () => undefined } as never,
+    meta,
+    { dispose: vi.fn(), trashSession: vi.fn(() => 'trashed') } as never,
+    { listChanged: vi.fn(), gone: vi.fn() } as never,
+    { remove: vi.fn(() => new Promise((_, reject) => (refuse = reject))) } as never,
+    { refreshBase, track: vi.fn(async () => undefined) } as never,
+    { defaultCwd: project } as never,
+    protection.service(),
+  );
+  const removing = refused.remove('replay', 'remove');
+  await vi.waitFor(() => expect(refuse).toBeDefined());
+  await expect(refused.prepareRun('replay', project, { open: true })).rejects.toThrow('being deleted');
+  refuse(new Error('The worktree has uncommitted changes.'));
+  await expect(removing).rejects.toThrow('uncommitted changes');
+  expect(protection.bindings.get('replay')?.mode).toBe('sandboxed');
+  await expect(refused.prepareRun('replay', project, { open: true })).resolves.toBeDefined();
+
+  let based!: () => void;
+  refreshBase.mockImplementationOnce(() => new Promise<undefined>((done) => (based = () => done(undefined))));
+  const waiting = refused.prepareRun('replay', project, { open: true });
+  await vi.waitFor(() => expect(based).toBeDefined());
+  await refused.remove('replay', 'keep');
+  based();
+  await expect(waiting).rejects.toThrow('being deleted');
 });
 
 describe('prepareRun and a verification thread', () => {

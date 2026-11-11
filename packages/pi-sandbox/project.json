@@ -1,0 +1,102 @@
+{
+  "name": "pi-sandbox",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/pi-sandbox/lib",
+  "projectType": "library",
+  "tags": ["scope:shared", "type:util"],
+  "targets": {
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "cache": true,
+      "inputs": [
+        "{projectRoot}/lib/**/*.ts",
+        "{projectRoot}/esbuild.config.cjs",
+        "{projectRoot}/tsconfig.json",
+        "{projectRoot}/package.json",
+        "{workspaceRoot}/pnpm-lock.yaml",
+        {
+          "env": "PI_SANDBOX_TARGET"
+        }
+      ],
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "packages/pi-sandbox/dist",
+        "main": "packages/pi-sandbox/lib/core.ts",
+        "additionalEntryPoints": [
+          "packages/pi-sandbox/lib/pi.ts",
+          "packages/pi-sandbox/lib/durable.ts",
+          "packages/pi-sandbox/lib/supervisor.ts",
+          "packages/pi-sandbox/lib/worker.ts",
+          "packages/pi-sandbox/lib/durable-worker.ts"
+        ],
+        "tsConfig": "packages/pi-sandbox/tsconfig.json",
+        "platform": "node",
+        "format": ["esm"],
+        "target": "node22",
+        "bundle": true,
+        "thirdParty": true,
+        "declaration": true,
+        "declarationRootDir": "packages/pi-sandbox/lib",
+        "esbuildConfig": "packages/pi-sandbox/esbuild.config.cjs",
+        "generatePackageJson": false
+      }
+    },
+    "build-tests": {
+      "executor": "@nx/esbuild:esbuild",
+      "cache": true,
+      "dependsOn": ["build"],
+      "inputs": ["default", "{workspaceRoot}/pnpm-lock.yaml"],
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "packages/pi-sandbox/.test-build",
+        "main": "packages/pi-sandbox/tests/core.test.ts",
+        "additionalEntryPoints": [
+          "packages/pi-sandbox/tests/durable.test.ts",
+          "packages/pi-sandbox/tests/srt-smoke.test.ts",
+          "packages/pi-sandbox/tests/worker-fs.test.ts",
+          "packages/pi-sandbox/tests/fixtures/durable-tool-worker.ts"
+        ],
+        "tsConfig": "packages/pi-sandbox/tsconfig.test.json",
+        "platform": "node",
+        "format": ["esm"],
+        "target": "node22",
+        "bundle": true,
+        "thirdParty": false,
+        "external": ["../dist/*", "../../dist/*"],
+        "esbuildOptions": {
+          "outbase": "packages/pi-sandbox/tests",
+          "outExtension": {
+            ".js": ".js"
+          },
+          "packages": "external"
+        },
+        "generatePackageJson": false
+      }
+    },
+    "typecheck": {
+      "executor": "nx:noop",
+      "cache": true,
+      "dependsOn": ["build-tests"],
+      "inputs": ["default", "{workspaceRoot}/pnpm-lock.yaml"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["build-tests"],
+      "inputs": [
+        "default",
+        "{workspaceRoot}/pnpm-lock.yaml",
+        {
+          "env": "PI_SANDBOX_SMOKE"
+        },
+        {
+          "env": "PI_SANDBOX_WINDOWS_ACCEPT"
+        }
+      ],
+      "options": {
+        "command": "node --test .test-build/*.test.js",
+        "cwd": "packages/pi-sandbox"
+      }
+    }
+  }
+}

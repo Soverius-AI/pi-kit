@@ -8,6 +8,17 @@
   "targets": {
     "lint": {
       "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "options": {
+        "tsConfig": "libs/chat/feature-chat/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": ["libs/chat/feature-chat/src/**/*.spec.ts"],
+        "setupFiles": ["libs/chat/feature-chat/src/test-setup.ts"]
+      }
     }
   }
 }

@@ -274,7 +274,8 @@ export function withChatActions<_>() {
         for (const done of waiters) done();
       }
 
-      const reconnect = (): void => patchState(store, (s) => ({ reconnects: s.reconnects + 1 }));
+      const reconnect = (options: { sync?: boolean } = {}): void =>
+        patchState(store, (s) => ({ reconnects: s.reconnects + 1, syncRun: options.sync === true }));
 
       function reconnectAndWait(): Promise<void> {
         return new Promise((resolve) => {

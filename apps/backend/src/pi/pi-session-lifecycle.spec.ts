@@ -8,6 +8,8 @@ import { PiPluginService, type PluginReplyShape } from './pi-plugin.service';
 import { PLUGIN_CHANNELS, replyChannel } from '@pi-kit/protocol';
 import { PiSessionService } from './pi-session.service';
 import { TrustService } from './trust.service';
+import { SandboxPackage } from './thread-protection.service';
+import { ThreadProtectionTesting } from './thread-protection.testing';
 
 // Vitest's VM cannot execute the managed-install loader's native dynamic import.
 // Resolve the real installed SDK at that adapter boundary; session behavior stays real.
@@ -35,9 +37,12 @@ it('rejects a session which finishes opening after shutdown instead of retaining
       });
     },
   } as unknown as TrustService;
-  const sessions = new PiSessionService(trust, new PiPluginService(), {
-    refreshCatalog: async () => undefined,
-  } as unknown as LiteLlmService);
+  const sessions = new PiSessionService(
+    trust,
+    new PiPluginService(),
+    { refreshCatalog: async () => undefined } as unknown as LiteLlmService,
+    ThreadProtectionTesting.bypass(),
+  );
   const id = randomUUID();
   try {
     const opening = sessions.open(id, { cwd: base });
@@ -61,6 +66,98 @@ it('rejects a session which finishes opening after shutdown instead of retaining
     rmSync(base, { recursive: true, force: true });
   }
 }, 15_000);
+
+it('opens no session and starts no extension of a Sandboxed thread whose sandbox is unavailable', async () => {
+  const base = mkdtempSync(join(tmpdir(), 'pk-session-no-worker-'));
+  const agent = join(base, 'agent');
+  const started = join(base, 'extension-started');
+  mkdirSync(join(agent, 'extensions'), { recursive: true });
+  writeFileSync(
+    join(agent, 'extensions', 'startup.ts'),
+    `
+    import { appendFileSync } from 'node:fs';
+    export default function(pi) {
+      pi.on('session_start', () => appendFileSync(${JSON.stringify(started)}, 'started\\n'));
+    }
+  `,
+  );
+  vi.stubEnv('PI_CODING_AGENT_DIR', agent);
+  vi.stubEnv('PI_OFFLINE', '1');
+  const rows = new ThreadProtectionTesting();
+  vi.spyOn(SandboxPackage, 'load').mockRejectedValue(new Error('The sandbox package is not installed.'));
+  const trust = new TrustService();
+  const resolveTrust = vi.spyOn(trust, 'resolveForOpen').mockResolvedValue(false);
+  const sessions = new PiSessionService(
+    trust,
+    new PiPluginService(),
+    { refreshCatalog: async () => undefined } as unknown as LiteLlmService,
+    rows.service(),
+  );
+  const id = randomUUID();
+  rows.bindings.set(id, { version: 1, mode: 'sandboxed', generation: 1, experimentalWindowsAccepted: false });
+  try {
+    await expect(sessions.open(id, { cwd: base })).rejects.toThrow('not installed');
+    expect(sessions.has(id)).toBe(false);
+    expect(resolveTrust).not.toHaveBeenCalled();
+    expect(() => readFileSync(started)).toThrow();
+    await expect(sessions.executeBash(id, 'printf unsafe', vi.fn())).rejects.toThrow();
+    rows.bindings.set(id, { version: 1, mode: 'bypass', generation: 2, experimentalWindowsAccepted: false });
+    expect((await sessions.open(id, { cwd: base })).sessionId).toBe(id);
+    expect(sessions.has(id)).toBe(true);
+    expect(readFileSync(started, 'utf8')).toContain('started');
+    expect(resolveTrust).toHaveBeenCalledOnce();
+  } finally {
+    vi.restoreAllMocks();
+    sessions.onModuleDestroy();
+    rmSync(base, { recursive: true, force: true });
+  }
+}, 15000);
+
+it('stops the sandbox of a thread that never opened a session, so it can start in another folder', async () => {
+  const close = vi.fn(async () => undefined);
+  const create = vi.fn(async () => ({ state: 'active' as const, exec: vi.fn(), request: vi.fn(), close }));
+  vi.spyOn(SandboxPackage, 'load').mockResolvedValue({ Sandbox: { create } } as never);
+  const protection = new ThreadProtectionTesting().service();
+  const sessions = new PiSessionService(
+    new TrustService(),
+    new PiPluginService(),
+    { refreshCatalog: async () => undefined } as unknown as LiteLlmService,
+    protection,
+  );
+  const id = randomUUID();
+  try {
+    await protection.set(id, join(tmpdir(), 'draft'), { mode: 'sandboxed' }, () => sessions.dispose(id));
+    sessions.dispose(id);
+    await expect(protection.prepare(id, join(tmpdir(), 'worktree'))).resolves.toBeDefined();
+    expect(close).toHaveBeenCalledOnce();
+  } finally {
+    vi.restoreAllMocks();
+    sessions.onModuleDestroy();
+  }
+});
+
+it('starts no sandbox for an opener whose thread was closed while pi loaded', async () => {
+  const create = vi.fn();
+  vi.spyOn(SandboxPackage, 'load').mockResolvedValue({ Sandbox: { create } } as never);
+  const rows = new ThreadProtectionTesting();
+  const sessions = new PiSessionService(
+    new TrustService(),
+    new PiPluginService(),
+    { refreshCatalog: async () => undefined } as unknown as LiteLlmService,
+    rows.service(),
+  );
+  const id = randomUUID();
+  rows.bindings.set(id, { version: 1, mode: 'sandboxed', generation: 1, experimentalWindowsAccepted: false });
+  try {
+    const opening = sessions.open(id, { cwd: tmpdir() });
+    sessions.dispose(id);
+    await expect(opening).rejects.toThrow('closed or changed its protection');
+    expect(create).not.toHaveBeenCalled();
+  } finally {
+    vi.restoreAllMocks();
+    sessions.onModuleDestroy();
+  }
+});
 
 describe('open session ownership', () => {
   let base: string;
@@ -102,9 +199,12 @@ describe('open session ownership', () => {
     vi.stubEnv('PI_OFFLINE', '1');
     trust = new TrustService();
     plugins = new PiPluginService();
-    sessions = new PiSessionService(trust, plugins, {
-      refreshCatalog: async () => undefined,
-    } as unknown as LiteLlmService);
+    sessions = new PiSessionService(
+      trust,
+      plugins,
+      { refreshCatalog: async () => undefined } as unknown as LiteLlmService,
+      ThreadProtectionTesting.bypass(),
+    );
   });
 
   afterEach(() => {

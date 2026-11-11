@@ -9,6 +9,7 @@ export default defineConfig({
       '@pi-kit/protocol': lib('protocol'),
       '@pi-kit/pi-adapter': lib('pi-adapter'),
       '@pi-kit/secret-store': lib('secret-store'),
+      '@pi-kit/sandbox/durable': fileURLToPath(new URL('../../packages/pi-sandbox/dist/durable.js', import.meta.url)),
     },
   },
   test: { include: ['src/**/*.spec.ts'], environment: 'node' },

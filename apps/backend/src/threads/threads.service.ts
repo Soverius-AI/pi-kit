@@ -16,8 +16,10 @@ import type {
   NewLocal,
   NewWorktree,
   PatchWorkspace,
+  SetThreadProtection,
   ThreadDetail,
   ThreadPlacement,
+  ThreadProtection,
   ThreadSummary,
   WorktreeKeep,
   Workspace,
@@ -30,6 +32,7 @@ import { type ThreadRow, ThreadsRepository, type WorktreeFacts } from '../db/thr
 import type { PiSessionEntry } from '@pi-kit/pi-adapter';
 import { type NewPiSession, type PiThreadInfo, PiSessionService } from '../pi/pi-session.service';
 import { WorktreeService } from '../worktree/worktree.service';
+import { ThreadProtectionService } from '../pi/thread-protection.service';
 import { normalizePrefix } from '../worktree/worktree-paths';
 import { currentBranch } from './branch';
 import { OutcomesService } from './outcomes.service';
@@ -59,6 +62,7 @@ export interface RunTarget {
 export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(ThreadsService.name);
   private readonly deletedListeners = new Set<(threadId: string) => void>();
+  private readonly deleting = new Set<string>();
   private timer: NodeJS.Timeout | undefined;
   private reconciling: Promise<void> | undefined;
   /** Sessions the pi command line made before the first pass finished are the user's history, not news: they start out seen. */
@@ -73,6 +77,7 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     private readonly worktrees: WorktreeService,
     private readonly outcomes: OutcomesService,
     @Inject(CONFIG) private readonly config: BackendConfig,
+    private readonly protection: ThreadProtectionService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -311,12 +316,23 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     if (this.events.lastRun(id)?.status === 'running') {
       throw new ConflictException('Stop the run before deleting the thread.');
     }
-    if (row.worktreePath && worktree !== 'keep') await this.worktrees.remove(row, { force: worktree === 'force' });
-    this.sessions.dispose(id);
-    const how = this.sessions.trashSession(row.sessionPath);
-    this.forget(id);
-    this.status.listChanged();
-    this.logger.log(`Deleted thread ${id} (${how})`);
+    if (this.deleting.has(id)) throw new ConflictException('This thread is being deleted.');
+    this.deleting.add(id);
+    try {
+      this.sessions.dispose(id);
+      await this.protection.release(`thread:${id}`);
+      // The mode stays until the thread is gone: a refused worktree removal must not leave it in Bypass.
+      if (row.worktreePath && worktree !== 'keep') await this.worktrees.remove(row, { force: worktree === 'force' });
+      // A run admitted just before deletion may have opened its session since.
+      this.sessions.dispose(id);
+      const how = this.sessions.trashSession(row.sessionPath);
+      await this.protection.forgetThread(id);
+      this.forget(id);
+      this.status.listChanged();
+      this.logger.log(`Deleted thread ${id} (${how})`);
+    } finally {
+      this.deleting.delete(id);
+    }
   }
 
   /** The one way a thread leaves the database, for a delete and for a session file that vanished: its rows, then the listeners (background agents). */
@@ -380,7 +396,12 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     this.status.listChanged();
   }
 
-  private async adopt(session: NewPiSession, source: Pick<ThreadRow, 'sessionPath'>): Promise<ThreadDetail> {
+  private async adopt(
+    session: NewPiSession,
+    source: Pick<ThreadRow, 'sessionPath'> & { id?: string },
+  ): Promise<ThreadDetail> {
+    const sourceId = source.id ?? this.threads.all().find((row) => row.sessionPath === source.sessionPath)?.id;
+    if (sourceId) this.protection.copy(sourceId, session.id);
     this.threads.insertDraft({
       id: session.id,
       sessionPath: session.path,
@@ -417,6 +438,19 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
   /** Throws a 404 for a thread the app does not know. */
   assertExists(id: string): void {
     this.require(id);
+  }
+
+  protectionOf(id: string): ThreadProtection {
+    this.require(id);
+    return this.protection.status(id);
+  }
+
+  /** Changes the mode of an idle thread: its open session closes, and the next run starts in the new mode. */
+  async setProtection(id: string, change: SetThreadProtection): Promise<ThreadProtection> {
+    const row = this.require(id);
+    if (this.events.lastRun(id)?.status === 'running' || this.sessions.isBusy(id))
+      throw new ConflictException('Stop this thread before changing its protection.');
+    return this.protection.set(id, this.workFolder(row), change, () => this.sessions.dispose(id));
   }
 
   /** The folder the thread works in, if the thread exists: its worktree while it has one, else the project's folder. */
@@ -477,6 +511,7 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
    * `curl`) becomes a thread in `cwdHint`, with that id as its pi session id.
    */
   async prepareRun(threadId: string, cwdHint: string, options: { open?: boolean } = {}): Promise<RunTarget> {
+    if (this.deleting.has(threadId)) throw new ConflictException('This thread is being deleted.');
     let row = this.threads.get(threadId);
     // A verification run is kept as a record after its scratch worktree is removed; without the worktree a run would fall back to the project's folder, which a verification never touches.
     if (
@@ -504,6 +539,9 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
       // A thread that had no message yet starts from the folder as it is when the work begins, not as it was when the empty thread was made.
       await this.outcomes.refreshBase(row);
     }
+    // A deletion may have run while this waited above.
+    if (this.deleting.has(threadId) || !this.threads.get(threadId))
+      throw new ConflictException('This thread is being deleted.');
     void this.outcomes.track(this.workFolder(row));
     // pi persists a leaf only by appending an entry; the one the app moved to counts while the file is as we left it.
     const leafValid = row.leafId !== null && row.leafMtime !== null && sessionMtime(row.sessionPath) === row.leafMtime;

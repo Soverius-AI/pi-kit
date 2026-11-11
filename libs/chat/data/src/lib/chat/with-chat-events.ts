@@ -5,7 +5,13 @@ import { effect } from '@angular/core';
 import { type SignalStoreFeatureType, patchState, signalStoreFeature, type, withHooks } from '@ngrx/signals';
 import { readPinnedChips } from '@pi-kit/chat/util';
 import { ProviderUsageStore, readStorage } from '@pi-kit/data-access';
-import { parsePiCustomEvent, THREAD_HYDRATION_EVENT, REPLAY_RESET_EVENT, type ThreadHydration } from '@pi-kit/protocol';
+import {
+  AGENT_LIVE_SYNC_RUN,
+  parsePiCustomEvent,
+  THREAD_HYDRATION_EVENT,
+  REPLAY_RESET_EVENT,
+  type ThreadHydration,
+} from '@pi-kit/protocol';
 import { RADIUS_FUNDS_URL, isCredentialRejection, isOutOfFunds } from '@pi-kit/ui';
 import { PINNED_KEY, type ThinkTiming, errorText } from './chat-state';
 import { withChatTools } from './with-chat-tools';
@@ -62,6 +68,9 @@ export function withChatEvents<_>() {
             if (event.toolCallName === 'pi_browser') bus.setPanel('artifacts');
           },
           onRunStartedEvent: (started) => {
+            const sync = !!started?.event?.runId?.startsWith(AGENT_LIVE_SYNC_RUN);
+            patchState(store, { syncRun: sync });
+            if (sync) return;
             if (started?.event?.runId) {
               const seen = store._internal.seenRuns;
               seen.add(started.event.runId);
@@ -72,6 +81,7 @@ export function withChatEvents<_>() {
             patchState(store, { runError: undefined, retry: undefined, lastAborted: false, promptActive: true });
           },
           onRunFinishedEvent: ({ event }) => {
+            if (store.syncRun()) return;
             const result = event.result as { aborted?: boolean } | undefined;
             patchState(store, {
               lastAborted: result?.aborted === true,
