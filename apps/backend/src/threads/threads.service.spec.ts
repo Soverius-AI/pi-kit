@@ -61,7 +61,7 @@ afterEach(() => {
   rmSync(base, { recursive: true, force: true });
 });
 
-it('keeps a Sandboxed thread Sandboxed when its worktree cannot be removed', async () => {
+it('admits no run while a thread is deleted, and keeps it Sandboxed and runnable when its worktree cannot be removed', async () => {
   const protection = new ThreadProtectionTesting();
   protection.bindings.set('replay', {
     version: 1,
@@ -69,19 +69,25 @@ it('keeps a Sandboxed thread Sandboxed when its worktree cannot be removed', asy
     generation: 1,
     experimentalWindowsAccepted: false,
   });
+  let refuse!: (error: Error) => void;
   const refused = new ThreadsService(
     rows,
     { lastRun: () => undefined } as never,
     meta,
     { dispose: vi.fn() } as never,
     {} as never,
-    { remove: vi.fn(async () => Promise.reject(new Error('The worktree has uncommitted changes.'))) } as never,
-    {} as never,
+    { remove: vi.fn(() => new Promise((_, reject) => (refuse = reject))) } as never,
+    { refreshBase: vi.fn(async () => undefined), track: vi.fn(async () => undefined) } as never,
     { defaultCwd: project } as never,
     protection.service(),
   );
-  await expect(refused.remove('replay', 'remove')).rejects.toThrow('uncommitted changes');
+  const removing = refused.remove('replay', 'remove');
+  await vi.waitFor(() => expect(refuse).toBeDefined());
+  await expect(refused.prepareRun('replay', project, { open: true })).rejects.toThrow('being deleted');
+  refuse(new Error('The worktree has uncommitted changes.'));
+  await expect(removing).rejects.toThrow('uncommitted changes');
   expect(protection.bindings.get('replay')?.mode).toBe('sandboxed');
+  await expect(refused.prepareRun('replay', project, { open: true })).resolves.toBeDefined();
 });
 
 describe('prepareRun and a verification thread', () => {

@@ -62,6 +62,7 @@ export interface RunTarget {
 export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(ThreadsService.name);
   private readonly deletedListeners = new Set<(threadId: string) => void>();
+  private readonly deleting = new Set<string>();
   private timer: NodeJS.Timeout | undefined;
   private reconciling: Promise<void> | undefined;
   /** Sessions the pi command line made before the first pass finished are the user's history, not news: they start out seen. */
@@ -315,15 +316,23 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     if (this.events.lastRun(id)?.status === 'running') {
       throw new ConflictException('Stop the run before deleting the thread.');
     }
-    this.sessions.dispose(id);
-    await this.protection.release(`thread:${id}`);
-    // The mode stays until the thread is gone: a refused worktree removal must not leave it in Bypass.
-    if (row.worktreePath && worktree !== 'keep') await this.worktrees.remove(row, { force: worktree === 'force' });
-    const how = this.sessions.trashSession(row.sessionPath);
-    await this.protection.forgetThread(id);
-    this.forget(id);
-    this.status.listChanged();
-    this.logger.log(`Deleted thread ${id} (${how})`);
+    if (this.deleting.has(id)) throw new ConflictException('This thread is being deleted.');
+    this.deleting.add(id);
+    try {
+      this.sessions.dispose(id);
+      await this.protection.release(`thread:${id}`);
+      // The mode stays until the thread is gone: a refused worktree removal must not leave it in Bypass.
+      if (row.worktreePath && worktree !== 'keep') await this.worktrees.remove(row, { force: worktree === 'force' });
+      // A run admitted just before deletion may have opened its session since.
+      this.sessions.dispose(id);
+      const how = this.sessions.trashSession(row.sessionPath);
+      await this.protection.forgetThread(id);
+      this.forget(id);
+      this.status.listChanged();
+      this.logger.log(`Deleted thread ${id} (${how})`);
+    } finally {
+      this.deleting.delete(id);
+    }
   }
 
   /** The one way a thread leaves the database, for a delete and for a session file that vanished: its rows, then the listeners (background agents). */
@@ -502,6 +511,7 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
    * `curl`) becomes a thread in `cwdHint`, with that id as its pi session id.
    */
   async prepareRun(threadId: string, cwdHint: string, options: { open?: boolean } = {}): Promise<RunTarget> {
+    if (this.deleting.has(threadId)) throw new ConflictException('This thread is being deleted.');
     let row = this.threads.get(threadId);
     // A verification run is kept as a record after its scratch worktree is removed; without the worktree a run would fall back to the project's folder, which a verification never touches.
     if (

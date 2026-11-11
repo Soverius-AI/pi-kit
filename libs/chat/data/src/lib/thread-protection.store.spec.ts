@@ -102,6 +102,38 @@ describe('ThreadProtectionStore', () => {
     expect(store.mode()).toBe('sandboxed');
   });
 
+  it('lets only the newest read of a thread land, so a poll answered late cannot undo a Refresh', async () => {
+    vi.useFakeTimers();
+    get.mockResolvedValueOnce(sandboxed);
+    const store = await ready();
+    const unavailable = Protection.of({ ...sandboxed, state: 'unavailable', reason: 'worker exited' });
+    for (const settle of [
+      (poll: Deferred<ThreadProtection>) => poll.resolve(sandboxed),
+      (poll: Deferred<ThreadProtection>) => poll.reject(new Error('backend offline')),
+    ]) {
+      const poll = new Deferred<ThreadProtection>();
+      get.mockReturnValueOnce(poll.promise).mockResolvedValueOnce(unavailable);
+      await vi.advanceTimersByTimeAsync(5_000);
+      store.retry();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(store.protection()?.state).toBe('unavailable');
+      settle(poll);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(store.protection()?.state).toBe('unavailable');
+      expect(store.error()).toBeUndefined();
+    }
+  });
+
+  it('clears an earlier read error once a change succeeds', async () => {
+    const store = await ready();
+    get.mockRejectedValueOnce(new Error('backend offline'));
+    store.retry();
+    await vi.waitFor(() => expect(store.error()).toBe('backend offline'));
+    await store.change({ mode: 'sandboxed' }, 'a');
+    expect(store.mode()).toBe('sandboxed');
+    expect(store.error()).toBeUndefined();
+  });
+
   it('applies a PUT response when its thread is current again, and drops it while another thread is shown', async () => {
     const store = await ready();
     const saving = new Deferred<ThreadProtection>();

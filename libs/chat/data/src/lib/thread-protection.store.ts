@@ -70,25 +70,32 @@ export const ThreadProtectionStore = signalStore(
     ),
   })),
   withMethods((store) => {
-    const take = (threadId: string, protection: ThreadProtection): boolean => {
+    const take = (threadId: string, protection: ThreadProtection): void => {
       const held = store.protectionFor();
-      if (threadId !== store._chat.threadId()) return false;
-      if (held?.threadId === threadId && protection.generation < held.protection.generation) return false;
-      patchState(store, { protectionFor: { threadId, protection } });
-      return true;
+      if (threadId !== store._chat.threadId()) return;
+      if (held?.threadId === threadId && protection.generation < held.protection.generation) return;
+      patchState(store, {
+        protectionFor: { threadId, protection },
+        ...(store.errorFor()?.threadId === threadId ? { errorFor: undefined } : {}),
+      });
     };
 
+    // Health changes keep the generation, so only the newest read of a thread may land.
+    const reads = new Map<string, number>();
+    let lastRead = 0;
     const read = async (threadId: string, foreground = false): Promise<void> => {
+      const sequence = ++lastRead;
+      reads.set(threadId, sequence);
+      const latest = () => reads.get(threadId) === sequence;
       if (foreground) patchState(store, { loadingFor: threadId });
       try {
         const protection = await unwrap(threadsGetProtection({ client: store._api.client, path: { id: threadId } }));
-        if (take(threadId, protection) && store.errorFor()?.threadId === threadId)
-          patchState(store, { errorFor: undefined });
+        if (latest()) take(threadId, protection);
       } catch (error) {
-        if (threadId === store._chat.threadId())
+        if (latest() && threadId === store._chat.threadId())
           patchState(store, { errorFor: { threadId, error: errorMessage(error) } });
       } finally {
-        if (store.loadingFor() === threadId) patchState(store, { loadingFor: undefined });
+        if (latest() && store.loadingFor() === threadId) patchState(store, { loadingFor: undefined });
       }
     };
 
