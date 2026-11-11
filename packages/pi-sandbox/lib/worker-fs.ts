@@ -134,6 +134,9 @@ export class WorkerFilesystem {
   ): Promise<void> {
     const flags = WorkerFilesystem.WRITE_FLAGS[flag];
     if (flags === undefined) throw new SandboxError('Unsupported write flag', 'INVALID_ARGUMENT');
+    // Before the open: 'w' truncates the file, and writeFile would only reject the encoding after that.
+    if (encoding !== undefined && !Buffer.isEncoding(encoding))
+      throw new SandboxError('Unsupported encoding', 'INVALID_ARGUMENT');
     const handle = await fs.open(target, flags | WorkerFilesystem.NONBLOCK, mode ?? 0o666);
     try {
       if (!(await handle.stat()).isFile())

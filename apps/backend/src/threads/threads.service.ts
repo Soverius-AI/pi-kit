@@ -539,6 +539,9 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
       // A thread that had no message yet starts from the folder as it is when the work begins, not as it was when the empty thread was made.
       await this.outcomes.refreshBase(row);
     }
+    // A deletion may have run while this waited above.
+    if (this.deleting.has(threadId) || !this.threads.get(threadId))
+      throw new ConflictException('This thread is being deleted.');
     void this.outcomes.track(this.workFolder(row));
     // pi persists a leaf only by appending an entry; the one the app moved to counts while the file is as we left it.
     const leafValid = row.leafId !== null && row.leafMtime !== null && sessionMtime(row.sessionPath) === row.leafMtime;

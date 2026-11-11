@@ -145,6 +145,10 @@ export class SessionLifecycle {
     this.protection.assertAdmitted(threadId);
     const { generation } = this.protection.binding(threadId);
     const admittedEpoch = this.epochs.get(threadId) ?? 0;
+    const assertCurrent = (): void => {
+      if ((this.epochs.get(threadId) ?? 0) !== admittedEpoch)
+        throw new Error('The thread was closed or changed its protection while its session was opening.');
+    };
     const pi = await loadPi();
     const existing = target.sessionPath && existsSync(target.sessionPath);
     const sessionManager = existing
@@ -162,6 +166,8 @@ export class SessionLifecycle {
     }
     const cwd = sessionManager.getCwd();
     const agentDir = pi.getAgentDir();
+    // A dispose during loadPi released the sandbox already; one started now would never be released.
+    assertCurrent();
     const sandbox = await this.protection.prepare(threadId, cwd);
     const sandboxed = sandbox
       ? await ThreadProtectionExtension.create(pi, { threadId, cwd, client: sandbox, protection: this.protection })
@@ -233,8 +239,7 @@ export class SessionLifecycle {
     }
     await sessionUi.bind(session);
     try {
-      if ((this.epochs.get(threadId) ?? 0) !== admittedEpoch)
-        throw new Error('The thread was closed or changed its protection while its session was opening.');
+      assertCurrent();
       this.protection.assertGeneration(threadId, generation);
     } catch (error) {
       session.dispose();

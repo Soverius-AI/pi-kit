@@ -136,6 +136,29 @@ it('stops the sandbox of a thread that never opened a session, so it can start i
   }
 });
 
+it('starts no sandbox for an opener whose thread was closed while pi loaded', async () => {
+  const create = vi.fn();
+  vi.spyOn(SandboxPackage, 'load').mockResolvedValue({ Sandbox: { create } } as never);
+  const rows = new ThreadProtectionTesting();
+  const sessions = new PiSessionService(
+    new TrustService(),
+    new PiPluginService(),
+    { refreshCatalog: async () => undefined } as unknown as LiteLlmService,
+    rows.service(),
+  );
+  const id = randomUUID();
+  rows.bindings.set(id, { version: 1, mode: 'sandboxed', generation: 1, experimentalWindowsAccepted: false });
+  try {
+    const opening = sessions.open(id, { cwd: tmpdir() });
+    sessions.dispose(id);
+    await expect(opening).rejects.toThrow('closed or changed its protection');
+    expect(create).not.toHaveBeenCalled();
+  } finally {
+    vi.restoreAllMocks();
+    sessions.onModuleDestroy();
+  }
+});
+
 describe('open session ownership', () => {
   let base: string;
   let sessions: PiSessionService;

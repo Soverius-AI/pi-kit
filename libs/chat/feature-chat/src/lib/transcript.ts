@@ -382,6 +382,7 @@ export class Transcript {
         const tool = live.tools.get(call.id);
         const running = !!tool && AgentLiveState.running(tool);
         if (running) state = 'running';
+        else if (state !== 'running' && this.chat.results().get(call.id)?.error) state = 'error';
         [first, end] = this.span(live.timing.get(call.id), running, first, end);
         continue;
       }

@@ -65,6 +65,10 @@ test('writeFile honours flags and mode; readFile bounds length and size', async 
     assert.deepEqual(await files.run('readFile', [file], signal), Buffer.from([0, 255]));
     assert.deepEqual(await files.run('readFile', ['a.txt', { length: 1 }], signal), Buffer.from([0]));
     await assert.rejects(files.run('writeFile', [file, 'x', { flag: 'r+' }], signal), { code: 'INVALID_ARGUMENT' });
+    await assert.rejects(files.run('writeFile', [file, 'x', { encoding: 'nope' }], signal), {
+      code: 'INVALID_ARGUMENT',
+    });
+    assert.deepEqual(await readFile(file), Buffer.from([0, 255]), 'a refused write leaves the file as it was');
     await assert.rejects(files.run('readFile', [file, { encoding: 'utf8' }], signal), { code: 'INVALID_ARGUMENT' });
     await writeFile(path.join(dir, 'big'), Buffer.alloc(WorkerFilesystem.MAX_FILE + 1));
     await assert.rejects(files.run('readFile', ['big'], signal), { code: 'FILE_LIMIT' });

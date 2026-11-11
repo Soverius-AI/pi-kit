@@ -153,7 +153,8 @@ export const ThreadProtectionStore = signalStore(
       });
       effect((onCleanup) => {
         const threadId = store._chat.threadId();
-        if (!threadId || store.mode() !== 'sandboxed') return;
+        // Bypass too: the owner may enable protection elsewhere, and a remote browser has no Refresh.
+        if (!threadId) return;
         let live = true;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const schedule = (): void => {

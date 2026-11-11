@@ -212,7 +212,7 @@ describe('ThreadProtectionStore', () => {
     expect(store.canChange()).toBe(false);
   });
 
-  it('polls Sandboxed health every 5 s without overlapping reads, and stops for Bypass, thread switch and destroy', async () => {
+  it('polls every 5 s without overlapping reads, picks up a mode enabled elsewhere on a Bypass thread, and stops on destroy', async () => {
     vi.useFakeTimers();
     get.mockResolvedValue(sandboxed);
     const store = await ready();
@@ -235,14 +235,15 @@ describe('ThreadProtectionStore', () => {
     TestBed.tick();
     expect(store.mode()).toBe('bypass');
     const calls = get.mock.calls.length;
-    await vi.advanceTimersByTimeAsync(15_000);
-    expect(get).toHaveBeenCalledTimes(calls);
+    get.mockResolvedValueOnce(Protection.of({ mode: 'sandboxed', state: 'active', generation: 1 }));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(get).toHaveBeenCalledTimes(calls + 1);
+    expect(store.mode()).toBe('sandboxed');
 
-    await store.change({ mode: 'sandboxed' }, 'b');
-    TestBed.tick();
     TestBed.resetTestingModule();
+    const destroyed = get.mock.calls.length;
     await vi.advanceTimersByTimeAsync(15_000);
-    expect(get).toHaveBeenCalledTimes(calls);
+    expect(get).toHaveBeenCalledTimes(destroyed);
     expect(vi.getTimerCount()).toBe(0);
   });
 });
