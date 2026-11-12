@@ -258,4 +258,36 @@ describe('UiBridge composer registrations', () => {
     await expect(ui.reloading(() => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
     expect(ui.composerRegistrations()).toEqual([]);
   });
+
+  it('publishes each changed preview once and rejects invalid ones', () => {
+    const ui = new UiBridge();
+    const events: PiUiEvent[] = [];
+    ui.onUi((e) => events.push(e));
+    const preview = { op: 'set' as const, sourceUrl: 'http://localhost:5173/' };
+    expect(ui.publishPreview(preview)).toBe(true);
+    expect(ui.publishPreview(preview)).toBe(true);
+    expect(ui.publishPreview({ op: 'set', sourceUrl: 'http://user:pw@localhost:5173/' })).toBe(false);
+    expect(ui.publishPreview({ op: 'clear' })).toBe(true);
+    expect(events).toEqual([
+      { kind: 'preview', registration: preview },
+      { kind: 'preview', registration: { op: 'clear' } },
+    ]);
+  });
+
+  it('keeps an explicit preview mapping when the native browser navigates within the same app', () => {
+    const ui = new UiBridge();
+    const events: PiUiEvent[] = [];
+    const mapped = { op: 'set' as const, sourceUrl: 'http://localhost:5173/', previewUrl: 'https://dev.example/' };
+    ui.publishPreview(mapped);
+    ui.onUi((e) => events.push(e));
+    expect(ui.announcePreview({ op: 'set', sourceUrl: 'http://localhost:5173/settings', title: 'Settings' })).toBe(
+      true,
+    );
+    expect(events).toEqual([]);
+    const other = { op: 'set' as const, sourceUrl: 'http://localhost:3000/', title: 'Docs' };
+    expect(ui.announcePreview(other)).toBe(true);
+    expect(events).toEqual([{ kind: 'preview', registration: other }]);
+    expect(ui.announcePreview({ op: 'set', sourceUrl: 'http://localhost:3000/guide' })).toBe(true);
+    expect(events).toHaveLength(2);
+  });
 });

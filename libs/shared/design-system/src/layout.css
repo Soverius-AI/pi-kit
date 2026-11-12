@@ -1254,6 +1254,10 @@ html[data-sidebar-drag] {
     flex: 0 0 auto;
     max-width: 60vw;
   }
+  .pk-header > .pk-header-title {
+    flex-shrink: 1;
+    min-width: 0;
+  }
   .pk-header-actions {
     flex: none;
   }

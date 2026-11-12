@@ -3,7 +3,13 @@ import type { ExtensionAPI, ExtensionFactory, ToolDefinition } from '@earendil-w
 };
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { BrowserActionSchema, type BrowserAction, type BrowserResult } from '@pi-kit/protocol';
+import {
+  BrowserActionSchema,
+  type BrowserAction,
+  type BrowserResult,
+  PreviewUrlSchema,
+  type PreviewRegistration,
+} from '@pi-kit/protocol';
 import { z } from 'zod';
 
 export const BROWSER_TOOL = 'pi_browser';
@@ -21,6 +27,7 @@ export function browserSkillPath(): string {
   return path;
 }
 export const BROWSER_GUIDANCE = `You can use pi-kit's built-in browser through the pi_browser tool. It is the same browser the user sees in this chat's Artifacts panel, with its own isolated page and cookies.
+The iframe preview is separate: use pi_preview to publish a link without native automation or Electron. Publishing a link does not verify loading or iframe compatibility.
 For web projects, start the project's development server with bash, then call pi_browser with action="navigate" and its HTTP(S) URL (including localhost). Use this browser to inspect and verify the actual UI as you work.
 Use action="snapshot" to read the accessibility tree and current element references. Use those references with click or fill; press sends a key to the focused control, and scroll moves the page. Take a new snapshot after navigation or a UI change. References from an older page are invalid.
 Use action="screenshot" to inspect the rendered page visually, action="console" to inspect recent browser messages, or action="evaluate" with a JavaScript expression for a focused page query. evaluate runs in the web page, without Node.js or access to pi-kit internals. back, forward and reload navigate the same page; close releases it.
@@ -36,9 +43,11 @@ export interface BrowserHook {
 export function createBrowserExtension(options: {
   threadId: string;
   host: () => BrowserHook | undefined;
+  publish?: (registration: PreviewRegistration) => boolean;
 }): ExtensionFactory {
   return (api: ExtensionAPI) => {
     if (!options.host()?.available) return;
+    let lastUrl: string | undefined;
     api.registerTool({
       name: BROWSER_TOOL,
       label: 'Browser',
@@ -55,6 +64,12 @@ export function createBrowserExtension(options: {
         const host = options.host();
         if (!host?.available) throw new Error('The browser artifact needs the pi-kit desktop app.');
         const result = await host.run(options.threadId, BrowserActionSchema.parse(input), signal);
+        const state = result.state;
+        const url = PreviewUrlSchema.safeParse(state.url);
+        if (state.open && !state.error && !state.loading && url.success && url.data !== lastUrl) {
+          if (options.publish?.({ op: 'set', sourceUrl: url.data, title: state.title.slice(0, 200) }))
+            lastUrl = url.data;
+        }
         return {
           content: [
             { type: 'text', text: JSON.stringify({ state: result.state, text: result.text, logs: result.logs }) },

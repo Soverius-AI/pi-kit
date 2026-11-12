@@ -24,6 +24,7 @@ describe('pi custom events', () => {
       'pi.composer',
       'pi.model',
       'pi.notify',
+      'pi.preview',
       'pi.queue',
       'pi.retry',
       'pi.session_info',

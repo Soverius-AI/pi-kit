@@ -4448,6 +4448,38 @@
     }
   },
   "artifacts": {
+    "preview": {
+      "preview": "Preview",
+      "open": "Open preview",
+      "heading": "App preview",
+      "backToChat": "Back to chat",
+      "separateSession": "App preview — a separate session from the agent's browser.",
+      "address": "Preview address",
+      "placeholder": "https://preview.example.com",
+      "reload": "Reload",
+      "openExternally": "Open externally",
+      "unload": "Unload preview",
+      "uploadScreenshot": "Upload screenshot",
+      "newUrl": "A new preview URL is available.",
+      "loadNewUrl": "Load new URL",
+      "setup": "Enter a reachable preview URL. Remote devices need their own HTTPS preview address; localhost refers to this device. The host must approve the preview origin.",
+      "framingHint": "If the preview stays blank, the app may block embedding or require sign-in. Try opening it externally. Live console and inspection are not available in iframe mode yet.",
+      "loading": "Preview requested. Loading cannot be verified without an app bridge.",
+      "frameLoaded": "Frame load observed — this does not verify that the app rendered successfully.",
+      "autoOpen": "Open previews automatically",
+      "autoOpenQuestion": "The agent published an app preview. Open previews automatically from now on?",
+      "autoOpenAlways": "Always open",
+      "autoOpenNotNow": "Not now",
+      "autoOpenNever": "Never",
+      "blocked": {
+        "pending": "Waiting for the trusted backend address before opening a preview.",
+        "invalid": "Enter an absolute HTTP(S) URL without embedded credentials.",
+        "protected": "The pi-kit shell and backend cannot be used as preview pages. Phone previews also need a separate hostname.",
+        "mixed": "An HTTPS shell requires an HTTPS preview URL. Open externally or configure a secure preview address.",
+        "unconfigured": "No preview origins are approved. Configure PI_KIT_PREVIEW_ORIGINS on the host and restart/reload. You can still open the URL externally.",
+        "origin": "This preview origin is not approved. Ask the host to add its exact origin to PI_KIT_PREVIEW_ORIGINS, then restart/reload, or open it externally."
+      }
+    },
     "artifactsPanel": {
       "artifacts": "Artifacts",
       "browser": "Browser",

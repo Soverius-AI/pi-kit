@@ -177,3 +177,23 @@ function finishedRunInto(target: EventLogRepository, run: number): void {
     log = saved;
   }
 }
+
+it.each(['set', 'clear'] as const)('collapse retains the latest preview %s even in an old run', (op) => {
+  const compactor = new LogCompactor(log, { maxRows: 1, keepRuns: 1 });
+  finishedRun('t', 1);
+  log.append(
+    't',
+    'r1',
+    ev({ type: EventType.CUSTOM, name: 'pi.preview', value: { op: 'set', sourceUrl: 'https://old.example' } }),
+  );
+  const latest = op === 'clear' ? { op } : { op, sourceUrl: 'https://new.example' };
+  log.append('t', 'r1', ev({ type: EventType.CUSTOM, name: 'pi.preview', value: latest }));
+  finishedRun('t', 2);
+  compactor.compact('t');
+  const previews = log
+    .read('t')
+    .map((row) => row.event as BaseEvent & { name?: string; value?: unknown })
+    .filter((event) => event.name === 'pi.preview');
+  expect(previews).toHaveLength(1);
+  expect(previews[0].value).toEqual(latest);
+});

@@ -37,6 +37,17 @@ describe('mapUiEvent', () => {
     expect(events.every((e) => EventSchemas.safeParse(e).success)).toBe(true);
   });
 
+  it('stamps a preview publication so a client can tell a live one from a replay', () => {
+    const before = Date.now();
+    const [event] = mapUiEvent({ kind: 'preview', registration: { op: 'set', sourceUrl: 'http://localhost:5173/' } });
+    expect(parsePiCustomEvent(event as unknown as { name: string; value: unknown })).toEqual({
+      name: 'pi.preview',
+      value: { op: 'set', sourceUrl: 'http://localhost:5173/' },
+    });
+    expect(event.timestamp).toBeGreaterThanOrEqual(before);
+    expect(EventSchemas.safeParse(event).success).toBe(true);
+  });
+
   it('maps setWidget to a pi.widget activity, and a cleared widget to an empty one', () => {
     const [shown] = mapUiEvent({ kind: 'widget', key: 'todo', lines: ['a', 'b'], placement: 'belowEditor' });
     expect(shown).toMatchObject({

@@ -2,15 +2,17 @@ import { TranslocoPipe } from '@pi-kit/i18n';
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { UpdateToast } from '@pi-kit/update/feature-update';
 import { ToastStore } from '@pi-kit/data-access';
+import { PreviewPrompt } from './preview-prompt';
 
 /** The window's toasts (daisyUI `toast`), bottom right above the status bar. */
 @Component({
   selector: 'pk-toasts',
-  imports: [UpdateToast, TranslocoPipe],
+  imports: [UpdateToast, PreviewPrompt, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="toast toast-end mb-7 z-50" aria-live="polite">
       <pk-update-toast />
+      <pk-preview-prompt />
       @for (toast of toasts.items(); track toast.id) {
         <div
           role="status"

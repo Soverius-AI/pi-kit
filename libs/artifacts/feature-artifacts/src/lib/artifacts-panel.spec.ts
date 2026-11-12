@@ -5,14 +5,17 @@ import { ChatStore } from '@pi-kit/chat/api';
 import { emptyBrowserState } from '@pi-kit/protocol';
 import { ThreadsStore } from '@pi-kit/threads/api';
 import { ArtifactsPanel } from './artifacts-panel';
+import { PreviewPolicy } from './preview-policy';
 
 describe('browser artifact viewport', () => {
   const layout = vi.fn(async () => undefined);
   const page = signal({ ...emptyBrowserState('a', true), open: true, url: 'http://localhost:3000/' });
   const act = vi.fn(async () => undefined);
+  const watch = vi.fn();
   beforeEach(() => {
     page.set({ ...emptyBrowserState('a', true), open: true, url: 'http://localhost:3000/' });
     act.mockClear();
+    watch.mockClear();
     layout.mockClear();
     window.piKit = { getBackendUrl: async () => '', setBrowserViewport: layout };
     vi.stubGlobal(
@@ -32,6 +35,10 @@ describe('browser artifact viewport', () => {
       providers: [
         { provide: ThreadsStore, useValue: { selectedId: signal('a') } },
         { provide: ChatStore, useValue: { addImages: vi.fn() } },
+        {
+          provide: PreviewPolicy,
+          useValue: { ready: signal(false), external: () => undefined, resolve: () => ({ blocked: 'pending' }) },
+        },
       ],
     });
     TestBed.overrideComponent(ArtifactsPanel, {
@@ -44,7 +51,7 @@ describe('browser artifact viewport', () => {
               threadId: signal('a'),
               busy: signal(false),
               error: signal(undefined),
-              watch: vi.fn(),
+              watch,
               act,
             },
           },
@@ -56,6 +63,17 @@ describe('browser artifact viewport', () => {
     TestBed.resetTestingModule();
     delete window.piKit;
     vi.unstubAllGlobals();
+  });
+
+  it('uses iframe mode outside Electron without polling or calling the native browser', async () => {
+    delete window.piKit;
+    const fixture = TestBed.createComponent(ArtifactsPanel);
+    fixture.autoDetectChanges();
+    await fixture.whenStable();
+    expect((fixture.nativeElement as HTMLElement).querySelector('pk-iframe-preview-panel')).not.toBeNull();
+    expect(watch).not.toHaveBeenCalled();
+    expect(layout).not.toHaveBeenCalled();
+    expect(act).not.toHaveBeenCalled();
   });
 
   it('keeps an edited address and the native viewport stable across state polls', async () => {

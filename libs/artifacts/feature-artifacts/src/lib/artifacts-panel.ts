@@ -19,6 +19,7 @@ import { PkIcon } from '@pi-kit/design-system';
 import { UiStore } from '@pi-kit/data-access';
 import { ThreadsStore } from '@pi-kit/threads/api';
 import { BrowserTools } from './browser-tools';
+import { IframePreviewPanel } from './iframe-preview-panel';
 
 /**
  * The Artifacts panel: the browser the agent shares with the user. It draws the back, forward, reload and address toolbar over a
@@ -28,17 +29,20 @@ import { BrowserTools } from './browser-tools';
 @Component({
   selector: 'pk-artifacts-panel',
   providers: [BrowserStore],
-  imports: [BrowserTools, PkIcon, TranslocoPipe],
+  imports: [BrowserTools, IframePreviewPanel, PkIcon, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'pk-panel',
     '[attr.aria-label]': "i18n.t('artifacts.artifactsPanel.artifacts')",
     '[class.expanded]': 'expanded()',
+    '[hidden]': '!visible()',
   },
   template: `
     <div class="pk-bar gap-2">
       <span class="font-medium">{{ 'artifacts.artifactsPanel.artifacts' | transloco }}</span>
-      <span class="chip">{{ 'artifacts.artifactsPanel.browser' | transloco }}</span>
+      <span class="chip">{{
+        (desktop ? 'artifacts.artifactsPanel.browser' : 'artifacts.preview.heading') | transloco
+      }}</span>
       <button
         type="button"
         class="btn btn-ghost btn-sm ml-auto"
@@ -55,102 +59,119 @@ import { BrowserTools } from './browser-tools';
         [attr.aria-label]="'artifacts.artifactsPanel.closeArtifacts' | transloco"
         (click)="bus.closePanel()"
       >
-        ✕
+        {{ desktop ? '✕' : ('artifacts.preview.backToChat' | transloco) }}
       </button>
     </div>
-    <form class="browser-toolbar" (submit)="navigate($event)">
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm btn-square"
-        [attr.aria-label]="'artifacts.artifactsPanel.browserBack' | transloco"
-        [disabled]="!store.page()?.canGoBack || store.busy()"
-        (click)="store.act({ action: 'back' })"
-      >
-        <pk-icon name="back" />
-      </button>
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm btn-square"
-        [attr.aria-label]="'artifacts.artifactsPanel.browserForward' | transloco"
-        [disabled]="!store.page()?.canGoForward || store.busy()"
-        (click)="store.act({ action: 'forward' })"
-      >
-        <pk-icon name="forward" />
-      </button>
-      <button
-        type="button"
-        class="btn btn-ghost btn-sm btn-square"
-        [attr.aria-label]="'artifacts.artifactsPanel.reloadBrowser' | transloco"
-        [disabled]="!store.page()?.open || store.busy()"
-        (click)="store.act({ action: 'reload' })"
-      >
-        <pk-icon name="reload" />
-      </button>
-      <input
-        class="input input-sm min-w-0 flex-1 mono"
-        [attr.aria-label]="'artifacts.artifactsPanel.browserAddress' | transloco"
-        [placeholder]="'artifacts.artifactsPanel.httpLocalhost3000' | transloco"
-        [value]="address()"
-        (input)="address.set($any($event.target).value)"
-        [disabled]="!store.page()?.available"
-      />
-      <button
-        type="submit"
-        class="btn btn-sm"
-        [disabled]="!address().trim() || store.busy() || !store.page()?.available"
-      >
-        {{ 'artifacts.artifactsPanel.go' | transloco }}
-      </button>
-    </form>
-    @if (store.page()?.available) {
-      <pk-browser-tools />
-    }
-    @if (store.error() || store.page()?.error; as error) {
-      <p role="alert" class="text-error text-sm px-3 py-2">{{ error }}</p>
-    }
-    @if (store.page()?.loading || store.busy()) {
-      <progress
-        class="progress progress-primary h-0.5 w-full"
-        [attr.aria-label]="'artifacts.artifactsPanel.browserLoading' | transloco"
-      ></progress>
-    }
-    <div #viewport class="browser-viewport" data-testid="browser-viewport">
-      @if (!store.threadId()) {
-        <p>{{ 'artifacts.artifactsPanel.selectAChatToOpenItsBrowser' | transloco }}</p>
-      } @else if (store.page()?.available === false || !desktop) {
-        <p>{{ 'artifacts.artifactsPanel.theBrowserArtifactIsAvailableInThe' | transloco }}</p>
-      } @else if (!store.page()?.open) {
-        <div class="text-center max-w-sm p-6">
-          <h2 class="font-medium mb-2">{{ 'artifacts.artifactsPanel.previewYourWebProject' | transloco }}</h2>
-          <p>
-            {{ 'artifacts.artifactsPanel.startItsDevelopmentServerThenEnterThe' | transloco }}
-          </p>
-        </div>
-      } @else if (suspended()) {
-        <p>{{ 'artifacts.artifactsPanel.browserHiddenWhileADialogIsOpen' | transloco }}</p>
-      } @else if (resizing()) {
-        <p>{{ 'artifacts.artifactsPanel.releaseToPreviewAtThisWidth' | transloco }}</p>
-      }
-    </div>
-    <div class="browser-footer">
-      <span class="truncate">{{
-        store.page()?.title || ('artifacts.artifactsPanel.browserSharedWithThisChat' | transloco)
-      }}</span>
-      @if (store.page()?.open) {
+    @if (desktop) {
+      <form class="browser-toolbar" (submit)="navigate($event)">
         <button
           type="button"
-          class="btn btn-ghost btn-xs shrink-0"
-          [disabled]="store.busy()"
-          (click)="store.act({ action: 'close' })"
+          class="btn btn-ghost btn-sm btn-square"
+          [attr.aria-label]="'artifacts.artifactsPanel.browserBack' | transloco"
+          [disabled]="!store.page()?.canGoBack || store.busy()"
+          (click)="store.act({ action: 'back' })"
         >
-          {{ 'artifacts.artifactsPanel.closePage' | transloco }}
+          <pk-icon name="back" />
         </button>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm btn-square"
+          [attr.aria-label]="'artifacts.artifactsPanel.browserForward' | transloco"
+          [disabled]="!store.page()?.canGoForward || store.busy()"
+          (click)="store.act({ action: 'forward' })"
+        >
+          <pk-icon name="forward" />
+        </button>
+        <button
+          type="button"
+          class="btn btn-ghost btn-sm btn-square"
+          [attr.aria-label]="'artifacts.artifactsPanel.reloadBrowser' | transloco"
+          [disabled]="!store.page()?.open || store.busy()"
+          (click)="store.act({ action: 'reload' })"
+        >
+          <pk-icon name="reload" />
+        </button>
+        <input
+          class="input input-sm min-w-0 flex-1 mono"
+          [attr.aria-label]="'artifacts.artifactsPanel.browserAddress' | transloco"
+          [placeholder]="'artifacts.artifactsPanel.httpLocalhost3000' | transloco"
+          [value]="address()"
+          (input)="address.set($any($event.target).value)"
+          [disabled]="!store.page()?.available"
+        />
+        <button
+          type="submit"
+          class="btn btn-sm"
+          [disabled]="!address().trim() || store.busy() || !store.page()?.available"
+        >
+          {{ 'artifacts.artifactsPanel.go' | transloco }}
+        </button>
+      </form>
+      @if (store.page()?.available) {
+        <pk-browser-tools />
       }
-    </div>
+      @if (store.error() || store.page()?.error; as error) {
+        <p role="alert" class="text-error text-sm px-3 py-2">{{ error }}</p>
+      }
+      @if (store.page()?.loading || store.busy()) {
+        <progress
+          class="progress progress-primary h-0.5 w-full"
+          [attr.aria-label]="'artifacts.artifactsPanel.browserLoading' | transloco"
+        ></progress>
+      }
+      <div #viewport class="browser-viewport" data-testid="browser-viewport">
+        @if (!store.threadId()) {
+          <p>{{ 'artifacts.artifactsPanel.selectAChatToOpenItsBrowser' | transloco }}</p>
+        } @else if (store.page()?.available === false || !desktop) {
+          <p>{{ 'artifacts.artifactsPanel.theBrowserArtifactIsAvailableInThe' | transloco }}</p>
+        } @else if (!store.page()?.open) {
+          <div class="text-center max-w-sm p-6">
+            <h2 class="font-medium mb-2">{{ 'artifacts.artifactsPanel.previewYourWebProject' | transloco }}</h2>
+            <p>
+              {{ 'artifacts.artifactsPanel.startItsDevelopmentServerThenEnterThe' | transloco }}
+            </p>
+          </div>
+        } @else if (suspended()) {
+          <p>{{ 'artifacts.artifactsPanel.browserHiddenWhileADialogIsOpen' | transloco }}</p>
+        } @else if (resizing()) {
+          <p>{{ 'artifacts.artifactsPanel.releaseToPreviewAtThisWidth' | transloco }}</p>
+        }
+      </div>
+      <div class="browser-footer">
+        <span class="truncate">{{
+          store.page()?.title || ('artifacts.artifactsPanel.browserSharedWithThisChat' | transloco)
+        }}</span>
+        @if (store.page()?.open) {
+          <button
+            type="button"
+            class="btn btn-ghost btn-xs shrink-0"
+            [disabled]="store.busy()"
+            (click)="store.act({ action: 'close' })"
+          >
+            {{ 'artifacts.artifactsPanel.closePage' | transloco }}
+          </button>
+        }
+      </div>
+    } @else {
+      <pk-iframe-preview-panel [visible]="visible() && !suspended()" />
+    }
+    <label class="auto-open">
+      <input
+        type="checkbox"
+        class="checkbox checkbox-xs"
+        data-testid="preview-auto-open"
+        [checked]="bus.previewAutoOpen() === 'always'"
+        (change)="bus.setPreviewAutoOpen($any($event.target).checked ? 'always' : 'never')"
+      />
+      <span>{{ 'artifacts.preview.autoOpen' | transloco }}</span>
+    </label>
   `,
   styles: `
     :host {
       min-width: 0;
+    }
+    :host([hidden]) {
+      display: none !important;
     }
     :host(.expanded) {
       position: fixed;
@@ -185,11 +206,22 @@ import { BrowserTools } from './browser-tools';
       color: var(--pk-muted);
       border-top: 1px solid var(--color-base-300);
     }
+    .auto-open {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: var(--pk-muted);
+      border-top: 1px solid var(--color-base-300);
+      cursor: pointer;
+    }
   `,
 })
 export class ArtifactsPanel {
   protected readonly i18n = inject(Language);
   readonly refreshMs = input(750);
+  readonly visible = input(true);
   readonly suspended = input(false);
   readonly resizing = input(false);
   protected readonly store = inject(BrowserStore);
@@ -198,7 +230,9 @@ export class ArtifactsPanel {
   protected readonly desktop = !!window.piKit?.setBrowserViewport;
   private readonly pageUrl = computed(() => this.store.page()?.url ?? '');
   protected readonly address = linkedSignal(() => this.pageUrl());
-  private readonly showBrowser = computed(() => !!this.store.page()?.open && !this.suspended() && !this.resizing());
+  private readonly showBrowser = computed(
+    () => this.visible() && !!this.store.page()?.open && !this.suspended() && !this.resizing(),
+  );
   private readonly threads = inject(ThreadsStore);
   private readonly zone = inject(NgZone);
   private readonly viewport = viewChild<ElementRef<HTMLDivElement>>('viewport');
@@ -206,6 +240,7 @@ export class ArtifactsPanel {
 
   constructor() {
     effect(() => {
+      if (!this.desktop) return;
       const id = this.threads.selectedId() ?? undefined;
       const interval = this.refreshMs();
       untracked(() => this.zone.runOutsideAngular(() => this.store.watch(id, interval)));

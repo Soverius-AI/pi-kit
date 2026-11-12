@@ -8,11 +8,39 @@ import { MetaRepository } from '../db/meta.repository';
 import { RedactionService } from '../db/redaction.service';
 import { TerminalReplayRepository } from '../db/terminal-replay.repository';
 import { ThreadsRepository } from '../db/threads.repository';
-import { TerminalService } from './terminal.service';
+import { PREVIOUS_SESSION_INPUT_RESET, TerminalService } from './terminal.service';
 
 const KEY = 'ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';
 
 describe.skipIf(process.platform === 'win32')('the terminal’s last screen in the database', () => {
+  it.each(['', '\x1b[?100', '\x1b]11;'])('resets old input modes before a new shell (partial suffix %j)', (suffix) => {
+    const database = new DatabaseService({ dataDir: realpathSync(mkdtempSync(join(tmpdir(), 'pk-termdb-'))) });
+    const replay = new TerminalReplayRepository(database);
+    const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'pk-termcwd-')));
+    const history = `old screen\r\n\x1b[31mred\x1b[0m\x1b[?1003h\x1b[?1006h${suffix}`;
+    replay.set(cwd, history);
+    const service = new TerminalService(replay);
+    try {
+      service.start(cwd, 80, 24);
+      let shown = '';
+      const off = service.subscribe(cwd, (event) => {
+        if (event.type === 'data') shown += event.data;
+      });
+      expect(shown).toBe(
+        `${history}${PREVIOUS_SESSION_INPUT_RESET}\r\n\x1b[2m--- end of the previous terminal session ---\x1b[0m\r\n`,
+      );
+      off?.();
+      let reattached = '';
+      service.subscribe(cwd, (event) => {
+        if (event.type === 'data') reattached += event.data;
+      });
+      expect(reattached).toBe(shown);
+    } finally {
+      service.onModuleDestroy();
+      database.onApplicationShutdown();
+    }
+  });
+
   it('is saved with key shapes masked, shown to a late client masked, and replayed first after the backend restarted', async () => {
     const database = new DatabaseService({ dataDir: realpathSync(mkdtempSync(join(tmpdir(), 'pk-termdb-'))) });
     const replay = new TerminalReplayRepository(database);

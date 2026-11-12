@@ -1,8 +1,29 @@
 // Own a desktop development builder and report actual readiness over IPC, without guessing ports or parsing terminal output.
 import nx from '@nx/devkit';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, mkdirSync } from 'node:fs';
+function previewOrigins(values) {
+  return [
+    ...new Set(
+      values.map((value) => {
+        const url = new URL(value);
+        if (
+          !/^https?:$/.test(url.protocol) ||
+          (!/^[a-z0-9.-]+$/i.test(url.hostname) && !/^\[[0-9a-f:.]+\]$/i.test(url.hostname)) ||
+          url.username ||
+          url.password ||
+          url.pathname !== '/' ||
+          url.search ||
+          url.hash
+        )
+          throw new Error('Invalid preview origin');
+        return url.origin;
+      }),
+    ),
+  ];
+}
 
 // Even a killed launcher must not leave an orphan server holding a port or watching the workspace.
 process.once('disconnect', () => process.exit(0));
@@ -21,6 +42,32 @@ const context = {
   nxJsonConfiguration: nx.readJsonFile(join(root, 'nx.json')),
   isVerbose: false,
 };
+if (role === 'renderer') {
+  const raw = process.env.PI_KIT_PREVIEW_ORIGINS;
+  const origins = previewOrigins(raw?.trim() ? raw.split(',').map((value) => value.trim()) : []);
+  const port = process.env.PI_KIT_DEV_BACKEND_PORT ?? '4300';
+  const backends = [`http://localhost:${port}`, `http://127.0.0.1:${port}`];
+  const allowed = origins.filter((origin) => !backends.includes(origin));
+  const content = JSON.stringify(allowed)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/'/g, '&#39;');
+  mkdirSync(join(root, '.angular'), { recursive: true });
+  const temporary = mkdtempSync(join(root, '.angular/preview-index-'));
+  process.once('exit', () => rmSync(temporary, { recursive: true, force: true }));
+  const index = join(temporary, 'index.html');
+  writeFileSync(
+    index,
+    readFileSync(join(root, 'apps/renderer/src/index.html'), 'utf8').replace(
+      /<head(?:\s[^>]*)?>/i,
+      `$&<meta name="pi-kit-preview-origins" content="${content}">`,
+    ),
+  );
+  context.projectsConfigurations.projects.renderer.targets.build.options.index = relative(root, index);
+  projectGraph.nodes.renderer.data.targets.build.options.index = relative(root, index);
+}
 // runExecutor runs one executor; Nx's CLI builds its dependency targets first. Keep that work in
 // Nx so its normal transitive dependency ordering and cache still apply to the backend's watch build.
 if (role === 'backend') {

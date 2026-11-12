@@ -85,12 +85,13 @@ const modes = {
       PI_KIT_PORT: BACKEND_PORT,
       PI_KIT_TOKEN: process.env.PI_KIT_TOKEN ?? randomBytes(32).toString('hex'),
       PI_KIT_ORIGIN: RENDERER_URL,
+      PI_KIT_DEV_RENDERER_PORT: RENDERER_PORT,
       // dev:web keeps its database in the repository (git-ignored), apart from the desktop app's userData.
       PI_KIT_DATA_DIR: process.env.PI_KIT_DATA_DIR ?? `${process.cwd()}/.pi-kit-data`,
     },
     commands: [
       ['backend', 'nx serve backend'],
-      ['renderer', `nx serve renderer --port ${RENDERER_PORT}`],
+      ['renderer', `node scripts/dev-builder.mjs renderer`],
     ],
   },
 };
