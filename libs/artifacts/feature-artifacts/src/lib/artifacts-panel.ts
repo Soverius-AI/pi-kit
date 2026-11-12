@@ -15,7 +15,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { BrowserStore } from '@pi-kit/artifacts/data';
-import { PkIcon } from '@pi-kit/design-system';
+import { PkIcon, PkTip } from '@pi-kit/design-system';
 import { UiStore } from '@pi-kit/data-access';
 import { ThreadsStore } from '@pi-kit/threads/api';
 import { BrowserTools } from './browser-tools';
@@ -29,7 +29,7 @@ import { IframePreviewPanel } from './iframe-preview-panel';
 @Component({
   selector: 'pk-artifacts-panel',
   providers: [BrowserStore],
-  imports: [BrowserTools, IframePreviewPanel, PkIcon, TranslocoPipe],
+  imports: [BrowserTools, IframePreviewPanel, PkIcon, PkTip, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'pk-panel',
@@ -45,21 +45,26 @@ import { IframePreviewPanel } from './iframe-preview-panel';
       }}</span>
       <button
         type="button"
-        class="btn btn-ghost btn-sm ml-auto"
+        class="btn btn-ghost btn-sm btn-square ml-auto"
         [attr.aria-pressed]="expanded()"
+        [attr.aria-label]="
+          (expanded() ? 'artifacts.artifactsPanel.shrink' : 'artifacts.artifactsPanel.expand') | transloco
+        "
+        [pkTip]="(expanded() ? 'artifacts.artifactsPanel.shrink' : 'artifacts.artifactsPanel.expand') | transloco"
         (click)="expanded.set(!expanded())"
       >
-        {{
-          expanded() ? ('artifacts.artifactsPanel.shrink' | transloco) : ('artifacts.artifactsPanel.expand' | transloco)
-        }}
+        <pk-icon [name]="expanded() ? 'minimize' : 'maximize'" />
       </button>
       <button
         type="button"
-        class="btn btn-ghost btn-sm"
-        [attr.aria-label]="'artifacts.artifactsPanel.closeArtifacts' | transloco"
+        class="btn btn-ghost btn-sm btn-square"
+        [attr.aria-label]="
+          (desktop ? 'artifacts.artifactsPanel.closeArtifacts' : 'artifacts.preview.backToChat') | transloco
+        "
+        [pkTip]="(desktop ? 'artifacts.artifactsPanel.closeArtifacts' : 'artifacts.preview.backToChat') | transloco"
         (click)="bus.closePanel()"
       >
-        {{ desktop ? '✕' : ('artifacts.preview.backToChat' | transloco) }}
+        <pk-icon name="close" />
       </button>
     </div>
     @if (desktop) {
@@ -215,6 +220,9 @@ import { IframePreviewPanel } from './iframe-preview-panel';
       color: var(--pk-muted);
       border-top: 1px solid var(--color-base-300);
       cursor: pointer;
+    }
+    .auto-open .checkbox {
+      --radius-selector: 0.25rem;
     }
   `,
 })
