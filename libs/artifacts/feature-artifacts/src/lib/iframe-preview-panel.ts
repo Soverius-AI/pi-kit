@@ -39,6 +39,7 @@ import { PreviewPolicy, type PreviewBlock } from './preview-policy';
       <button
         class="go btn btn-sm btn-square"
         type="submit"
+        (mousedown)="$event.preventDefault()"
         [attr.aria-label]="'artifacts.artifactsPanel.go' | transloco"
         [pkTip]="'artifacts.artifactsPanel.go' | transloco"
         [disabled]="!address().trim() || !policy.ready()"
@@ -192,19 +193,25 @@ import { PreviewPolicy, type PreviewBlock } from './preview-policy';
       margin: 0;
     }
     @container preview (max-width: 480px) {
-      .go {
-        display: none;
-      }
       .preview-toolbar .btn-square {
         width: 36px;
         height: 36px;
         min-height: 36px;
       }
-      .preview-toolbar:has(input[type='url']:focus) .btn-square {
+      .preview-toolbar .go {
+        width: 0;
+        margin-left: -4px;
+        border-width: 0;
+        overflow: hidden;
+      }
+      .preview-toolbar:has(input[type='url']:focus, .go:focus) .btn-square {
         display: none;
       }
-      .preview-toolbar:has(input[type='url']:focus) .go {
+      .preview-toolbar:has(input[type='url']:focus, .go:focus) .go {
         display: inline-flex;
+        width: 36px;
+        margin-left: 0;
+        border-width: var(--border);
       }
     }
     .new-url {

@@ -114,6 +114,18 @@ describe('iframe app preview', () => {
     expect((again.nativeElement as HTMLElement).querySelector('.preview-hint')).toBeNull();
   });
 
+  it('keeps the address focused while Go is pressed, so a compact toolbar cannot hide Go mid-click', async () => {
+    const { fixture, root, input } = await draw();
+    input.focus();
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    root.querySelector<HTMLButtonElement>('button.go')!.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(true);
+    submit(root, input, 'https://preview.example/other');
+    await fixture.whenStable();
+    expect(root.querySelector('iframe')?.src).toBe('https://preview.example/other');
+    expect(document.activeElement).not.toBe(input);
+  });
+
   it('reloads explicitly, unloads without automatically recreating, and resets on thread change', async () => {
     publish('https://preview.example/app');
     const { fixture, root } = await draw();
