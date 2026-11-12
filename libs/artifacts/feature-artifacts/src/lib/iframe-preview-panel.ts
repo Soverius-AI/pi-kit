@@ -1,22 +1,34 @@
 import { Language, TranslocoPipe } from '@pi-kit/i18n';
 import { Component, DestroyRef, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { DomSanitizer, type SafeResourceUrl } from '@angular/platform-browser';
-import { UiStore } from '@pi-kit/data-access';
+import { UiStore, readStorage, writeStorage } from '@pi-kit/data-access';
+import { PkIcon, PkTip } from '@pi-kit/design-system';
 import { ChatStore } from '@pi-kit/chat/api';
 import { ThreadsStore } from '@pi-kit/threads/api';
 import { PreviewPolicy, type PreviewBlock } from './preview-policy';
 
 @Component({
   selector: 'pk-iframe-preview-panel',
-  imports: [TranslocoPipe],
+  imports: [PkIcon, PkTip, TranslocoPipe],
   host: { '[attr.inert]': 'visible() ? null : ""' },
   template: `
-    <p class="session-note">{{ 'artifacts.preview.separateSession' | transloco }}</p>
-    <form class="preview-toolbar" (submit)="navigate($event)">
+    <form class="preview-toolbar" (submit)="navigate($event); addressInput.blur()">
+      <button
+        class="btn btn-ghost btn-sm btn-square"
+        type="button"
+        [attr.aria-label]="'artifacts.preview.reload' | transloco"
+        [pkTip]="'artifacts.preview.reload' | transloco"
+        [disabled]="!loadedUrl()"
+        (click)="reload()"
+      >
+        <pk-icon name="reload" />
+      </button>
       <input
+        #addressInput
         class="input input-sm min-w-0 flex-1 mono"
         type="url"
         inputmode="url"
+        enterkeyhint="go"
         autocomplete="off"
         spellcheck="false"
         [attr.aria-label]="'artifacts.preview.address' | transloco"
@@ -24,22 +36,37 @@ import { PreviewPolicy, type PreviewBlock } from './preview-policy';
         [value]="address()"
         (input)="edit($any($event.target).value)"
       />
-      <button class="btn btn-sm" type="submit" [disabled]="!address().trim() || !policy.ready()">
-        {{ 'artifacts.artifactsPanel.go' | transloco }}
-      </button>
-    </form>
-    <div class="preview-actions">
-      <button class="btn btn-ghost btn-sm" type="button" [disabled]="!loadedUrl()" (click)="reload()">
-        {{ 'artifacts.preview.reload' | transloco }}
+      <button
+        class="go btn btn-sm btn-square"
+        type="submit"
+        (mousedown)="$event.preventDefault()"
+        [attr.aria-label]="'artifacts.artifactsPanel.go' | transloco"
+        [pkTip]="'artifacts.artifactsPanel.go' | transloco"
+        [disabled]="!address().trim() || !policy.ready()"
+      >
+        <pk-icon name="arrow-right" />
       </button>
       @if (externalUrl(); as url) {
-        <a class="btn btn-ghost btn-sm" [href]="url" target="_blank" rel="noopener noreferrer">{{
-          'artifacts.preview.openExternally' | transloco
-        }}</a>
+        <a
+          class="btn btn-ghost btn-sm btn-square"
+          [href]="url"
+          target="_blank"
+          rel="noopener noreferrer"
+          [attr.aria-label]="'artifacts.preview.openExternally' | transloco"
+          [pkTip]="'artifacts.preview.openExternally' | transloco"
+        >
+          <pk-icon name="globe" />
+        </a>
+      } @else {
+        <button
+          class="btn btn-ghost btn-sm btn-square"
+          type="button"
+          disabled
+          [attr.aria-label]="'artifacts.preview.openExternally' | transloco"
+        >
+          <pk-icon name="globe" />
+        </button>
       }
-      <button class="btn btn-ghost btn-sm" type="button" [disabled]="!loadedUrl()" (click)="unload()">
-        {{ 'artifacts.preview.unload' | transloco }}
-      </button>
       <input
         #screenshots
         type="file"
@@ -50,10 +77,27 @@ import { PreviewPolicy, type PreviewBlock } from './preview-policy';
         [attr.aria-label]="'artifacts.preview.uploadScreenshot' | transloco"
         (change)="upload($event)"
       />
-      <button class="btn btn-ghost btn-sm" type="button" [disabled]="preparing()" (click)="screenshots.click()">
-        {{ 'artifacts.preview.uploadScreenshot' | transloco }}
+      <button
+        class="btn btn-ghost btn-sm btn-square"
+        type="button"
+        [attr.aria-label]="'artifacts.preview.uploadScreenshot' | transloco"
+        [pkTip]="'artifacts.preview.uploadScreenshot' | transloco"
+        [disabled]="preparing()"
+        (click)="screenshots.click()"
+      >
+        <pk-icon name="camera" />
       </button>
-    </div>
+      <button
+        class="btn btn-ghost btn-sm btn-square"
+        type="button"
+        [attr.aria-label]="'artifacts.preview.unload' | transloco"
+        [pkTip]="'artifacts.preview.unload' | transloco"
+        [disabled]="!loadedUrl()"
+        (click)="unload()"
+      >
+        <pk-icon name="stop" />
+      </button>
+    </form>
     @if (notice(); as text) {
       <p class="preview-notice" role="status">{{ text }}</p>
     }
@@ -86,47 +130,89 @@ import { PreviewPolicy, type PreviewBlock } from './preview-policy';
         </div>
       }
     </div>
-    <p class="preview-notice">{{ 'artifacts.preview.framingHint' | transloco }}</p>
+    @if (!hintDismissed()) {
+      <div class="preview-hint">
+        <p>{{ 'artifacts.preview.hint' | transloco }}</p>
+        <button
+          class="btn btn-ghost btn-xs btn-square"
+          type="button"
+          [attr.aria-label]="'artifacts.preview.dismissHint' | transloco"
+          [pkTip]="'artifacts.preview.dismissHint' | transloco"
+          (click)="dismissHint()"
+        >
+          <pk-icon name="close" size="14" />
+        </button>
+      </div>
+    }
     @if (loadedUrl()) {
-      <p class="preview-status" role="status">
+      <p class="sr-only" role="status">
         {{ (loadObserved() ? 'artifacts.preview.frameLoaded' : 'artifacts.preview.loading') | transloco }}
       </p>
     }
   `,
   styles: `
     :host {
+      container: preview / inline-size;
       display: flex;
       flex: 1;
       flex-direction: column;
       min-height: 0;
       min-width: 0;
     }
-    .session-note,
-    .preview-notice,
-    .preview-status {
+    .preview-notice {
       margin: 0;
       padding: 8px 12px;
       font-size: 12px;
       color: var(--pk-muted);
     }
-    .session-note {
-      border-bottom: 1px solid var(--color-base-300);
-    }
     .preview-toolbar,
-    .preview-actions,
     .new-url {
       display: flex;
-      gap: 6px;
+      gap: 4px;
       align-items: center;
-      padding: 8px;
-      flex-wrap: wrap;
+      padding: 6px 8px;
     }
     .preview-toolbar {
-      flex-wrap: nowrap;
-    }
-    .preview-actions {
-      padding-top: 0;
       border-bottom: 1px solid var(--color-base-300);
+    }
+    .new-url {
+      flex-wrap: wrap;
+    }
+    .preview-hint {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 4px 4px 4px 12px;
+      border-top: 1px solid var(--color-base-300);
+      font-size: 12px;
+      line-height: 1.35;
+      color: var(--pk-muted);
+    }
+    .preview-hint p {
+      flex: 1;
+      margin: 0;
+    }
+    @container preview (max-width: 480px) {
+      .preview-toolbar .btn-square {
+        width: 36px;
+        height: 36px;
+        min-height: 36px;
+      }
+      .preview-toolbar .go {
+        width: 0;
+        margin-left: -4px;
+        border-width: 0;
+        overflow: hidden;
+      }
+      .preview-toolbar:has(input[type='url']:focus, .go:focus) .btn-square {
+        display: none;
+      }
+      .preview-toolbar:has(input[type='url']:focus, .go:focus) .go {
+        display: inline-flex;
+        width: 36px;
+        margin-left: 0;
+        border-width: var(--border);
+      }
     }
     .new-url {
       justify-content: space-between;
@@ -162,6 +248,7 @@ import { PreviewPolicy, type PreviewBlock } from './preview-policy';
   `,
 })
 export class IframePreviewPanel {
+  private static readonly HINT_KEY = 'pi-kit.preview-hint-dismissed.v1';
   readonly visible = input(true);
   protected readonly bus = inject(UiStore);
   protected readonly policy = inject(PreviewPolicy);
@@ -172,6 +259,7 @@ export class IframePreviewPanel {
   private readonly destroyRef = inject(DestroyRef);
   protected readonly preparing = signal(false);
   protected readonly notice = signal<string | undefined>(undefined);
+  protected readonly hintDismissed = signal(readStorage(IframePreviewPanel.HINT_KEY, 'controller') === '1');
   protected readonly address = signal('');
   protected readonly loadedUrl = signal<string | undefined>(undefined);
   protected readonly blocked = signal<PreviewBlock | undefined>(undefined);
@@ -251,6 +339,11 @@ export class IframePreviewPanel {
     } finally {
       if (!this.destroyRef.destroyed) this.preparing.set(false);
     }
+  }
+
+  protected dismissHint(): void {
+    this.hintDismissed.set(true);
+    writeStorage(IframePreviewPanel.HINT_KEY, '1', 'controller');
   }
 
   protected edit(value: string): void {

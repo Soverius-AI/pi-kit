@@ -14,6 +14,7 @@ describe('iframe app preview', () => {
   );
   let meta: HTMLMetaElement;
   beforeEach(() => {
+    localStorage.clear();
     selectedId.set('a');
     addImages.mockClear();
     meta = document.createElement('meta');
@@ -98,11 +99,37 @@ describe('iframe app preview', () => {
     expect(root.querySelector('a')).toBeNull();
   });
 
+  it('keeps the controls on one row and lets the hint be closed for good', async () => {
+    publish('https://preview.example/app');
+    const { fixture, root } = await draw();
+    expect(root.querySelectorAll('.preview-toolbar').length).toBe(1);
+    expect(root.querySelector('.preview-actions')).toBeNull();
+    expect(root.querySelector('.preview-hint')?.textContent).toContain('separate session');
+    root.querySelector<HTMLButtonElement>('button[aria-label="Hide this note"]')!.click();
+    await fixture.whenStable();
+    expect(root.querySelector('.preview-hint')).toBeNull();
+    const again = TestBed.createComponent(IframePreviewPanel);
+    again.autoDetectChanges();
+    await again.whenStable();
+    expect((again.nativeElement as HTMLElement).querySelector('.preview-hint')).toBeNull();
+  });
+
+  it('keeps the address focused while Go is pressed, so a compact toolbar cannot hide Go mid-click', async () => {
+    const { fixture, root, input } = await draw();
+    input.focus();
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    root.querySelector<HTMLButtonElement>('button.go')!.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(true);
+    submit(root, input, 'https://preview.example/other');
+    await fixture.whenStable();
+    expect(root.querySelector('iframe')?.src).toBe('https://preview.example/other');
+    expect(document.activeElement).not.toBe(input);
+  });
+
   it('reloads explicitly, unloads without automatically recreating, and resets on thread change', async () => {
     publish('https://preview.example/app');
     const { fixture, root } = await draw();
-    const find = (label: string) =>
-      Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === label)!;
+    const find = (label: string) => root.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
     const first = root.querySelector('iframe');
     find('Reload').click();
     await fixture.whenStable();
