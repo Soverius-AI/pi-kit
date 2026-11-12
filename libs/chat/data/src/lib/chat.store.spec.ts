@@ -351,7 +351,7 @@ describe('ChatStore', () => {
     }
   });
 
-  it('opens the shared browser panel when the agent starts a browser action', async () => {
+  it('marks native browser activity without opening or replacing a panel', async () => {
     const subscribe = vi.spyOn(HttpAgent.prototype, 'subscribe');
     try {
       await make();
@@ -367,8 +367,49 @@ describe('ChatStore', () => {
       subscriber?.onToolCallStartEvent?.({ event: { toolCallName: 'bash' } } as never);
       expect(bus.panel()).toBe('files');
       subscriber?.onToolCallStartEvent?.({ event: { toolCallName: 'pi_browser' } } as never);
-      expect(bus.panel()).toBe('artifacts');
+      expect(bus.panel()).toBe('files');
+      expect(bus.hasPreview('t1')).toBe(true);
     } finally {
+      subscribe.mockRestore();
+    }
+  });
+
+  it('asks about a fresh preview publication, treats stale stamps as replay and ignores stale subscriptions', async () => {
+    const subscribe = vi.spyOn(HttpAgent.prototype, 'subscribe');
+    try {
+      await make();
+      const subscriber = subscribe.mock.calls
+        .map(([value]) => value)
+        .find(
+          (value): value is AgentSubscriber =>
+            !!value && typeof value === 'object' && 'onToolCallStartEvent' in value && 'onCustomEvent' in value,
+        );
+      const bus = TestBed.inject(UiStore);
+      vi.stubGlobal('innerWidth', 1600);
+      const setPreview = vi.spyOn(bus, 'setPreview');
+      const publish = (timestamp: number | null = Date.now()) =>
+        subscriber?.onCustomEvent?.({
+          event: {
+            name: 'pi.preview',
+            ...(timestamp === null ? {} : { timestamp }),
+            value: { op: 'set', sourceUrl: 'http://localhost:3000' },
+          },
+        } as never);
+      publish();
+      expect(bus.previewFor('t1')?.sourceUrl).toBe('http://localhost:3000');
+      expect(bus.panel()).toBeNull();
+      expect(bus.previewPrompt()).toBe('t1');
+      expect(setPreview).toHaveBeenLastCalledWith('t1', { op: 'set', sourceUrl: 'http://localhost:3000' }, true);
+      publish(Date.now() - 60_000);
+      expect(setPreview).toHaveBeenLastCalledWith('t1', { op: 'set', sourceUrl: 'http://localhost:3000' }, false);
+      publish(null);
+      expect(setPreview).toHaveBeenLastCalledWith('t1', { op: 'set', sourceUrl: 'http://localhost:3000' }, false);
+      threads.select('t2');
+      subscriber?.onToolCallStartEvent?.({ event: { toolCallName: 'pi_browser' } } as never);
+      publish();
+      expect(bus.hasPreview('t2')).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
       subscribe.mockRestore();
     }
   });
@@ -470,6 +511,44 @@ describe('ChatStore', () => {
     agentChat.setDraft('/', 1);
     expect(agentChat.menuOpen()).toBe(false);
     agentScope.destroy();
+  });
+
+  it('background-agent preview events never affect the shared UI', async () => {
+    await make();
+    const subscribe = vi.spyOn(HttpAgent.prototype, 'subscribe');
+    const scope = createEnvironmentInjector(
+      [
+        { provide: CHAT_AGENT, useValue: { agentId: 'pi-bg', session: false } },
+        { provide: ThreadsStore, useValue: fakeThreads({ selected: thread('agent-1') }) },
+        ComposerExtensions,
+        ChatStore,
+      ],
+      TestBed.inject(EnvironmentInjector),
+    );
+    try {
+      scope.get(ChatStore);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+      const subscriber = subscribe.mock.calls
+        .map(([value]) => value)
+        .find(
+          (value): value is AgentSubscriber =>
+            !!value && typeof value === 'object' && 'onToolCallStartEvent' in value && 'onCustomEvent' in value,
+        );
+      expect(subscriber).toBeDefined();
+      subscriber?.onToolCallStartEvent?.({ event: { toolCallName: 'pi_browser' } } as never);
+      subscriber?.onCustomEvent?.({
+        event: { name: 'pi.preview', value: { op: 'set', sourceUrl: 'http://localhost:3000' } },
+      } as never);
+      const ui = TestBed.inject(UiStore);
+      expect(ui.previewThread()).toBe('t1');
+      expect(ui.hasPreview('agent-1')).toBe(false);
+      expect(ui.hasPreview('t1')).toBe(false);
+      expect(ui.panel()).toBeNull();
+    } finally {
+      scope.destroy();
+      subscribe.mockRestore();
+    }
   });
 
   it('the draft, the caret and an inserted @path', async () => {

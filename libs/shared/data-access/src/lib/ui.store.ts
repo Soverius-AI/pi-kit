@@ -1,4 +1,6 @@
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
+import type { PreviewDescriptor, PreviewRegistration } from '@pi-kit/protocol';
+import { readStorage, writeStorage } from './store';
 import type { SettingsSectionId } from '@pi-kit/ui';
 
 export type SidePanel = 'tree' | 'files' | 'changes' | 'terminal' | 'artifacts' | 'agents';
@@ -12,7 +14,19 @@ export const DRAWER_BELOW_PX = 1024;
 /** Below this width the Files and Terminal panels do not exist (a phone). */
 export const PHONE_BELOW_PX = 768;
 
+const PREVIEW_DISMISSALS_KEY = 'pi-kit.preview-dismissals.v1';
+const PREVIEW_AUTO_OPEN_KEY = 'pi-kit.preview-auto-open.v1';
+const MAX_PREVIEW_DISMISSALS = 200;
+
+export type PreviewAutoOpen = 'ask' | 'always' | 'never';
+
 interface UiState {
+  previewThread: string | undefined;
+  previewScope: string;
+  previews: Record<string, PreviewDescriptor | undefined>;
+  previewActivity: Record<string, boolean>;
+  previewAutoOpen: PreviewAutoOpen;
+  previewPrompt: string | undefined;
   /** A request to open the composer's model picker (`/model` at the search field, `/thinking` at the Effort row) (without an argument); `n` makes repeated requests distinct. */
   chipMenu: { menu: 'model' | 'effort'; n: number } | undefined;
   threadSearch: number;
@@ -44,6 +58,12 @@ interface UiState {
 export const UiStore = signalStore(
   { providedIn: 'root' },
   withState<UiState>({
+    previewThread: undefined,
+    previewScope: 'local',
+    previews: {},
+    previewActivity: {},
+    previewAutoOpen: 'ask',
+    previewPrompt: undefined,
     chipMenu: undefined,
     threadSearch: 0,
     projectMenu: 0,
@@ -57,79 +77,157 @@ export const UiStore = signalStore(
     composerText: undefined,
     composerInsert: undefined,
   }),
-  withMethods((store) => ({
-    // ---- panels
-    togglePanel(panel: SidePanel): void {
-      patchState(store, (s) => ({ panel: s.panel === panel ? null : panel }));
-    },
-    setPanel(panel: SidePanel | null): void {
-      patchState(store, { panel });
-    },
-    closePanel(): void {
-      patchState(store, { panel: null });
-    },
-    /** Where the panel overlays the page (drawer, sheet) it closes like a menu; beside the transcript it stays. Returns whether it closed. */
-    closePanelIfOverlay(): boolean {
-      if (store.panel() && window.innerWidth < OVERLAY_BELOW_PX) {
-        patchState(store, { panel: null });
-        return true;
-      }
-      return false;
-    },
-    /** ⌘⇧F: the Files panel opens and focuses its filter. */
-    focusFilesFilter(): void {
-      patchState(store, (s) => ({ panel: 'files' as SidePanel, filesFilter: s.filesFilter + 1 }));
-    },
+  withMethods((store) => {
+    let dismissed: string[] = [];
+    try {
+      const saved: unknown = JSON.parse(readStorage(PREVIEW_DISMISSALS_KEY, 'controller') ?? '[]');
+      if (Array.isArray(saved))
+        dismissed = saved.filter((v): v is string => typeof v === 'string').slice(-MAX_PREVIEW_DISMISSALS);
+    } catch {
+      dismissed = [];
+    }
+    const savedAutoOpen = readStorage(PREVIEW_AUTO_OPEN_KEY, 'controller');
+    if (savedAutoOpen === 'always' || savedAutoOpen === 'never') patchState(store, { previewAutoOpen: savedAutoOpen });
+    const key = (id: string) => JSON.stringify([store.previewScope(), id]);
+    const published = new Set<string>();
+    const dismiss = (): void => {
+      const id = store.previewThread();
+      if (store.panel() !== 'artifacts' || !id) return;
+      const value = key(id);
+      dismissed = [...dismissed.filter((entry) => entry !== value), value].slice(-MAX_PREVIEW_DISMISSALS);
+      writeStorage(PREVIEW_DISMISSALS_KEY, JSON.stringify(dismissed), 'controller');
+    };
+    const changePanel = (panel: SidePanel | null): void => {
+      if (panel !== 'artifacts') dismiss();
+      patchState(store, { panel, ...(panel === 'artifacts' ? { previewPrompt: undefined } : {}) });
+    };
+    return {
+      previewFor(threadId: string): PreviewDescriptor | undefined {
+        return store.previews()[key(threadId)];
+      },
+      hasPreview(threadId: string): boolean {
+        return !!(store.previews()[key(threadId)] || store.previewActivity()[key(threadId)]);
+      },
+      selectPreviewThread(threadId: string | undefined, scope = 'local'): void {
+        if (store.previewThread() === threadId && store.previewScope() === scope) return;
+        if (store.panel() === 'artifacts' || window.innerWidth < OVERLAY_BELOW_PX) changePanel(null);
+        patchState(store, { previewThread: threadId, previewScope: scope, previewPrompt: undefined });
+      },
+      setPreviewAutoOpen(value: PreviewAutoOpen): void {
+        writeStorage(PREVIEW_AUTO_OPEN_KEY, value, 'controller');
+        const prompted = store.previewPrompt();
+        patchState(store, { previewAutoOpen: value, previewPrompt: undefined });
+        if (value === 'always' && prompted && prompted === store.previewThread() && store.panel() === null)
+          changePanel('artifacts');
+      },
+      dismissPreviewPrompt(): void {
+        patchState(store, { previewPrompt: undefined });
+      },
+      setPreview(threadId: string, registration: PreviewRegistration, live = false): void {
+        const id = key(threadId);
+        const first = registration.op === 'set' && !published.has(id);
+        if (registration.op === 'set') published.add(id);
+        const descriptor =
+          registration.op === 'set'
+            ? {
+                sourceUrl: registration.sourceUrl,
+                ...(registration.previewUrl ? { previewUrl: registration.previewUrl } : {}),
+                ...(registration.title ? { title: registration.title } : {}),
+              }
+            : undefined;
+        patchState(store, (s) => ({
+          previews: { ...s.previews, [id]: descriptor },
+          ...(registration.op === 'clear' ? { previewActivity: { ...s.previewActivity, [id]: false } } : {}),
+        }));
+        if (
+          !descriptor ||
+          !first ||
+          !live ||
+          store.previewThread() !== threadId ||
+          dismissed.includes(id) ||
+          store.panel() !== null
+        )
+          return;
+        if (store.previewAutoOpen() === 'always') changePanel('artifacts');
+        else if (store.previewAutoOpen() === 'ask') patchState(store, { previewPrompt: threadId });
+      },
+      browserActivity(threadId: string): void {
+        patchState(store, (s) => ({ previewActivity: { ...s.previewActivity, [key(threadId)]: true } }));
+      },
+      // ---- panels
+      togglePanel(panel: SidePanel): void {
+        changePanel(store.panel() === panel ? null : panel);
+      },
+      setPanel(panel: SidePanel | null): void {
+        changePanel(panel);
+      },
+      closePanel(): void {
+        changePanel(null);
+      },
+      /** Where the panel overlays the page (drawer, sheet) it closes like a menu; beside the transcript it stays. Returns whether it closed. */
+      closePanelIfOverlay(): boolean {
+        if (store.panel() && window.innerWidth < OVERLAY_BELOW_PX) {
+          changePanel(null);
+          return true;
+        }
+        return false;
+      },
+      /** ⌘⇧F: the Files panel opens and focuses its filter. */
+      focusFilesFilter(): void {
+        changePanel('files');
+        patchState(store, (s) => ({ filesFilter: s.filesFilter + 1 }));
+      },
 
-    // ---- palette, settings
-    togglePalette(): void {
-      patchState(store, (s) => ({ palette: !s.palette }));
-    },
-    closePalette(): void {
-      patchState(store, { palette: false });
-    },
-    openSettings(tab: SettingsTab = 'general', login?: string, project?: string): void {
-      patchState(store, { settings: { tab, ...(login ? { login } : {}), ...(project ? { project } : {}) } });
-    },
-    closeSettings(): void {
-      patchState(store, { settings: null });
-    },
-    /** `/setup` and the first run: the onboarding flow (a lazy chunk loads the first time this is true). */
-    openOnboarding(): void {
-      patchState(store, { onboarding: true });
-    },
-    closeOnboarding(): void {
-      patchState(store, { onboarding: false });
-    },
-    /** The MCP servers and the connectors live in Settings › MCP servers (the sidebar footer, `/mcp` and `/connect` ask for it here). */
-    openMcpPanel(): void {
-      patchState(store, { settings: { tab: 'mcp' } });
-    },
+      // ---- palette, settings
+      togglePalette(): void {
+        patchState(store, (s) => ({ palette: !s.palette }));
+      },
+      closePalette(): void {
+        patchState(store, { palette: false });
+      },
+      openSettings(tab: SettingsTab = 'general', login?: string, project?: string): void {
+        patchState(store, { settings: { tab, ...(login ? { login } : {}), ...(project ? { project } : {}) } });
+      },
+      closeSettings(): void {
+        patchState(store, { settings: null });
+      },
+      /** `/setup` and the first run: the onboarding flow (a lazy chunk loads the first time this is true). */
+      openOnboarding(): void {
+        patchState(store, { onboarding: true });
+      },
+      closeOnboarding(): void {
+        patchState(store, { onboarding: false });
+      },
+      /** The MCP servers and the connectors live in Settings › MCP servers (the sidebar footer, `/mcp` and `/connect` ask for it here). */
+      openMcpPanel(): void {
+        patchState(store, { settings: { tab: 'mcp' } });
+      },
 
-    // ---- requests to the composer and its chips
-    openChipMenu(menu: 'model' | 'effort'): void {
-      patchState(store, (s) => ({ chipMenu: { menu, n: (s.chipMenu?.n ?? 0) + 1 } }));
-    },
-    focusThreadSearch(): void {
-      patchState(store, (s) => ({ threadSearch: s.threadSearch + 1 }));
-    },
-    openProjectMenu(): void {
-      patchState(store, (s) => ({ projectMenu: s.projectMenu + 1 }));
-    },
-    focusComposer(): void {
-      patchState(store, (s) => ({ composerFocus: s.composerFocus + 1 }));
-    },
-    /** Asks the composer to insert `text` (an `@path`) at the caret and take the focus. */
-    insertIntoComposer(text: string): void {
-      patchState(store, (s) => ({ composerInsert: { text, n: (s.composerInsert?.n ?? 0) + 1 } }));
-    },
-    setComposerText(text: string): void {
-      patchState(store, (s) => ({ composerText: { text, n: (s.composerText?.n ?? 0) + 1 } }));
-    },
-    /** The session tree changed on the backend; the graph fetches it again. */
-    markTreeStale(): void {
-      patchState(store, (s) => ({ treeStale: s.treeStale + 1 }));
-    },
-  })),
+      // ---- requests to the composer and its chips
+      openChipMenu(menu: 'model' | 'effort'): void {
+        patchState(store, (s) => ({ chipMenu: { menu, n: (s.chipMenu?.n ?? 0) + 1 } }));
+      },
+      focusThreadSearch(): void {
+        patchState(store, (s) => ({ threadSearch: s.threadSearch + 1 }));
+      },
+      openProjectMenu(): void {
+        patchState(store, (s) => ({ projectMenu: s.projectMenu + 1 }));
+      },
+      focusComposer(): void {
+        patchState(store, (s) => ({ composerFocus: s.composerFocus + 1 }));
+      },
+      /** Asks the composer to insert `text` (an `@path`) at the caret and take the focus. */
+      insertIntoComposer(text: string): void {
+        patchState(store, (s) => ({ composerInsert: { text, n: (s.composerInsert?.n ?? 0) + 1 } }));
+      },
+      setComposerText(text: string): void {
+        patchState(store, (s) => ({ composerText: { text, n: (s.composerText?.n ?? 0) + 1 } }));
+      },
+      /** The session tree changed on the backend; the graph fetches it again. */
+      markTreeStale(): void {
+        patchState(store, (s) => ({ treeStale: s.treeStale + 1 }));
+      },
+    };
+  }),
 );
 export type UiStore = InstanceType<typeof UiStore>;

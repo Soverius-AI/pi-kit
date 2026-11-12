@@ -52,14 +52,16 @@ test(
   'desktop renderers bind independent ports with 4200 occupied, report the real URL, honor an override and release their sockets',
   { timeout: 120000 },
   async () => {
-    const occupied = createServer();
+    const occupied = createServer((socket) => socket.destroy());
     await new Promise((resolve, reject) => {
       occupied.once('error', (error) => (error.code === 'EADDRINUSE' ? resolve() : reject(error)));
       occupied.listen(4200, 'localhost', resolve);
     });
     const children = [];
     try {
-      const first = renderer();
+      const first = renderer({
+        PI_KIT_PREVIEW_ORIGINS: 'https://dedicated.example,http://localhost:4300,http://127.0.0.1:4300',
+      });
       children.push(first.child);
       const url1 = await first.ready;
       const second = renderer();
@@ -71,7 +73,13 @@ test(
       for (const url of [url1, url2]) {
         const response = await fetch(url);
         assert.equal(response.status, 200);
-        assert.match(await response.text(), /pk-root/);
+        const html = await response.text();
+        assert.match(html, /pk-root/);
+        assert.match(html, /pi-kit-preview-origins/);
+        if (url === url1) {
+          assert.match(html, /https:\/\/dedicated.example/);
+          assert.doesNotMatch(html, /&quot;http:\/\/(localhost|127\.0\.0\.1):4300&quot;/);
+        }
       }
       await stop(first.child);
       await assert.rejects(fetch(url1, { signal: AbortSignal.timeout(2000) }));
@@ -91,3 +99,14 @@ test(
     }
   },
 );
+
+test('renderer fails closed for wildcard and CSP-delimiter origin configuration', { timeout: 10000 }, async () => {
+  for (const value of ['https://*.example.com', 'https://ok.example;frame-src']) {
+    const worker = renderer({ PI_KIT_PREVIEW_ORIGINS: value });
+    try {
+      await assert.rejects(worker.ready, /Invalid preview origin/);
+    } finally {
+      await stop(worker.child);
+    }
+  }
+});

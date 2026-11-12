@@ -10,6 +10,7 @@ import {
 } from '@pi-kit/protocol';
 import { randomBytes, randomInt } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { PreviewOrigins } from './preview-policy';
 import type { RemoteAccessGateway, RemoteAccessOptions } from './remote-access';
 import { RemoteAccessStores } from './remote-access-store';
 import { Http, RateLimit } from './remote-gateway-http';
@@ -43,11 +44,13 @@ export class RemoteGateway implements RemoteAccessGateway {
   private readonly proxy: BackendProxy;
   private readonly peers: PeerTransport;
   private readonly files: RendererFiles;
+  private readonly previewOrigins: string[];
   private timer?: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly options: Pick<RemoteAccessOptions, 'rendererRoot' | 'backend' | 'grants' | 'cookieScope'> & {
       publicOrigin: string;
+      previewOrigins?: readonly string[];
     },
   ) {
     // Only canonical HTTPS Tailscale DNS origins; Serve uses a virtual tailnet port.
@@ -62,6 +65,7 @@ export class RemoteGateway implements RemoteAccessGateway {
       throw new Error('Invalid phone origin');
     this.origin = origin.origin;
     this.host = origin.host;
+    this.previewOrigins = PreviewOrigins.configured(options.previewOrigins);
     this.proxy = new BackendProxy(options.backend);
     this.peers = new PeerTransport(this.proxy);
     this.files = new RendererFiles(options.rendererRoot);
@@ -176,7 +180,13 @@ export class RemoteGateway implements RemoteAccessGateway {
     return device;
   }
   private async handle(req: IncomingMessage, res: ServerResponse) {
-    Http.secure(res);
+    const previews = PreviewOrigins.permitted(
+      this.previewOrigins,
+      [this.origin],
+      this.options.backend()?.url,
+      new URL(this.origin).hostname,
+    );
+    Http.secure(res, previews);
     if (
       req.headers.host !== this.host ||
       !['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress ?? '')
@@ -220,7 +230,7 @@ export class RemoteGateway implements RemoteAccessGateway {
     if (path === '/phone' || (path === '/' && !device)) return this.files.pairingPage(res, req.method === 'HEAD');
     if (path === '/phone/pairing.js' || path === '/phone/jsQR.js') return this.files.serve(path, req, res, false);
     if (path.startsWith('/phone/')) return Http.json(res, 404, { error: 'Not found' });
-    return this.files.serve(path, req, res, !!device);
+    return this.files.serve(path, req, res, !!device, 'device', previews);
   }
   private async pair(req: IncomingMessage, res: ServerResponse) {
     if (!this.pairAttempts.hit()) return Http.json(res, 429, { error: 'Try again later' });

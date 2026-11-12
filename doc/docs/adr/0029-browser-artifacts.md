@@ -45,6 +45,12 @@ encoding on the GUI process would stall the desktop window.
 - A default-off, persisted preference accepts invalid HTTPS certificates for `localhost`, `127.0.0.0/8` and `::1` in artifact
   sessions only; changing it closes every artifact page. It is set over a trusted-renderer-only IPC method, not the agent API.
 
+## Browser/PWA preview extension (2026-11-11)
+
+Outside Electron, Artifacts now offers a separate iframe app preview rather than trying to control or stream the native page. See [Browser previews](../browser-previews.md) for configuration and current limitations. Exact preview origins are trusted startup configuration (`PI_KIT_PREVIEW_ORIGINS`), defaulting to none; shell/backend origins and paired-device cookie hostnames are excluded. Preview HTML is never proxied through the trusted API origin. The iframe uses a dedicated origin and a fixed sandbox; it is not the agent's browser session.
+
+A desktop-independent `pi_preview` tool publishes typed `pi.preview` metadata through the existing event log/hydration. Set and clear state survives compaction. Publication grants neither framing permission nor native browser access and does not attest loading. Agent activity no longer unconditionally opens the panel: the first live publication in a chat asks once per device whether previews should open automatically (always/never/not now), dismissal is client-local and respected, and replay never opens a preview. Native automation, isolation and screenshot behavior above remain unchanged. Browser-mode screenshot upload is available; direct browser capture and instrumented debugging are deferred.
+
 ## Consequences
 
 - Pages that forbid framing work, at the cost of a native view that must track the panel's geometry and the window's dialogs.

@@ -17,6 +17,18 @@ import { ShellStore } from './shell.store';
   imports: [CdkMenu, CdkMenuItemCheckbox, CdkMenuTrigger, PkIcon, PkTip, PkSafeOverlay, TranslocoPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    @if (previewReady()) {
+      <button
+        class="preview-shortcut btn btn-sm"
+        type="button"
+        [attr.aria-label]="'artifacts.preview.open' | transloco"
+        [attr.aria-pressed]="bus.panel() === 'artifacts'"
+        (click)="bus.togglePanel('artifacts')"
+      >
+        <pk-icon name="browser" />
+        <span class="preview-label">{{ 'artifacts.preview.preview' | transloco }}</span>
+      </button>
+    }
     <div class="panel-buttons pk-seg pk-seg-icons" role="group" [attr.aria-label]="'shell.app.sidePanel' | transloco">
       @for (action of actions(); track action.id) {
         <span [pkTip]="action.disabled ? action.unavailable : null">
@@ -68,15 +80,33 @@ import { ShellStore } from './shell.store';
       display: block;
       flex: none;
     }
-    .panel-pocket {
+    .panel-pocket,
+    .preview-shortcut {
       display: none;
     }
     @container chat-header (max-width: 720px) {
       .panel-buttons {
         display: none;
       }
-      .panel-pocket {
+      :host {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .panel-pocket,
+      .preview-shortcut {
         display: inline-flex;
+      }
+    }
+    @container chat-header (max-width: 480px) {
+      .preview-shortcut {
+        width: 44px;
+        height: 44px;
+        min-height: 44px;
+        padding: 0;
+      }
+      .preview-label {
+        display: none;
       }
     }
     .panel-menu {
@@ -123,6 +153,10 @@ export class PanelSwitcher {
   private readonly shell = inject(ShellStore);
   private readonly threads = inject(ThreadsStore);
   private readonly browserAvailable = !!window.piKit?.setBrowserViewport;
+  protected readonly previewReady = computed(() => {
+    const id = this.threads.selectedId();
+    return !!id && this.bus.hasPreview(id);
+  });
   protected readonly actions = computed(() => [
     {
       id: 'tree' as const,
@@ -169,14 +203,14 @@ export class PanelSwitcher {
       icon: 'browser' as const,
       label: this.i18n.t('shell.app.artifacts'),
       tip: this.i18n.t(
-        isLocalExecution()
-          ? 'shell.app.artifactsBrowserSharedWithTheAgent'
-          : 'shell.app.artifactsBrowserOnThisComputer',
+        !this.browserAvailable
+          ? 'artifacts.preview.separateSession'
+          : isLocalExecution()
+            ? 'shell.app.artifactsBrowserSharedWithTheAgent'
+            : 'shell.app.artifactsBrowserOnThisComputer',
       ),
-      disabled: !this.threads.selectedId() || !this.browserAvailable,
-      unavailable: this.browserAvailable
-        ? this.i18n.t('shell.app.openAChatToUseItsBrowser')
-        : this.i18n.t('shell.app.artifactsAvailableInTheDesktopApp'),
+      disabled: !this.threads.selectedId(),
+      unavailable: this.i18n.t('shell.app.openAChatToUseItsBrowser'),
     },
   ]);
 }

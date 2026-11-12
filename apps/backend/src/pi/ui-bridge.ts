@@ -5,6 +5,8 @@ import {
   type ComposerRegistration,
   ComposerRegistrationSchema,
   type PiDialogRequest,
+  type PreviewRegistration,
+  PreviewRegistrationSchema,
 } from '@pi-kit/protocol';
 import { type AutocompleteProviderFactory, type CompleteOptions, completeThroughChain } from './autocomplete';
 import { extensionNameFromStack } from './caller';
@@ -60,6 +62,31 @@ export class UiBridge {
   private staleComposerIds: Set<string> | undefined;
   /** Called for an event that no listener was there to receive (no run is attached), so it can still reach the replay log. */
   private readonly unattachedListeners = new Set<(event: PiUiEvent) => void>();
+
+  private preview: PreviewRegistration | undefined;
+
+  publishPreview(payload: unknown): boolean {
+    const parsed = PreviewRegistrationSchema.safeParse(payload);
+    if (!parsed.success) return false;
+    if (JSON.stringify(this.preview) === JSON.stringify(parsed.data)) return true;
+    this.preview = parsed.data;
+    this.emit({ kind: 'preview', registration: parsed.data });
+    return true;
+  }
+
+  announcePreview(payload: unknown): boolean {
+    const parsed = PreviewRegistrationSchema.safeParse(payload);
+    if (!parsed.success) return false;
+    const current = this.preview;
+    if (
+      current?.op === 'set' &&
+      current.previewUrl &&
+      parsed.data.op === 'set' &&
+      new URL(current.sourceUrl).origin === new URL(parsed.data.sourceUrl).origin
+    )
+      return true;
+    return this.publishPreview(parsed.data);
+  }
 
   // ---- dialogs (promises pi awaits)
 

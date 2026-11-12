@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, rename, unlink } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { dirname } from 'node:path';
+import { PreviewOrigins } from './preview-policy';
 import { Http, RateLimit } from './remote-gateway-http';
 import { type Backend, BackendProxy } from './remote-gateway-proxy';
 import { RendererFiles } from './remote-gateway-static';
@@ -94,15 +95,18 @@ export class OwnerGateway implements OwnerAccess {
   private readonly streams = new Set<() => void>();
   private readonly proxy: BackendProxy;
   private readonly files: RendererFiles;
+  private readonly previewOrigins: string[];
 
   constructor(
     private readonly options: {
       rendererRoot: string;
+      previewOrigins?: readonly string[];
       backend: () => Backend | undefined;
       state: OwnerStateFile;
       preferredPort: number;
     },
   ) {
+    this.previewOrigins = PreviewOrigins.configured(options.previewOrigins);
     this.proxy = new BackendProxy(options.backend);
     this.files = new RendererFiles(options.rendererRoot);
   }
@@ -157,7 +161,12 @@ export class OwnerGateway implements OwnerAccess {
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    Http.secure(res);
+    const previews = PreviewOrigins.permitted(
+      this.previewOrigins,
+      [`http://127.0.0.1:${this.port}`, `http://localhost:${this.port}`],
+      this.options.backend()?.url,
+    );
+    Http.secure(res, previews);
     const host = req.headers.host ?? '';
     // Only the loopback names: a DNS-rebound name in Host is refused.
     if (
@@ -187,7 +196,7 @@ export class OwnerGateway implements OwnerAccess {
     if (path === '/owner') return signInPage(res, method === 'HEAD');
     if (path.startsWith('/owner/') || path.startsWith('/phone') || path.startsWith('/peer/'))
       return Http.json(res, 404, { error: 'Not found' });
-    return this.files.serve(path, req, res, true, 'owner');
+    return this.files.serve(path, req, res, true, 'owner', previews);
   }
 
   private async signIn(req: IncomingMessage, res: ServerResponse): Promise<void> {

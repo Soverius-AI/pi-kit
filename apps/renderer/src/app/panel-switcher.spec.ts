@@ -10,17 +10,19 @@ describe('PanelSwitcher', () => {
   const panel = signal<string | undefined>(undefined);
   const selectedId = signal<string | undefined>('thread-1');
   const disabled = signal(false);
+  const previewReady = signal(false);
   const togglePanel = vi.fn((id: string) => panel.set(panel() === id ? undefined : id));
 
   beforeEach(() => {
     panel.set(undefined);
     selectedId.set('thread-1');
     disabled.set(false);
+    previewReady.set(false);
     togglePanel.mockClear();
     vi.stubGlobal('piKit', { setBrowserViewport: vi.fn() });
     TestBed.configureTestingModule({
       providers: [
-        { provide: UiStore, useValue: { panel, togglePanel } },
+        { provide: UiStore, useValue: { panel, togglePanel, hasPreview: () => previewReady() } },
         { provide: ThreadsStore, useValue: { selectedId } },
         {
           provide: ShellStore,
@@ -107,6 +109,16 @@ describe('PanelSwitcher', () => {
     expect(menu.querySelectorAll('button:disabled')).toHaveLength(6);
     menu.querySelectorAll<HTMLButtonElement>('button').forEach((button) => button.click());
     expect(togglePanel).not.toHaveBeenCalled();
+  });
+
+  it('offers iframe artifacts without Electron and a discoverable preview shortcut', async () => {
+    vi.stubGlobal('piKit', undefined);
+    previewReady.set(true);
+    const { fixture, root } = await draw();
+    expect(root.querySelector<HTMLButtonElement>('[aria-label="Artifacts"]')?.disabled).toBe(false);
+    root.querySelector<HTMLButtonElement>('[aria-label="Open preview"]')!.click();
+    await fixture.whenStable();
+    expect(panel()).toBe('artifacts');
   });
 
   it('opens from the keyboard and returns focus to the trigger on Escape', async () => {

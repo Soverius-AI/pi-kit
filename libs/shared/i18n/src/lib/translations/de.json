@@ -4448,6 +4448,38 @@
     }
   },
   "artifacts": {
+    "preview": {
+      "preview": "Vorschau",
+      "open": "Vorschau öffnen",
+      "heading": "App-Vorschau",
+      "backToChat": "Zurück zum Chat",
+      "separateSession": "App-Vorschau – eine eigene Sitzung, getrennt vom Browser des Agenten.",
+      "address": "Vorschauadresse",
+      "placeholder": "https://preview.example.com",
+      "reload": "Neu laden",
+      "openExternally": "Extern öffnen",
+      "unload": "Vorschau entladen",
+      "uploadScreenshot": "Screenshot hochladen",
+      "newUrl": "Eine neue Vorschauadresse ist verfügbar.",
+      "loadNewUrl": "Neue Adresse laden",
+      "setup": "Gib eine erreichbare Vorschauadresse ein. Andere Geräte benötigen eine eigene HTTPS-Adresse; localhost verweist auf dieses Gerät. Der Host muss den Vorschau-Ursprung freigeben.",
+      "framingHint": "Bleibt die Vorschau leer, blockiert die App möglicherweise das Einbetten oder benötigt eine Anmeldung. Öffne sie extern. Live-Konsole und Elementprüfung sind im Iframe-Modus noch nicht verfügbar.",
+      "loading": "Vorschau angefordert. Ohne App-Brücke lässt sich das Laden nicht überprüfen.",
+      "frameLoaded": "Frame-Ladeereignis erkannt – das bestätigt nicht, dass die App erfolgreich angezeigt wird.",
+      "autoOpen": "Vorschauen automatisch öffnen",
+      "autoOpenQuestion": "Der Agent hat eine App-Vorschau veröffentlicht. Vorschauen künftig automatisch öffnen?",
+      "autoOpenAlways": "Immer öffnen",
+      "autoOpenNotNow": "Nicht jetzt",
+      "autoOpenNever": "Nie",
+      "blocked": {
+        "pending": "Die vertrauenswürdige Backend-Adresse wird vor dem Öffnen ermittelt.",
+        "invalid": "Gib eine absolute HTTP(S)-Adresse ohne eingebettete Zugangsdaten ein.",
+        "protected": "Pi-kit und sein Backend sind keine Vorschauziele. Auf dem Telefon ist außerdem ein separater Hostname erforderlich.",
+        "mixed": "Eine HTTPS-Oberfläche benötigt eine HTTPS-Vorschau. Öffne sie extern oder richte eine sichere Adresse ein.",
+        "unconfigured": "Keine Vorschau-Ursprünge freigegeben. Konfiguriere PI_KIT_PREVIEW_ORIGINS auf dem Host und starte/lade neu. Externes Öffnen bleibt möglich.",
+        "origin": "Dieser Vorschau-Ursprung ist nicht freigegeben. Ergänze seinen exakten Ursprung in PI_KIT_PREVIEW_ORIGINS auf dem Host und starte/lade neu oder öffne ihn extern."
+      }
+    },
     "artifactsPanel": {
       "artifacts": "Artefakte",
       "browser": "Browser",

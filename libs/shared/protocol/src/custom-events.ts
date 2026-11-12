@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ComposerRegistrationSchema } from './composer';
+import { PreviewRegistrationSchema } from './preview';
 
 /**
  * Fire-and-forget pi signals carried as AG-UI `CUSTOM { name, value }` events.
@@ -81,6 +82,7 @@ export const PI_CUSTOM_EVENTS = {
   'pi.session_info': PiSessionInfoSchema,
   'pi.title': PiTitleSchema,
   'pi.composer': PiComposerSchema,
+  'pi.preview': PreviewRegistrationSchema,
 } as const;
 
 export type PiCustomEventName = keyof typeof PI_CUSTOM_EVENTS;

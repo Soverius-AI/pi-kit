@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream';
 import { PairingPage } from './phone-pairing-page';
+import { PreviewOrigins } from './preview-policy';
 import { Http } from './remote-gateway-http';
 
 /** The packaged renderer: its files for paired devices, the pairing page for everyone else. */
@@ -42,6 +43,7 @@ export class RendererFiles {
     res: ServerResponse,
     authenticated: boolean,
     connection: 'device' | 'owner' = 'device',
+    previewOrigins: readonly string[] = [],
   ): Promise<void> {
     const root = await realpath(this.rendererRoot);
     let file: string;
@@ -67,7 +69,7 @@ export class RendererFiles {
     if (index) {
       const html = (await readFile(file, 'utf8')).replace(
         /<head(?:\s[^>]*)?>/i,
-        `$&<meta name="pi-kit-connection" content="${connection}">`,
+        `$&<meta name="pi-kit-connection" content="${connection}">${PreviewOrigins.meta(previewOrigins)}`,
       );
       res.end(req.method === 'HEAD' ? undefined : html);
     } else if (req.method === 'HEAD') res.end();

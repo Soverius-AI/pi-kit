@@ -1,5 +1,6 @@
 import { type BaseEvent, EventType } from '@ag-ui/client';
 import { compactableIndices, mapUiEvent } from '@pi-kit/pi-adapter';
+import { parsePiCustomEvent } from '@pi-kit/protocol';
 import type { EventLogRepository } from '../db/event-log.repository';
 import { composerChanges, foldComposer } from './composer-log';
 
@@ -71,7 +72,24 @@ export class LogCompactor {
     const all = this.log.read(threadId);
     const registered = foldComposer(all.map((s) => s.event));
     const survivors = foldComposer(all.filter((s) => s.seq >= cut).map((s) => s.event));
+    const latestPreview = [...all].reverse().find((row) => {
+      const event = row.event as BaseEvent & { name?: string; value?: unknown };
+      return (
+        event.type === EventType.CUSTOM &&
+        event.name === 'pi.preview' &&
+        parsePiCustomEvent({ name: event.name, value: event.value })
+      );
+    });
     const deleted = this.log.deleteBefore(threadId, cut);
+    if (latestPreview && latestPreview.seq < cut) {
+      const runId = `preview-${Date.now()}`;
+      for (const event of [
+        { type: EventType.RUN_STARTED, threadId, runId },
+        latestPreview.event,
+        { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: 'success' } },
+      ] as BaseEvent[])
+        this.log.append(threadId, runId, event);
+    }
     const lost = [...registered.values()].filter((registration) => composerChanges(survivors, registration));
     if (lost.length > 0) {
       const runId = `composer-${Date.now()}`;

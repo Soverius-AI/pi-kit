@@ -91,6 +91,27 @@ const signIn = (port: number, code: string) =>
 const codeOf = (url: string) => new URL(url).hash.slice('#owner='.length);
 
 describe('owner listener', () => {
+  it('uses one filtered exact-origin list for CSP and bootstrap, including changing backend targets', async () => {
+    const p = await profile();
+    let endpoint = { url: 'http://127.0.0.1:4300', token: 'secret' };
+    const gateway = new OwnerGateway({
+      ...p,
+      backend: () => endpoint,
+      preferredPort: 0,
+      previewOrigins: ['https://preview.example', 'http://127.0.0.1:4300'],
+    });
+    await gateway.listen();
+    cleanup.push(() => gateway.close());
+    const port = Number(new URL(gateway.link().url).port);
+    let response = await call(port, {});
+    expect(response.headers['content-security-policy']).toContain('frame-src https://preview.example;');
+    expect(response.body).toContain('content="[&quot;https://preview.example&quot;]"');
+    endpoint = { url: 'https://preview.example', token: 'secret' };
+    response = await call(port, {});
+    expect(response.headers['content-security-policy']).toContain('frame-src http://127.0.0.1:4300;');
+    expect(response.body).toContain('content="[&quot;http://127.0.0.1:4300&quot;]"');
+  });
+
   it('signs a browser in once per link and passes it every backend route with the backend’s own token', async () => {
     const p = await profile();
     const { asked, endpoint } = await backend();

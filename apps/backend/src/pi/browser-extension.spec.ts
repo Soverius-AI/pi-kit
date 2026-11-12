@@ -65,6 +65,33 @@ describe('browser tool and system prompt', () => {
     );
   });
 
+  it('announces only successfully loaded, changed pages as the preview link', async () => {
+    const registerTool = vi.fn();
+    const publish = vi.fn(() => true);
+    const page = { ...emptyBrowserState('thread-a', true), open: true, url: 'http://localhost:5173/', title: 'App' };
+    const run = vi.fn(async () => ({ state: page }));
+    createBrowserExtension({ threadId: 'thread-a', host: () => ({ available: true, run }), publish })({
+      registerTool,
+      getActiveTools: () => [BROWSER_TOOL],
+      on: vi.fn(),
+    } as unknown as ExtensionAPI);
+    const tool = registerTool.mock.calls[0][0] as ToolDefinition;
+    const call = () => tool.execute('call', { action: 'snapshot' }, undefined, undefined, {} as never);
+    await call();
+    await call();
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledWith({ op: 'set', sourceUrl: 'http://localhost:5173/', title: 'App' });
+    for (const state of [
+      { ...page, url: 'http://localhost:5173/a', loading: true },
+      { ...page, url: 'http://localhost:5173/b', error: 'net::ERR_CONNECTION_REFUSED' },
+      { ...page, url: 'about:blank' },
+    ]) {
+      run.mockResolvedValueOnce({ state });
+      await call();
+    }
+    expect(publish).toHaveBeenCalledTimes(1);
+  });
+
   it('loads through the real pi resource loader and contributes browser knowledge to its assembled system prompt', async () => {
     const base = mkdtempSync(join(tmpdir(), 'pk-browser-prompt-'));
     vi.stubEnv('PI_CODING_AGENT_DIR', base);

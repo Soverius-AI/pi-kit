@@ -18,7 +18,7 @@ async function fixture(
   override?: { url: string; token: string },
   publicOrigin = origin,
   grants?: RemoteGrantStore,
-  extra?: { cookieScope?: string; peerAllowed?: boolean },
+  extra?: { cookieScope?: string; peerAllowed?: boolean; previewOrigins?: string[] },
 ) {
   const host = new URL(publicOrigin).host;
   const root = await mkdtemp(join(tmpdir(), 'remote-gateway-'));
@@ -70,6 +70,7 @@ async function fixture(
     rendererRoot: root,
     publicOrigin,
     grants,
+    previewOrigins: extra?.previewOrigins,
     ...(extra?.cookieScope ? { cookieScope: async () => extra.cookieScope! } : {}),
     backend: () => override ?? { url: `http://127.0.0.1:${address.port}`, token: 'MASTER-SECRET' },
   });
@@ -124,6 +125,18 @@ async function stop(server: Server) {
 }
 
 describe('RemoteGateway', () => {
+  it('only injects allowed dedicated-host previews into the authenticated shell, matching CSP', async () => {
+    const f = await fixture(undefined, origin, undefined, {
+      previewOrigins: [origin, 'https://safe-node.tailnet.ts.net:9999', 'https://dedicated.example'],
+    });
+    const anonymous = await f.call('/');
+    expect(anonymous.body).not.toContain('pi-kit-preview-origins');
+    const session = await f.pair();
+    const response = await f.call('/', { headers: session.headers });
+    expect(response.headers['content-security-policy']).toContain('frame-src https://dedicated.example;');
+    expect(response.body).toContain('content="[&quot;https://dedicated.example&quot;]"');
+  });
+
   it('uses profile-scoped cookies so independent ports do not overwrite one another', async () => {
     const id = '6f622128-1520-4c72-ad47-6d91da71f350';
     const f = await fixture(undefined, origin, undefined, { cookieScope: id });

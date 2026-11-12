@@ -13,6 +13,7 @@ import { loadPi, loadPiMcp } from './load-pi';
 import { createMcpTransport } from './mcp-transport';
 import { createModelRuntime } from './model-runtime';
 import type { PiPluginService } from './pi-plugin.service';
+import { createPreviewExtension } from './preview-extension';
 import { SessionMcp } from './session-mcp';
 import { SessionQueue } from './session-queue';
 import { createSessionUi, type SessionUiHooks } from './session-ui';
@@ -209,7 +210,12 @@ export class SessionLifecycle {
           hook: () => this.hooks.coordination(),
           registerBash: !sandbox,
         }),
-        createBrowserExtension({ threadId, host: () => this.hooks.browser() }),
+        createPreviewExtension({ publish: (registration) => ui.publishPreview(registration) }),
+        createBrowserExtension({
+          threadId,
+          host: () => this.hooks.browser(),
+          publish: (registration) => ui.announcePreview(registration),
+        }),
         createAgentTools({ threadId, host: () => this.hooks.agents() }),
         createGenUiExtension(),
         createAskUserExtension(),

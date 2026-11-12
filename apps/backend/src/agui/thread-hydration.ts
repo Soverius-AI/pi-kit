@@ -261,6 +261,9 @@ export function hydrateThread(events: readonly BaseEvent[]): ThreadHydration<Mes
             if (parsed.value.op === 'remove') composers.delete(parsed.value.id);
             else composers.set(parsed.value.id, parsed.value);
             break;
+          case 'pi.preview':
+            result.preview = parsed.value;
+            break;
           case 'pi.title':
             result.title = parsed.value.title;
             break;

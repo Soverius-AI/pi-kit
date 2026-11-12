@@ -68,6 +68,8 @@ export function ensureSpawnHelper(): void {
   }
 }
 
+export const PREVIOUS_SESSION_INPUT_RESET = '\x18\x1b[?1;9;1000;1002;1003;1004;1005;1006;1015;1016;2004l';
+
 /** How long output may sit unsaved before the last screen is written to the database. */
 const REPLAY_SAVE_MS = 2000;
 
@@ -115,7 +117,7 @@ export class TerminalService implements OnModuleDestroy {
     // What the terminal of this folder last showed (before the backend restarted) comes first, marked as over.
     const previous = this.replay?.get(cwd);
     if (previous?.data)
-      terminal.scrollback = `${previous.data}\r\n\x1b[2m--- end of the previous terminal session ---\x1b[0m\r\n`;
+      terminal.scrollback = `${previous.data}${PREVIOUS_SESSION_INPUT_RESET}\r\n\x1b[2m--- end of the previous terminal session ---\x1b[0m\r\n`;
     pty.onData((data) => {
       terminal.scrollback = (terminal.scrollback + data).slice(-SCROLLBACK_CHARS);
       this.emit(terminal, { type: 'data', data });

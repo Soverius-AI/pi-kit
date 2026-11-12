@@ -53,7 +53,7 @@
           [removed]="review.totals().removed"
         />
       } @else {
-        <h1 class="font-medium truncate">{{ shell.title() }}</h1>
+        <h1 class="pk-header-title font-medium truncate">{{ shell.title() }}</h1>
       }
       <div class="pk-header-actions ml-auto flex items-center gap-2">
         @if (changes()) {
@@ -168,14 +168,22 @@
       }
     }
     @case ('artifacts') {
-      @defer (on immediate) {
-        <pk-artifacts-panel [suspended]="browserSuspended()" [resizing]="panelResizing()" />
+      @if (nativeBrowser) {
+        @defer (on immediate) {
+          <pk-artifacts-panel [suspended]="browserSuspended()" [resizing]="panelResizing()" />
+        }
       }
     }
     @case ('agents') {
       @defer (on immediate) {
         <pk-agents-panel />
       }
+    }
+  }
+
+  @if (!nativeBrowser && iframeMounted()) {
+    @defer (on immediate) {
+      <pk-artifacts-panel [visible]="bus.panel() === 'artifacts'" [suspended]="browserSuspended()" />
     }
   }
 

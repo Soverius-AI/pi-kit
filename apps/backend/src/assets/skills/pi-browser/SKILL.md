@@ -9,6 +9,12 @@ development server using the project's documented command, then navigate to its 
 Do not start a second browser or claim a screenshot of the application shell proves
 the project's native browser content.
 
+The iframe preview is separate from this native automation browser. Use `pi_preview`
+with `op: set`, an absolute HTTP(S) `sourceUrl`, and optionally a browser-reachable
+`previewUrl` and `title` to publish a link, or `op: clear` to clear it. This tool also
+works without Electron. Publication alone does not prove loading, reachability on
+another device, or permission to embed in an iframe; never claim inspection from it.
+
 1. Call `navigate` with an HTTP(S) `url`, including localhost. Read the resulting state.
 2. Call `snapshot` to obtain current accessibility references. Use `click` with a `ref`,
    `fill` with `ref` and `text`, or `press` with `key`. `scroll` accepts `deltaY`.

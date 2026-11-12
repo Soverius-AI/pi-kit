@@ -113,6 +113,8 @@ export class App {
   protected readonly prefs = inject(ViewPrefs);
   protected readonly panelWidth = PANEL_WIDTH;
   protected readonly panelResizing = signal(false);
+  protected readonly nativeBrowser = !!window.piKit?.setBrowserViewport;
+  protected readonly iframeMounted = signal(false);
   private panelGrab?: { x: number; width: number; original: number; pointer: number };
   protected readonly dialogs = inject(DialogStore);
   private readonly trust = inject(TrustStore);
@@ -158,6 +160,24 @@ export class App {
   constructor() {
     this.shell.start();
     this.review.showSummary(true);
+    let previewThread: string | undefined;
+    effect(() => {
+      if (this.nativeBrowser) return;
+      const id = this.threads.selectedId() ?? undefined;
+      const open = this.bus.panel() === 'artifacts';
+      untracked(() => {
+        if (id !== previewThread) {
+          const hadThread = !!previewThread;
+          previewThread = id;
+          this.iframeMounted.set(false);
+          if (hadThread && open) {
+            this.bus.closePanel();
+            return;
+          }
+        }
+        if (id && open) this.iframeMounted.set(true);
+      });
+    });
     effect(() => {
       const source = this.learningSource();
       const editing = this.learn.editing();

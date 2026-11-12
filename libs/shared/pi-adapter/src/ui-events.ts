@@ -2,6 +2,7 @@ import { type BaseEvent, EventType } from '@ag-ui/core';
 import {
   activityId,
   type ComposerRegistration,
+  type PreviewRegistration,
   type PiCustomEvent,
   type PiDialogRequest,
   piInterruptReason,
@@ -16,6 +17,7 @@ export type PiUiEvent =
   | { kind: 'status'; key: string; text: string | undefined }
   | { kind: 'widget'; key: string; lines: string[] | undefined; placement?: 'aboveEditor' | 'belowEditor' }
   | { kind: 'title'; title: string }
+  | { kind: 'preview'; registration: PreviewRegistration }
   | { kind: 'composer'; registration: ComposerRegistration };
 
 const custom = (event: PiCustomEvent): BaseEvent =>
@@ -36,6 +38,8 @@ export function mapUiEvent(event: PiUiEvent): BaseEvent[] {
       return [custom({ name: 'pi.status', value: { key: event.key, text: event.text ?? '' } })];
     case 'title':
       return [custom({ name: 'pi.title', value: { title: event.title } })];
+    case 'preview':
+      return [{ ...custom({ name: 'pi.preview', value: event.registration }), timestamp: Date.now() } as BaseEvent];
     case 'composer':
       return [custom({ name: 'pi.composer', value: event.registration })];
     case 'widget':

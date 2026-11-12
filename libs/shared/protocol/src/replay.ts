@@ -29,4 +29,5 @@ export interface ThreadHydration<TMessage = unknown> {
   view: ThreadHydrationView;
   composers: import('./composer').ComposerRegistration[];
   title?: string;
+  preview?: import('./preview').PreviewRegistration;
 }

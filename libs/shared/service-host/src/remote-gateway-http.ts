@@ -41,14 +41,14 @@ export class Http {
   }
 
   /** The headers every gateway response carries. */
-  static secure(res: ServerResponse): void {
+  static secure(res: ServerResponse, previewOrigins: readonly string[] = []): void {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader(
       'Content-Security-Policy',
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+      `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: blob:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self'; frame-src ${previewOrigins.length ? previewOrigins.join(' ') : "'none'"}; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'`,
     );
   }
 
