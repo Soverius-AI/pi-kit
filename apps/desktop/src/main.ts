@@ -556,7 +556,7 @@ async function offerDatabaseReset(reason: string): Promise<boolean> {
     type: 'error',
     title: 'pi-kit',
     message: 'The pi-kit database is broken.',
-    detail: `${reason}\n\nRecreate deletes pi-kit's databases and starts with new, empty ones. Your pi sessions are kept and the threads are rebuilt from them; what pi-kit kept only in its database (feedback, reviews, background agents) is lost.\n\nThe log is in ${app.getPath('logs')}.`,
+    detail: `${reason}\n\nRecreate deletes pi-kit's databases and starts with new, empty ones. Your pi sessions are kept and the threads are rebuilt from them; what pi-kit kept only in its database (feedback, reviews, background agents, paired instances) is lost.\n\nThe log is in ${app.getPath('logs')}.`,
     buttons: ['Recreate database', 'Quit'],
     defaultId: 0,
     cancelId: 1,

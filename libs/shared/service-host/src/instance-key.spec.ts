@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from 'node:crypto';
-import { copyFile, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -103,6 +103,17 @@ describe('OS-sealed unattended instance identity', () => {
     await cached.info(f.id);
     path = clone.path;
     await expect(cached.info(f.id)).rejects.toMatchObject({ code: 'identity-mismatch' });
+  });
+
+  it('makes a new key for a recreated database once the old key file is gone, though the old one is cached', async () => {
+    const f = await fixture();
+    const old = await f.store.info(f.id, true);
+    const next = randomUUID();
+    await expect(f.store.info(next, true)).rejects.toMatchObject({ code: 'identity-mismatch' });
+    await unlink(f.path);
+    const fresh = await f.store.info(next, true);
+    expect(fresh.fingerprint).not.toBe(old.fingerprint);
+    await expect(f.store.info(f.id)).rejects.toMatchObject({ code: 'identity-mismatch' });
   });
 
   it('uses an atomic no-clobber key when two owners race and never leaks mutable cached key info', async () => {
