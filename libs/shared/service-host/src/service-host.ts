@@ -133,7 +133,7 @@ export class ServiceHost {
     private readonly watchdogOptions: WatchdogOptions = DEFAULT_WATCHDOG_OPTIONS,
   ) {
     const sealing = deps.hostSealing ? new MigratingSealing(deps.hostSealing, this.sealing) : this.sealing;
-    this.keys = new InstanceKeyStore(() => join(config.dataDir, 'instance-keys', 'identity.v1.enc'), sealing);
+    this.keys = new InstanceKeyStore(() => InstanceKeyStore.file(config.dataDir), sealing);
   }
 
   /** The backend's address, for phone access; fixed once `open()` resolved. */

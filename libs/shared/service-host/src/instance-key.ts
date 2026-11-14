@@ -1,6 +1,6 @@
 import { constants } from 'node:fs';
 import { open, mkdir, lstat, link, rename, unlink } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import {
   createHash,
   createPrivateKey,
@@ -42,6 +42,9 @@ interface LoadedKey {
 
 /** A separate, OS-sealed service identity. Never accesses or changes provider/database-key policy. */
 export class InstanceKeyStore {
+  static file(dataDir: string): string {
+    return join(dataDir, 'instance-keys', 'identity.v1.enc');
+  }
   private loaded?: LoadedKey;
   private queue: Promise<unknown> = Promise.resolve();
   constructor(
@@ -74,11 +77,8 @@ export class InstanceKeyStore {
     const instanceId = InstanceIdSchema.parse(id);
     const path = this.path(),
       scope = createHash('sha256').update(resolve(path)).digest('hex');
-    if (this.loaded) {
-      if (this.loaded.instanceId !== instanceId || this.loaded.scope !== scope)
-        throw new InstanceKeyError('identity-mismatch');
-      return this.loaded;
-    }
+    if (this.loaded?.instanceId === instanceId && this.loaded.scope === scope) return this.loaded;
+    this.loaded = undefined;
     try {
       if (!(await this.encryption.available())) throw new InstanceKeyError('unavailable');
     } catch {
