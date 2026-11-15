@@ -84,6 +84,8 @@ export const REMOTE_ROUTES: readonly (readonly [method: string, path: string])[]
   ['POST', '/api/workspaces/{id}/fs/delete'],
   ['POST', '/api/workspaces/{id}/fs/rename'],
   ['GET', '/api/workspaces/{id}/git'],
+  ['GET', '/api/workspaces/{id}/import-sessions'],
+  ['POST', '/api/workspaces/{id}/import-sessions'],
   ['GET', '/api/workspaces/{id}/status'],
   ['DELETE', '/api/workspaces/{id}/terminal'],
   ['POST', '/api/workspaces/{id}/terminal'],

@@ -285,6 +285,35 @@ export const ImportSessionSchema = z
   .strict()
   .meta({ id: 'ImportSession' });
 
+/** Local coding sessions discovered for one project; importing always creates an independent pi session. */
+export const ExternalSessionSourceSchema = z.enum(['claude-code', 'codex']);
+export type ExternalSessionSource = z.infer<typeof ExternalSessionSourceSchema>;
+export const ExternalSessionSchema = z
+  .object({
+    key: z.string(),
+    source: ExternalSessionSourceSchema,
+    title: z.string(),
+    updatedAt: z.number(),
+    fingerprint: z.string(),
+    status: z.enum(['new', 'changed', 'imported']),
+    importedThreadId: z.string().nullable(),
+  })
+  .meta({ id: 'ExternalSession' });
+export type ExternalSession = z.infer<typeof ExternalSessionSchema>;
+export const ExternalSessionsSchema = z
+  .object({
+    sessions: z.array(ExternalSessionSchema),
+    unavailable: z.array(ExternalSessionSourceSchema),
+    skipped: z.number().int().nonnegative(),
+  })
+  .meta({ id: 'ExternalSessions' });
+export type ExternalSessions = z.infer<typeof ExternalSessionsSchema>;
+export const ImportExternalSessionSchema = z
+  .object({ key: z.string().regex(/^[a-f0-9]{64}$/), fingerprint: z.string().regex(/^[a-f0-9]{64}$/) })
+  .strict()
+  .meta({ id: 'ImportExternalSession' });
+export type ImportExternalSession = z.infer<typeof ImportExternalSessionSchema>;
+
 // ---- query of the Files panel
 
 /** `GET /api/workspaces/:id/tree?dir=&ignored=`. */

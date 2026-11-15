@@ -1,4 +1,5 @@
 import { DestroyRef, computed, inject } from '@angular/core';
+import { Language } from '@pi-kit/i18n';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withProps, withState } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import {
@@ -20,6 +21,8 @@ import {
   workspacesOrderWorkspaces,
   workspacesPatchWorkspace,
   workspacesWorkspaces,
+  workspacesExternalSessions,
+  workspacesImportExternal,
 } from '@pi-kit/api';
 import {
   CONTEXT_POLICY,
@@ -27,6 +30,8 @@ import {
   withLatestRequest,
   withRequestStatus,
   withSelection,
+  ToastStore,
+  UiStore,
 } from '@pi-kit/data-access';
 import type {
   NewLocal,
@@ -38,6 +43,8 @@ import type {
   ThreadsEvent,
   Workspace,
   WorktreeKeep,
+  ExternalSessions,
+  ImportExternalSession,
 } from '@pi-kit/protocol';
 import {
   countStates,
@@ -149,6 +156,9 @@ export const ThreadsStore = signalStore(
     const workbench = inject(WORKBENCH);
     const trust = inject(TrustStore);
     const destroyRef = inject(DestroyRef);
+    const toasts = inject(ToastStore);
+    const ui = inject(UiStore);
+    const translate = inject(Language).t;
     let selectToken = 0;
     let initialSelection: { threadId: string | undefined; token: number } | undefined;
     let timer: ReturnType<typeof setInterval> | undefined;
@@ -281,11 +291,38 @@ export const ThreadsStore = signalStore(
 
       /** Opens a folder as a project: the backend adds it (and a hidden one is shown again), the trust question comes first. */
       async openWorkspace(cwd: string): Promise<void> {
+        const firstOpen = !store.workspaces().some((workspace) => workspace.cwd === cwd);
         await send(() => unwrap(workspacesAddWorkspace({ client: api.client, body: { cwd } })));
         await methods.refresh();
         if (store.workspaces().find((w) => w.cwd === cwd)?.hidden) await methods.setHidden(cwd, false);
         await methods.setCollapsed(cwd, false);
         await methods.selectWorkspace(cwd);
+        if (firstOpen) {
+          // Optional discovery must not hold up project opening or overlap its trust decision.
+          void trust
+            .ensure(cwd)
+            .then(async () => {
+              const result = await methods.findExternalSessions(cwd);
+              if (destroyRef.destroyed || !store.workspaces().some((workspace) => workspace.cwd === cwd)) return;
+              const count = result.sessions.filter((session) => session.status !== 'imported').length;
+              if (count)
+                toasts.show('info', translate('settings.sessionImports.found', { count }), 15_000, {
+                  label: translate('settings.sessionImports.review'),
+                  run: () => ui.openSettings('projects', undefined, cwd),
+                });
+            })
+            .catch(() => undefined);
+        }
+      },
+
+      findExternalSessions(cwd: string): Promise<ExternalSessions> {
+        return unwrap(workspacesExternalSessions({ client: api.client, path: { id: cwd } }));
+      },
+
+      async importExternalSession(cwd: string, request: ImportExternalSession): Promise<ThreadDetail> {
+        const thread = await unwrap(workspacesImportExternal({ client: api.client, path: { id: cwd }, body: request }));
+        await methods.refresh();
+        return thread;
       },
 
       /**

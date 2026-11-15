@@ -6,6 +6,7 @@ import { SnapshotsModule } from '../snapshots/snapshots.module';
 import { FolderChangesModule } from '../folder-changes/folder-changes.module';
 import { WorktreeService } from '../worktree/worktree.service';
 import { AppSettingsController } from './app-settings.controller';
+import { ExternalImportsService } from './external-imports.service';
 import { OutcomesController } from './outcomes.controller';
 import { OutcomesService } from './outcomes.service';
 import { ThreadStatusService } from './thread-status.service';
@@ -21,7 +22,7 @@ import { WorktreeController } from './worktree.controller';
 @Module({
   imports: [DbModule, PiModule, TerminalModule, FolderChangesModule, SnapshotsModule],
   controllers: [ThreadsController, WorkspacesController, AppSettingsController, WorktreeController, OutcomesController],
-  providers: [ThreadsService, ThreadStatusService, WorktreeService, OutcomesService],
+  providers: [ThreadsService, ThreadStatusService, WorktreeService, OutcomesService, ExternalImportsService],
   exports: [ThreadsService, ThreadStatusService, WorktreeService, OutcomesService],
 })
 export class ThreadsModule {}

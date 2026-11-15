@@ -14,8 +14,17 @@ import {
   workspacesOrderWorkspaces,
   workspacesPatchWorkspace,
   workspacesWorkspaces,
+  workspacesExternalSessions,
 } from '@pi-kit/api';
-import type { ThreadState, ThreadSummary, ThreadsEvent, WatchEvent, Workspace } from '@pi-kit/protocol';
+import type {
+  ExternalSessions,
+  ThreadState,
+  ThreadSummary,
+  ThreadsEvent,
+  WatchEvent,
+  Workspace,
+} from '@pi-kit/protocol';
+import { ToastStore, UiStore } from '@pi-kit/data-access';
 
 import { TrustStore } from './trust.store';
 
@@ -111,6 +120,7 @@ describe('ThreadsStore', () => {
   const settings = { all: vi.fn(async () => saved), set: vi.fn(async () => undefined) };
   const workspaceApi = {
     addWorkspace: vi.fn(async () => undefined),
+    externalSessions: vi.fn(async (): Promise<ExternalSessions> => ({ sessions: [], unavailable: [], skipped: 0 })),
     watch: vi.fn((_cwd: string, onEvent: (e: WatchEvent) => void, signal: AbortSignal) => {
       emit = onEvent;
       return new Promise<void>((resolve, reject) => {
@@ -157,6 +167,7 @@ describe('ThreadsStore', () => {
             [appSettingsSettings, settings.all, () => []],
             [appSettingsSetSetting, settings.set, (o) => [o.path?.['key'], o.body?.['value']]],
             [workspacesAddWorkspace, workspaceApi.addWorkspace, (o) => [o.body?.['cwd']]],
+            [workspacesExternalSessions, workspaceApi.externalSessions, (o) => [o.path?.['id']]],
           ],
           [
             [/^\/api\/threads\/events$/, api.events, (_path, onLine, signal) => [onLine, signal]],
@@ -171,6 +182,60 @@ describe('ThreadsStore', () => {
     });
   });
   afterEach(() => vi.useRealTimers());
+
+  it('offers import review after a newly added project passes trust, without making discovery part of opening it', async () => {
+    const store = make();
+    await store.init();
+    let allowTrust!: () => void;
+    trustGate = new Promise<void>((resolve) => {
+      allowTrust = resolve;
+    });
+    workspaceApi.addWorkspace.mockImplementationOnce(async () => {
+      workspaces.push(ws('/new'));
+    });
+    workspaceApi.externalSessions.mockResolvedValueOnce({
+      sessions: [
+        {
+          key: 'source',
+          source: 'codex',
+          title: 'Previous work',
+          updatedAt: 1,
+          fingerprint: 'version',
+          status: 'new',
+          importedThreadId: null,
+        },
+      ],
+      unavailable: [],
+      skipped: 0,
+    });
+    await store.openWorkspace('/new');
+    expect(store.workspace()).toBe('/new');
+    expect(workspaceApi.externalSessions).not.toHaveBeenCalled();
+    allowTrust();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(workspaceApi.externalSessions).toHaveBeenCalledWith('/new');
+    const toasts = TestBed.inject(ToastStore);
+    const prompt = toasts.items().find((toast) => toast.action?.label === 'Review imports');
+    expect(prompt).toBeDefined();
+    if (prompt) toasts.act(prompt.id);
+    expect(TestBed.inject(UiStore).settings()).toEqual({ tab: 'projects', project: '/new' });
+    await store.openWorkspace('/new');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(workspaceApi.externalSessions).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a newly added project usable when session discovery fails', async () => {
+    const store = make();
+    await store.init();
+    workspaceApi.addWorkspace.mockImplementationOnce(async () => {
+      workspaces.push(ws('/new'));
+    });
+    workspaceApi.externalSessions.mockRejectedValueOnce(new Error('Reader unavailable'));
+    await store.openWorkspace('/new');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.workspace()).toBe('/new');
+    expect(store.error()).toBeUndefined();
+  });
 
   it('init lists the threads of every project and restores the remembered thread, whose folder becomes the current project', async () => {
     threads = [thread('t1', '/a'), thread('t2', '/b')];

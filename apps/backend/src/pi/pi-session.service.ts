@@ -1,5 +1,3 @@
-import { spawnSync } from 'node:child_process';
-import { existsSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { PendingDialog, PiSessionEntry, PiUiEvent } from '@pi-kit/pi-adapter';
@@ -10,7 +8,6 @@ import {
   REVIEW_ENTRY_TYPE,
   type QueueSnapshot,
   type QueueTarget,
-  endsWithQuestion,
   type ModelList,
   type PiDialogAnswer,
   type PiDialogRequest,
@@ -19,10 +16,8 @@ import {
   type SessionStats,
   SKILLS_ENTRY_TYPE,
   type SkillsEntry,
-  type ThinkingLevel,
 } from '@pi-kit/protocol';
-// Type-only imports are erased at build time; the runtime import goes through `loadPi()` below.
-// Runtime SDK access stays behind the pi/ adapter’s loadPi() entry point.
+// Type-only: the runtime import goes through `loadPi()`.
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent' with { 'resolution-mode': 'import' };
 import { LiteLlmService } from '../setup/litellm.service';
 import type { ChipResources } from '../agui/chip-expansion';
@@ -36,8 +31,10 @@ import { SessionLifecycle, type OpenTarget, type OpenThread, type PiThreadInfo }
 import { SessionModels, type SessionModelChange } from './session-models';
 import type { PiImage } from './session-queue';
 import type { McpCommandOptions, McpCommandResult } from './session-mcp';
-import { type ScanResult, SessionIndex, type SessionSummary } from './session-index';
-import { type ContextMessage, type ContextTool, buildContextItems, groupContextItems } from './context-items';
+import { type ScanResult, SessionIndex } from './session-index';
+import * as files from './session-files';
+import type { ImportedMessage, NewPiSession, PiSessionContents, PiTreeSource } from './session-files';
+import { contextShare, proseQuestion, sessionContext, sessionStats } from './session-stats';
 import { type SkillUse, skillsUsedBy } from './skill-use';
 import { TrustService } from './trust.service';
 import type { DialogAnswer } from './ui-bridge';
@@ -47,6 +44,7 @@ import { ThreadProtectionService } from './thread-protection.service';
 export { loadPi };
 export type { PiThreadInfo } from './session-lifecycle';
 export type { PiDiscoveredCommand } from './session-resources';
+export type { NewPiSession, PiSessionContents, PiTreeSource } from './session-files';
 export { QueueStaleError, type PiImage } from './session-queue';
 export { mcpCallToolResult, type McpMessage } from './session-mcp';
 
@@ -65,39 +63,11 @@ export interface BashRun {
   truncated: boolean;
 }
 
-/** What `SessionManager.listAll()` knows about one session file. Times are epoch milliseconds. */
-export type PiSessionSummary = SessionSummary;
-
-/** A session file read through `SessionManager`: the active branch, root to leaf. */
-export interface PiSessionContents {
-  id: string;
-  path: string | undefined;
-  cwd: string;
-  name: string | undefined;
-  leafId: string | null;
-  parentSessionPath: string | undefined;
-  entries: PiSessionEntry[];
-}
-
-/** The entries of a session (all branches, file order) and its current leaf. */
-export interface PiTreeSource {
-  entries: PiSessionEntry[];
-  leafId: string | null;
-  path: string | undefined;
-}
-
 export interface PiNavigateResult {
   editorText?: string;
   cancelled: boolean;
   leafId: string | null;
   summaryId?: string;
-}
-
-export interface NewPiSession {
-  id: string;
-  /** Where pi will write the file; it does not exist until the first assistant message. */
-  path: string;
-  cwd: string;
 }
 
 /** A tool call that is about to run, announced before pi executes it (`tool_execution_start`). */
@@ -108,6 +78,34 @@ export interface ToolStart {
   args: Record<string, unknown>;
 }
 
+const logger = new Logger('PiSessionService');
+
+/** Callbacks of other services: one that throws is logged and does not stop the rest. */
+class Listeners<Args extends unknown[]> {
+  private readonly all = new Set<(...args: Args) => void>();
+
+  constructor(private readonly what: string) {}
+
+  get size(): number {
+    return this.all.size;
+  }
+
+  add(listener: (...args: Args) => void): () => void {
+    this.all.add(listener);
+    return () => this.all.delete(listener);
+  }
+
+  emit(...args: Args): void {
+    for (const listener of [...this.all]) {
+      try {
+        listener(...args);
+      } catch (error) {
+        logger.warn(`A ${this.what} listener failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+}
+
 /**
  * All pi access goes through here: one `AgentSession` per open thread, created like the
  * CLI creates its own, with the MCP, codemode and tool-search extensions added so the tool set
@@ -116,20 +114,19 @@ export interface ToolStart {
  */
 @Injectable()
 export class PiSessionService implements OnModuleDestroy {
-  private readonly logger = new Logger(PiSessionService.name);
   private readonly lifecycle: SessionLifecycle;
-  private readonly treeListeners = new Set<(threadId: string) => void>();
-  private readonly unattachedUiListeners = new Set<(threadId: string, event: PiUiEvent) => void>();
-  private readonly toolStartListeners = new Set<(start: ToolStart) => void>();
-  private readonly dialogsChangedListeners = new Set<(threadId: string) => void>();
-  private readonly turnListeners = new Set<(threadId: string) => void>();
   private readonly sessionModels: SessionModels;
   private index: SessionIndex | undefined;
   private coordination: CoordinationHook | undefined;
   private browser: BrowserHook | undefined;
   private agents: AgentsHook | undefined;
-  private readonly answeredListeners = new Set<(threadId: string, answer: DialogAnswered) => void>();
-  private readonly skillUseListeners = new Set<(threadId: string, uses: SkillUse[]) => void>();
+  private readonly treeChanged = new Listeners<[threadId: string]>('tree');
+  private readonly turnStarted = new Listeners<[threadId: string]>('turn');
+  private readonly toolStart = new Listeners<[start: ToolStart]>('tool start');
+  private readonly dialogsChanged = new Listeners<[threadId: string]>('dialogs');
+  private readonly dialogAnswered = new Listeners<[threadId: string, answer: DialogAnswered]>('dialog answer');
+  private readonly unattachedUi = new Listeners<[threadId: string, event: PiUiEvent]>('unattached UI');
+  private readonly skillsUsed = new Listeners<[threadId: string, uses: SkillUse[]]>('skill use');
 
   constructor(
     trust: TrustService,
@@ -209,103 +206,53 @@ export class PiSessionService implements OnModuleDestroy {
     return this.index.scan();
   }
 
-  async listSessions(): Promise<PiSessionSummary[]> {
-    return (await this.scanSessions()).all;
+  // ---- session files, without an open session (`session-files.ts`)
+
+  readSession(path: string): Promise<PiSessionContents> {
+    return files.readSession(path);
   }
 
-  /** Reads a session file without opening an `AgentSession` (no extensions, no MCP servers). */
-  async readSession(path: string): Promise<PiSessionContents> {
-    const pi = await loadPi();
-    const manager = pi.SessionManager.open(path);
-    return {
-      id: manager.getSessionId(),
-      path: manager.getSessionFile(),
-      cwd: manager.getCwd(),
-      name: manager.getSessionName(),
-      leafId: manager.getLeafId(),
-      parentSessionPath: manager.getHeader()?.parentSession,
-      entries: manager.getBranch() as unknown as PiSessionEntry[],
-    };
+  createSession(cwd: string, id: string): Promise<NewPiSession> {
+    return files.createSession(cwd, id);
   }
 
-  /** A new, empty persisted session with the given id; nothing is written until its first assistant message. */
-  async createSession(cwd: string, id: string): Promise<NewPiSession> {
-    const pi = await loadPi();
-    const manager = pi.SessionManager.create(cwd, undefined, { id });
-    return { id: manager.getSessionId(), path: manager.getSessionFile() as string, cwd };
+  importHistory(
+    cwd: string,
+    title: string,
+    messages: readonly ImportedMessage[],
+    origin: Record<string, unknown>,
+    sessionDir?: string,
+  ): Promise<NewPiSession> {
+    return files.importHistory(cwd, title, messages, origin, sessionDir);
   }
 
-  /** `/fork` outside the TUI: a new session in `targetCwd` with the source's full history. */
-  async forkSession(sourcePath: string, targetCwd: string): Promise<NewPiSession> {
-    const pi = await loadPi();
-    const manager = pi.SessionManager.forkFrom(sourcePath, targetCwd);
-    return { id: manager.getSessionId(), path: manager.getSessionFile() as string, cwd: targetCwd };
+  forkSession(sourcePath: string, targetCwd: string): Promise<NewPiSession> {
+    return files.forkSession(sourcePath, targetCwd);
   }
 
-  /**
-   * `/clone`: a new session file holding the path from the root to `entryId` (default: the current
-   * leaf). Done on a throwaway manager, because `createBranchedSession` switches its manager over to
-   * the new file and the source must stay as it is.
-   */
-  async cloneSession(sourcePath: string, entryId?: string): Promise<NewPiSession> {
-    const pi = await loadPi();
-    const source = pi.SessionManager.open(sourcePath);
-    const leaf = entryId ?? source.getLeafId();
-    if (!leaf) throw new Error('The session has no entries to clone.');
-    const path = source.createBranchedSession(leaf);
-    if (!path) throw new Error('pi did not create a session file.');
-    const clone = pi.SessionManager.open(path);
-    return { id: clone.getSessionId(), path, cwd: clone.getCwd() };
+  cloneSession(sourcePath: string, entryId?: string): Promise<NewPiSession> {
+    return files.cloneSession(sourcePath, entryId);
   }
 
-  /**
-   * Writes the session name (`session_info`, what `/name` does). Returns false if there is no file
-   * to write to yet; the title then lives in our database and is applied when the session first opens.
-   */
+  trashSession(path: string): 'trash' | 'unlink' | 'missing' {
+    return files.trashSession(path);
+  }
+
+  /** False if there is no file to write to yet; the title then lives in our database and is applied when the session first opens. */
   async setName(threadId: string, sessionPath: string, name: string): Promise<boolean> {
     const open = this.lifecycle.threads.get(threadId);
-    if (open) {
-      open.session.setSessionName(name);
-      return true;
-    }
-    if (!existsSync(sessionPath)) return false;
-    const pi = await loadPi();
-    pi.SessionManager.open(sessionPath).appendSessionInfo(name);
+    if (!open) return files.nameSession(sessionPath, name);
+    open.session.setSessionName(name);
     return true;
-  }
-
-  /**
-   * Removes a session file the way pi's session picker does: `trash` if it is installed, else
-   * unlink. Returns how it went; a file that is already gone counts as trashed.
-   */
-  trashSession(path: string): 'trash' | 'unlink' | 'missing' {
-    if (!existsSync(path)) return 'missing';
-    const args = path.startsWith('-') ? ['--', path] : [path];
-    const result = spawnSync('trash', args, { encoding: 'utf-8' });
-    if (result.status === 0 || !existsSync(path)) return 'trash';
-    unlinkSync(path);
-    return 'unlink';
   }
 
   // ---- the session tree
 
-  /**
-   * Every entry of the session and its leaf: from the open session if there is one (it knows the leaf the app moved
-   * to), else from the file, with `leafHint` standing in for the leaf the app last moved to. A session without a file
-   * (a draft) is empty.
-   */
+  /** Every entry of the session and its leaf: from the open session if there is one (it knows the leaf the app moved to), else from the file. */
   async treeSource(threadId: string, sessionPath: string, leafHint?: string): Promise<PiTreeSource> {
-    const open = this.lifecycle.threads.get(threadId);
-    if (open)
-      return {
-        ...(this.openTree(threadId) as { entries: PiSessionEntry[]; leafId: string | null }),
-        path: open.session.sessionFile,
-      };
-    if (!existsSync(sessionPath)) return { entries: [], leafId: null, path: undefined };
-    const pi = await loadPi();
-    const manager = pi.SessionManager.open(sessionPath);
-    const leafId = leafHint && manager.getEntry(leafHint) ? leafHint : manager.getLeafId();
-    return { entries: manager.getEntries() as unknown as PiSessionEntry[], leafId, path: sessionPath };
+    const tree = this.openTree(threadId);
+    if (!tree) return files.readTree(sessionPath, leafHint);
+    return { ...tree, path: this.lifecycle.get(threadId).session.sessionFile };
   }
 
   /** Entries and leaf of the open session, synchronously; `undefined` if the thread is not open. */
@@ -343,7 +290,7 @@ export class PiSessionService implements OnModuleDestroy {
       ...(options.instructions ? { customInstructions: options.instructions } : {}),
     });
     const leafId = session.sessionManager.getLeafId();
-    if (!result.cancelled) this.emitTreeChanged(threadId);
+    if (!result.cancelled) this.treeChanged.emit(threadId);
     return {
       cancelled: result.cancelled,
       leafId,
@@ -357,23 +304,12 @@ export class PiSessionService implements OnModuleDestroy {
     const { session } = this.lifecycle.get(threadId);
     if (!session.sessionManager.getEntry(targetId)) throw new Error(`Entry ${targetId} not found`);
     session.sessionManager.appendLabelChange(targetId, label);
-    this.emitTreeChanged(threadId);
+    this.treeChanged.emit(threadId);
   }
 
   /** Called after the leaf moved or an entry was appended outside a run (navigate, label, summarise, extension). */
   onTreeChanged(listener: (threadId: string) => void): () => void {
-    this.treeListeners.add(listener);
-    return () => this.treeListeners.delete(listener);
-  }
-
-  private emitTreeChanged(threadId: string): void {
-    for (const listener of this.treeListeners) {
-      try {
-        listener(threadId);
-      } catch (error) {
-        this.logger.warn(`Tree listener failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
+    return this.treeChanged.add(listener);
   }
 
   /**
@@ -381,14 +317,12 @@ export class PiSessionService implements OnModuleDestroy {
    * `pi.sendUserMessage()` in an idle thread. The runner opens a run of its own for it; `whenPromptDone()` covers such a turn.
    */
   onTurnStarted(listener: (threadId: string) => void): () => void {
-    this.turnListeners.add(listener);
-    return () => this.turnListeners.delete(listener);
+    return this.turnStarted.add(listener);
   }
 
   /** Called before every tool call of every open thread runs; the changes view reads the file here. */
   onToolStart(listener: (start: ToolStart) => void): () => void {
-    this.toolStartListeners.add(listener);
-    return () => this.toolStartListeners.delete(listener);
+    return this.toolStart.add(listener);
   }
 
   /**
@@ -491,7 +425,7 @@ export class PiSessionService implements OnModuleDestroy {
     thread.session.subscribe((event) => {
       if (event.type === 'agent_start' && !thread.prompting) {
         void this.track(thread, new Promise<void>((resolve) => (settle = resolve)));
-        this.emitTurnStarted(thread.info.threadId);
+        this.turnStarted.emit(thread.info.threadId);
       } else if (event.type === 'agent_settled') {
         settle?.();
         settle = undefined;
@@ -510,30 +444,21 @@ export class PiSessionService implements OnModuleDestroy {
 
   /** Told when a prompt, steer or follow-up uses a skill (a chip's block or a typed `/skill:name`): the learned skills' record counts these. A listener's failure is its own. */
   onSkillsUsed(listener: (threadId: string, uses: SkillUse[]) => void): () => void {
-    this.skillUseListeners.add(listener);
-    return () => this.skillUseListeners.delete(listener);
+    return this.skillsUsed.add(listener);
   }
 
   private noteSkills(threadId: string, text: string, thread: OpenThread): void {
-    if (this.skillUseListeners.size === 0 || !text.includes('skill')) return;
-    let uses: SkillUse[] = [];
+    if (this.skillsUsed.size === 0 || !text.includes('skill')) return;
     try {
-      uses = skillsUsedBy(
+      const uses = skillsUsedBy(
         text,
         (name) => thread.session.resourceLoader.getSkills().skills.find((s) => s.name === name)?.filePath,
       );
+      if (uses.length) this.skillsUsed.emit(threadId, uses);
     } catch (error) {
-      this.logger.debug(
+      logger.debug(
         `Could not read the skills of a prompt of ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
       );
-    }
-    if (uses.length === 0) return;
-    for (const listener of this.skillUseListeners) {
-      try {
-        listener(threadId, uses);
-      } catch (error) {
-        this.logger.warn(`A skill-use listener failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
     }
   }
 
@@ -577,35 +502,10 @@ export class PiSessionService implements OnModuleDestroy {
     return this.lifecycle.get(threadId).queue.clear();
   }
 
-  /**
-   * An assistant turn that ended in a question and nothing is running: the thread is "waiting" for the user the same way
-   * it is while a dialog is open. Only a thread whose session is open can say; the list shows the others as they were.
-   */
-  askedAQuestion(threadId: string): boolean {
-    return this.proseQuestion(threadId) !== undefined;
-  }
-
-  /** The question itself (its last line) when `askedAQuestion`, for the sidebar's waiting badge. */
+  /** The question an idle open thread's last assistant turn ended in, for the sidebar's waiting badge. */
   proseQuestion(threadId: string): string | undefined {
     const thread = this.lifecycle.threads.get(threadId);
-    if (!thread || thread.session.isStreaming || thread.ui.size > 0) return undefined;
-    const last = thread.session.messages.at(-1);
-    if (last?.role !== 'assistant') return undefined;
-    const content = (last as { content?: unknown }).content;
-    const text = Array.isArray(content)
-      ? content
-          .map((part) =>
-            part && typeof part === 'object' && (part as { type?: string }).type === 'text'
-              ? String((part as { text?: unknown }).text ?? '')
-              : '',
-          )
-          .join('')
-      : '';
-    if (!endsWithQuestion(text)) return undefined;
-    return text
-      .trimEnd()
-      .slice(text.trimEnd().lastIndexOf('\n') + 1)
-      .trim();
+    return thread && proseQuestion(thread);
   }
 
   /**
@@ -630,8 +530,7 @@ export class PiSessionService implements OnModuleDestroy {
 
   /** A thread's set of pending dialogs changed (one opened, one was answered or dismissed): the thread-state service pushes it to the sidebar. */
   onDialogsChanged(listener: (threadId: string) => void): () => void {
-    this.dialogsChangedListeners.add(listener);
-    return () => this.dialogsChangedListeners.delete(listener);
+    return this.dialogsChanged.add(listener);
   }
 
   markDialogsReported(threadId: string, ids: readonly string[]): void {
@@ -640,8 +539,7 @@ export class PiSessionService implements OnModuleDestroy {
 
   /** Told when the person answered a dialog (not when a stop dismissed it): the Meat Proxy Score's ledger keeps what they said. */
   onDialogAnswered(listener: (threadId: string, answer: DialogAnswered) => void): () => void {
-    this.answeredListeners.add(listener);
-    return () => this.answeredListeners.delete(listener);
+    return this.dialogAnswered.add(listener);
   }
 
   /** Answers a dialog; false if it is gone. */
@@ -649,15 +547,7 @@ export class PiSessionService implements OnModuleDestroy {
     const ui = this.lifecycle.threads.get(threadId)?.ui;
     const request = ui?.list().find((d) => d.id === id)?.request;
     const delivered = ui?.answer(id, answer) ?? false;
-    if (delivered && request) {
-      for (const listener of [...this.answeredListeners]) {
-        try {
-          listener(threadId, { request, answer });
-        } catch (error) {
-          this.logger.debug(`A dialog listener failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    }
+    if (delivered && request) this.dialogAnswered.emit(threadId, { request, answer });
     return delivered;
   }
 
@@ -675,8 +565,7 @@ export class PiSessionService implements OnModuleDestroy {
    * first prompt): the runner writes them to the replay log, so a client that connects later still gets them.
    */
   onUnattachedUiEvent(listener: (threadId: string, event: PiUiEvent) => void): () => void {
-    this.unattachedUiListeners.add(listener);
-    return () => this.unattachedUiListeners.delete(listener);
+    return this.unattachedUi.add(listener);
   }
 
   /** The toolbar actions and suggestions the extensions of the open session have registered. */
@@ -688,17 +577,12 @@ export class PiSessionService implements OnModuleDestroy {
   complete(threadId: string, text: string, cursor: number): Promise<CompleteResponse> {
     return this.lifecycle.get(threadId).ui.complete(text, cursor, {
       onError: (error) =>
-        this.logger.debug(`Autocomplete provider failed: ${error instanceof Error ? error.message : String(error)}`),
+        logger.debug(`Autocomplete provider failed: ${error instanceof Error ? error.message : String(error)}`),
     });
   }
 
   onDialogRequested(threadId: string, listener: () => void): () => void {
     return this.lifecycle.get(threadId).ui.onDialog(listener);
-  }
-
-  /** Current status-bar texts of the extensions, by key. */
-  statuses(threadId: string): Record<string, string> {
-    return Object.fromEntries(this.lifecycle.threads.get(threadId)?.ui.statuses ?? []);
   }
 
   // ---- MCP
@@ -802,7 +686,7 @@ export class PiSessionService implements OnModuleDestroy {
         await this.reload(id);
         reloaded++;
       } catch (error) {
-        this.logger.warn(`Could not reload thread ${id}: ${error instanceof Error ? error.message : String(error)}`);
+        logger.warn(`Could not reload thread ${id}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
     return reloaded;
@@ -824,16 +708,10 @@ export class PiSessionService implements OnModuleDestroy {
     return this.sessionModels.contextWindowLookup(this.lifecycle.get(threadId).session);
   }
 
-  /**
-   * Whole percent of the model's window the open session's context fills (pi's `getContextUsage()`), for the sidebar's gauge; null while unknown
-   * (right after a compaction, before the first response) or when the thread is not open.
-   */
+  /** For the sidebar's gauge; null when the thread is not open. */
   contextShare(threadId: string): number | null {
     const open = this.lifecycle.threads.get(threadId);
-    if (!open) return null;
-    const usage = open.session.getContextUsage();
-    if (!usage || usage.tokens === null || !usage.contextWindow) return null;
-    return Math.max(0, Math.round((usage.tokens / usage.contextWindow) * 100));
+    return open ? contextShare(open.session) : null;
   }
 
   /** The context window from the model registry, without opening a session. */
@@ -841,67 +719,12 @@ export class PiSessionService implements OnModuleDestroy {
     return this.sessionModels.modelWindow(provider, model);
   }
 
-  /** The context of the session, piece by piece (the context inspector): what pi keeps for the model right now, and what each piece costs. */
   context(threadId: string): SessionContext {
-    const { session } = this.lifecycle.get(threadId);
-    const usage = session.getContextUsage();
-    const contextWindow =
-      usage?.contextWindow ??
-      (session.model ? this.contextWindowLookup(threadId)(session.model.provider, session.model.id) : undefined) ??
-      null;
-    const summaries = (session.sessionManager.getBranch() as { type: string; summary?: string }[])
-      .filter((entry) => entry.type === 'compaction' && entry.summary)
-      .map((entry) => entry.summary as string);
-    const items = buildContextItems(
-      session.agent.state.messages as unknown as ContextMessage[],
-      session.agent.state.tools as unknown as ContextTool[],
-      summaries,
-    );
-    return {
-      contextTokens: usage?.tokens ?? null,
-      contextWindow,
-      estimatedTokens: items.reduce((sum, item) => sum + item.tokens, 0),
-      model: session.model
-        ? { provider: session.model.provider, id: session.model.id, name: session.model.name }
-        : null,
-      groups: groupContextItems(items),
-      items,
-    };
+    return sessionContext(this.lifecycle.get(threadId).session, this.contextWindowLookup(threadId));
   }
 
-  /** `/session`, the composer's token meter and the status bar. */
   stats(threadId: string): SessionStats {
-    const { session, info, ui } = this.lifecycle.get(threadId);
-    const stats = session.getSessionStats();
-    const usage = session.getContextUsage();
-    const contextWindow =
-      usage?.contextWindow ??
-      (session.model ? this.contextWindowLookup(threadId)(session.model.provider, session.model.id) : undefined) ??
-      null;
-    const compaction = session.settingsManager.getCompactionSettings(session.model);
-    return {
-      sessionId: stats.sessionId,
-      sessionFile: stats.sessionFile ?? null,
-      userMessages: stats.userMessages,
-      assistantMessages: stats.assistantMessages,
-      toolCalls: stats.toolCalls,
-      toolResults: stats.toolResults,
-      totalMessages: stats.totalMessages,
-      tokens: stats.tokens,
-      cost: stats.cost,
-      contextTokens: usage?.tokens ?? null,
-      contextWindow,
-      model: session.model
-        ? { provider: session.model.provider, id: session.model.id, name: session.model.name }
-        : null,
-      thinkingLevel: session.thinkingLevel as ThinkingLevel,
-      autoCompaction: session.autoCompactionEnabled,
-      compactionThreshold:
-        session.autoCompactionEnabled && contextWindow ? Math.max(0, contextWindow - compaction.reserveTokens) : null,
-      streaming: session.isStreaming,
-      waitingForAnswer: ui.size > 0,
-      cwd: info.cwd,
-    };
+    return sessionStats(this.lifecycle.get(threadId), this.contextWindowLookup(threadId));
   }
 
   /** `!command`: runs the shell command through pi (recorded in the session, sent to the model with the next prompt). */
@@ -945,41 +768,10 @@ export class PiSessionService implements OnModuleDestroy {
 
   private uiHooks(threadId: string, cwd: string): SessionUiHooks {
     return {
-      dialogsChanged: () => {
-        for (const listener of [...this.dialogsChangedListeners]) listener(threadId);
-      },
-      unattached: (event) => {
-        for (const listener of [...this.unattachedUiListeners]) {
-          try {
-            listener(threadId, event);
-          } catch (error) {
-            this.logger.warn(
-              `Unattached UI listener failed: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
-        }
-      },
-      treeChanged: () => this.emitTreeChanged(threadId),
-      toolStarting: (toolName, args) => {
-        const start: ToolStart = { threadId, cwd, toolName, args };
-        for (const listener of this.toolStartListeners) {
-          try {
-            listener(start);
-          } catch (error) {
-            this.logger.warn(`Tool start listener failed: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        }
-      },
+      dialogsChanged: () => this.dialogsChanged.emit(threadId),
+      unattached: (event) => this.unattachedUi.emit(threadId, event),
+      treeChanged: () => this.treeChanged.emit(threadId),
+      toolStarting: (toolName, args) => this.toolStart.emit({ threadId, cwd, toolName, args }),
     };
-  }
-
-  private emitTurnStarted(threadId: string): void {
-    for (const listener of [...this.turnListeners]) {
-      try {
-        listener(threadId);
-      } catch (error) {
-        this.logger.warn(`Turn listener failed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
   }
 }

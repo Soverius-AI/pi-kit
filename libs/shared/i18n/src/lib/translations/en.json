@@ -4379,6 +4379,30 @@
       "unattendedHint": "Keeps a copy of each key in your Keychain that only pi-kit can read without Touch ID, so the background service doesn’t wait for your fingerprint. Turning it on asks for Touch ID once per key; turning it off removes the copies.",
       "unattendedBusy": "Updating key copies…",
       "unattendedFailed": "Could not change “Read keys while I’m away”: {{value1}}"
+    },
+    "sessionImports": {
+      "title": "Import sessions",
+      "description": "Bring existing Claude Code and Codex sessions into this project.",
+      "warning": "Imports create independent pi copies. Replies will not sync back. Tool history is kept as text; attachments remain in the original session.",
+      "check": "Check for new sessions",
+      "checking": "Checking…",
+      "review": "Review imports",
+      "found": "Found {{count}} existing sessions for this project.",
+      "unavailable": "Unavailable on this machine: {{sources}}.",
+      "skipped": "Skipped {{count}} unreadable or changing session files.",
+      "empty": "No matching local sessions found.",
+      "claude": "Claude Code",
+      "codex": "Codex",
+      "new": "New",
+      "changed": "Changed since import",
+      "imported": "Already imported",
+      "open": "Open copy",
+      "compact": "Compact after import",
+      "compactHint": "Uses your configured pi model to summarize older context. The imported transcript stays available.",
+      "importSelected": "Import selected",
+      "importing": "Importing…",
+      "retryCompact": "Retry compaction",
+      "compactFailed": "Imported successfully. Compaction failed: {{message}}"
     }
   },
   "agents": {

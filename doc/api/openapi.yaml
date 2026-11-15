@@ -1198,6 +1198,91 @@ paths:
       tags:
         - threads
       x-remote: true
+  /api/workspaces/{id}/import-sessions:
+    get:
+      description: Finds local Claude Code and Codex (CLI 0.165.0+) sessions belonging to this project. Source history is read only.
+      operationId: Workspaces_externalSessions
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: The project's folder, URL-encoded (a project has no other id).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExternalSessions'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: The folder is not a known project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Find external sessions
+      tags:
+        - workspaces
+      x-remote: true
+    post:
+      description: Creates an independent native pi snapshot, or returns the already imported snapshot of that source version.
+      operationId: Workspaces_importExternal
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: The project's folder, URL-encoded (a project has no other id).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportExternalSession'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadDetail'
+        '400':
+          description: No importable history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: The folder is not a known project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The source changed or is unavailable; check again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Import an external session
+      tags:
+        - workspaces
+      x-remote: true
   /api/workspaces/{id}/git:
     get:
       description: 'Returns the checked-out branch, the number of changed files, the local branches with the worktree that holds each, and the remote branches. `git: false` for a folder that is not a repository.'
@@ -11649,6 +11734,64 @@ components:
         - path
         - format
       additionalProperties: false
+    ExternalSession:
+      type: object
+      properties:
+        key:
+          type: string
+        source:
+          type: string
+          enum:
+            - claude-code
+            - codex
+        title:
+          type: string
+        updatedAt:
+          type: number
+        fingerprint:
+          type: string
+        status:
+          type: string
+          enum:
+            - new
+            - changed
+            - imported
+        importedThreadId:
+          type:
+            - string
+            - 'null'
+      required:
+        - key
+        - source
+        - title
+        - updatedAt
+        - fingerprint
+        - status
+        - importedThreadId
+      additionalProperties: false
+    ExternalSessions:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExternalSession'
+        unavailable:
+          type: array
+          items:
+            type: string
+            enum:
+              - claude-code
+              - codex
+        skipped:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+      required:
+        - sessions
+        - unavailable
+        - skipped
+      additionalProperties: false
     FeedbackEntry:
       type: object
       properties:
@@ -11868,6 +12011,19 @@ components:
         - trace
         - lines
         - by
+      additionalProperties: false
+    ImportExternalSession:
+      type: object
+      properties:
+        key:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        fingerprint:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+      required:
+        - key
+        - fingerprint
       additionalProperties: false
     ImportSession:
       type: object

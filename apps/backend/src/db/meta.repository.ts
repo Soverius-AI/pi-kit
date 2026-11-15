@@ -239,6 +239,10 @@ export class MetaRepository {
       .run(key, JSON.stringify(value));
   }
 
+  deleteSetting(key: string): void {
+    this.db.prepare('DELETE FROM settings WHERE key = ?').run(key);
+  }
+
   allSettings(): Record<string, unknown> {
     const rows = this.db.prepare('SELECT key, value_json FROM settings').all() as { key: string; value_json: string }[];
     return Object.fromEntries(rows.map((r) => [r.key, JSON.parse(r.value_json)]));

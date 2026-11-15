@@ -1,7 +1,15 @@
 import { english } from '@pi-kit/i18n/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { ProjectGit, SetupScript, TrustState, Workspace, WorktreeSettings } from '@pi-kit/protocol';
+import type {
+  ExternalSessions,
+  ProjectGit,
+  SetupScript,
+  TrustState,
+  Workspace,
+  WorktreeSettings,
+} from '@pi-kit/protocol';
+import { provideMockApi, sessionCompact } from '@pi-kit/api';
 import { ScoreStore, ThreadsStore } from '@pi-kit/threads/api';
 import { ProjectPageStore, SettingsStore } from '@pi-kit/settings/data';
 import { settingsCatalog } from '@pi-kit/ui';
@@ -85,7 +93,11 @@ describe('Settings › Projects', () => {
     ]),
     moveProject: vi.fn(async () => undefined),
     openWorkspace: vi.fn(async () => undefined),
+    findExternalSessions: vi.fn(async (): Promise<ExternalSessions> => ({ sessions: [], unavailable: [], skipped: 0 })),
+    importExternalSession: vi.fn(async () => ({ id: 'imported-copy' })),
+    select: vi.fn(),
   };
+  const compactSession = vi.fn(async () => ({ summary: 'Context summary', tokensBefore: 1000 }));
   const score = { overview: signal(undefined), loadOverview: vi.fn(async () => undefined) };
 
   // The page store as the components see it.
@@ -139,6 +151,8 @@ describe('Settings › Projects', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    threads.findExternalSessions.mockResolvedValue({ sessions: [], unavailable: [], skipped: 0 });
+    compactSession.mockResolvedValue({ summary: 'Context summary', tokensBefore: 1000 });
     vi.useFakeTimers();
     project.set(undefined);
     searching.set(false);
@@ -167,6 +181,7 @@ describe('Settings › Projects', () => {
         { provide: ProjectPageStore, useValue: page },
         { provide: ThreadsStore, useValue: threads },
         { provide: ScoreStore, useValue: score },
+        ...provideMockApi([[sessionCompact, compactSession, (options) => [options.path?.['id']]]]),
       ],
     });
   });
@@ -310,6 +325,7 @@ describe('Settings › Projects', () => {
       const f = render();
       expect(Array.from(el(f).querySelectorAll('section.pk-group')).map((s) => s.getAttribute('aria-label'))).toEqual([
         'Trust',
+        'Import sessions',
         'New threads',
         'Worktrees',
         'Setup scripts',
@@ -404,9 +420,127 @@ describe('Settings › Projects', () => {
       const f = render();
       expect(Array.from(el(f).querySelectorAll('section.pk-group')).map((s) => s.getAttribute('aria-label'))).toEqual([
         'Trust',
+        'Import sessions',
         'New threads and worktrees',
         'Sidebar',
       ]);
+    });
+
+    it('imports a native copy before compaction and retries only compaction when the model fails', async () => {
+      const session = {
+        key: 'a'.repeat(64),
+        source: 'claude-code' as const,
+        title: 'Existing conversation',
+        updatedAt: 1,
+        fingerprint: 'b'.repeat(64),
+        status: 'new' as const,
+        importedThreadId: null,
+      };
+      threads.findExternalSessions.mockResolvedValueOnce({ sessions: [session], unavailable: [], skipped: 0 });
+      compactSession.mockRejectedValueOnce(new Error('Model unavailable'));
+      const f = render();
+      await vi.waitFor(() => {
+        f.detectChanges();
+        expect(el(f).querySelector('[data-testid=import-selected]')).not.toBeNull();
+      });
+      const compact = el(f).querySelector('[data-testid=compact-imports]') as HTMLInputElement;
+      expect(compact.checked).toBe(false);
+      compact.checked = true;
+      compact.dispatchEvent(new Event('change'));
+      click(el(f), '[data-testid=import-selected]');
+      await vi.waitFor(() => {
+        f.detectChanges();
+        expect(el(f).textContent).toContain('Imported successfully. Compaction failed: Model unavailable');
+      });
+      expect(threads.importExternalSession).toHaveBeenCalledWith(KIT, {
+        key: session.key,
+        fingerprint: session.fingerprint,
+      });
+      expect(compactSession).toHaveBeenCalledWith('imported-copy');
+      expect((el(f).querySelector('[data-testid=import-selected]') as HTMLButtonElement).disabled).toBe(true);
+      expect(el(f).textContent).toContain('Already imported');
+      click(el(f), `[data-testid=retry-compact-${session.key}]`);
+      await vi.waitFor(() => {
+        f.detectChanges();
+        expect(el(f).querySelector(`[data-testid=retry-compact-${session.key}]`)).toBeNull();
+      });
+      expect(threads.importExternalSession).toHaveBeenCalledTimes(1);
+      expect(compactSession).toHaveBeenCalledTimes(2);
+    });
+
+    it('ignores an old import when the user leaves a project and returns before it completes', async () => {
+      const session = {
+        key: 'a'.repeat(64),
+        source: 'codex' as const,
+        title: 'Conversation',
+        updatedAt: 1,
+        fingerprint: 'b'.repeat(64),
+        status: 'new' as const,
+        importedThreadId: null,
+      };
+      threads.findExternalSessions.mockResolvedValueOnce({ sessions: [session], unavailable: [], skipped: 0 });
+      let finish!: (value: { id: string }) => void;
+      threads.importExternalSession.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const f = render();
+      await vi.waitFor(() => {
+        f.detectChanges();
+        expect(el(f).querySelector('[data-testid=import-selected]')).not.toBeNull();
+      });
+      click(el(f), '[data-testid=import-selected]');
+      await vi.waitFor(() => expect(finish).toBeDefined());
+      page.workspace.set(workspace(SPEC));
+      f.detectChanges();
+      await vi.waitFor(() => expect(threads.findExternalSessions).toHaveBeenCalledWith(SPEC));
+      threads.findExternalSessions.mockResolvedValueOnce({ sessions: [session], unavailable: [], skipped: 0 });
+      page.workspace.set(workspace(KIT));
+      f.detectChanges();
+      await vi.waitFor(() => {
+        f.detectChanges();
+        expect(el(f).querySelector('[data-testid=import-selected]')).not.toBeNull();
+      });
+      finish({ id: 'old-import' });
+      await vi.advanceTimersByTimeAsync(0);
+      f.detectChanges();
+      expect(el(f).textContent).not.toContain('Already imported');
+      expect((el(f).querySelector('[data-testid=import-selected]') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('drops discovery results for a project the user has left', async () => {
+      let finish!: (value: ExternalSessions) => void;
+      threads.findExternalSessions.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const f = render();
+      await vi.waitFor(() => expect(threads.findExternalSessions).toHaveBeenCalledWith(KIT));
+      page.workspace.set(workspace(SPEC));
+      f.detectChanges();
+      await vi.waitFor(() => expect(threads.findExternalSessions).toHaveBeenCalledWith(SPEC));
+      finish({
+        sessions: [
+          {
+            key: 'old',
+            source: 'codex',
+            title: 'Wrong project',
+            updatedAt: 1,
+            fingerprint: 'old',
+            status: 'new',
+            importedThreadId: null,
+          },
+        ],
+        unavailable: [],
+        skipped: 0,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      f.detectChanges();
+      expect(el(f).textContent).not.toContain('Wrong project');
     });
 
     it('Back slides the page out and closes it; with reduced motion at once', () => {

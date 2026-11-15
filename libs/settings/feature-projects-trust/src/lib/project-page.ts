@@ -24,6 +24,7 @@ import {
 } from '@pi-kit/settings/util';
 import { OpenWorktrees } from './open-worktrees';
 import { SetupScripts } from './setup-scripts';
+import { SessionImports } from './session-imports';
 
 /** Milliseconds the page takes to slide out (doc/docs/design-system.md “Motion”: the detail page, 160ms). */
 const SLIDE_OUT_MS = 150;
@@ -36,7 +37,7 @@ const SLIDE_OUT_MS = 150;
  */
 @Component({
   selector: 'pk-project-page',
-  imports: [OpenWorktrees, PkTip, SetupScripts, TranslocoPipe, PkIcon],
+  imports: [OpenWorktrees, PkTip, SetupScripts, TranslocoPipe, PkIcon, SessionImports],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (page.workspace(); as workspace) {
@@ -106,6 +107,8 @@ const SLIDE_OUT_MS = 150;
             </div>
           </div>
         </section>
+
+        <pk-session-imports [cwd]="workspace.cwd" />
 
         @if (workspace.worktree; as wt) {
           @if (wt.git) {

@@ -100,3 +100,20 @@ it('selects a model and effort, preserves them on an invalid selection, and reso
   expect(await sessions.modelWindow('fixture', 'reasoning')).toBe(32768);
   expect(await sessions.modelWindow('fixture', 'missing')).toBeUndefined();
 });
+
+it('opens imported history with the configured model and estimates context without inventing token usage', async () => {
+  const imported = await sessions.importHistory(
+    base,
+    'Imported conversation',
+    [
+      { role: 'user', text: 'A substantial original question '.repeat(100), timestamp: 1 },
+      { role: 'assistant', text: 'An original answer '.repeat(100), timestamp: 2 },
+    ],
+    {},
+    join(base, 'imported'),
+  );
+  await sessions.open(imported.id, { cwd: base, sessionPath: imported.path });
+  expect(sessions.stats(imported.id)).toMatchObject({ model: { provider: 'fixture', id: 'plain' }, cost: 0 });
+  expect(sessions.stats(imported.id).contextTokens).toBeGreaterThan(0);
+  expect(sessions.contextShare(imported.id)).toBeGreaterThan(0);
+});

@@ -396,19 +396,24 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     this.status.listChanged();
   }
 
-  private async adopt(
-    session: NewPiSession,
-    source: Pick<ThreadRow, 'sessionPath'> & { id?: string },
-  ): Promise<ThreadDetail> {
-    const sourceId = source.id ?? this.threads.all().find((row) => row.sessionPath === source.sessionPath)?.id;
+  /** A session file pi wrote becomes a thread; `source` is the thread or file it was copied from. */
+  async adopt(session: NewPiSession, source?: Pick<ThreadRow, 'sessionPath'> & { id?: string }): Promise<ThreadDetail> {
+    const sourceId =
+      source && (source.id ?? this.threads.all().find((row) => row.sessionPath === source.sessionPath)?.id);
     if (sourceId) this.protection.copy(sourceId, session.id);
-    this.threads.insertDraft({
-      id: session.id,
-      sessionPath: session.path,
-      cwd: session.cwd,
-      parentSessionPath: source.sessionPath,
-      baseCommit: await this.outcomes.headOf(session.cwd),
-    });
+    const indexed = this.threads.get(session.id);
+    if (indexed && indexed.sessionPath !== session.path)
+      throw new ConflictException('The session ID already belongs to another file.');
+    // Before the first await: a reconcile pass in between would index the new file as a session the CLI made.
+    if (!indexed)
+      this.threads.insertDraft({
+        id: session.id,
+        sessionPath: session.path,
+        cwd: session.cwd,
+        parentSessionPath: source?.sessionPath,
+      });
+    const baseCommit = await this.outcomes.headOf(session.cwd);
+    this.threads.setBase(session.id, baseCommit, baseCommit ? 'start' : 'none');
     this.meta.touchWorkspace(session.cwd);
     // pi has written the file already; pick up its counts, name and preview.
     await this.reconcile();
@@ -718,6 +723,11 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     };
   }
 
+  find(id: string): ThreadDetail | undefined {
+    const row = this.threads.get(id);
+    return row && this.detail(row);
+  }
+
   private detail(row: ThreadRow): ThreadDetail {
     return { ...this.summary(row), sessionPath: row.sessionPath };
   }
@@ -728,7 +738,7 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     return row;
   }
 
-  private requireDirectory(cwd: string): void {
+  requireDirectory(cwd: string): void {
     if (!isAbsolute(cwd) || !existsSync(cwd) || !statSync(cwd).isDirectory()) {
       throw new BadRequestException(`${cwd} is not an existing absolute folder.`);
     }

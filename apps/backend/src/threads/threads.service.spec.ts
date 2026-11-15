@@ -1,12 +1,19 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { ConflictException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseService } from '../db/database.service';
 import { MetaRepository } from '../db/meta.repository';
 import { ThreadsRepository } from '../db/threads.repository';
 import { ThreadsService } from './threads.service';
 import { ThreadProtectionTesting } from '../pi/thread-protection.testing';
+import { ExternalImportsService } from './external-imports.service';
+import * as external from './external-sessions';
+import * as files from '../pi/session-files';
+import { SessionIndex } from '../pi/session-index';
+
+vi.mock('../pi/load-pi', () => ({ loadPi: () => import('@earendil-works/pi-coding-agent') }));
 
 let base: string;
 let project: string;
@@ -57,8 +64,188 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
+});
+
+describe('external imports', () => {
+  const writeHistory = vi.fn();
+  let snapshot: external.ExternalSnapshot;
+  let imports: ExternalImportsService;
+
+  beforeEach(() => {
+    snapshot = {
+      key: external.fingerprint('source'),
+      source: 'claude-code',
+      nativeId: 'original',
+      title: 'Original chat',
+      updatedAt: 1,
+      fingerprint: external.fingerprint('first'),
+      messages: [{ role: 'user', text: 'Original context', timestamp: 1 }],
+    };
+    vi.spyOn(external, 'discoverExternalSessions').mockImplementation(async () => ({
+      sessions: [snapshot],
+      unavailable: [],
+      skipped: 0,
+    }));
+    let count = 0;
+    writeHistory.mockReset().mockImplementation(async () => {
+      const id = `copy-${++count}`;
+      const path = join(base, `${id}.jsonl`);
+      writeFileSync(path, '{}\n');
+      return { id, path, cwd: project };
+    });
+    service = new ThreadsService(
+      rows,
+      { lastRun: () => undefined } as never,
+      meta,
+      { importHistory: writeHistory, dispose: () => undefined, trashSession: () => 'trash' } as never,
+      {
+        stateOf: () => ({ activity: 'idle', lastRun: null }),
+        gone: () => undefined,
+        listChanged: () => undefined,
+      } as never,
+      { describe: () => undefined } as never,
+      { headOf: async () => null } as never,
+      { defaultCwd: project } as never,
+      ThreadProtectionTesting.bypass(),
+    );
+    vi.spyOn(service, 'reconcile').mockResolvedValue();
+    imports = new ExternalImportsService(service, meta, { importHistory: writeHistory } as never);
+  });
+
+  it('deduplicates simultaneous and repeated imports while leaving native pi parent paths empty', async () => {
+    const request = { key: snapshot.key, fingerprint: snapshot.fingerprint };
+    const [first, concurrent] = await Promise.all([
+      imports.importSession(project, request),
+      imports.importSession(project, request),
+    ]);
+    expect(concurrent.id).toBe(first.id);
+    expect((await imports.importSession(project, request)).id).toBe(first.id);
+    expect(writeHistory).toHaveBeenCalledTimes(1);
+    expect(rows.get(first.id)?.parentSessionPath).toBeNull();
+    expect((await imports.discover(project)).sessions[0]).toMatchObject({
+      status: 'imported',
+      importedThreadId: first.id,
+    });
+  });
+
+  it('creates another snapshot for changed history, and rejects a stale review without writing anything', async () => {
+    const first = await imports.importSession(project, { key: snapshot.key, fingerprint: snapshot.fingerprint });
+    const previous = snapshot.fingerprint;
+    snapshot = {
+      ...snapshot,
+      fingerprint: external.fingerprint('second'),
+      messages: [...snapshot.messages, { role: 'assistant', text: 'More source work', timestamp: 2 }],
+    };
+    expect((await imports.discover(project)).sessions[0].status).toBe('changed');
+    await expect(
+      imports.importSession(project, { key: snapshot.key, fingerprint: external.fingerprint('stale') }),
+    ).rejects.toThrow('changed');
+    expect(writeHistory).toHaveBeenCalledTimes(1);
+    const second = await imports.importSession(project, { key: snapshot.key, fingerprint: snapshot.fingerprint });
+    expect(second.id).not.toBe(first.id);
+    expect(rows.get(first.id)).toBeDefined();
+    expect((await imports.importSession(project, { key: snapshot.key, fingerprint: previous })).id).toBe(first.id);
+    expect(writeHistory).toHaveBeenCalledTimes(2);
+  });
+
+  it('offers a deleted copy as new and recreates it on request', async () => {
+    const request = { key: snapshot.key, fingerprint: snapshot.fingerprint };
+    const first = await imports.importSession(project, request);
+    rows.delete(first.id);
+    expect((await imports.discover(project)).sessions[0].status).toBe('new');
+    const original = snapshot;
+    snapshot = { ...snapshot, fingerprint: external.fingerprint('continued') };
+    expect((await imports.discover(project)).sessions[0].status).toBe('new');
+    snapshot = original;
+    expect((await imports.importSession(project, request)).id).not.toBe(first.id);
+    expect(writeHistory).toHaveBeenCalledTimes(2);
+  });
+
+  it('forgets what a deleted thread imported and keeps the other copies', async () => {
+    const first = await imports.importSession(project, { key: snapshot.key, fingerprint: snapshot.fingerprint });
+    snapshot = {
+      ...snapshot,
+      fingerprint: external.fingerprint('second'),
+      messages: [...snapshot.messages, { role: 'assistant', text: 'More source work', timestamp: 2 }],
+    };
+    const second = await imports.importSession(project, { key: snapshot.key, fingerprint: snapshot.fingerprint });
+    const owners = () =>
+      Object.values(meta.getSetting('imports') as Record<string, Record<string, string>>).flatMap((versions) =>
+        Object.values(versions),
+      );
+    expect(new Set(owners())).toEqual(new Set([first.id, second.id]));
+    await service.remove(first.id);
+    expect(new Set(owners())).toEqual(new Set([second.id]));
+    await service.remove(second.id);
+    expect(meta.allSettings()).not.toHaveProperty('imports');
+  });
+
+  it('answers a Codex source that changed or cannot be read with a conflict', async () => {
+    snapshot = { ...snapshot, source: 'codex', messages: [] };
+    vi.spyOn(external, 'loadCodexSnapshot').mockRejectedValue(new Error('Codex session reader timed out.'));
+    await expect(
+      imports.importSession(project, { key: snapshot.key, fingerprint: snapshot.fingerprint }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(writeHistory).not.toHaveBeenCalled();
+  });
+
+  it('reuses identical normalized history after a metadata-only source change', async () => {
+    const first = await imports.importSession(project, { key: snapshot.key, fingerprint: snapshot.fingerprint });
+    snapshot = { ...snapshot, fingerprint: external.fingerprint('metadata-change') };
+    const second = await imports.importSession(project, { key: snapshot.key, fingerprint: snapshot.fingerprint });
+    expect(second.id).toBe(first.id);
+    expect(writeHistory).toHaveBeenCalledTimes(1);
+    expect((await imports.discover(project)).sessions[0].status).toBe('imported');
+  });
+
+  it('adopts a real pi file even when reconciliation indexes it before adoption completes', async () => {
+    rows.delete('plain');
+    rows.delete('replay');
+    const index = new SessionIndex(() => join(base, 'pi'));
+    const importHistory = (
+      cwd: string,
+      title: string,
+      messages: external.ImportedMessage[],
+      origin: Record<string, unknown>,
+    ) => files.importHistory(cwd, title, messages, origin, join(base, 'pi', 'project'));
+    service = new ThreadsService(
+      rows,
+      {} as never,
+      meta,
+      {
+        scanSessions: () => index.scan(),
+        has: () => false,
+        treeSource: (_id: string, path: string) => files.readSession(path),
+        modelWindow: async () => undefined,
+      } as never,
+      { stateOf: () => ({ activity: 'idle', lastRun: null }), listChanged: vi.fn(), touchAll: vi.fn() } as never,
+      { describe: () => undefined, sweep: async () => undefined } as never,
+      {
+        headOf: async () => {
+          await service.reconcile();
+          return null;
+        },
+        estimateBases: async () => undefined,
+      } as never,
+      { defaultCwd: project } as never,
+      ThreadProtectionTesting.bypass(),
+    );
+    imports = new ExternalImportsService(service, meta, { importHistory } as never);
+    const request = { key: snapshot.key, fingerprint: snapshot.fingerprint };
+    const imported = await imports.importSession(project, request);
+    expect(rows.all()).toHaveLength(1);
+    expect(rows.get(imported.id)).toMatchObject({
+      title: 'Original chat',
+      messageCount: 1,
+      parentSessionPath: null,
+      origin: 'app',
+    });
+    expect((await imports.importSession(project, request)).id).toBe(imported.id);
+    expect((await imports.discover(project)).sessions[0].status).toBe('imported');
+  });
 });
 
 it('admits no run while or after a thread is deleted, and keeps it Sandboxed and runnable when its worktree cannot be removed', async () => {

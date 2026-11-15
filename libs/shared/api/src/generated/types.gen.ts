@@ -569,6 +569,22 @@ export type ExportResult = {
     redacted?: number;
 };
 
+export type ExternalSession = {
+    key: string;
+    source: 'claude-code' | 'codex';
+    title: string;
+    updatedAt: number;
+    fingerprint: string;
+    status: 'new' | 'changed' | 'imported';
+    importedThreadId: string | null;
+};
+
+export type ExternalSessions = {
+    sessions: Array<ExternalSession>;
+    unavailable: Array<'claude-code' | 'codex'>;
+    skipped: number;
+};
+
 export type FeedbackEntry = {
     messageId: string;
     rating: 'up' | 'down';
@@ -641,6 +657,11 @@ export type HunkLabelEntry = {
     excerpt?: Array<string>;
     by: 'model' | 'ledger' | 'default' | 'person';
     was?: 'specified' | 'corrected' | 'autonomous' | 'manual';
+};
+
+export type ImportExternalSession = {
+    key: string;
+    fingerprint: string;
 };
 
 export type ImportSession = {
@@ -4051,6 +4072,82 @@ export type ThreadsPutFeedbackResponses = {
 };
 
 export type ThreadsPutFeedbackResponse = ThreadsPutFeedbackResponses[keyof ThreadsPutFeedbackResponses];
+
+export type WorkspacesExternalSessionsData = {
+    body?: never;
+    path: {
+        /**
+         * The project's folder, URL-encoded (a project has no other id).
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/workspaces/{id}/import-sessions';
+};
+
+export type WorkspacesExternalSessionsErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * The folder is not a known project.
+     */
+    404: Problem;
+};
+
+export type WorkspacesExternalSessionsError = WorkspacesExternalSessionsErrors[keyof WorkspacesExternalSessionsErrors];
+
+export type WorkspacesExternalSessionsResponses = {
+    /**
+     * OK
+     */
+    200: ExternalSessions;
+};
+
+export type WorkspacesExternalSessionsResponse = WorkspacesExternalSessionsResponses[keyof WorkspacesExternalSessionsResponses];
+
+export type WorkspacesImportExternalData = {
+    body: ImportExternalSession;
+    path: {
+        /**
+         * The project's folder, URL-encoded (a project has no other id).
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/workspaces/{id}/import-sessions';
+};
+
+export type WorkspacesImportExternalErrors = {
+    /**
+     * No importable history.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * The folder is not a known project.
+     */
+    404: Problem;
+    /**
+     * The source changed or is unavailable; check again.
+     */
+    409: Problem;
+};
+
+export type WorkspacesImportExternalError = WorkspacesImportExternalErrors[keyof WorkspacesImportExternalErrors];
+
+export type WorkspacesImportExternalResponses = {
+    /**
+     * Created
+     */
+    201: ThreadDetail;
+};
+
+export type WorkspacesImportExternalResponse = WorkspacesImportExternalResponses[keyof WorkspacesImportExternalResponses];
 
 export type WorkspacesGitData = {
     body?: never;

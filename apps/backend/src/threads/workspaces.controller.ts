@@ -11,11 +11,17 @@ import {
   WorkspaceSchema,
   type WorktreeDefaults,
   WorktreeDefaultsSchema,
+  ExternalSessionsSchema,
+  type ExternalSessions,
+  ImportExternalSessionSchema,
+  type ThreadDetail,
+  ThreadDetailSchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
 import { Fails, Responds, WorkspaceIdParam, Remote } from '../contract';
 import { MetaRepository } from '../db/meta.repository';
 import { WorktreeService } from '../worktree/worktree.service';
+import { ExternalImportsService } from './external-imports.service';
 import { ThreadsService } from './threads.service';
 
 /** The projects of the sidebar: the folders pi-kit knows, their flags and their order. */
@@ -26,7 +32,43 @@ export class WorkspacesController {
     private readonly threads: ThreadsService,
     private readonly worktrees: WorktreeService,
     private readonly meta: MetaRepository,
+    private readonly imports: ExternalImportsService,
   ) {}
+
+  @Remote()
+  @Get(':id/import-sessions')
+  @WorkspaceIdParam()
+  @ApiOperation({
+    summary: 'Find external sessions',
+    description:
+      'Finds local Claude Code and Codex (CLI 0.165.0+) sessions belonging to this project. Source history is read only.',
+  })
+  @Responds(ExternalSessionsSchema)
+  @Fails({ 404: 'The folder is not a known project.' })
+  externalSessions(@Param('id') id: string): Promise<ExternalSessions> {
+    return this.imports.discover(this.meta.requireWorkspace(id));
+  }
+
+  @Remote()
+  @Post(':id/import-sessions')
+  @WorkspaceIdParam()
+  @ApiOperation({
+    summary: 'Import an external session',
+    description:
+      'Creates an independent native pi snapshot, or returns the already imported snapshot of that source version.',
+  })
+  @Responds(ThreadDetailSchema, { status: 201 })
+  @Fails({
+    400: 'No importable history.',
+    404: 'The folder is not a known project.',
+    409: 'The source changed or is unavailable; check again.',
+  })
+  importExternal(
+    @Param('id') id: string,
+    @Body({ schema: ImportExternalSessionSchema }) body: z.infer<typeof ImportExternalSessionSchema>,
+  ): Promise<ThreadDetail> {
+    return this.imports.importSession(this.meta.requireWorkspace(id), body);
+  }
 
   /** What the Where row of the new-thread page shows about the project's folder: the checked-out branch, the changed files, the branches and who holds them. */
   @Remote()

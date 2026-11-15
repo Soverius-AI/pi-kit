@@ -4379,6 +4379,30 @@
       "unattendedHint": "Legt von jedem Schlüssel eine Kopie in deinem Schlüsselbund ab, die nur pi-kit ohne Touch ID lesen kann, damit der Hintergrunddienst nicht auf deinen Fingerabdruck wartet. Einschalten fragt einmal pro Schlüssel nach Touch ID; Ausschalten entfernt die Kopien.",
       "unattendedBusy": "Schlüsselkopien werden aktualisiert…",
       "unattendedFailed": "„Schlüssel lesen, während ich weg bin“ konnte nicht geändert werden: {{value1}}"
+    },
+    "sessionImports": {
+      "title": "Sitzungen importieren",
+      "description": "Bestehende Sitzungen aus Claude Code und Codex in dieses Projekt übernehmen.",
+      "warning": "Beim Import entstehen unabhängige pi-Kopien. Antworten werden nicht zurücksynchronisiert. Werkzeugverläufe bleiben als Text erhalten; Anhänge bleiben in der ursprünglichen Sitzung.",
+      "check": "Nach neuen Sitzungen suchen",
+      "checking": "Suche läuft…",
+      "review": "Importe ansehen",
+      "found": "{{count}} bestehende Sitzungen für dieses Projekt gefunden.",
+      "unavailable": "Auf diesem Gerät nicht verfügbar: {{sources}}.",
+      "skipped": "{{count}} unlesbare oder gerade geänderte Sitzungsdateien übersprungen.",
+      "empty": "Keine passenden lokalen Sitzungen gefunden.",
+      "claude": "Claude Code",
+      "codex": "Codex",
+      "new": "Neu",
+      "changed": "Seit dem Import geändert",
+      "imported": "Bereits importiert",
+      "open": "Kopie öffnen",
+      "compact": "Nach dem Import kompaktieren",
+      "compactHint": "Fasst älteren Kontext mit dem konfigurierten pi-Modell zusammen. Der importierte Verlauf bleibt verfügbar.",
+      "importSelected": "Auswahl importieren",
+      "importing": "Import läuft…",
+      "retryCompact": "Kompaktierung wiederholen",
+      "compactFailed": "Erfolgreich importiert. Kompaktierung fehlgeschlagen: {{message}}"
     }
   },
   "agents": {
