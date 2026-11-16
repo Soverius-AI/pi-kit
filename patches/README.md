@@ -11,13 +11,18 @@ pnpm applies these patches during installation. They are scoped to the exact ver
 - `@copilotkit/core`: use Zod 4's native JSON Schema conversion in ESM and CommonJS builds,
   and retain explicitly supplied local agents when runtime discovery reports the same id. This
   keeps pi-kit's hydration/cache transport in place rather than replacing it with a default proxy.
-- `@a2ui/web_core`: supply explicit string keys to record schemas, migrate schema behavior
-  introspection to Zod 4's tags and shape/element accessors, and use its native schema conversion.
-- `@ag-ui/client`: raise the SSE parser's buffer limit from 10 MB to 512 MB. The client errors with
+- `@a2ui/web_core` (0.15.0): supply explicit string keys to record schemas and use native Zod 4
+  schema conversion, preserving exclusive unions as `oneOf`. Its shared catalog, binder, reference
+  mapping and data-context code use a non-mutating compatibility view of Zod 4 definitions;
+  annotations and validation errors also use Zod 4 semantics. This covers the legacy v0.9 entry
+  points used by CopilotKit Angular as well as the shared processing code.
+- `@ag-ui/client` (1.0.4): raise both the SSE parser's accumulated-buffer limit and the protobuf
+  message/frame limit from 10 MB to 512 MB in ESM and CommonJS. The client errors with
   "SSE buffer size exceeded maximum limit" when one event is larger than the limit, and a thread's
   history snapshot (`MESSAGES_SNAPSHOT`, the hydration event) is one event: a long thread with large
   tool outputs passed 10 MB and could not be opened. The backend and the renderer share a machine, so
-  the larger buffer costs nothing on the wire.
+  larger parser limits do not increase the bytes sent on the wire. Version 1.0.4's structural-sharing
+  reducer improves live updates but does not replace server snapshot hydration or cursor caching.
 - `zod-to-json-schema`: route Zod 4 schemas to the native converter while retaining compatibility
   for schemas supplied by older external clients.
 
@@ -28,7 +33,10 @@ another Zod version or another package copy.
 Nx hashes overrides and patch files as shared inputs.
 
 `node --test scripts/dependency-contract.spec.mjs` checks shared package resolution, schema
-conversion, A2UI records and external font references. The production browser tests verify
+conversion, shared transport resolution, both parser limits, A2UI records/catalog capabilities
+and external font references. Additional A2UI compatibility regressions ship in its patch and run
+with `node --test "$PWD/node_modules/@a2ui/web_core/src/common/zod-compat.test.js"`.
+The production browser tests verify
 that ordinary chat does not request KaTeX fonts and that requesting a math face loads a local
 asset under the desktop CSP. Uncommon syntax grammars load on demand and invalidate cached
 markdown through the shared grammar revision.

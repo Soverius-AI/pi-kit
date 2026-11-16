@@ -1,0 +1,901 @@
+diff --git a/src/catalog/exclusive_union.js b/src/catalog/exclusive_union.js
+index a86e0db..052b0aa 100644
+--- a/src/catalog/exclusive_union.js
++++ b/src/catalog/exclusive_union.js
+@@ -15,7 +15,7 @@
+  * limitations under the License.
+  */
+ import { z } from 'zod';
+-import { ignoreOverride, parseDef } from 'zod-to-json-schema';
++import { zodToJsonSchema } from '../common/zod-compat.js';
+ /**
+  * The definitions of the guards that make a union exclusive. A JSON Schema
+  * `oneOf` loads as `guard.pipe(union)`; describing or defaulting the pipe
+@@ -51,14 +51,16 @@ export function exclusiveUnion(branches) {
+  * other schema, including a plain `z.union`, which `zod-to-json-schema`
+  * writes as `anyOf`, is converted as usual.
+  */
+-export const exclusiveUnionOverride = (def, refs) => {
+-    const pipe = def;
++export const exclusiveUnionOverride = ({ zodSchema, jsonSchema }) => {
++    const pipe = zodSchema._zod.def;
+     if (!pipe.in || !pipe.out || !exclusiveGuards.has(pipe.in._def))
+-        return ignoreOverride;
+-    const options = pipe.out._def.options;
+-    const oneOf = options
+-        .map((option, index) => parseDef(option._def, { ...refs, currentPath: [...refs.currentPath, 'oneOf', `${index}`] }))
+-        .filter(branch => branch !== undefined);
+-    return def.description === undefined ? { oneOf } : { oneOf, description: def.description };
++        return;
++    const oneOf = pipe.out._zod.def.options.map(option => {
++        const branch = zodToJsonSchema(option, { override: exclusiveUnionOverride });
++        delete branch.$schema;
++        return branch;
++    });
++    for (const key of Object.keys(jsonSchema)) delete jsonSchema[key];
++    jsonSchema.oneOf = oneOf;
++    if (zodSchema.description !== undefined) jsonSchema.description = zodSchema.description;
+ };
+-//# sourceMappingURL=exclusive_union.js.map
+\ No newline at end of file
+diff --git a/src/catalog/reference-map.js b/src/catalog/reference-map.js
+index 52faff8..d64f4f0 100644
+--- a/src/catalog/reference-map.js
++++ b/src/catalog/reference-map.js
+@@ -13,6 +13,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
++import { zodDef } from '../common/zod-compat.js';
+ import { childRefKindOf } from '../types/child-ref-helpers.js';
+ /**
+  * Extracts the target definition name from a JSON Schema `$ref` pointer or URI.
+@@ -34,26 +35,27 @@ export function extractRefDefName(ref) {
+     return segments.pop() ?? '';
+ }
+ function unwrapNextZodLayer(current, visited) {
+-    if (!current?._def)
++    if (!zodDef(current))
+         return null;
+     if (visited) {
+         if (visited.has(current))
+             return null;
+         visited.add(current);
+     }
+-    const typeName = current._def.typeName;
++    const typeName = zodDef(current).typeName;
+     switch (typeName) {
+         case 'ZodOptional':
+         case 'ZodNullable':
+         case 'ZodDefault':
+         case 'ZodReadonly':
+-            return current._def.innerType;
++            return zodDef(current).innerType;
+         case 'ZodBranded':
+-            return current._def.type;
++            return zodDef(current).type;
++        case 'ZodPipeline':
+         case 'ZodEffects':
+-            return current._def.schema;
++            return zodDef(current).schema;
+         case 'ZodLazy':
+-            return current._def.getter();
++            return zodDef(current).getter();
+         default:
+             return null;
+     }
+@@ -65,8 +67,8 @@ function getDescriptions(type) {
+     while (current) {
+         if (current.description)
+             descriptions.push(current.description);
+-        if (current._def?.description)
+-            descriptions.push(current._def.description);
++        if (zodDef(current)?.description)
++            descriptions.push(zodDef(current).description);
+         const next = unwrapNextZodLayer(current, visited);
+         if (!next)
+             break;
+@@ -151,9 +153,9 @@ function checkJsonSchemaRef(schema, options) {
+     return { isChild: false, isChildList: false };
+ }
+ function isTemplateShape(unwrappedOpt) {
+-    if (unwrappedOpt?._def?.typeName === 'ZodObject' &&
+-        typeof unwrappedOpt._def.shape === 'function') {
+-        const shape = unwrappedOpt._def.shape();
++    if (zodDef(unwrappedOpt)?.typeName === 'ZodObject' &&
++        typeof zodDef(unwrappedOpt).shape === 'function') {
++        const shape = zodDef(unwrappedOpt).shape();
+         return Boolean((shape.componentId && (shape.path || shape.dataBinding)) ||
+             shape.explicitList ||
+             shape.template);
+@@ -161,8 +163,8 @@ function isTemplateShape(unwrappedOpt) {
+     return false;
+ }
+ function isArrayOfChild(unwrappedOpt, options) {
+-    if (unwrappedOpt?._def?.typeName === 'ZodArray') {
+-        const elem = unwrapZodType(unwrappedOpt._def.type);
++    if (zodDef(unwrappedOpt)?.typeName === 'ZodArray') {
++        const elem = unwrapZodType(zodDef(unwrappedOpt).type);
+         return analyzeChildRefSchema(elem, options).isChild;
+     }
+     return false;
+@@ -279,7 +281,7 @@ export function analyzeChildRefSchema(schema, options) {
+     if (descMatch)
+         return descMatch;
+     const current = unwrapZodType(schema);
+-    if (!current?._def) {
++    if (!zodDef(current)) {
+         return checkJsonSchemaRef(schema, options);
+     }
+     const unwrappedKind = childRefKindOf(current);
+@@ -289,17 +291,17 @@ export function analyzeChildRefSchema(schema, options) {
+     if (unwrappedKind === 'child-list') {
+         return { isChild: false, isChildList: true };
+     }
+-    const typeName = current._def.typeName;
++    const typeName = zodDef(current).typeName;
+     if (typeName === 'ZodArray') {
+-        const elem = unwrapZodType(current._def.type);
++        const elem = unwrapZodType(zodDef(current).type);
+         return analyzeZodArray(elem, options);
+     }
+     if (typeName === 'ZodUnion') {
+-        const unionOptions = current._def.options ?? [];
++        const unionOptions = zodDef(current).options ?? [];
+         return analyzeUnionOptions(unionOptions, options);
+     }
+-    if (typeName === 'ZodObject' && typeof current._def.shape === 'function') {
+-        const shape = current._def.shape();
++    if (typeName === 'ZodObject' && typeof zodDef(current).shape === 'function') {
++        const shape = zodDef(current).shape();
+         if ((shape.componentId && (shape.path || shape.dataBinding)) ||
+             shape.explicitList ||
+             shape.template) {
+@@ -358,24 +360,24 @@ function inspectShapeField(key, fieldSchema, acc, options) {
+         return;
+     }
+     const inner = unwrapZodType(fieldSchema);
+-    if (options.childPropertyNames?.has(key) && inner?._def?.typeName === 'ZodString') {
++    if (options.childPropertyNames?.has(key) && zodDef(inner)?.typeName === 'ZodString') {
+         acc.singleRefs.add(key);
+         return;
+     }
+-    if (inner?._def?.typeName !== 'ZodArray')
++    if (zodDef(inner)?.typeName !== 'ZodArray')
+         return;
+-    const elem = unwrapZodType(inner._def.type);
+-    if (elem?._def?.typeName !== 'ZodObject' || typeof elem._def.shape !== 'function')
++    const elem = unwrapZodType(zodDef(inner).type);
++    if (zodDef(elem)?.typeName !== 'ZodObject' || typeof zodDef(elem).shape !== 'function')
+         return;
+     // An array of structured objects. Record which sub-keys hold a child so that
+     // sibling properties are not mistaken for references during traversal.
+-    const elemShape = elem._def.shape();
++    const elemShape = zodDef(elem).shape();
+     for (const [subKey, subSchema] of Object.entries(elemShape)) {
+         const subRes = analyzeChildRefSchema(subSchema, options);
+         const subInner = unwrapZodType(subSchema);
+         if (subRes.isChild ||
+             subRes.isChildList ||
+-            (options.childPropertyNames?.has(subKey) && subInner?._def?.typeName === 'ZodString')) {
++            (options.childPropertyNames?.has(subKey) && zodDef(subInner)?.typeName === 'ZodString')) {
+             acc.listRefs.add(key);
+             addNestedRef(acc, key, subKey);
+         }
+@@ -438,8 +440,8 @@ function inspectComponentSchema(schema, acc, options) {
+     if (!schema)
+         return;
+     const current = unwrapZodType(schema);
+-    if (current?._def?.typeName === 'ZodObject' && typeof current._def.shape === 'function') {
+-        const shape = current._def.shape();
++    if (zodDef(current)?.typeName === 'ZodObject' && typeof zodDef(current).shape === 'function') {
++        const shape = zodDef(current).shape();
+         for (const [key, fieldSchema] of Object.entries(shape)) {
+             inspectShapeField(key, fieldSchema, acc, options);
+         }
+diff --git a/src/catalog/schema_generator.js b/src/catalog/schema_generator.js
+index f145c3d..6972676 100644
+--- a/src/catalog/schema_generator.js
++++ b/src/catalog/schema_generator.js
+@@ -14,7 +14,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
+-import { zodToJsonSchema } from 'zod-to-json-schema';
++import { zodToJsonSchema } from '../common/zod-compat.js';
+ import { isAtLeastVersion, toCanonicalVersion } from '../common/semver.js';
+ import { CommonSchemas } from '../types/common-types.js';
+ import { exclusiveUnionOverride } from './exclusive_union.js';
+diff --git a/src/catalog/schema_loader.js b/src/catalog/schema_loader.js
+index 1183081..7bb3dbd 100644
+--- a/src/catalog/schema_loader.js
++++ b/src/catalog/schema_loader.js
+@@ -408,7 +408,7 @@ function convertPropertyToZod(propSchema, rootDoc, visitedPointers = new Set(),
+                 obj = forbidExtra ? baseObj.strict() : baseObj.passthrough();
+             }
+             else {
+-                obj = z.record(z.unknown());
++                obj = z.record(z.string(), z.unknown());
+             }
+             return finalizePropertyZod(obj, propSchema, rootDoc, visitedPointers, defCache);
+         }
+@@ -804,7 +804,7 @@ function parseFunctionDefinitions(rawFunctions, rootDoc, permittedNames, atLeast
+                 }
+                 result.push(new JsonFunctionApi(fn.name, fn, definition => definition['parameters'] && typeof definition['parameters'] === 'object'
+                     ? convertFunctionArgsJsonSchemaToZod(definition['parameters'], rootDoc, defCache)
+-                    : z.record(z.unknown())));
++                    : z.record(z.string(), z.unknown())));
+             }
+         }
+         return result;
+@@ -824,7 +824,7 @@ function parseFunctionDefinitions(rawFunctions, rootDoc, permittedNames, atLeast
+                 const argsSchema = functionArgsSchema(definition);
+                 return argsSchema
+                     ? convertFunctionArgsJsonSchemaToZod(argsSchema, rootDoc, defCache)
+-                    : z.record(z.unknown());
++                    : z.record(z.string(), z.unknown());
+             }));
+         }
+     }
+diff --git a/src/catalog/schema_serializer.js b/src/catalog/schema_serializer.js
+index 582d084..409d23b 100644
+--- a/src/catalog/schema_serializer.js
++++ b/src/catalog/schema_serializer.js
+@@ -14,7 +14,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
+-import { zodToJsonSchema } from 'zod-to-json-schema';
++import { zodToJsonSchema } from '../common/zod-compat.js';
+ import { isAtLeastVersion, toCanonicalVersion } from '../common/semver.js';
+ import { exclusiveUnionOverride } from './exclusive_union.js';
+ import { loadedDefinition } from './json_entries.js';
+diff --git a/src/catalog/spec_annotations.js b/src/catalog/spec_annotations.js
+index 294e216..c3b0fca 100644
+--- a/src/catalog/spec_annotations.js
++++ b/src/catalog/spec_annotations.js
+@@ -13,10 +13,9 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
+-import { z } from 'zod';
+ const annotations = new WeakMap();
+ function cloneWithDefAnnotation(schema, nextAnnotation, description = schema.description) {
+-    const copy = z.ZodType.prototype.describe.call(schema, description);
++    const copy = schema.clone().describe(description);
+     annotations.set(copy, nextAnnotation);
+     copy.describe = (nextDescription) => cloneWithDefAnnotation(copy, annotations.get(copy) ?? nextAnnotation, nextDescription);
+     return copy;
+@@ -34,7 +33,7 @@ function cloneWithDefAnnotation(schema, nextAnnotation, description = schema.des
+  * @returns An annotated copy of `schema`.
+  */
+ export function spec(schema, annotation) {
+-    const copy = z.ZodType.prototype.describe.call(schema, schema.description);
++    const copy = schema.clone().describe(schema.description);
+     annotations.set(copy, { ...annotations.get(schema), ...annotation });
+     return copy;
+ }
+diff --git a/src/catalog/spec_shape.js b/src/catalog/spec_shape.js
+index 7ad7b29..999d6b9 100644
+--- a/src/catalog/spec_shape.js
++++ b/src/catalog/spec_shape.js
+@@ -13,7 +13,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
+-import { zodToJsonSchema } from 'zod-to-json-schema';
++import { zodDef, zodToJsonSchema } from '../common/zod-compat.js';
+ import { isAtLeastVersion, normalizeVersionString, toCanonicalVersion } from '../common/semver.js';
+ import { V08_STANDARD_DEFS } from '../v0_8/standard_defs.js';
+ import { V09_STANDARD_DEFS } from '../v0_9/standard_defs.js';
+@@ -177,7 +177,7 @@ function provablyDisjoint(a, b, resolve, depth = 0) {
+         provablyDisjoint(propertySchema(left, key), propertySchema(right, key), resolve, depth + 1));
+ }
+ function defOf(schema) {
+-    return schema._def;
++    return zodDef(schema);
+ }
+ /** The properties of a component that the message envelope declares. */
+ const ENVELOPE_PROPERTIES = new Set(['id', 'component']);
+@@ -562,9 +562,9 @@ export class SpecShaper {
+             case 'ZodObject':
+                 return this.objectSchema(schema, annotation, () => true, catalogDefs);
+             case 'ZodString':
+-                return stringSchema(def);
++                return fallbackJson(schema);
+             case 'ZodNumber':
+-                return numberSchema(def);
++                return fallbackJson(schema);
+             case 'ZodBoolean':
+                 return { type: 'boolean' };
+             case 'ZodNull':
+@@ -583,8 +583,9 @@ export class SpecShaper {
+                     type: 'array',
+                     items: this.toJson(def['type'], catalogDefs),
+                 };
+-                const min = def['minLength'];
+-                const max = def['maxLength'];
++                const native = fallbackJson(schema);
++                const min = native.minItems === undefined ? undefined : { value: native.minItems };
++                const max = native.maxItems === undefined ? undefined : { value: native.maxItems };
+                 if (min)
+                     result['minItems'] = min.value;
+                 if (max)
+diff --git a/src/catalog/validation_result_coercion.js b/src/catalog/validation_result_coercion.js
+index 4e1d11a..11b0a47 100644
+--- a/src/catalog/validation_result_coercion.js
++++ b/src/catalog/validation_result_coercion.js
+@@ -13,6 +13,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
++import { zodDef } from '../common/zod-compat.js';
+ /**
+  * Matches the `REF:` description a `DynamicBoolean` schema carries, whether
+  * it was defined in code (`REF:#/$defs/DynamicBoolean|...`) or loaded from a
+@@ -32,7 +33,7 @@ export function validityOf(value) {
+ }
+ /** The schema inside a wrapper such as `optional()`, or `undefined`. */
+ function innerSchema(schema) {
+-    const def = schema._def;
++    const def = zodDef(schema);
+     switch (def.typeName) {
+         case 'ZodOptional':
+         case 'ZodNullable':
+@@ -41,6 +42,7 @@ function innerSchema(schema) {
+         case 'ZodBranded':
+         case 'ZodReadonly':
+             return def.innerType;
++        case 'ZodPipeline':
+         case 'ZodEffects':
+             return def.schema;
+         case 'ZodLazy':
+@@ -105,7 +107,7 @@ export function coerceValidationResults(schema, value) {
+         return validityOf(value) ?? value;
+     }
+     const core = unwrap(schema);
+-    const def = core._def;
++    const def = zodDef(core);
+     if (def.typeName === 'ZodArray' && Array.isArray(value) && def.type) {
+         const itemSchema = def.type;
+         let changed = false;
+diff --git a/src/common/zod-compat.js b/src/common/zod-compat.js
+new file mode 100644
+index 0000000..b4516e3
+--- /dev/null
++++ b/src/common/zod-compat.js
+@@ -0,0 +1,45 @@
++import { toJSONSchema } from 'zod';
++
++// Read-only Zod 4 definition view for the catalog's structural walkers. Keep
++// native definitions untouched: parsing, cloning and native conversion use them.
++const definitions = new WeakMap();
++export function zodDef(schema) {
++    if (!schema) return undefined;
++    const def = schema._zod?.def;
++    if (!def) return schema._def;
++    if (definitions.has(schema)) return definitions.get(schema);
++    const view = {
++        ...def,
++        typeName: `Zod${def.type[0].toUpperCase()}${def.type.slice(1)}`,
++        description: schema.description,
++    };
++    definitions.set(schema, view);
++    if (def.type === 'object') {
++        view.shape = () => schema.shape;
++        view.unknownKeys = def.catchall?._zod.def.type === 'never' ? 'strict'
++            : def.catchall ? 'passthrough' : 'strip';
++    }
++    if (def.type === 'array') view.type = def.element;
++    if (def.type === 'enum') view.values = Object.values(def.entries);
++    if (def.type === 'literal') view.value = def.values[0];
++    if (def.type === 'prefault') view.typeName = 'ZodDefault';
++    if (def.type === 'default' || def.type === 'prefault') view.defaultValue = () => def.defaultValue;
++    // Refinements live on the schema itself in Zod 4. Pipes replace effects;
++    // inspect the input, except preprocessors whose typed schema is the output.
++    if (def.type === 'pipe') {
++        view.typeName = def.in._zod.def.type === 'any' ? 'ZodPipeline' : 'ZodEffects';
++        view.schema = ['any', 'transform'].includes(def.in._zod.def.type) ? def.out : def.in;
++    }
++    return view;
++}
++
++// All runtime schema conversion goes through Zod 4, never the Zod 3 converter.
++export function zodToJsonSchema(schema, options = {}) {
++    return toJSONSchema(schema, {
++        target: options.target === 'openApi3' ? 'openapi-3.0' : 'draft-07',
++        io: 'input',
++        unrepresentable: 'any',
++        reused: 'inline',
++        override: options.override,
++    });
++}
+diff --git a/src/common/zod-compat.test.js b/src/common/zod-compat.test.js
+new file mode 100644
+index 0000000..9d07943
+--- /dev/null
++++ b/src/common/zod-compat.test.js
+@@ -0,0 +1,55 @@
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import { z } from 'zod';
++import { zodDef, zodToJsonSchema } from './zod-compat.js';
++import { exclusiveUnion, exclusiveUnionOverride } from '../catalog/exclusive_union.js';
++import { spec, specDef, getSpecAnnotation } from '../catalog/spec_annotations.js';
++import { scrapeSchemaBehavior, DynamicStringSchema, ChildListSchema, ActionSchema,
++    FunctionCallSchema, DynamicValueSchema, MessageProcessor } from '../v0_9/index.js';
++import { basicCatalog } from '../v0_9/basic_catalog/index.js';
++
++test('Zod 4 structural views do not mutate native definitions', () => {
++    const item = z.string();
++    const schema = z.array(item);
++    assert.equal(zodDef(schema).type, item);
++    assert.equal(schema._zod.def.type, 'array');
++    assert.equal(zodDef(schema), zodDef(schema));
++    assert.deepEqual(zodToJsonSchema(schema).items, { type: 'string' });
++});
++
++test('legacy v0_9 exports bind nested, wrapped dynamic/action/child properties', () => {
++    const behavior = scrapeSchemaBehavior(z.object({
++        nested: z.array(z.object({ text: DynamicStringSchema.optional() })),
++        child: ChildListSchema.nullable(),
++        action: ActionSchema.default({ event: { name: 'save' } }),
++    }));
++    assert.equal(behavior.shape.nested.element.shape.text.type, 'DYNAMIC');
++    assert.equal(behavior.shape.child.type, 'STRUCTURAL');
++    assert.equal(behavior.shape.action.type, 'ACTION');
++    assert.equal(FunctionCallSchema.safeParse({ call: 'f', args: { literal: { key: true } } }).success, true);
++    assert.equal(DynamicValueSchema.safeParse({ path: '/x' }).success, true);
++});
++
++test('native conversion preserves exclusive oneOf and scalar checks', () => {
++    const schema = exclusiveUnion([z.string().min(2), z.number().min(1)]);
++    const json = zodToJsonSchema(schema, { override: exclusiveUnionOverride });
++    assert.deepEqual(json.oneOf, [{ type: 'string', minLength: 2 }, { type: 'number', minimum: 1 }]);
++    assert.equal(schema.safeParse('a').success, false);
++    assert.equal(schema.safeParse(3).success, true);
++});
++
++test('spec annotations clone via Zod 4 instance methods and preserve descriptions', () => {
++    const original = z.string().describe('original');
++    const annotated = spec(original, { keywords: { deprecated: true } });
++    assert.notEqual(annotated, original);
++    assert.equal(getSpecAnnotation(original), undefined);
++    assert.equal(annotated.description, 'original');
++    const named = specDef('Named', annotated).describe('renamed');
++    assert.equal(named.description, 'renamed');
++    assert.equal(getSpecAnnotation(named).defName, 'Named');
++});
++
++test('v0_9 basic catalog capabilities use native conversion successfully', () => {
++    const processor = new MessageProcessor([basicCatalog]);
++    assert.ok(processor.getClientCapabilities()['v0.9']);
++});
+diff --git a/src/processing/adapters/base.js b/src/processing/adapters/base.js
+index 8d1ae1b..ec9170d 100644
+--- a/src/processing/adapters/base.js
++++ b/src/processing/adapters/base.js
+@@ -158,7 +158,7 @@ export class BaseVersionAdapter {
+         const preparedPayload = this.preparePayloadForValidation(msgObj);
+         const parseResult = this.schema.safeParse(preparedPayload);
+         if (!parseResult.success) {
+-            const formattedErrors = parseResult.error.errors.map(formatZodIssue).join('; ');
++            const formattedErrors = parseResult.error.issues.map(formatZodIssue).join('; ');
+             const envCtx = extractEnvelopeErrorContext(msgObj, this.version);
+             const preliminaryErr = new A2uiValidationError(`Invalid ${this.version} message: ${formattedErrors}`, parseResult.error, 'VALIDATION_ERROR');
+             const mapped = mapErrorToRendererMessage(preliminaryErr, envCtx);
+diff --git a/src/processing/format-zod-issue.js b/src/processing/format-zod-issue.js
+index 72e8fb0..daf09e1 100644
+--- a/src/processing/format-zod-issue.js
++++ b/src/processing/format-zod-issue.js
+@@ -29,7 +29,7 @@ export function formatZodIssue(err) {
+     const path = err.path.join('.') || 'root';
+     switch (err.code) {
+         case z.ZodIssueCode.invalid_union: {
+-            const unionIssues = err.unionErrors?.flatMap(uErr => uErr.issues);
++            const unionIssues = err.errors?.flat() ?? err.unionErrors?.flatMap(uErr => uErr.issues);
+             if (unionIssues && unionIssues.length > 0) {
+                 return unionIssues.map(formatZodIssue).join('; ');
+             }
+@@ -39,14 +39,16 @@ export function formatZodIssue(err) {
+             const keysStr = err.keys.map(k => `'${k}'`).join(', ');
+             return `${path}: Unrecognized key(s) in object: ${keysStr}`;
+         }
+-        case z.ZodIssueCode.invalid_enum_value: {
++        case 'invalid_value': {
+             const issue = err;
+-            const optionsStr = issue.options.map(o => String(o)).join(' | ');
++            const optionsStr = issue.values.map(o => String(o)).join(' | ');
+             return `${path}: Invalid enum value. Expected ${optionsStr}, received '${String(issue.received)}'`;
+         }
+         case z.ZodIssueCode.invalid_type: {
+             const issue = err;
+-            return `${path}: Expected ${issue.expected}, received ${issue.received}`;
++            return issue.received === undefined
++                ? `${path}: ${issue.message}`
++                : `${path}: Expected ${issue.expected}, received ${issue.received}`;
+         }
+         case z.ZodIssueCode.custom:
+             return `${path}: ${err.message}`;
+diff --git a/src/processing/message-error-mapper.js b/src/processing/message-error-mapper.js
+index 14830a8..731f289 100644
+--- a/src/processing/message-error-mapper.js
++++ b/src/processing/message-error-mapper.js
+@@ -94,8 +94,8 @@ export function normalizeJsonPointer(rawPath) {
+ function collectLeafZodIssues(issues, actionType) {
+     const leaves = [];
+     for (const issue of issues) {
+-        if (issue.code === z.ZodIssueCode.invalid_union && 'unionErrors' in issue) {
+-            const unionIssues = issue.unionErrors.flatMap(u => u.issues);
++        if (issue.code === z.ZodIssueCode.invalid_union && ('errors' in issue || 'unionErrors' in issue)) {
++            const unionIssues = issue.errors?.flat() ?? issue.unionErrors.flatMap(u => u.issues);
+             leaves.push(...collectLeafZodIssues(unionIssues, actionType));
+         }
+         else {
+diff --git a/src/processing/message-processor.js b/src/processing/message-processor.js
+index 4b4e97e..72fe459 100644
+--- a/src/processing/message-processor.js
++++ b/src/processing/message-processor.js
+@@ -13,7 +13,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
+-import { zodToJsonSchema } from 'zod-to-json-schema';
++import { zodToJsonSchema } from '../common/zod-compat.js';
+ import { SurfaceModel } from '../state/surface-model.js';
+ import { exclusiveUnionOverride } from '../catalog/exclusive_union.js';
+ import { cleanSchemaNode } from '../catalog/schema_generator.js';
+diff --git a/src/resolution/data-context.js b/src/resolution/data-context.js
+index 12ef7db..941d2e0 100644
+--- a/src/resolution/data-context.js
++++ b/src/resolution/data-context.js
+@@ -13,6 +13,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
++import { zodDef } from '../common/zod-compat.js';
+ import { signal, computed, effect, isSignal, getValue, setValue, peekValue, } from '../reactivity/signals.js';
+ import { z } from 'zod';
+ import { DataModel } from '../state/data-model.js';
+@@ -55,9 +56,9 @@ export function getKnownSchemaKeys(schema) {
+     const result = (() => {
+         let current = schema;
+         while (current) {
+-            if (current instanceof z.ZodObject || current._def?.typeName === 'ZodObject') {
++            if (current instanceof z.ZodObject || zodDef(current)?.typeName === 'ZodObject') {
+                 // If passthrough is enabled, arbitrary keys are allowed.
+-                if (current._def?.unknownKeys === 'passthrough') {
++                if (zodDef(current)?.unknownKeys === 'passthrough') {
+                     return null;
+                 }
+                 const shape = typeof current.shape === 'function' ? current.shape() : current.shape;
+@@ -66,35 +67,35 @@ export function getKnownSchemaKeys(schema) {
+                 }
+                 return null;
+             }
+-            if (current instanceof z.ZodEffects || current._def?.typeName === 'ZodEffects') {
+-                current = current._def.schema;
++            if (['ZodEffects', 'ZodPipeline'].includes(zodDef(current)?.typeName)) {
++                current = zodDef(current).schema;
+                 continue;
+             }
+             if (current instanceof z.ZodOptional ||
+                 current instanceof z.ZodNullable ||
+-                current._def?.typeName === 'ZodOptional' ||
+-                current._def?.typeName === 'ZodNullable') {
+-                current = current._def.innerType;
++                zodDef(current)?.typeName === 'ZodOptional' ||
++                zodDef(current)?.typeName === 'ZodNullable') {
++                current = zodDef(current).innerType;
+                 continue;
+             }
+-            if (current instanceof z.ZodDefault || current._def?.typeName === 'ZodDefault') {
+-                current = current._def.innerType;
++            if (current instanceof z.ZodDefault || zodDef(current)?.typeName === 'ZodDefault') {
++                current = zodDef(current).innerType;
+                 continue;
+             }
+-            if (current instanceof z.ZodCatch || current._def?.typeName === 'ZodCatch') {
+-                current = current._def.innerType;
++            if (current instanceof z.ZodCatch || zodDef(current)?.typeName === 'ZodCatch') {
++                current = zodDef(current).innerType;
+                 continue;
+             }
+-            if (current instanceof z.ZodIntersection || current._def?.typeName === 'ZodIntersection') {
+-                const leftKeys = getKnownSchemaKeys(current._def.left);
+-                const rightKeys = getKnownSchemaKeys(current._def.right);
++            if (current instanceof z.ZodIntersection || zodDef(current)?.typeName === 'ZodIntersection') {
++                const leftKeys = getKnownSchemaKeys(zodDef(current).left);
++                const rightKeys = getKnownSchemaKeys(zodDef(current).right);
+                 if (!leftKeys || !rightKeys) {
+                     return null;
+                 }
+                 return new Set([...leftKeys, ...rightKeys]);
+             }
+-            if (current instanceof z.ZodUnion || current._def?.typeName === 'ZodUnion') {
+-                const options = current._def.options;
++            if (current instanceof z.ZodUnion || zodDef(current)?.typeName === 'ZodUnion') {
++                const options = zodDef(current).options;
+                 const allKeys = new Set();
+                 for (const opt of options) {
+                     const k = getKnownSchemaKeys(opt);
+diff --git a/src/resolution/generic-binder.js b/src/resolution/generic-binder.js
+index 8d84160..19d798f 100644
+--- a/src/resolution/generic-binder.js
++++ b/src/resolution/generic-binder.js
+@@ -13,6 +13,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
++import { zodDef } from '../common/zod-compat.js';
+ import { AccessibilityAttributesSchema, } from '../types/common-types.js';
+ import { childRefKindOf } from '../types/child-ref-helpers.js';
+ import { extractRefDefName } from '../catalog/reference-map.js';
+@@ -56,21 +57,21 @@ export function scrapeSchemaBehavior(schema) {
+ function unwrapZodSchema(type) {
+     let current = type;
+     while (current) {
+-        const typeName = current._def?.typeName;
++        const typeName = zodDef(current)?.typeName;
+         if (typeName === 'ZodOptional' ||
+             typeName === 'ZodNullable' ||
+             typeName === 'ZodDefault' ||
+             typeName === 'ZodReadonly') {
+-            current = current._def.innerType;
++            current = zodDef(current).innerType;
+         }
+-        else if (typeName === 'ZodEffects') {
+-            current = current._def.schema;
++        else if ((typeName === 'ZodEffects' || typeName === 'ZodPipeline')) {
++            current = zodDef(current).schema;
+         }
+         else if (typeName === 'ZodBranded') {
+-            current = current._def.type;
++            current = zodDef(current).type;
+         }
+         else if (typeName === 'ZodLazy') {
+-            current = current._def.getter();
++            current = zodDef(current).getter();
+         }
+         else {
+             break;
+@@ -89,24 +90,24 @@ function getRefDefName(type) {
+     let current = type;
+     let desc = '';
+     while (current) {
+-        desc = current.description ?? current._def?.description ?? '';
++        desc = current.description ?? zodDef(current)?.description ?? '';
+         if (desc)
+             break;
+-        const typeName = current._def?.typeName;
++        const typeName = zodDef(current)?.typeName;
+         if (typeName === 'ZodOptional' ||
+             typeName === 'ZodNullable' ||
+             typeName === 'ZodDefault' ||
+             typeName === 'ZodReadonly') {
+-            current = current._def.innerType;
++            current = zodDef(current).innerType;
+         }
+-        else if (typeName === 'ZodEffects') {
+-            current = current._def.schema;
++        else if ((typeName === 'ZodEffects' || typeName === 'ZodPipeline')) {
++            current = zodDef(current).schema;
+         }
+         else if (typeName === 'ZodBranded') {
+-            current = current._def.type;
++            current = zodDef(current).type;
+         }
+         else if (typeName === 'ZodLazy') {
+-            current = current._def.getter();
++            current = zodDef(current).getter();
+         }
+         else {
+             break;
+@@ -129,8 +130,8 @@ function isCheckableField(type) {
+         return true;
+     }
+     const current = unwrapZodSchema(type);
+-    if (current?._def?.typeName === 'ZodArray') {
+-        const elem = current._def.type;
++    if (zodDef(current)?.typeName === 'ZodArray') {
++        const elem = zodDef(current).type;
+         const elemDefName = getRefDefName(elem);
+         if (elemDefName === 'CheckRule') {
+             return true;
+@@ -142,7 +143,7 @@ function isActionOption(option) {
+     if (getRefDefName(option) === 'Action')
+         return true;
+     const current = unwrapZodSchema(option);
+-    const def = current._def;
++    const def = zodDef(current);
+     return def?.typeName === 'ZodObject' && Boolean(def.shape?.().event);
+ }
+ function isDynamicOption(option) {
+@@ -151,7 +152,7 @@ function isDynamicOption(option) {
+         return true;
+     }
+     const current = unwrapZodSchema(option);
+-    const def = current._def;
++    const def = zodDef(current);
+     if (def?.typeName !== 'ZodObject')
+         return false;
+     const shape = def.shape?.() || {};
+@@ -167,7 +168,7 @@ function isChildListOption(option) {
+         return true;
+     }
+     const current = unwrapZodSchema(option);
+-    const def = current._def;
++    const def = zodDef(current);
+     if (def?.typeName !== 'ZodObject')
+         return false;
+     const shape = def.shape?.() || {};
+@@ -212,27 +213,27 @@ function getFieldBehavior(type) {
+     if (childRefKindOf(current) === 'child-list' || defName === 'ChildList') {
+         return { type: 'STRUCTURAL' };
+     }
+-    if (isDynamicDef(defName, current._def?.typeName)) {
++    if (isDynamicDef(defName, zodDef(current)?.typeName)) {
+         return { type: 'DYNAMIC' };
+     }
+     // Structural matching for A2UI primitives using typeName to avoid dual-module instanceof issues
+-    if (current._def.typeName === 'ZodUnion') {
+-        const unionBehavior = matchUnionBehavior(current._def.options);
++    if (zodDef(current).typeName === 'ZodUnion') {
++        const unionBehavior = matchUnionBehavior(zodDef(current).options);
+         if (unionBehavior)
+             return unionBehavior;
+     }
+     // Recursive array scraping
+-    if (current._def.typeName === 'ZodArray') {
++    if (zodDef(current).typeName === 'ZodArray') {
+         return {
+             type: 'ARRAY',
+-            element: getFieldBehavior(current._def.type),
++            element: getFieldBehavior(zodDef(current).type),
+         };
+     }
+     // Recursive object scraping
+-    if (current._def.typeName === 'ZodObject') {
++    if (zodDef(current).typeName === 'ZodObject') {
+         return {
+             type: 'OBJECT',
+-            shape: scrapeObjectShape(current._def.shape()),
++            shape: scrapeObjectShape(zodDef(current).shape()),
+         };
+     }
+     // Fallback
+diff --git a/src/resolution/ref-fields.js b/src/resolution/ref-fields.js
+index bd554a6..3cb53d7 100644
+--- a/src/resolution/ref-fields.js
++++ b/src/resolution/ref-fields.js
+@@ -13,6 +13,7 @@
+  * See the License for the specific language governing permissions and
+  * limitations under the License.
+  */
++import { zodDef } from '../common/zod-compat.js';
+ import { childRefKindOf } from '../types/child-ref-helpers.js';
+ /**
+  * Classification reads the child-reference marker `ComponentIdSchema` and
+@@ -37,7 +38,7 @@ export function extractRefFields(schema) {
+         return cached;
+     }
+     const unwrapped = unwrap(schema);
+-    if (unwrapped.schema._def.typeName !== 'ZodObject') {
++    if (zodDef(unwrapped.schema).typeName !== 'ZodObject') {
+         refFieldsCache.set(schema, EMPTY_REF_FIELDS);
+         return EMPTY_REF_FIELDS;
+     }
+@@ -53,15 +54,15 @@ export function extractRefFields(schema) {
+             fields.set(key, { kind: 'single' });
+             continue;
+         }
+-        if (field.schema._def.typeName === 'ZodArray') {
+-            const element = unwrap(field.schema._def.type);
++        if (zodDef(field.schema).typeName === 'ZodArray') {
++            const element = unwrap(zodDef(field.schema).type);
+             // A plain array of component ids: the marker sits on the element
+             // rather than the property (z.array(ComponentIdSchema)).
+             if (marksComponentId(element)) {
+                 fields.set(key, { kind: 'list' });
+                 continue;
+             }
+-            if (element.schema._def.typeName === 'ZodObject') {
++            if (zodDef(element.schema).typeName === 'ZodObject') {
+                 const subKeys = new Set();
+                 const elementShape = element.schema.shape;
+                 for (const [subKey, subValue] of Object.entries(elementShape)) {
+@@ -91,12 +92,12 @@ function unwrap(schema) {
+         if (ref) {
+             refs.add(ref);
+         }
+-        const typeName = current._def.typeName;
++        const typeName = zodDef(current).typeName;
+         if (typeName === 'ZodOptional' || typeName === 'ZodNullable' || typeName === 'ZodDefault') {
+-            current = current._def.innerType;
++            current = zodDef(current).innerType;
+         }
+-        else if (typeName === 'ZodEffects') {
+-            current = current._def.schema;
++        else if ((typeName === 'ZodEffects' || typeName === 'ZodPipeline')) {
++            current = zodDef(current).schema;
+         }
+         else {
+             return { schema: current, descriptions, refs };
+@@ -114,12 +115,12 @@ function hasPointer(descriptions, pointer) {
+ }
+ /** Matches the binder's STRUCTURAL detection for `ChildList`-shaped unions. */
+ function isChildListUnion(schema) {
+-    if (schema._def.typeName !== 'ZodUnion') {
++    if (zodDef(schema).typeName !== 'ZodUnion') {
+         return false;
+     }
+-    const options = schema._def.options;
++    const options = zodDef(schema).options;
+     return options.some(o => {
+-        if (o._def.typeName !== 'ZodObject') {
++        if (zodDef(o).typeName !== 'ZodObject') {
+             return false;
+         }
+         const shape = o.shape;
+diff --git a/src/v0_8/schema/server-to-client.js b/src/v0_8/schema/server-to-client.js
+index 46192fd..530ec7c 100644
+--- a/src/v0_8/schema/server-to-client.js
++++ b/src/v0_8/schema/server-to-client.js
+@@ -34,7 +34,7 @@ const _validateValueProperty = (val, ctx) => {
+ };
+ export const ValueMapSchema = DataValueSchema.describe("A single data entry. Exactly one 'value*' property should be provided alongside the key.");
+ export const ComponentPropertiesSchema = z
+-    .record(z.any())
++    .record(z.string(), z.any())
+     .refine(val => Object.keys(val).length === 1, "A wrapper object that MUST contain exactly one key, which is the name of the component type (e.g., 'Heading').");
+ export const AnyComponentSchema = ComponentPropertiesSchema;
+ export const ComponentInstanceSchema = z
+diff --git a/src/validation/payload-validator.js b/src/validation/payload-validator.js
+index 169b284..460b89e 100644
+--- a/src/validation/payload-validator.js
++++ b/src/validation/payload-validator.js
+@@ -194,7 +194,7 @@ export class PayloadValidator {
+         this.validateCommonEnvelopeFields(properties, knownKeys, componentType, id, componentCatalogId);
+         const result = componentApi.schema.safeParse(properties);
+         if (!result.success) {
+-            const formattedErrors = result.error.errors.map(formatZodIssue).join(', ');
++            const formattedErrors = result.error.issues.map(formatZodIssue).join(', ');
+             const details = zodIssuesToDetails(result.error.issues);
+             const uniquePaths = new Set(details.map(d => d.path));
+             const firstPath = uniquePaths.size === 1 ? details[0]?.path : undefined;
+@@ -215,7 +215,7 @@ export class PayloadValidator {
+             delete properties['accessibility'];
+             const accResult = AccessibilityAttributesSchema.optional().safeParse(accVal);
+             if (!accResult.success) {
+-                const formattedErrors = accResult.error.errors.map(formatZodIssue).join(', ');
++                const formattedErrors = accResult.error.issues.map(formatZodIssue).join(', ');
+                 const details = zodIssuesToDetails(accResult.error.issues, '/accessibility');
+                 throw new A2uiValidationError(`Validation failed for component '${componentType}' (${id}): ${formattedErrors}`, details, 'VALIDATION_ERROR', { path: details[0]?.path });
+             }
+@@ -226,7 +226,7 @@ export class PayloadValidator {
+             delete properties['metadata'];
+             const metaResult = ComponentCommonSchema.shape.metadata.safeParse(metaVal);
+             if (!metaResult.success) {
+-                const formattedErrors = metaResult.error.errors.map(formatZodIssue).join(', ');
++                const formattedErrors = metaResult.error.issues.map(formatZodIssue).join(', ');
+                 const details = zodIssuesToDetails(metaResult.error.issues, '/metadata');
+                 throw new A2uiValidationError(`Validation failed for component '${componentType}' (${id}): ${formattedErrors}`, details, 'VALIDATION_ERROR', { path: details[0]?.path });
+             }
+@@ -363,7 +363,7 @@ export class PayloadValidator {
+         }
+         const result = fn.schema.safeParse(args ?? {});
+         if (!result.success) {
+-            const formattedErrors = result.error.errors.map(formatZodIssue).join(', ');
++            const formattedErrors = result.error.issues.map(formatZodIssue).join(', ');
+             const details = zodIssuesToDetails(result.error.issues, '/args');
+             throw new A2uiValidationError(`Validation failed for function '${name}': ${formattedErrors}`, details, 'VALIDATION_ERROR', { path: details[0]?.path });
+         }
+@@ -384,7 +384,7 @@ export class PayloadValidator {
+             return theme;
+         const result = themeSchema.safeParse(theme);
+         if (!result.success) {
+-            const formattedErrors = result.error.errors.map(formatZodIssue).join(', ');
++            const formattedErrors = result.error.issues.map(formatZodIssue).join(', ');
+             const details = zodIssuesToDetails(result.error.issues, '/theme');
+             throw new A2uiValidationError(`Validation failed for theme: ${formattedErrors}`, details, 'VALIDATION_ERROR', { path: details[0]?.path ?? '/theme' });
+         }
