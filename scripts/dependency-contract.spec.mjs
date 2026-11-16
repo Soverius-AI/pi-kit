@@ -4,9 +4,31 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
-import { FunctionCallSchema, DynamicValueSchema, scrapeSchemaBehavior } from '@a2ui/web_core/v0_9';
+import { FunctionCallSchema, DynamicValueSchema, MessageProcessor, scrapeSchemaBehavior } from '@a2ui/web_core/v0_9';
+import { basicCatalog } from '@a2ui/web_core/v0_9/basic_catalog';
 
 const require = createRequire(import.meta.url);
+
+test('the SDKs share the upgraded AG-UI transport and A2UI implementation', () => {
+  for (const name of ['@copilotkit/angular', '@copilotkit/core', '@copilotkit/runtime']) {
+    const sdkRequire = createRequire(require.resolve(name));
+    assert.equal(sdkRequire.resolve('@ag-ui/client'), require.resolve('@ag-ui/client'), name);
+  }
+  const angularRequire = createRequire(require.resolve('@copilotkit/angular'));
+  const coreRequire = createRequire(require.resolve('@copilotkit/core'));
+  for (const sdkRequire of [angularRequire, coreRequire]) {
+    assert.equal(sdkRequire.resolve('@a2ui/web_core/v0_9'), require.resolve('@a2ui/web_core/v0_9'));
+  }
+});
+
+test('AG-UI retains the enlarged SSE and protobuf limits in both builds', () => {
+  const entry = require.resolve('@ag-ui/client');
+  for (const path of [entry, entry.replace(/index\.js$/, 'index.mjs')]) {
+    const source = readFileSync(path, 'utf8');
+    assert.equal(source.match(/512\*1024\*1024/g)?.length, 2, path);
+    assert.ok(!source.includes('10*1024*1024'), path);
+  }
+});
 
 test('the SDKs resolve the same Zod 4 package as the application', () => {
   const root = require.resolve('zod');
@@ -43,6 +65,11 @@ test('A2UI recognizes data bindings and nested properties in Zod 4 schemas', () 
   assert.equal(behavior.shape.rows.type, 'DYNAMIC');
   assert.equal(behavior.shape.labels.type, 'ARRAY');
   assert.equal(behavior.shape.labels.element.shape.text.type, 'DYNAMIC');
+});
+
+test('A2UI serializes the v0.9 catalog with native Zod 4 conversion', () => {
+  const processor = new MessageProcessor([basicCatalog]);
+  assert.ok(processor.getClientCapabilities()['v0.9']);
 });
 
 test('CopilotKit references local math fonts instead of embedding their bytes in JavaScript', () => {

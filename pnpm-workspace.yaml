@@ -30,6 +30,14 @@ autoInstallPeers: true
 strictPeerDependencies: false
 overrides:
   zod: 4.6.7
+  # Keep SDK transports, schemas and patched registries shared even where upstream pins older versions.
+  '@ag-ui/client': 1.0.4
+  '@ag-ui/core': 1.0.4
+  '@ag-ui/encoder': 1.0.4
+  '@ag-ui/proto': 1.0.4
+  '@a2ui/web_core': 0.15.0
+  '@copilotkit/core': 1.88.0
+  '@copilotkit/shared': 1.88.0
 minimumReleaseAgeExclude:
   - electron@44.9.0
   - '@earendil-works/chord@1.5.2'
@@ -43,8 +51,8 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-telemetry@1.5.2'
   - '@earendil-works/pi-tui@1.5.2'
 patchedDependencies:
-  '@a2ui/web_core@0.10.4': patches/@a2ui__web_core@0.10.4.patch
-  '@ag-ui/client@1.0.2': patches/@ag-ui__client@1.0.2.patch
+  '@a2ui/web_core@0.15.0': patches/@a2ui__web_core@0.15.0.patch
+  '@ag-ui/client@1.0.4': patches/@ag-ui__client@1.0.4.patch
   '@copilotkit/angular@0.6.0': patches/@copilotkit__angular@0.6.0.patch
-  '@copilotkit/core@1.79.1': patches/@copilotkit__core@1.79.1.patch
+  '@copilotkit/core@1.88.0': patches/@copilotkit__core@1.88.0.patch
   zod-to-json-schema@3.25.2: patches/zod-to-json-schema@3.25.2.patch

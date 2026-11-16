@@ -1,0 +1,158 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -6,7 +6,8 @@
+ let rxjs = require("rxjs");
+ let rxjs_operators = require("rxjs/operators");
+ let phoenix = require("phoenix");
+-let zod_to_json_schema = require("zod-to-json-schema");
++let zod = require("zod");
++let zod_to_json_schema = { zodToJsonSchema: (schema, options = {}) => zod.toJSONSchema(schema, { target: options.target === "openApi3" ? "openapi-3.0" : "draft-07", unrepresentable: "any", io: "input" }) };
+ let _copilotkit_learning = require("@copilotkit/learning");
+ 
+ //#region src/utils/http-agent.ts
+@@ -2373,8 +2374,8 @@
+ 		});
+ 		this.localAgents = agents;
+ 		this._agents = {
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+ 		};
+ 		this.applyHeadersToAgents(this._agents);
+ 		this.applyCredentialsToAgents(this._agents);
+@@ -2392,8 +2393,8 @@
+ 		this.applyCredentialsToAgent(agent);
+ 		this.applyRuntimeFetchToAgent(agent);
+ 		this._agents = {
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+ 		};
+ 		this.notifyAgentsChanged();
+ 	}
+@@ -2403,8 +2404,8 @@
+ 	removeAgent__unsafe_dev_only(id) {
+ 		delete this.localAgents[id];
+ 		this._agents = {
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+ 		};
+ 		this.notifyAgentsChanged();
+ 	}
+@@ -2438,8 +2439,8 @@
+ 		this.applyRuntimeFetchToAgent(agent);
+ 		this.localAgents[agentId] = agent;
+ 		this._agents = {
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+ 		};
+ 		this.notifyAgentsChanged();
+ 		return {
+@@ -2448,8 +2449,8 @@
+ 				if (this.localAgents[agentId] === agent) {
+ 					delete this.localAgents[agentId];
+ 					this._agents = {
+-						...this.localAgents,
+-						...this.remoteAgents
++						...this.remoteAgents,
++						...this.localAgents
+ 					};
+ 					this.notifyAgentsChanged();
+ 				}
+@@ -3040,8 +3041,8 @@
+ 			}));
+ 			this.remoteAgents = options?.recovery ? this.reconcileRecoveredAgents(agents) : agents;
+ 			this._agents = {
+-				...this.localAgents,
+-				...this.remoteAgents
++				...this.remoteAgents,
++				...this.localAgents
+ 			};
+ 			this.setRuntimeConnectionStatus(CopilotKitCoreRuntimeConnectionStatus.Connected);
+ 			this._runtimeVersion = version;
+diff --git a/dist/index.mjs b/dist/index.mjs
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -5,7 +5,8 @@
+ import { BehaviorSubject, EMPTY, NEVER, Notification, Observable, Subject, Subscription, asapScheduler, combineLatest, concat, defer, dematerialize, firstValueFrom, from, lastValueFrom, merge, observeOn, of, switchMap, throwError } from "rxjs";
+ import { catchError, concatMap, concatWith, delay, distinctUntilChanged, endWith, filter, finalize, ignoreElements, map, mergeMap, observeOn as observeOn$1, scan, share, shareReplay, startWith, switchMap as switchMap$1, take, takeUntil, tap, timeout, withLatestFrom } from "rxjs/operators";
+ import { Socket } from "phoenix";
+-import { zodToJsonSchema } from "zod-to-json-schema";
++import { toJSONSchema } from "zod";
++const zodToJsonSchema = (schema, options = {}) => toJSONSchema(schema, { target: options.target === "openApi3" ? "openapi-3.0" : "draft-07", unrepresentable: "any", io: "input" });
+ import { createCollector, createTrajectoryCollector } from "@copilotkit/learning";
+ 
+ //#region src/utils/http-agent.ts
+@@ -2372,8 +2373,8 @@
+ 		});
+ 		this.localAgents = agents;
+ 		this._agents = {
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+ 		};
+ 		this.applyHeadersToAgents(this._agents);
+ 		this.applyCredentialsToAgents(this._agents);
+@@ -2391,8 +2392,8 @@
+ 		this.applyCredentialsToAgent(agent);
+ 		this.applyRuntimeFetchToAgent(agent);
+ 		this._agents = {
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+ 		};
+ 		this.notifyAgentsChanged();
+ 	}
+@@ -2402,8 +2403,8 @@
+ 	removeAgent__unsafe_dev_only(id) {
+ 		delete this.localAgents[id];
+ 		this._agents = {
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+ 		};
+ 		this.notifyAgentsChanged();
+ 	}
+@@ -2437,8 +2438,8 @@
+ 		this.applyRuntimeFetchToAgent(agent);
+ 		this.localAgents[agentId] = agent;
+ 		this._agents = {
+-			...this.localAgents,
+-			...this.remoteAgents
++			...this.remoteAgents,
++			...this.localAgents
+ 		};
+ 		this.notifyAgentsChanged();
+ 		return {
+@@ -2447,8 +2448,8 @@
+ 				if (this.localAgents[agentId] === agent) {
+ 					delete this.localAgents[agentId];
+ 					this._agents = {
+-						...this.localAgents,
+-						...this.remoteAgents
++						...this.remoteAgents,
++						...this.localAgents
+ 					};
+ 					this.notifyAgentsChanged();
+ 				}
+@@ -3039,8 +3040,8 @@
+ 			}));
+ 			this.remoteAgents = options?.recovery ? this.reconcileRecoveredAgents(agents) : agents;
+ 			this._agents = {
+-				...this.localAgents,
+-				...this.remoteAgents
++				...this.remoteAgents,
++				...this.localAgents
+ 			};
+ 			this.setRuntimeConnectionStatus(CopilotKitCoreRuntimeConnectionStatus.Connected);
+ 			this._runtimeVersion = version;
