@@ -69,6 +69,28 @@ function world() {
 }
 
 describe('run failure containment', () => {
+  it('keeps the run alive when replay clients switch threads and replays work completed while detached', async () => {
+    const { log, runner, sessions, run, event } = world();
+    const source = new Subject<BaseEvent>();
+    const client = run('t1', source).subscribe();
+    source.next(event('t1'));
+    const replay = runner.connect({ threadId: 't1' }).subscribe();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    client.unsubscribe();
+    replay.unsubscribe();
+    expect(source.observed).toBe(true);
+    expect(await runner.isRunning({ threadId: 't1' })).toBe(true);
+    expect(sessions.abort).not.toHaveBeenCalled();
+
+    source.next({ type: EventType.CUSTOM, name: 'work-while-detached', value: { done: true } } as BaseEvent);
+    source.next(event('t1', EventType.RUN_FINISHED));
+    const reconnected = await firstValueFrom(runner.connect({ threadId: 't1' }).pipe(toArray()));
+    expect(reconnected).toContainEqual(expect.objectContaining({ name: 'work-while-detached' }));
+    expect(reconnected.at(-1)).toMatchObject({ type: EventType.RUN_FINISHED });
+    expect(log.lastRun('t1')?.status).toBe('finished');
+    expect(sessions.abort).not.toHaveBeenCalled();
+  });
+
   it.each(['next', 'error', 'complete', 'terminal'] as const)(
     'contains persistent write failures from %s callbacks while another thread finishes',
     async (trigger) => {
