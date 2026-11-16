@@ -1,12 +1,5 @@
 import type { Translate } from '@pi-kit/i18n';
-import type {
-  Diagnostics,
-  KeyValidation,
-  ResourcesOverview,
-  SettingsOverview,
-  TrustList,
-  TrustState,
-} from '@pi-kit/protocol';
+import type { KeyValidation, KeybindingInfo, ProviderInfo, ResourcesOverview, TrustState } from '@pi-kit/protocol';
 import { settingsSections, type SettingsSectionId } from '@pi-kit/ui';
 export interface LoginPrompt {
   promptId: string;
@@ -49,7 +42,7 @@ export interface SettingsStoreState {
   /** The sub-page of the open section: the folder of the project whose page is showing (Settings › Projects); `undefined` is the section's list. */
   project: string | undefined;
   search: string;
-  overview: SettingsOverview | undefined;
+  providers: ProviderInfo[] | undefined;
   /** Saves in flight, and the “Saved” tick that follows a successful one. */
   saving: number;
   saved: boolean;
@@ -62,8 +55,7 @@ export interface SettingsStoreState {
   credentialsChanged: number;
   resources: ResourcesOverview | undefined;
   resourcesBusy: string[];
-  diagnostics: Diagnostics | undefined;
-  trustList: TrustList | undefined;
+  keybindings: KeybindingInfo[] | undefined;
   /** Trust state of each known folder (Settings › Projects). */
   folders: Record<string, TrustState>;
 }

@@ -768,7 +768,13 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
       }
       void this.attach(row.id).then(() => this.followAgain(row));
       void this.recordOf(row.id).catch(() => undefined);
-      void this.questions.recover(row.id);
+      void this.questions
+        .recover(row.id)
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `The questions of agent ${row.id} could not be recovered: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
     }
   }
 

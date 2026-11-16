@@ -14,11 +14,12 @@ import { errorMessage } from '@pi-kit/api';
 import { keepFocusInside, PkIcon } from '@pi-kit/design-system';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import type { SkillDetail, SkillScope, SkillSearchResult } from '@pi-kit/protocol';
-import { PackagesStore, SettingsStore } from '@pi-kit/settings/api';
+import { PackagesStore, PiSettingsStore, SettingsStore } from '@pi-kit/settings/api';
 import { DialogStore } from '@pi-kit/data-access';
 
 @Component({
   selector: 'pk-install-skill-dialog',
+  providers: [PiSettingsStore],
   imports: [TranslocoPipe, PkIcon, DecimalPipe],
   templateUrl: './install-skill-dialog.html',
   styleUrl: './install-skill-dialog.css',
@@ -26,6 +27,7 @@ import { DialogStore } from '@pi-kit/data-access';
 export class InstallSkillDialog {
   protected readonly pkgs = inject(PackagesStore);
   private readonly settings = inject(SettingsStore);
+  private readonly piSettings = inject(PiSettingsStore);
   private readonly injector = inject(Injector);
   private readonly win = viewChild<ElementRef<HTMLElement>>('win');
   private readonly previews = new Map<string, SkillDetail>();
@@ -50,7 +52,7 @@ export class InstallSkillDialog {
   });
   protected readonly destination = computed(() => {
     const root =
-      this.scope() === 'project' ? `${this.pkgs.cwd()}/.pi` : this.settings.settings()?.agentDir || '~/.pi/agent';
+      this.scope() === 'project' ? `${this.pkgs.cwd()}/.pi` : this.piSettings.settings()?.agentDir || '~/.pi/agent';
     return `${root.replace(/\/$/, '')}/skills/${this.selected()?.name ?? ''}/`;
   });
   protected readonly sourceUrl = computed(() => {

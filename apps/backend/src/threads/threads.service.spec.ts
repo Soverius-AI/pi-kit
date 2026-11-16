@@ -317,3 +317,132 @@ describe('prepareRun and a verification thread', () => {
     await expect(service.prepareRun('plain', project)).resolves.toMatchObject({ cwd: project });
   });
 });
+
+describe('session opening', () => {
+  const deferred = () => {
+    let resolve!: () => void;
+    const promise = new Promise<void>((done) => (resolve = done));
+    return { promise, resolve };
+  };
+  let protection: ReturnType<ThreadProtectionTesting['service']>;
+  let refreshBase: ReturnType<typeof vi.fn>;
+  let open: ReturnType<typeof vi.fn>;
+  let release: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    protection = ThreadProtectionTesting.bypass();
+    refreshBase = vi.fn(async () => undefined);
+    open = vi.fn(async () => ({ threadId: 'plain' }));
+    release = vi.spyOn(protection, 'release').mockResolvedValue();
+    service = new ThreadsService(
+      rows,
+      { lastRun: () => undefined } as never,
+      meta,
+      { open, dispose: vi.fn(), trashSession: () => 'trash', isBusy: () => false } as never,
+      { gone: vi.fn(), listChanged: vi.fn() } as never,
+      {} as never,
+      { refreshBase, track: async () => undefined } as never,
+      { defaultCwd: project } as never,
+      protection,
+    );
+  });
+
+  it('shares preparation and session creation for concurrent cold opens, but caches no settled info', async () => {
+    const preparation = deferred();
+    const opening = deferred();
+    refreshBase.mockImplementation(() => preparation.promise);
+    open.mockImplementation(async () => {
+      await opening.promise;
+      return { threadId: 'plain' };
+    });
+    const first = service.openSession('plain');
+    const second = service.openSession('plain');
+    expect(refreshBase).toHaveBeenCalledTimes(1);
+    expect(open).not.toHaveBeenCalled();
+    preparation.resolve();
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    const third = service.openSession('plain');
+    expect(refreshBase).toHaveBeenCalledTimes(1);
+    opening.resolve();
+    const infos = await Promise.all([first, second, third]);
+    expect(infos[0]).toBe(infos[1]);
+    expect(infos[0]).toBe(infos[2]);
+    await service.openSession('plain');
+    expect(refreshBase).toHaveBeenCalledTimes(2);
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['preparation', 'opening'])('clears a failed %s so another request can retry', async (phase) => {
+    const failure = deferred();
+    const mock = phase === 'preparation' ? refreshBase : open;
+    mock.mockImplementationOnce(async () => {
+      await failure.promise;
+      throw new Error('open failed');
+    });
+    const attempts = Promise.allSettled([service.openSession('plain'), service.openSession('plain')]);
+    failure.resolve();
+    expect(await attempts).toEqual([
+      { status: 'rejected', reason: expect.objectContaining({ message: 'open failed' }) },
+      { status: 'rejected', reason: expect.objectContaining({ message: 'open failed' }) },
+    ]);
+    await expect(service.openSession('plain')).resolves.toMatchObject({ threadId: 'plain' });
+    expect(refreshBase).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects joiners during deletion and prevents a prepared open from resurrecting a deleted draft', async () => {
+    const preparation = deferred();
+    const deleting = deferred();
+    refreshBase.mockImplementation(() => preparation.promise);
+    release.mockImplementation(() => deleting.promise);
+    const attempts = Promise.allSettled([service.openSession('plain'), service.openSession('plain')]);
+    const removal = service.remove('plain');
+    await expect(service.openSession('plain')).rejects.toThrow('being deleted');
+    deleting.resolve();
+    await removal;
+    preparation.resolve();
+    expect((await attempts).every((result) => result.status === 'rejected')).toBe(true);
+    expect(open).not.toHaveBeenCalled();
+    await expect(service.openSession('plain')).rejects.toThrow('plain');
+  });
+
+  it('does not return shared info if deletion completes while session creation waits', async () => {
+    const opening = deferred();
+    open.mockImplementation(async () => {
+      await opening.promise;
+      return { threadId: 'plain' };
+    });
+    const attempt = service.openSession('plain');
+    const result = Promise.allSettled([attempt]);
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    await service.remove('plain');
+    opening.resolve();
+    expect((await result)[0]).toMatchObject({ status: 'rejected' });
+    expect(rows.get('plain')).toBeUndefined();
+  });
+
+  it('admits every joiner and rejects a protection generation change during preparation', async () => {
+    const preparation = deferred();
+    refreshBase.mockImplementation(() => preparation.promise);
+    const attempts = Promise.allSettled([service.openSession('plain'), service.openSession('plain')]);
+    const admission = vi.spyOn(protection, 'assertAdmitted').mockImplementation(() => {
+      throw new ConflictException('changing protection');
+    });
+    await expect(service.openSession('plain')).rejects.toThrow('changing protection');
+    admission.mockRestore();
+    vi.spyOn(protection, 'binding').mockReturnValue({
+      version: 1,
+      mode: 'bypass',
+      generation: 1,
+      experimentalWindowsAccepted: false,
+    });
+    preparation.resolve();
+    expect((await attempts).every((result) => result.status === 'rejected')).toBe(true);
+    await expect(service.openSession('plain')).resolves.toMatchObject({ threadId: 'plain' });
+    // Even an already-open thread must still pass admission.
+    vi.spyOn(protection, 'assertAdmitted').mockImplementation(() => {
+      throw new ConflictException('changing protection');
+    });
+    await expect(service.openSession('plain')).rejects.toThrow('changing protection');
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+});

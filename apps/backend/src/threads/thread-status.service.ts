@@ -57,8 +57,14 @@ export class ThreadStatusService implements OnModuleInit {
     // A run ends in the runner's synchronous bookkeeping (the session file's mtime, the counts); the push waits until it is complete.
     this.events.onRunChange((threadId, change) =>
       setImmediate(() => {
-        if (change === 'end') this.measureOpenSession(threadId);
-        this.touch(threadId);
+        try {
+          if (change === 'end') this.measureOpenSession(threadId);
+          this.touch(threadId);
+        } catch (error) {
+          this.logger.warn(
+            `The state of ${threadId} could not be pushed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       }),
     );
     this.sessions.onDialogsChanged((threadId) => {

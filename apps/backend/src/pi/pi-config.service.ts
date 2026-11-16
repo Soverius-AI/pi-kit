@@ -175,14 +175,24 @@ export class PiConfigService {
   async overview(cwd: string): Promise<SettingsOverview> {
     const pi = await loadPi();
     const runtime = await createModelRuntime(pi);
-    const [providers, models] = await Promise.all([this.providers(pi, runtime), this.models(runtime)]);
     return {
       settings: this.readSettings(pi, cwd),
-      providers,
-      models,
+      providers: await this.providers(pi, runtime),
+      models: this.models(runtime),
       keybindings: piKeybindings(pi.getAgentDir()),
       piVersion: pi.VERSION,
     };
+  }
+
+  async providerList(): Promise<ProviderInfo[]> {
+    const pi = await loadPi();
+    const runtime = await createApiKeyOnlyRuntime(pi);
+    await runtime.getAvailable();
+    return this.providers(pi, runtime);
+  }
+
+  async modelList(): Promise<SettingsModel[]> {
+    return this.models(await createModelRuntime(await loadPi()));
   }
 
   async settings(cwd: string): Promise<PiSettings> {
@@ -372,9 +382,8 @@ export class PiConfigService {
     return out.sort((a, b) => Number(b.configured) - Number(a.configured) || a.name.localeCompare(b.name));
   }
 
-  private async models(runtime: ModelRuntime): Promise<SettingsModel[]> {
-    const available = await runtime.getAvailable();
-    return available.map((m) => ({
+  private models(runtime: ModelRuntime): SettingsModel[] {
+    return runtime.getAvailableSnapshot().map((m) => ({
       provider: m.provider,
       id: m.id,
       name: m.name,

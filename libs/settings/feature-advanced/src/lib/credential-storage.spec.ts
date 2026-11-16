@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { COPILOT_INSPECTOR_AT_START, RedactionStore, ViewPrefs } from '@pi-kit/data-access';
-import { SecretsStore, SettingsStore } from '@pi-kit/settings/data';
+import { AdvancedSettingsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/data';
 import { AdvancedSection } from './advanced-section';
 
 describe('credential storage confirmation', () => {
@@ -27,8 +27,6 @@ describe('credential storage confirmation', () => {
           provide: SettingsStore,
           useValue: {
             shows: (...ids: string[]) => ids.includes('secret-store') || ids.includes('database-encryption'),
-            loadDiagnostics: vi.fn(),
-            loadTrustList: vi.fn(),
           },
         },
         { provide: SecretsStore, useValue: secrets },
@@ -36,6 +34,9 @@ describe('credential storage confirmation', () => {
         { provide: ViewPrefs, useValue: {} },
         { provide: COPILOT_INSPECTOR_AT_START, useValue: false },
       ],
+    });
+    TestBed.overrideComponent(AdvancedSection, {
+      set: { providers: [{ provide: AdvancedSettingsStore, useValue: { diagnostics: signal(undefined) } }] },
     });
   });
 

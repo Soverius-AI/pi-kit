@@ -91,7 +91,16 @@ export class MeatProxyPackage extends PiKitPackage<ScoringModule> {
         this.checkedAt = Date.now();
         const changed = now !== this.installed;
         this.installed = now;
-        if (changed) for (const listener of [...this.changeListeners]) listener(now);
+        if (changed)
+          for (const listener of [...this.changeListeners]) {
+            try {
+              listener(now);
+            } catch (error) {
+              this.logger.warn(
+                `A listener of the meat-proxy package failed: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
+          }
         return now;
       })
       .finally(() => {

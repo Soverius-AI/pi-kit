@@ -1,12 +1,12 @@
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { groupProviders, providerFamily, type SettingsModel } from '@pi-kit/protocol';
 import { THINKING_LEVELS } from '@pi-kit/protocol';
 import { compactNumber } from '@pi-kit/ui';
 import { UpdateStore } from '@pi-kit/update/api';
 import { PkSetting } from '@pi-kit/settings/api';
-import { SettingsStore } from '@pi-kit/settings/data';
+import { ModelsSettingsStore, SettingsStore } from '@pi-kit/settings/data';
 import { PkIcon, PkScrollArea, PkTabPanel, PkTabs, PkTip } from '@pi-kit/design-system';
 
 interface PinnedRow {
@@ -23,26 +23,26 @@ const keyOf = (m: Pick<SettingsModel, 'provider' | 'id'>): string => `${m.provid
  */
 @Component({
   selector: 'pk-models-section',
+  providers: [ModelsSettingsStore],
   imports: [PkSetting, PkTip, PkTabs, PkTabPanel, PkScrollArea, TranslocoPipe, PkIcon],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (store.overview(); as overview) {
+    @if (store.models() && store.settings(); as settings) {
       <div class="flex flex-col gap-5" data-testid="section-models">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <p class="t-sm muted m-0">
             {{ 'settings.modelManagement.theseSettingsChooseChatModelsDownloadsAndLlama' | transloco }}
           </p>
           <div class="flex gap-2">
-            <button type="button" class="btn btn-sm" (click)="store.select('providers')">
+            <button type="button" class="btn btn-sm" (click)="dialog.select('providers')">
               {{ 'shared.catalog.providers' | transloco }}
             </button>
-            <button type="button" class="btn btn-sm" (click)="store.select('local-models')">
+            <button type="button" class="btn btn-sm" (click)="dialog.select('local-models')">
               {{ 'settings.modelManagement.localModels' | transloco }}
             </button>
           </div>
         </div>
         <pk-tabs [label]="'settings.modelManagement.chatModelSettings' | transloco" [(value)]="tab">
-          @if (store.shows('default-model', 'default-effort')) {
+          @if (dialog.shows('default-model', 'default-effort')) {
             <pk-tab-panel value="defaults" [label]="'settings.modelManagement.chatDefaults' | transloco">
               <section class="pk-group" [attr.aria-label]="'settings.modelManagement.newChatDefaults' | transloco">
                 <header>
@@ -88,11 +88,11 @@ const keyOf = (m: Pick<SettingsModel, 'provider' | 'id'>): string => `${m.provid
                     data-testid="default-effort"
                     (change)="store.patch({ defaultThinkingLevel: $any($event.target).value })"
                   >
-                    @if (!overview.settings.defaultThinkingLevel) {
+                    @if (!settings.defaultThinkingLevel) {
                       <option value="" selected>{{ 'settings.modelManagement.modelDefault' | transloco }}</option>
                     }
                     @for (level of levels; track level) {
-                      <option [value]="level" [selected]="level === overview.settings.defaultThinkingLevel">
+                      <option [value]="level" [selected]="level === settings.defaultThinkingLevel">
                         {{ 'common.effortValue.' + level | transloco }}
                       </option>
                     }
@@ -101,7 +101,7 @@ const keyOf = (m: Pick<SettingsModel, 'provider' | 'id'>): string => `${m.provid
               </section>
             </pk-tab-panel>
           }
-          @if (store.shows('pinned-models')) {
+          @if (dialog.shows('pinned-models')) {
             <pk-tab-panel
               value="pinned"
               [label]="'shared.catalog.pinnedModels' | transloco"
@@ -226,14 +226,14 @@ const keyOf = (m: Pick<SettingsModel, 'provider' | 'id'>): string => `${m.provid
               </section>
             </pk-tab-panel>
           }
-          @if (store.shows('price-table', 'pi-update')) {
+          @if (dialog.shows('price-table', 'pi-update')) {
             <pk-tab-panel
               value="catalog"
               [label]="'settings.modelManagement.catalog' | transloco"
               [count]="models().length"
             >
               <div class="flex flex-col gap-4">
-                @if (store.shows('price-table')) {
+                @if (dialog.shows('price-table')) {
                   <section class="pk-group" [attr.aria-label]="'shared.catalog.modelsAndPrices' | transloco">
                     <header>
                       <div>
@@ -315,7 +315,7 @@ const keyOf = (m: Pick<SettingsModel, 'provider' | 'id'>): string => `${m.provid
                   </section>
                 }
 
-                @if (store.shows('pi-update')) {
+                @if (dialog.shows('pi-update')) {
                   <section
                     class="pk-group"
                     [attr.aria-label]="'settings.modelManagement.catalogMaintenance' | transloco"
@@ -332,7 +332,7 @@ const keyOf = (m: Pick<SettingsModel, 'provider' | 'id'>): string => `${m.provid
                       <div class="min-w-0">
                         <div class="lbl">
                           {{ 'settings.nav.pi' | transloco }}
-                          <span class="mono">{{ updates.resolution()?.version ?? overview.piVersion }}</span>
+                          <span class="mono">{{ updates.resolution()?.version ?? store.piVersion() }}</span>
                           <span class="chip" [class]="piChip().tone">{{ piChip().text }}</span>
                         </div>
                         <div class="hint">
@@ -367,9 +367,12 @@ const keyOf = (m: Pick<SettingsModel, 'provider' | 'id'>): string => `${m.provid
           }
         </pk-tabs>
       </div>
-    } @else if (store.error()) {
+    } @else if (store.settingsError() ?? store.modelsError()) {
       <p class="text-sm text-error" role="alert">
-        {{ 'settings.modelsSection.piSSettingsCouldNotBeRead' | transloco: { value1: store.error() } }}
+        {{
+          'settings.modelsSection.piSSettingsCouldNotBeRead'
+            | transloco: { value1: store.settingsError() ?? store.modelsError() }
+        }}
       </p>
     } @else {
       <div class="py-8 grid place-items-center">
@@ -383,7 +386,8 @@ const keyOf = (m: Pick<SettingsModel, 'provider' | 'id'>): string => `${m.provid
 })
 export class ModelsSection {
   protected readonly i18n = inject(Language);
-  protected readonly store = inject(SettingsStore);
+  protected readonly dialog = inject(SettingsStore);
+  protected readonly store = inject(ModelsSettingsStore);
   protected readonly updates = inject(UpdateStore);
 
   protected readonly levels = THINKING_LEVELS;
@@ -394,9 +398,7 @@ export class ModelsSection {
   protected readonly overIndex = signal<number | undefined>(undefined);
 
   protected readonly models = computed(() =>
-    [...(this.store.overview()?.models ?? [])].sort(
-      (a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id),
-    ),
+    [...(this.store.models() ?? [])].sort((a, b) => a.provider.localeCompare(b.provider) || a.id.localeCompare(b.id)),
   );
   protected readonly availableModels = computed(() => this.models().filter((model) => model.available));
   protected readonly filteredModels = computed(() => {
@@ -431,7 +433,7 @@ export class ModelsSection {
     return this.availableModels().filter((m) => !pinned.has(keyOf(m)));
   });
   protected readonly providerGroups = computed(() => {
-    const providers = this.store.overview()?.providers ?? [];
+    const providers = this.store.providers() ?? [];
     const ids = [...new Set(this.models().map((m) => m.provider))];
     return groupProviders(ids.map((id) => providers.find((p) => p.id === id) ?? { id, name: id })).map((group) => ({
       provider: group.id,
@@ -446,7 +448,7 @@ export class ModelsSection {
   );
 
   private family(id: string): { id: string; name: string } {
-    return providerFamily(this.store.overview()?.providers.find((provider) => provider.id === id) ?? { id });
+    return providerFamily(this.store.providers()?.find((provider) => provider.id === id) ?? { id });
   }
 
   protected readonly piChip = computed(() => {

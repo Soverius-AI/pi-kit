@@ -79,6 +79,7 @@ interface Terminal {
   info: Omit<TerminalInfo, 'created'>;
   scrollback: string;
   listeners: Set<(event: TerminalEvent) => void>;
+  killed?: boolean;
 }
 
 /**
@@ -107,6 +108,9 @@ export class TerminalService implements OnModuleDestroy {
     ensureSpawnHelper();
     const { file, args } = defaultShell();
     const pty = spawn(file, args, { name: 'xterm-256color', cols, rows, cwd, env: shellEnvironment() });
+    (pty as unknown as { on(event: 'error', listener: (error: Error) => void): void }).on('error', (error) =>
+      this.logger.warn(`Terminal in ${cwd} failed: ${error.message}`),
+    );
     const terminal: Terminal = {
       pty,
       info: { cwd, shell: file, pid: pty.pid, cols, rows },
@@ -150,14 +154,14 @@ export class TerminalService implements OnModuleDestroy {
 
   write(cwd: string, data: string): boolean {
     const terminal = this.terminals.get(cwd);
-    terminal?.pty.write(data);
+    if (terminal && !terminal.killed) terminal.pty.write(data);
     return !!terminal;
   }
 
   resize(cwd: string, cols: number, rows: number): boolean {
     const terminal = this.terminals.get(cwd);
     if (!terminal) return false;
-    if (terminal.info.cols !== cols || terminal.info.rows !== rows) {
+    if (!terminal.killed && (terminal.info.cols !== cols || terminal.info.rows !== rows)) {
       terminal.pty.resize(cols, rows);
       terminal.info.cols = cols;
       terminal.info.rows = rows;
@@ -167,7 +171,10 @@ export class TerminalService implements OnModuleDestroy {
 
   kill(cwd: string): boolean {
     const terminal = this.terminals.get(cwd);
-    terminal?.pty.kill();
+    if (terminal && !terminal.killed) {
+      terminal.killed = true;
+      terminal.pty.kill();
+    }
     return !!terminal;
   }
 

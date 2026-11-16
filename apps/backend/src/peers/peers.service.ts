@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   OnModuleDestroy,
   ServiceUnavailableException,
@@ -36,6 +37,7 @@ type Pending = {
 /** Instance pairing: invitations, mutual approval and unpairing. Cryptographic proofs never confer rights without the target's durable directional grant. */
 @Injectable()
 export class PeersService implements OnModuleDestroy {
+  private readonly logger = new Logger(PeersService.name);
   private readonly invitations = new Map<string, { secretHash: string; expiresAt: number }>();
   private readonly requests = new Map<string, Pending>();
   private readonly refreshingPeers = new Set<string>();
@@ -50,8 +52,14 @@ export class PeersService implements OnModuleDestroy {
     private readonly sessions: PeerSessions,
   ) {
     this.timer = setInterval(() => {
-      this.expire();
-      void this.refresh();
+      try {
+        this.expire();
+        void this.refresh().catch((error: unknown) =>
+          this.logger.warn(`Refreshing peers failed: ${error instanceof Error ? error.message : String(error)}`),
+        );
+      } catch (error) {
+        this.logger.warn(`Refreshing peers failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }, 10000);
     this.timer.unref();
   }
@@ -88,7 +96,10 @@ export class PeersService implements OnModuleDestroy {
   }
   manager(deviceId?: string): PeerManager {
     this.expire();
-    if (!deviceId) void this.refresh();
+    if (!deviceId)
+      void this.refresh().catch((error: unknown) =>
+        this.logger.warn(`Refreshing peers failed: ${error instanceof Error ? error.message : String(error)}`),
+      );
     const records = this.peers.list().filter((peer) => !deviceId || this.sessions.canDevice(deviceId, peer));
     return PeerManagerSchema.parse({
       self: this.instances.identity(),

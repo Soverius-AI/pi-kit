@@ -3,7 +3,7 @@
   @if (!wizard()) {
     <pk-login-flow />
   }
-  @if (store.overview(); as overview) {
+  @if (cards.providers()) {
     @if (secrets.status(); as sec) {
       @if (sec.available && sec.movable.length > 0) {
         <section
@@ -261,7 +261,7 @@
                   class="btn btn-sm btn-ghost btn-square"
                   [pkTip]="'settings.mcpSection.signOut' | transloco"
                   [attr.aria-label]="'Sign out of ' + row.name"
-                  (click)="store.logout(row.id)"
+                  (click)="dialog.logout(row.id)"
                 >
                   <pk-icon name="sign-in" />
                 </button>
@@ -272,7 +272,7 @@
                   class="btn btn-sm btn-ghost btn-square"
                   [pkTip]="'settings.providersSection.changeTheKey' | transloco"
                   [attr.aria-label]="'Change the key for ' + row.name"
-                  (click)="store.openKeyWorkflow(row.id)"
+                  (click)="dialog.openKeyWorkflow(row.id)"
                 >
                   <pk-icon name="pencil" />
                 </button>
@@ -283,7 +283,7 @@
                   class="btn btn-sm btn-ghost btn-square"
                   [pkTip]="'settings.providersSection.removeTheKey' | transloco"
                   [attr.aria-label]="'Remove the key for ' + row.name"
-                  (click)="store.logout(row.id)"
+                  (click)="dialog.logout(row.id)"
                 >
                   <pk-icon name="trash" />
                 </button>
@@ -384,9 +384,9 @@
       {{ 'settings.providersSection.signingOutRemovesTheStoredCredentialOnly' | transloco }}
       <code>{{ store.settings()?.agentDir }}/auth.json</code>.
     </p>
-  } @else if (store.error()) {
+  } @else if (cards.providersError()) {
     <p class="text-sm text-error" role="alert">
-      {{ 'settings.providersSection.piSProvidersCouldNotBeRead' | transloco: { value1: store.error() } }}
+      {{ 'settings.providersSection.piSProvidersCouldNotBeRead' | transloco: { value1: cards.providersError() } }}
     </p>
   } @else {
     <div class="py-8 grid place-items-center">

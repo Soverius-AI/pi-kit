@@ -5,31 +5,19 @@ import {
   ApiClient,
   errorMessage,
   sessionReload,
-  settingsDiagnose,
+  settingsKeybindings,
   settingsListResources,
-  settingsOverview,
-  settingsPatch,
-  settingsRevokeTrust,
-  settingsSaveKeybindings,
+  settingsProviders,
   settingsToggleResource,
-  settingsTrustList,
   settingsTrustState,
   unwrap,
 } from '@pi-kit/api';
 import { ChatStore, VoiceStore, type VoicePrefs } from '@pi-kit/chat/api';
 import { ThemeStore, ToastStore, ViewPrefs, type PrefKey, type ThemePreference } from '@pi-kit/data-access';
-import type { PatchPiSettings, PiSettings } from '@pi-kit/protocol';
+import type { KeybindingInfo, ProviderInfo } from '@pi-kit/protocol';
 import { ThreadsStore, TrustStore } from '@pi-kit/threads/api';
-import {
-  kitShortcuts,
-  canonicalCombo,
-  changedShortcuts,
-  isValidPiKey,
-  shortcutLabel,
-  type SettingsSectionId,
-} from '@pi-kit/ui';
+import type { SettingsSectionId } from '@pi-kit/ui';
 
-import type { KeybindingsFile } from './settings-state';
 import { withSettingsState } from './with-settings-state';
 export function withSettingsActions<_>() {
   return signalStoreFeature(
@@ -48,34 +36,9 @@ export function withSettingsActions<_>() {
       const cwd = (): string | undefined => threads.selected()?.cwd ?? threads.workspace();
       const track = store._trackSave;
       const needReload = store._needReload;
-      type Folder = ReturnType<typeof cwd>;
-      let overviewFor: Folder;
-      let nextEdit = 0;
-      let mutations: Promise<unknown> = Promise.resolve();
-      const revisions = new Map<Folder, number>();
-      const confirmed = new Map<Folder, PiSettings>();
-      const edits = new Map<number, { folder: Folder; patch: PatchPiSettings }>();
-      const hasEdits = (folder: Folder): boolean => [...edits.values()].some((edit) => edit.folder === folder);
-      const applyEdits = (folder: Folder, settings: PiSettings): PiSettings => {
-        for (const edit of edits.values()) {
-          if (edit.folder !== folder) continue;
-          const { defaultModel, ...plain } = edit.patch;
-          settings = {
-            ...settings,
-            ...plain,
-            ...(defaultModel ? { defaultProvider: defaultModel.provider, defaultModel: defaultModel.modelId } : {}),
-          };
-        }
-        return settings;
-      };
-      const publishSettings = (folder: Folder): void => {
-        const settings = confirmed.get(folder);
-        if (cwd() !== folder || overviewFor !== folder || !settings) return;
-        patchState(store, (s) =>
-          s.overview ? { overview: { ...s.overview, settings: applyEdits(folder, settings) } } : {},
-        );
-      };
-
+      const refreshers = new Set<() => Promise<void>>();
+      let sweeping: Promise<void> | undefined;
+      let sweepAgain = false;
       const methods = {
         /** Runs a save for a section that keeps its own state (the attendant): the spinner and the "Saved" tick, a toast when it fails. */
         save: <T>(work: () => Promise<T>, failure: string): Promise<T | undefined> => track(work, failure),
@@ -103,28 +66,17 @@ export function withSettingsActions<_>() {
 
         // ---- loading
 
-        async load(): Promise<void> {
-          store.requestStarted();
-          const folder = cwd();
-          const revision = revisions.get(folder);
-          const pendingAtStart = hasEdits(folder);
-          await store._request(
-            'overview',
-            (signal) => unwrap(settingsOverview({ client: api.client, signal, query: { cwd: folder || undefined } })),
-            {
-              valid: () => cwd() === folder,
-              next: (overview) => {
-                // A read begun before a save settled cannot replace its confirmed result or newer optimistic edits.
-                const changed = pendingAtStart || revision !== revisions.get(folder);
-                const settings = changed ? (confirmed.get(folder) ?? overview.settings) : overview.settings;
-                confirmed.set(folder, settings);
-                overviewFor = folder;
-                patchState(store, { overview: { ...overview, settings: applyEdits(folder, settings) } });
-                store.requestDone();
-              },
-              error: (error) => store.requestFailed(error),
-            },
-          );
+        async loadProviders(): Promise<void> {
+          await store._request('providers', (signal) => unwrap(settingsProviders({ client: api.client, signal })), {
+            next: (providers) => patchState(store, { providers }),
+          });
+        },
+        onProvidersChanged(refresh: () => Promise<void>): () => void {
+          refreshers.add(refresh);
+          return () => refreshers.delete(refresh);
+        },
+        async providersChanged(): Promise<void> {
+          await Promise.all([methods.loadProviders(), ...[...refreshers].map((refresh) => refresh())]);
         },
         async loadResources(): Promise<void> {
           const folder = cwd();
@@ -140,66 +92,36 @@ export function withSettingsActions<_>() {
             },
           );
         },
-        async loadDiagnostics(): Promise<void> {
-          try {
-            patchState(store, { diagnostics: await unwrap(settingsDiagnose({ client: api.client })) });
-          } catch (error) {
-            toasts.show(
-              'error',
-              translate('settings.withSettingsActions.couldNotReadTheDiagnostics', { value1: errorMessage(error) }),
-            );
-          }
+        async loadKeybindings(): Promise<void> {
+          await store._request('keybindings', (signal) => unwrap(settingsKeybindings({ client: api.client, signal })), {
+            next: (keybindings) => patchState(store, { keybindings }),
+          });
         },
-        async loadTrustList(): Promise<void> {
-          try {
-            patchState(store, { trustList: await unwrap(settingsTrustList({ client: api.client })) });
-          } catch (error) {
-            toasts.show(
-              'error',
-              translate('settings.withSettingsActions.couldNotReadPiSTrustList', { value1: errorMessage(error) }),
-            );
-          }
+        showKeybindings(keybindings: KeybindingInfo[]): void {
+          patchState(store, { keybindings });
         },
-        async loadFolders(): Promise<void> {
-          for (const workspace of threads.workspaces()) {
-            try {
-              const state = await unwrap(settingsTrustState({ client: api.client, path: { id: workspace.cwd } }));
-              patchState(store, (s) => ({ folders: { ...s.folders, [workspace.cwd]: state } }));
-            } catch {
-              // the folder is gone or not readable; the row says "unknown"
-            }
-          }
+        showProviders(providers: ProviderInfo[]): void {
+          patchState(store, { providers });
         },
-
-        // ---- pi’s settings
-
-        /** A change to pi’s `settings.json`: the dialog shows it at once, pi saves it, the tick follows. */
-        async patch(patch: PatchPiSettings, reload?: string): Promise<void> {
-          const folder = cwd();
-          const version = ++nextEdit;
-          revisions.set(folder, version);
-          const overview = store.overview();
-          if (overview && overviewFor === folder && !confirmed.has(folder)) confirmed.set(folder, overview.settings);
-          edits.set(version, { folder, patch });
-          store._cancelRequest('overview');
-          if (store.loading()) store.requestDone();
-          publishSettings(folder);
-          // Keep server writes in invocation order and retain the original folder while they wait.
-          const pending = mutations.then(() =>
-            unwrap(settingsPatch({ client: api.client, query: { cwd: folder || undefined }, body: patch })),
-          );
-          mutations = pending.catch(() => undefined);
-          const settings = await track(
-            () => pending,
-            translate('settings.withSettingsActions.piCouldNotSaveTheSetting'),
-          );
-          edits.delete(version);
-          if (settings) confirmed.set(folder, settings);
-          publishSettings(folder);
-          if (cwd() !== folder || overviewFor !== folder) return;
-          if (settings) {
-            if (reload) needReload(reload);
-          } else if (!hasEdits(folder)) await methods.load();
+        loadFolders(): Promise<void> {
+          if (sweeping) {
+            sweepAgain = true;
+            return sweeping;
+          }
+          sweeping = (async () => {
+            do {
+              sweepAgain = false;
+              for (const workspace of threads.workspaces()) {
+                try {
+                  const state = await unwrap(settingsTrustState({ client: api.client, path: { id: workspace.cwd } }));
+                  patchState(store, (s) => ({ folders: { ...s.folders, [workspace.cwd]: state } }));
+                } catch {
+                  // the folder is gone or not readable; the row says "unknown"
+                }
+              }
+            } while (sweepAgain);
+          })().finally(() => (sweeping = undefined));
+          return sweeping;
         },
 
         // ---- pi-kit’s preferences (ViewPrefs, ThemeStore)
@@ -223,117 +145,6 @@ export function withSettingsActions<_>() {
         async setTheme(preference: ThemePreference): Promise<void> {
           await track(() => theme.set(preference), translate('settings.withSettingsActions.couldNotSaveTheTheme'));
         },
-        async setProviderDefault(provider: string, modelId: string | null): Promise<void> {
-          const next = { ...prefs.providerDefaults() };
-          if (modelId) next[provider] = modelId;
-          else delete next[provider];
-          await methods.setPref('providerDefaults', next);
-          // The provider that new threads start with has its default model in pi’s settings too.
-          const settings = store.settings();
-          if (modelId && settings?.defaultProvider === provider)
-            await methods.patch({ defaultModel: { provider, modelId } });
-        },
-
-        // ---- scoped models
-
-        /** The scoped models in cycling order; `null` puts every model in scope. */
-        async setScope(patterns: string[] | null): Promise<void> {
-          await methods.patch({ enabledModels: patterns && patterns.length > 0 ? patterns : null });
-        },
-
-        // ---- keybindings
-
-        /** pi’s action gets these keys (an empty list switches it off); `null` goes back to pi’s default. Saved to `keybindings.json`. */
-        async setPiKeys(id: string, keys: string[] | null): Promise<boolean> {
-          const list = store.piBindings();
-          const overrides: Record<string, string[]> = {};
-          for (const b of list) if (b.custom && b.id !== id) overrides[b.id] = b.keys;
-          if (keys !== null) overrides[id] = keys.map((k) => canonicalCombo(k) ?? k);
-          const saved = await track(
-            () => unwrap(settingsSaveKeybindings({ client: api.client, body: { overrides } })),
-            translate('settings.withSettingsActions.piCouldNotSaveTheKeybinding'),
-          );
-          if (!saved) return false;
-          patchState(store, (s) => (s.overview ? { overview: { ...s.overview, keybindings: saved } } : {}));
-          needReload(translate('settings.withSettingsActions.piKeybindings'));
-          return true;
-        },
-        /** A pi-kit shortcut gets this combination; `null` goes back to the default. */
-        async setShortcut(id: string, combo: string | null): Promise<void> {
-          const resolved = { ...store.kitCombos() };
-          const fallback = kitShortcuts(translate).find((s) => s.id === id)?.default ?? '';
-          resolved[id] = canonicalCombo(combo ?? fallback) ?? fallback;
-          await methods.setPref('shortcuts', changedShortcuts(translate, resolved));
-        },
-        /** Both sets as JSON text (only what differs from the defaults). */
-        exportKeybindings(): string {
-          const pi: Record<string, string[]> = {};
-          for (const b of store.piBindings()) if (b.custom) pi[b.id] = b.keys;
-          const file: KeybindingsFile = {
-            format: 'pi-kit-keybindings',
-            version: 1,
-            'pi-kit': changedShortcuts(translate, store.kitCombos()),
-            pi,
-          };
-          return `${JSON.stringify(file, null, 2)}\n`;
-        },
-        /** Applies a file made by Export. Unknown ids and unusable keys are skipped and named; the rest is applied even if it clashes (the editor flags clashes). */
-        async importKeybindings(text: string): Promise<{ applied: number; skipped: string[] }> {
-          const skipped: string[] = [];
-          let file: Partial<KeybindingsFile>;
-          try {
-            file = JSON.parse(text) as Partial<KeybindingsFile>;
-          } catch {
-            return { applied: 0, skipped: [translate('settings.withSettingsActions.theFileIsNotJSON')] };
-          }
-          if (file.format !== 'pi-kit-keybindings' || typeof file !== 'object')
-            return { applied: 0, skipped: [translate('settings.withSettingsActions.thisIsNotAPiKitKeybindings')] };
-          let applied = 0;
-          const kit = { ...store.kitCombos() };
-          for (const [id, combo] of Object.entries(file['pi-kit'] ?? {})) {
-            if (
-              !kitShortcuts(translate).some((s) => s.id === id) ||
-              typeof combo !== 'string' ||
-              !isValidPiKey(combo)
-            ) {
-              skipped.push(translate('settings.withSettingsActions.piKitShortcut', { value1: id }));
-              continue;
-            }
-            kit[id] = canonicalCombo(combo) as string;
-            applied++;
-          }
-          if (applied > 0) await methods.setPref('shortcuts', changedShortcuts(translate, kit));
-          const known = new Set(store.piBindings().map((b) => b.id));
-          const overrides: Record<string, string[]> = {};
-          for (const b of store.piBindings()) if (b.custom) overrides[b.id] = b.keys;
-          let piApplied = 0;
-          for (const [id, keys] of Object.entries(file.pi ?? {})) {
-            if (
-              !known.has(id) ||
-              !Array.isArray(keys) ||
-              !keys.every((k) => typeof k === 'string' && (k === '' || isValidPiKey(k)))
-            ) {
-              skipped.push(translate('settings.withSettingsActions.piAction', { value1: id }));
-              continue;
-            }
-            overrides[id] = keys.filter(Boolean);
-            piApplied++;
-          }
-          if (piApplied > 0) {
-            const saved = await track(
-              () => unwrap(settingsSaveKeybindings({ client: api.client, body: { overrides } })),
-              translate('settings.withSettingsActions.piCouldNotSaveTheKeybindings'),
-            );
-            if (saved) {
-              patchState(store, (s) => (s.overview ? { overview: { ...s.overview, keybindings: saved } } : {}));
-              needReload(translate('settings.withSettingsActions.piKeybindings'));
-              applied += piApplied;
-            }
-          }
-          return { applied, skipped };
-        },
-        shortcutName: shortcutLabel.bind(undefined, translate),
-
         // ---- extensions, skills, prompt templates
 
         async toggleResource(key: string, enabled: boolean): Promise<void> {
@@ -397,71 +208,8 @@ export function withSettingsActions<_>() {
 
         // ---- trust
 
-        async revokeTrust(path: string): Promise<void> {
-          const result = await track(
-            () => unwrap(settingsRevokeTrust({ client: api.client, body: { path } })),
-            translate('settings.withSettingsActions.piCouldNotForgetTheAnswer'),
-          );
-          if (!result) return;
-          patchState(store, { trustList: { file: result.file, entries: result.entries } });
-          if (result.running > 0)
-            toasts.show('info', translate('settings.withSettingsActions.aRunIsGoingInThatFolder'));
-          void methods.loadFolders();
-        },
         reviewFolder(cwdPath: string): Promise<void> {
           return trustGate.review(cwdPath).then(() => methods.loadFolders());
-        },
-
-        // ---- diagnostics
-
-        async copyDiagnostics(): Promise<void> {
-          if (!store.diagnostics()) await methods.loadDiagnostics();
-          const d = store.diagnostics();
-          if (!d) return;
-          const lines = [
-            translate('settings.withSettingsActions.piKitOnNode', {
-              value1: d.app.version,
-              value2: d.backend.desktop
-                ? translate('settings.withSettingsActions.desktop')
-                : translate('settings.withSettingsActions.browser'),
-              value3: d.backend.dev ? translate('settings.withSettingsActions.development') : '',
-              value4: d.app.platform,
-              value5: d.app.arch,
-              value6: d.app.node,
-            }),
-            translate('settings.withSettingsActions.piAt', {
-              value1: d.pi.version,
-              value2: d.pi.source,
-              value3: d.pi.packageDir,
-            }),
-            translate('settings.withSettingsActions.backendPidBootIdStarted', {
-              value1: d.backend.host,
-              value2: d.backend.port,
-              value3: d.backend.pid,
-              value4: d.backend.bootId,
-              value5: new Date(d.backend.startedAt).toISOString(),
-            }),
-            translate('settings.withSettingsActions.agentFolder', { value1: d.pi.agentDir }),
-            translate('settings.withSettingsActions.dataFolder', { value1: d.paths.dataDir }),
-            translate('settings.withSettingsActions.database', { value1: d.paths.database }),
-            translate('settings.withSettingsActions.logFolder', { value1: d.paths.logDir }),
-            ...d.logs.map((l) =>
-              translate('settings.withSettingsActions.bytes', {
-                value1: l.name,
-                value2: l.size,
-                value3: new Date(l.modified).toISOString(),
-              }),
-            ),
-            ...(d.flags.length > 0
-              ? [translate('settings.withSettingsActions.flags'), ...d.flags.map((f) => `  ${f.name}=${f.value}`)]
-              : []),
-          ];
-          try {
-            await navigator.clipboard.writeText(lines.join('\n'));
-            toasts.show('success', translate('settings.withSettingsActions.diagnosticsCopied'), 2500);
-          } catch {
-            toasts.show('error', translate('settings.withSettingsActions.theBrowserDidNotAllowCopyingSelect'));
-          }
         },
       };
       return methods;

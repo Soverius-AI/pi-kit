@@ -1,7 +1,6 @@
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import {
-  ChangeDetectionStrategy,
   Component,
   ElementRef,
   type OnInit,
@@ -16,7 +15,14 @@ import {
   viewChild,
 } from '@angular/core';
 import { PkChoice, PkIcon, PkQuota, PkTip } from '@pi-kit/design-system';
-import { KeyWorkflow, LoginFlow, ProviderCardsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/api';
+import {
+  KeyWorkflow,
+  LoginFlow,
+  PiSettingsStore,
+  ProviderCardsStore,
+  SecretsStore,
+  SettingsStore,
+} from '@pi-kit/settings/api';
 import { LocalRuntimeStore } from '@pi-kit/settings/data';
 import { addProvider, agoText, letters } from '@pi-kit/settings/util';
 import { credentialStoreText, serverLabel } from '@pi-kit/ui';
@@ -30,7 +36,6 @@ type Method = addProvider.ProviderMethod;
 @Component({
   selector: 'pk-add-provider-wizard',
   imports: [KeyWorkflow, LoginFlow, PkChoice, PkQuota, PkTip, TranslocoPipe, LiteLlmConnectionPanel, PkIcon],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="pk-wf" data-testid="add-provider-wizard">
       <button
@@ -587,6 +592,7 @@ export class AddProviderWizard implements OnInit {
 
   protected readonly store = inject(SettingsStore);
   protected readonly cards = inject(ProviderCardsStore);
+  private readonly piSettings = inject(PiSettingsStore);
   /** A stopped llama-swap can be started from here: it then shows up among the servers. */
   protected readonly runtime = inject(LocalRuntimeStore);
   private readonly secrets = inject(SecretsStore);
@@ -600,8 +606,8 @@ export class AddProviderWizard implements OnInit {
   protected readonly letters = letters;
   protected readonly serverLabel = serverLabel.bind(undefined, this.i18n.t);
 
-  private readonly providers = computed(() => this.store.overview()?.providers ?? []);
-  private readonly models = computed(() => this.store.overview()?.models ?? []);
+  private readonly providers = computed(() => this.cards.providers() ?? []);
+  private readonly models = computed(() => this.cards.models() ?? []);
   /** The sign-in of an OAuth way has started; a flow that is gone after that was cancelled in its own box. */
   private started = false;
   private finishing = false;
@@ -717,7 +723,7 @@ export class AddProviderWizard implements OnInit {
     effect(() => {
       const s = this.state();
       if (s.step === 'done' || (s.step === 'sign-in' && s.method === 'api_key'))
-        untracked(() => this.makeDefault.set(!this.store.settings()?.defaultModel));
+        untracked(() => this.makeDefault.set(!this.piSettings.settings()?.defaultModel));
     });
   }
 
@@ -785,7 +791,7 @@ export class AddProviderWizard implements OnInit {
     this.finishing = true;
     const model = this.defaultModel();
     if (this.makeDefault() && model)
-      await this.store.patch({ defaultModel: { provider: model.provider, modelId: model.id } });
+      await this.piSettings.patch({ defaultModel: { provider: model.provider, modelId: model.id } });
     this.close();
   }
 

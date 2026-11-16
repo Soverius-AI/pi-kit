@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { createMcpTransport, expandHome, resolveConfigValue } from './mcp-transport';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  createMcpTransport,
+  type DeferrableTransport,
+  DeferredTransport,
+  expandHome,
+  resolveConfigValue,
+} from './mcp-transport';
 
 describe('resolveConfigValue', () => {
   it('substitutes environment variables and fails clearly on a missing one', () => {
@@ -65,5 +71,89 @@ describe('createMcpTransport', () => {
     ) as { options: Record<string, unknown> };
     expect(t).toBeInstanceOf(classes.StreamableHttpTransport);
     expect(t.options).toMatchObject({ url: 'https://x/mcp', headers: { 'X-Y': 'z' }, authProvider: auth });
+  });
+});
+
+describe('MCP settings that run a command', () => {
+  const made: FakeTransport[] = [];
+  class FakeTransport {
+    readonly messages = new Set<(message: never) => void>();
+    readonly closes = new Set<() => void>();
+    started = false;
+    version: string | undefined;
+    constructor(public options: Record<string, unknown>) {
+      made.push(this);
+    }
+    async start(): Promise<void> {
+      this.started = true;
+    }
+    async send(): Promise<void> {
+      return undefined;
+    }
+    async close(): Promise<void> {
+      for (const listener of this.closes) listener();
+    }
+    onMessage(listener: (message: never) => void): () => void {
+      this.messages.add(listener);
+      return () => this.messages.delete(listener);
+    }
+    onError(): () => void {
+      return () => undefined;
+    }
+    onClose(listener: () => void): () => void {
+      this.closes.add(listener);
+      return () => this.closes.delete(listener);
+    }
+    setProtocolVersion(version: string): void {
+      this.version = version;
+    }
+  }
+  const classes = { StdioTransport: FakeTransport, StreamableHttpTransport: FakeTransport };
+
+  it('regression: resolves a !command header when the server starts, never while the session opens', async () => {
+    made.length = 0;
+    let finish!: (value: string) => void;
+    const run = vi.fn((command: string) => (void command, new Promise<string>((resolve) => (finish = resolve))));
+    const transport = createMcpTransport(
+      classes,
+      {
+        name: 'h',
+        config: { url: 'https://x/mcp', headers: { Authorization: '!pi-kit-secret get connector-x --bearer' } },
+      },
+      '/work',
+      undefined,
+      run,
+    ) as unknown as DeferrableTransport;
+    expect(made).toHaveLength(0);
+    expect(run).not.toHaveBeenCalled();
+    const seen: unknown[] = [];
+    transport.onMessage((message) => seen.push(message));
+    transport.setProtocolVersion?.('2025-06-18');
+    const starting = transport.start();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledWith('pi-kit-secret get connector-x --bearer'));
+    finish('Bearer abc\n');
+    await starting;
+    expect(made[0].options).toMatchObject({ url: 'https://x/mcp', headers: { Authorization: 'Bearer abc' } });
+    expect(made[0].started).toBe(true);
+    expect(made[0].version).toBe('2025-06-18');
+    for (const listener of made[0].messages) listener({ id: 1 } as never);
+    expect(seen).toEqual([{ id: 1 }]);
+  });
+
+  it('a failing command fails the start and names the setting it belongs to', async () => {
+    const transport = createMcpTransport(
+      classes,
+      { name: 's', config: { command: 'node', env: { TOKEN: '!boom' } } },
+      '/work',
+      undefined,
+      async () => {
+        throw new Error('exit 1');
+      },
+    ) as unknown as DeferrableTransport;
+    await expect(transport.start()).rejects.toThrow('MCP server "s" env "TOKEN": the command boom failed: exit 1');
+  });
+
+  it('runs the command through the shell without blocking', async () => {
+    expect((await DeferredTransport.run('echo hi')).trim()).toBe('hi');
   });
 });

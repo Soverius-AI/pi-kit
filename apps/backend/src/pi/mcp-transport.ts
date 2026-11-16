@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process';
+import { exec } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -56,9 +56,10 @@ export function resolveConfigValue(
   value: string,
   label: string,
   env: NodeJS.ProcessEnv = process.env,
-  run: (command: string) => string = runCommand,
+  run?: (command: string) => string,
 ): string {
   if (value.startsWith('!')) {
+    if (!run) throw new Error(`${label}: the command ${value.slice(1)} runs only when the MCP server starts.`);
     try {
       return run(value.slice(1)).trim();
     } catch (error) {
@@ -75,10 +76,6 @@ export function resolveConfigValue(
   });
 }
 
-function runCommand(command: string): string {
-  return execSync(command, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10_000 });
-}
-
 function resolveAll(values: Record<string, string> | undefined, label: string): Record<string, string> {
   return Object.fromEntries(
     Object.entries(values ?? {}).map(([key, value]) => [key, resolveConfigValue(value, `${label} "${key}"`)]),
@@ -90,20 +87,129 @@ export function createMcpTransport<T>(
   entry: McpEntryLike,
   cwd: string,
   authProvider: unknown,
+  run: (command: string) => Promise<string> = DeferredTransport.run,
 ): T {
   const { config, name } = entry;
-  if (config.url) {
-    return new classes.StreamableHttpTransport({
-      url: config.url,
-      headers: resolveAll(config.headers, `MCP server "${name}" header`),
-      authProvider,
+  const values = config.url ? config.headers : config.env;
+  const label = config.url ? `MCP server "${name}" header` : `MCP server "${name}" env`;
+  const build = (resolved: Record<string, string>): T =>
+    config.url
+      ? new classes.StreamableHttpTransport({ url: config.url, headers: resolved, authProvider })
+      : new classes.StdioTransport({
+          command: expandHome(config.command ?? ''),
+          args: config.args?.map((arg) => expandHome(arg)),
+          cwd: resolve(cwd, expandHome(config.cwd ?? '.')),
+          env: resolved,
+          stderr: 'pipe',
+        });
+  if (!Object.values(values ?? {}).some((value) => value.startsWith('!'))) return build(resolveAll(values, label));
+  return new DeferredTransport(
+    async () => build(await DeferredTransport.resolve(values, label, run)) as unknown as DeferrableTransport,
+  ) as unknown as T;
+}
+
+export interface DeferrableTransport {
+  start(): Promise<void>;
+  send(message: never, options?: never): Promise<void>;
+  close(): Promise<void>;
+  onMessage(listener: (message: never) => void): () => void;
+  onError(listener: (error: Error) => void): () => void;
+  onClose(listener: () => void): () => void;
+  setProtocolVersion?(version: string): void;
+}
+
+export class DeferredTransport implements DeferrableTransport {
+  private real: DeferrableTransport | undefined;
+  private readonly messages = new Set<(message: never) => void>();
+  private readonly errors = new Set<(error: Error) => void>();
+  private readonly closes = new Set<() => void>();
+  private version: string | undefined;
+  private closed = false;
+  private closeEmitted = false;
+
+  constructor(private readonly build: () => Promise<DeferrableTransport>) {}
+
+  static run(command: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const child = exec(command, { encoding: 'utf8', timeout: 10_000, windowsHide: true }, (error, stdout) =>
+        error ? reject(error) : resolve(stdout),
+      );
+      child.stdin?.end();
     });
   }
-  return new classes.StdioTransport({
-    command: expandHome(config.command ?? ''),
-    args: config.args?.map((arg) => expandHome(arg)),
-    cwd: resolve(cwd, expandHome(config.cwd ?? '.')),
-    env: resolveAll(config.env, `MCP server "${name}" env`),
-    stderr: 'pipe',
-  });
+
+  static async resolve(
+    values: Record<string, string> | undefined,
+    label: string,
+    run: (command: string) => Promise<string>,
+  ): Promise<Record<string, string>> {
+    const entries = await Promise.all(
+      Object.entries(values ?? {}).map(async ([key, value]): Promise<[string, string]> => {
+        const where = `${label} "${key}"`;
+        if (!value.startsWith('!')) return [key, resolveConfigValue(value, where)];
+        try {
+          return [key, (await run(value.slice(1))).trim()];
+        } catch (error) {
+          throw new Error(
+            `${where}: the command ${value.slice(1)} failed: ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error },
+          );
+        }
+      }),
+    );
+    return Object.fromEntries(entries);
+  }
+
+  async start(): Promise<void> {
+    const real = await this.build();
+    if (this.closed) throw new Error('The MCP transport was closed before it started.');
+    this.real = real;
+    real.onMessage((message) => {
+      for (const listener of [...this.messages]) listener(message);
+    });
+    real.onError((error) => {
+      for (const listener of [...this.errors]) listener(error);
+    });
+    real.onClose(() => this.emitClose());
+    if (this.version !== undefined) real.setProtocolVersion?.(this.version);
+    await real.start();
+  }
+
+  send(message: never, options?: never): Promise<void> {
+    return this.real
+      ? this.real.send(message, options)
+      : Promise.reject(new Error('The MCP transport has not started.'));
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+    if (this.real) await this.real.close();
+    else this.emitClose();
+  }
+
+  onMessage(listener: (message: never) => void): () => void {
+    this.messages.add(listener);
+    return () => this.messages.delete(listener);
+  }
+
+  onError(listener: (error: Error) => void): () => void {
+    this.errors.add(listener);
+    return () => this.errors.delete(listener);
+  }
+
+  onClose(listener: () => void): () => void {
+    this.closes.add(listener);
+    return () => this.closes.delete(listener);
+  }
+
+  setProtocolVersion(version: string): void {
+    this.version = version;
+    this.real?.setProtocolVersion?.(version);
+  }
+
+  private emitClose(): void {
+    if (this.closeEmitted) return;
+    this.closeEmitted = true;
+    for (const listener of [...this.closes]) listener();
+  }
 }

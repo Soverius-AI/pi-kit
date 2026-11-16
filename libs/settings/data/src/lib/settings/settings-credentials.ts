@@ -19,7 +19,7 @@ import type { LoginEvent } from '@pi-kit/protocol';
 import type { SettingsPolicy } from '../settings-policy';
 
 import { type KeyWorkflow, type LoginFlow, type SettingsStoreState } from './settings-state';
-export type CredentialsState = Pick<SettingsStoreState, 'overview' | 'flow' | 'keyWorkflow' | 'credentialsChanged'>;
+export type CredentialsState = Pick<SettingsStoreState, 'providers' | 'flow' | 'keyWorkflow' | 'credentialsChanged'>;
 type CredentialsContextState = StateSignals<CredentialsState> & WritableStateSource<CredentialsState>;
 interface CredentialsContext {
   api: ApiClient;
@@ -51,9 +51,7 @@ export function createSettingsCredentials(
     /** `/login <provider>`: starts the provider’s only method, or opens the key workflow, or asks which one when it has two. */
     async signInTo(query: string): Promise<void> {
       const wanted = query.trim().toLowerCase();
-      const provider = store
-        .overview()
-        ?.providers.find((p) => p.id.toLowerCase() === wanted || p.name.toLowerCase() === wanted);
+      const provider = store.providers()?.find((p) => p.id.toLowerCase() === wanted || p.name.toLowerCase() === wanted);
       if (!provider)
         return void toasts.show(
           'warning',
@@ -68,7 +66,7 @@ export function createSettingsCredentials(
 
     async login(provider: string, type: 'api_key' | 'oauth'): Promise<void> {
       methods.cancelLogin();
-      const name = store.overview()?.providers.find((p) => p.id === provider)?.name ?? provider;
+      const name = store.providers()?.find((p) => p.id === provider)?.name ?? provider;
       patchState(store, { flow: { provider, providerName: name, type, status: 'starting', notes: [] } });
       const abort = (loginAbort = new AbortController());
       try {

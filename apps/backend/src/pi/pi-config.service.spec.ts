@@ -66,6 +66,22 @@ describe('provider status', () => {
     expect(JSON.stringify(overview)).not.toContain('op://vault');
   });
 
+  it('regression: the provider list and the model list each refresh availability once', async () => {
+    const pi = await import('@earendil-works/pi-coding-agent');
+    const refresh = vi.spyOn(pi.ModelRuntime.prototype, 'getAvailable');
+    try {
+      const providers = await service().providerList();
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(providers.find((p) => p.id === 'openrouter')?.credential?.lastFour).toBe('a1b2');
+      refresh.mockClear();
+      const models = await service().modelList();
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(models.map((m) => m.id)).toEqual(expect.arrayContaining(['gemma-4-26b', 'llama3.2']));
+    } finally {
+      refresh.mockRestore();
+    }
+  });
+
   it('offers Anthropic only through a paid API key, not a subscription', async () => {
     const overview = await service().overview(agent);
     const anthropic = overview.providers.find((p) => p.id === 'anthropic');

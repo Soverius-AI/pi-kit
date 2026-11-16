@@ -20,12 +20,11 @@ export function withSettingsState() {
       section: 'general',
       project: undefined,
       search: '',
-      overview: undefined,
+      providers: undefined,
       reloading: false,
       resources: undefined,
       resourcesBusy: [],
-      diagnostics: undefined,
-      trustList: undefined,
+      keybindings: undefined,
       folders: {},
     }),
     withProps(() => ({ _policy: inject(SETTINGS_POLICY) })),
@@ -39,10 +38,9 @@ export function withSettingsState() {
       const mcp = inject(ConnectorsStore);
       const matches = computed(() => searchSettings(translate, store.search()));
       const device = isDeviceConnection();
-      const piBindings = computed<KeybindingInfo[]>(() => store.overview()?.keybindings ?? []);
+      const piBindings = computed<KeybindingInfo[]>(() => store.keybindings() ?? []);
       const kitCombos = computed(() => prefs.combos());
       return {
-        settings: computed(() => store.overview()?.settings),
         /** The ids of the settings the search matches (all of them while it is empty). */
         matches,
         searching: computed(() => store.search().trim() !== ''),
@@ -61,9 +59,7 @@ export function withSettingsState() {
         kitCombos,
         piConflicts: computed(() => findConflicts(piBindings())),
         kitConflicts: computed(() => findConflicts(shortcutBindings(translate, kitCombos()))),
-        providersSignedIn: computed(
-          () => groupProviders((store.overview()?.providers ?? []).filter((p) => p.configured)).length,
-        ),
+        providersSignedIn: computed(() => groupProviders((store.providers() ?? []).filter((p) => p.configured)).length),
         mcpCount: computed(() => mcp.servers().length),
         resourceCount: computed(() => store.resources()?.items.length),
         /** The pi sessions can be reloaded (a thread is open and no run is going is checked at the time). */

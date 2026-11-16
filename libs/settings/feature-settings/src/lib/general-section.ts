@@ -1,24 +1,24 @@
 import { Language, TranslocoPipe, isLanguage } from '@pi-kit/i18n';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { PkShimmer, PkTabs, PkTabPanel, PkTip } from '@pi-kit/design-system';
 import { PkVersions } from './versions-block';
 import { PkSetting } from '@pi-kit/settings/api';
 import { ViewPrefs } from '@pi-kit/data-access';
-import { BackgroundServiceStore, SecretsStore, SettingsStore } from '@pi-kit/settings/data';
+import { BackgroundServiceStore, PiSettingsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/data';
 
 /** Settings › General: what pi does when a conversation gets long and when a provider fails, how queued messages are delivered, whether pi-kit keeps running in the background, and the versions. */
 @Component({
   selector: 'pk-general-section',
   imports: [PkSetting, PkVersions, PkShimmer, PkTabs, PkTabPanel, PkTip, TranslocoPipe],
-  changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [PiSettingsStore],
   template: `
     @if (store.settings(); as settings) {
       <div class="flex flex-col gap-5" data-testid="section-general">
         <pk-tabs [label]="'shared.catalog.general' | transloco" [(value)]="tab">
-          @if (store.shows('language', 'auto-compaction', 'background-service', 'unattended-keys')) {
+          @if (dialog.shows('language', 'auto-compaction', 'background-service', 'unattended-keys')) {
             <pk-tab-panel value="preferences" [label]="'settings.sectionTabs.preferences' | transloco">
               <div class="flex flex-col gap-5">
-                @if (store.shows('language')) {
+                @if (dialog.shows('language')) {
                   <section class="pk-group" [attr.aria-label]="'settings.language.heading' | transloco">
                     <header>
                       <div>
@@ -48,7 +48,7 @@ import { BackgroundServiceStore, SecretsStore, SettingsStore } from '@pi-kit/set
                     </div>
                   </section>
                 }
-                @if (store.shows('auto-compaction')) {
+                @if (dialog.shows('auto-compaction')) {
                   <section class="pk-group" [attr.aria-label]="'settings.generalSection.context' | transloco">
                     <header>
                       <div>
@@ -68,7 +68,7 @@ import { BackgroundServiceStore, SecretsStore, SettingsStore } from '@pi-kit/set
                     </div>
                   </section>
                 }
-                @if (store.shows('background-service', 'unattended-keys') && background.status(); as service) {
+                @if (dialog.shows('background-service', 'unattended-keys') && background.status(); as service) {
                   <section class="pk-group" [attr.aria-label]="'settings.background.heading' | transloco">
                     <header>
                       <div>
@@ -121,7 +121,7 @@ import { BackgroundServiceStore, SecretsStore, SettingsStore } from '@pi-kit/set
                         <div sub class="text-error" role="alert">{{ error }}</div>
                       }
                     </div>
-                    @if (store.shows('unattended-keys') && secrets.status()?.unattended !== undefined) {
+                    @if (dialog.shows('unattended-keys') && secrets.status()?.unattended !== undefined) {
                       <div pkSetting="unattended-keys">
                         <input
                           type="checkbox"
@@ -145,7 +145,7 @@ import { BackgroundServiceStore, SecretsStore, SettingsStore } from '@pi-kit/set
               </div>
             </pk-tab-panel>
           }
-          @if (store.shows('retry', 'steering-mode', 'follow-up-mode')) {
+          @if (dialog.shows('retry', 'steering-mode', 'follow-up-mode')) {
             <pk-tab-panel value="runs" [label]="'settings.generalSection.runs' | transloco">
               <section class="pk-group" [attr.aria-label]="'settings.generalSection.runs' | transloco">
                 <header>
@@ -195,21 +195,21 @@ import { BackgroundServiceStore, SecretsStore, SettingsStore } from '@pi-kit/set
               </section>
             </pk-tab-panel>
           }
-          @if (store.shows('versions')) {
+          @if (dialog.shows('versions')) {
             <pk-tab-panel value="versions" [label]="'settings.versionsBlock.versions' | transloco">
               <pk-versions />
             </pk-tab-panel>
           }
         </pk-tabs>
-        @if (!store.searching()) {
+        @if (!dialog.searching()) {
           <p class="t-xs muted break-all">
             {{ 'settings.generalSection.piSSettingsAreIn' | transloco }} <code>{{ settings.agentDir }}</code>
           </p>
         }
       </div>
-    } @else if (store.error()) {
+    } @else if (store.settingsError()) {
       <p class="text-sm text-error" role="alert">
-        {{ 'settings.generalSection.piSSettingsCouldNotBeRead' | transloco: { value1: store.error() } }}
+        {{ 'settings.generalSection.piSSettingsCouldNotBeRead' | transloco: { value1: store.settingsError() } }}
       </p>
     } @else {
       <pk-shimmer [rows]="6" [title]="true" [label]="'settings.generalSection.loadingSettings' | transloco" />
@@ -218,7 +218,8 @@ import { BackgroundServiceStore, SecretsStore, SettingsStore } from '@pi-kit/set
 })
 export class GeneralSection {
   protected readonly tab = signal('preferences');
-  protected readonly store = inject(SettingsStore);
+  protected readonly dialog = inject(SettingsStore);
+  protected readonly store = inject(PiSettingsStore);
   protected readonly prefs = inject(ViewPrefs);
   protected readonly language = inject(Language);
   protected readonly background = inject(BackgroundServiceStore);
@@ -241,6 +242,6 @@ export class GeneralSection {
   }
 
   protected async changeLanguage(value: string): Promise<void> {
-    if (isLanguage(value)) await this.store.setPref('language', value);
+    if (isLanguage(value)) await this.dialog.setPref('language', value);
   }
 }

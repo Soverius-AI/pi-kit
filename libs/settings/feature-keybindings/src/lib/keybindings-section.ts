@@ -1,9 +1,9 @@
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { PkTabs, PkTabPanel, PkScrollArea } from '@pi-kit/design-system';
 import { IS_MAC } from '@pi-kit/data-access';
-import { SettingsStore } from '@pi-kit/settings/data';
+import { KeybindingsSettingsStore, SettingsStore } from '@pi-kit/settings/data';
 import {
   fixedShortcuts,
   kitShortcuts,
@@ -35,11 +35,11 @@ interface Clash extends Target {
 @Component({
   imports: [PkTabs, PkTabPanel, PkScrollArea, TranslocoPipe],
   selector: 'pk-keybindings-section',
-  changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [KeybindingsSettingsStore],
   template: `
     <div class="flex flex-col gap-5" data-testid="section-keybindings">
       <pk-tabs [label]="'shared.catalog.keybindings' | transloco" [(value)]="tab" (valueChange)="stopRecording()">
-        @if (store.shows('keys-pi-kit')) {
+        @if (dialog.shows('keys-pi-kit')) {
           <pk-tab-panel value="pi-kit" [label]="'settings.keybindingsSection.piKitShortcuts' | transloco">
             <section
               class="pk-group pk-keys"
@@ -157,7 +157,7 @@ interface Clash extends Target {
             </section>
           </pk-tab-panel>
         }
-        @if (store.shows('keys-pi')) {
+        @if (dialog.shows('keys-pi')) {
           <pk-tab-panel value="pi" [label]="'settings.keybindingsSection.piShortcuts' | transloco">
             <section class="pk-group pk-keys" [attr.aria-label]="'settings.keybindingsSection.piShortcuts' | transloco">
               <header>
@@ -165,7 +165,7 @@ interface Clash extends Target {
                   <h4>{{ 'settings.keybindingsSection.piSTerminalShortcuts' | transloco }}</h4>
                   <p>
                     {{
-                      store.overview()
+                      store.bindings()
                         ? ('settings.keybindingsSection.theKeysOfPiSOwnInterface' | transloco)
                         : ('settings.keybindingsSection.loading' | transloco)
                     }}
@@ -280,7 +280,7 @@ interface Clash extends Target {
             </section>
           </pk-tab-panel>
         }
-        @if (store.shows('keys-io')) {
+        @if (dialog.shows('keys-io')) {
           <pk-tab-panel value="transfer" [label]="'settings.keybindingsSection.exportAndImport' | transloco">
             <section class="pk-group" [attr.aria-label]="'settings.keybindingsSection.exportAndImport' | transloco">
               <header>
@@ -332,7 +332,8 @@ export class KeybindingsSection {
   private readonly filterWords = computed(() => this.query().toLowerCase().trim().split(/\s+/).filter(Boolean));
   protected readonly i18n = inject(Language);
   private readonly isMac = inject(IS_MAC);
-  protected readonly store = inject(SettingsStore);
+  protected readonly dialog = inject(SettingsStore);
+  protected readonly store = inject(KeybindingsSettingsStore);
 
   constructor() {
     inject(DestroyRef).onDestroy(() => window.removeEventListener('keydown', this.onRecord, true));
@@ -376,12 +377,12 @@ export class KeybindingsSection {
   /** pi’s actions; while searching, the ones whose description or id has the words (all of them if none has). */
   protected readonly piRows = computed(() => {
     const all = this.store.piBindings();
-    const words = this.store.search().toLowerCase().split(/\s+/).filter(Boolean);
+    const words = this.dialog.search().toLowerCase().split(/\s+/).filter(Boolean);
     if (words.length === 0) return all.filter((row) => this.matchesFilter(row.id, row.description, ...row.keys));
     const hit = all.filter((b) =>
       words.every((w) => `${b.description} ${b.id} ${b.keys.join(' ')}`.toLowerCase().includes(w)),
     );
-    const rows = hit.length > 0 || !this.store.shows('keys-pi') ? hit : all;
+    const rows = hit.length > 0 || !this.dialog.shows('keys-pi') ? hit : all;
     return rows.filter((row) => this.matchesFilter(row.id, row.description, ...row.keys));
   });
 

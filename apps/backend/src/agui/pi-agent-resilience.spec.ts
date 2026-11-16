@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Logger } from '@nestjs/common';
 import { type BaseEvent, EventType } from '@ag-ui/client';
 import { Observable, Subject, firstValueFrom, toArray } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -91,6 +92,22 @@ describe('run failure containment', () => {
     expect(sessions.abort).not.toHaveBeenCalled();
   });
 
+  it('logs an accepted stop request separately from replay cancellation', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { runner, sessions, run, event } = world();
+    const source = new Subject<BaseEvent>();
+    run('t1', source).subscribe();
+    source.next(event('t1'));
+    expect(await runner.stop({ threadId: 't1', runId: 'not-the-active-run' })).toBe(false);
+    expect(warn).not.toHaveBeenCalled();
+    expect(await runner.stop({ threadId: 't1', runId: 'r-t1' })).toBe(true);
+    expect(sessions.abort).toHaveBeenCalledWith('t1');
+    expect(warn).toHaveBeenCalledWith(
+      `RUN_STOP ${JSON.stringify({ pid: process.pid, threadId: 't1', runId: 'r-t1', reason: 'stop-request' })}`,
+    );
+    source.next(event('t1', EventType.RUN_FINISHED));
+  });
+
   it.each(['next', 'error', 'complete', 'terminal'] as const)(
     'contains persistent write failures from %s callbacks while another thread finishes',
     async (trigger) => {
@@ -148,12 +165,16 @@ describe('run failure containment', () => {
   });
 
   it('disconnects producers during module teardown before storage closes', async () => {
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const { database, log, runner, leave, run, event } = world();
     const source = new Subject<BaseEvent>();
     const result = firstValueFrom(run('t1', source).pipe(toArray()));
     source.next(event('t1'));
     const append = vi.spyOn(log, 'append');
     runner.onModuleDestroy();
+    expect(warn).toHaveBeenCalledWith(
+      `RUN_SHUTDOWN ${JSON.stringify({ pid: process.pid, runs: [{ threadId: 't1', runId: 'r-t1' }] })}`,
+    );
     expect(database.db.open).toBe(true);
     expect(source.observed).toBe(false);
     expect(leave).toHaveBeenCalledTimes(3);

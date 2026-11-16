@@ -101,6 +101,22 @@ describe('the meat-proxy package ships with the app and is installed into pi onc
     expect(await pkg.installedDir()).toBe(meatDir);
   });
 
+  it('regression: asks pi again only when its settings changed, so the frequent checks start no package manager', async () => {
+    const pi = await import('@earendil-works/pi-coding-agent');
+    const listed = vi.spyOn(pi.DefaultPackageManager.prototype, 'listConfiguredPackages');
+    try {
+      expect(await pkg.ensureInstalled()).toBe('installed');
+      listed.mockClear();
+      for (let i = 0; i < 5; i++) expect(await pkg.refresh()).toBe(true);
+      expect(listed).toHaveBeenCalledTimes(1);
+      writeFileSync(join(agent, 'settings.json'), JSON.stringify({ packages: [] }));
+      expect(await pkg.refresh()).toBe(false);
+      expect(listed).toHaveBeenCalledTimes(2);
+    } finally {
+      listed.mockRestore();
+    }
+  });
+
   it('installs next to @pi-kit/learn when both start at once: neither entry is lost', async () => {
     const learn = new LearnPackage(meta);
     expect(await Promise.all([learn.ensureInstalled(), pkg.ensureInstalled()])).toEqual(['installed', 'installed']);

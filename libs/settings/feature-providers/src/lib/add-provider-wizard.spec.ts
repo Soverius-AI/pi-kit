@@ -3,7 +3,7 @@ import { signal } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
 import type { ProviderInfo, SettingsModel } from '@pi-kit/protocol';
-import { LiteLlmStore, ProviderCardsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/api';
+import { LiteLlmStore, PiSettingsStore, ProviderCardsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/api';
 import { LiteLlmConnectionPanel } from './litellm-connection';
 import { AddProviderWizard } from './add-provider-wizard';
 
@@ -47,8 +47,6 @@ describe('AddProviderWizard', () => {
   const keyWorkflow = signal<{ step: number; embedded?: boolean } | undefined>(undefined);
   const settings = signal<{ defaultModel: string | null }>({ defaultModel: 'gemma' });
   const store = {
-    overview: signal({ providers, models }),
-    settings,
     flow,
     keyWorkflow,
     // As the real store does: a sign-in has its flow at once, the key workflow its state, and cancelling or closing takes them away.
@@ -61,10 +59,11 @@ describe('AddProviderWizard', () => {
     cancelLogin: vi.fn(() => flow.set(undefined)),
     closeKeyWorkflow: vi.fn(() => keyWorkflow.set(undefined)),
     dismissFlow: vi.fn(() => flow.set(undefined)),
-    patch: vi.fn(async () => undefined),
-    load: vi.fn(async () => undefined),
   };
+  const piSettings = { settings, patch: vi.fn(async () => undefined) };
   const cards = {
+    providers: signal(providers),
+    models: signal(models),
     servers: signal<{ kind: string; baseUrl: string }[]>([]),
     local: signal<{ phase: string; saved?: { provider: string; models: number }; result?: unknown; error?: string }>({
       phase: 'idle',
@@ -120,6 +119,7 @@ describe('AddProviderWizard', () => {
           },
         },
         { provide: SettingsStore, useValue: store },
+        { provide: PiSettingsStore, useValue: piSettings },
         { provide: ProviderCardsStore, useValue: cards },
         { provide: SecretsStore, useValue: secrets },
         { provide: LocalRuntimeStore, useValue: runtimeStub },
@@ -197,7 +197,7 @@ describe('AddProviderWizard', () => {
     f.componentInstance.closed.subscribe(() => closed++);
     click(f, '[data-testid=provider-done]');
     await f.whenStable();
-    expect(store.patch).not.toHaveBeenCalled();
+    expect(piSettings.patch).not.toHaveBeenCalled();
     expect(closed).toBe(1);
   });
 
@@ -214,7 +214,9 @@ describe('AddProviderWizard', () => {
     expect(q(f, '[data-testid=make-default]')?.textContent).toContain('claude-sonnet-5-5');
     click(f, '[data-testid=provider-done]');
     await f.whenStable();
-    expect(store.patch).toHaveBeenCalledWith({ defaultModel: { provider: 'anthropic', modelId: 'claude-sonnet-5-5' } });
+    expect(piSettings.patch).toHaveBeenCalledWith({
+      defaultModel: { provider: 'anthropic', modelId: 'claude-sonnet-5-5' },
+    });
   });
 
   it('Radius goes straight to its sign-in, and a cancelled sign-in goes back to the list', () => {

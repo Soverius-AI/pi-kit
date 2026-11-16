@@ -49,7 +49,7 @@ export const DEFAULT_WATCHDOG_OPTIONS: WatchdogOptions = {
   maxDelayMs: 15_000,
   maxFailures: 5,
   stableAfterMs: 30_000,
-  pingIntervalMs: 5_000,
+  pingIntervalMs: 30_000,
   pingFailuresToKill: 3,
 };
 
@@ -138,7 +138,14 @@ export class BackendWatchdog {
         this.state = 'running';
         this.emit();
         this.armPing(generation);
-        void handle.exited.then((info) => this.ended(generation, `the backend exited (${describe(info)})`));
+        void handle.exited.then((info) =>
+          this.ended(
+            generation,
+            this.missedPings >= this.options.pingFailuresToKill
+              ? `the watchdog stopped the backend after ${this.missedPings} consecutive failed health checks (${describe(info)})`
+              : `the backend exited (${describe(info)})`,
+          ),
+        );
       },
       (error: unknown) => {
         if (generation === this.generation)

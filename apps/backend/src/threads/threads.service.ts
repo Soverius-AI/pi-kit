@@ -63,6 +63,8 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(ThreadsService.name);
   private readonly deletedListeners = new Set<(threadId: string) => void>();
   private readonly deleting = new Set<string>();
+  /** Only in-flight opens: preparation is shared too, but settled session info is never cached here. */
+  private readonly openingSessions = new Map<string, Promise<PiThreadInfo>>();
   private timer: NodeJS.Timeout | undefined;
   private reconciling: Promise<void> | undefined;
   /** Sessions the pi command line made before the first pass finished are the user's history, not news: they start out seen. */
@@ -428,15 +430,30 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
    */
   async openSession(id: string): Promise<PiThreadInfo> {
     const row = this.require(id);
-    const target = await this.prepareRun(id, row.cwd, { open: true });
-    const info = await this.sessions.open(id, {
-      cwd: target.cwd,
-      sessionPath: target.sessionPath,
-      title: target.title,
-      leafId: target.leafId,
-      ...(target.inWorktree ? { forceCwd: true } : {}),
-    });
-    this.sessionOpened(id, info);
+    if (this.deleting.has(id)) throw new ConflictException('This thread is being deleted.');
+    // Every caller is admitted, including callers joining an open and reads of an already-open session.
+    this.protection.assertAdmitted(id);
+    const { generation } = this.protection.binding(id);
+    let pending = this.openingSessions.get(id);
+    if (!pending) {
+      pending = (async () => {
+        const target = await this.prepareRun(id, row.cwd, { open: true });
+        const info = await this.sessions.open(id, {
+          cwd: target.cwd,
+          sessionPath: target.sessionPath,
+          title: target.title,
+          leafId: target.leafId,
+          ...(target.inWorktree ? { forceCwd: true } : {}),
+        });
+        this.sessionOpened(id, info);
+        return info;
+      })().finally(() => this.openingSessions.delete(id));
+      this.openingSessions.set(id, pending);
+    }
+    const info = await pending;
+    // Deletion or a protection change may have happened while preparation/session creation waited.
+    if (this.deleting.has(id) || !this.threads.get(id)) throw new ConflictException('This thread is being deleted.');
+    this.protection.assertGeneration(id, generation);
     return info;
   }
 

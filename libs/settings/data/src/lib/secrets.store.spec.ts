@@ -1,4 +1,3 @@
-import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   provideMockApi,
@@ -36,7 +35,7 @@ describe('SecretsStore', () => {
     retry: vi.fn(),
     storage: vi.fn(),
   };
-  const settings = { load: vi.fn(async () => undefined), overview: signal(undefined) };
+  const settings = { providersChanged: vi.fn(async () => undefined) };
   const make = () => {
     const store = TestBed.inject(SecretsStore);
     TestBed.tick();
@@ -45,7 +44,7 @@ describe('SecretsStore', () => {
 
   beforeEach(() => {
     for (const call of Object.values(api)) call.mockReset();
-    settings.load.mockClear();
+    settings.providersChanged.mockClear();
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
@@ -72,7 +71,7 @@ describe('SecretsStore', () => {
     expect(api.storage).toHaveBeenCalledWith(false);
     expect(store.storageResult()?.failed[0].provider).toBe('groq');
     expect(store.status()?.credentialsEnabled).toBe(false);
-    expect(settings.load).toHaveBeenCalledOnce();
+    expect(settings.providersChanged).toHaveBeenCalledOnce();
     expect(store.storageBusy()).toBe(false);
   });
 
@@ -92,7 +91,7 @@ describe('SecretsStore', () => {
     api.retry.mockResolvedValueOnce(status({ access: { state: 'unknown' } }));
     api.status.mockResolvedValueOnce(status({ access: { state: 'ready' } }));
     await store.retryAccess();
-    expect(settings.load).toHaveBeenCalledOnce();
+    expect(settings.providersChanged).toHaveBeenCalledOnce();
     expect(store.status()?.access?.state).toBe('ready');
     expect(store.retrying()).toBe(false);
   });
@@ -111,7 +110,7 @@ describe('SecretsStore', () => {
       moved: ['openrouter'],
       failed: [{ provider: 'groq', reason: 'the credential store did not take the key' }],
     });
-    expect(settings.load).toHaveBeenCalledOnce();
+    expect(settings.providersChanged).toHaveBeenCalledOnce();
     expect(store.status()?.movable).toEqual([]);
     expect(store.moving()).toBe(false);
     expect(toasts.items()[0].text).toMatch(/1 key could not be moved/);
