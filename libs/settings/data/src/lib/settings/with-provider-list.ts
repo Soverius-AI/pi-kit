@@ -43,7 +43,7 @@ export function withProviderList<_>() {
       return {
         onInit() {
           leave = inject(SettingsStore).onProvidersChanged(async () => {
-            if (store.providers() !== undefined) await store.loadProviders();
+            if (store.providers() !== undefined || store._requestStates()['providers']) await store.loadProviders();
           });
         },
         onDestroy() {

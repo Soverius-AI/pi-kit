@@ -262,6 +262,21 @@ describe('open session ownership', () => {
     expect(sessions.has(busy)).toBe(false);
   }, 60_000);
 
+  it('regression: a session that just opened stays open while every older one is busy', async () => {
+    const lifecycle = (sessions as unknown as { lifecycle: SessionLifecycle }).lifecycle;
+    const limit = SessionLifecycle.idleLimit;
+    const ids = Array.from({ length: limit + 1 }, () => randomUUID());
+    for (const id of ids.slice(0, limit)) {
+      await sessions.open(id, { cwd: base });
+      (lifecycle.threads.get(id) as OpenThread).prompting = new Promise(() => undefined);
+    }
+    const last = ids[limit];
+    await sessions.open(last, { cwd: base });
+    expect(sessions.stats(last).sessionId).toBe(last);
+    expect(ids.filter((id) => sessions.has(id))).toHaveLength(limit + 1);
+    for (const id of ids.slice(0, limit)) (lifecycle.threads.get(id) as OpenThread).prompting = undefined;
+  }, 60_000);
+
   it('shares concurrent opens, disposes one session independently and initializes it again on reopen', async () => {
     const id = randomUUID();
     const other = randomUUID();

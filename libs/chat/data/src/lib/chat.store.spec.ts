@@ -1156,6 +1156,30 @@ describe('ChatStore', () => {
     }
   });
 
+  it('regression: a reconnect that restores the same model from the replay cache reads the model list again', async () => {
+    const chat = await make();
+    const settle = async (): Promise<void> => {
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+    };
+    await settle();
+    expect(chat.modelList()).toBeDefined();
+    TestBed.inject(ThreadReplayCacheStore).record('t1', {
+      cursor: 'g:1',
+      messages: [],
+      state: {},
+      interrupts: [],
+      view: { stats: chat.stats() } as never,
+    });
+    api.models.mockClear();
+    chat.reconnect();
+    await settle();
+    expect(api.models).toHaveBeenCalledTimes(1);
+    expect(chat.modelList()).toBeDefined();
+  });
+
   it('starts over when another thread opens', async () => {
     const chat = await make();
     chat.setRunError({ message: 'boom' });

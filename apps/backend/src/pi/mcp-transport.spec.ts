@@ -7,6 +7,7 @@ import {
   expandHome,
   resolveConfigValue,
 } from './mcp-transport';
+import { McpTap } from '../mcp/mcp-tap';
 
 describe('resolveConfigValue', () => {
   it('substitutes environment variables and fails clearly on a missing one', () => {
@@ -82,6 +83,7 @@ describe('MCP settings that run a command', () => {
     readonly closes = new Set<() => void>();
     started = false;
     version: string | undefined;
+    stderr = '';
     constructor(public options: Record<string, unknown>) {
       made.push(this);
     }
@@ -157,6 +159,36 @@ describe('MCP settings that run a command', () => {
       },
     ) as unknown as DeferrableTransport;
     await expect(transport.start()).rejects.toThrow('MCP server "s" env "TOKEN": the command boom failed: exit 1');
+  });
+
+  it('regression: a deferred stdio transport stays a StdioTransport with its stderr through the tap', async () => {
+    made.length = 0;
+    const transport = new McpTap().wrap(
+      's',
+      createMcpTransport(
+        classes,
+        { name: 's', config: { command: 'node', env: { TOKEN: '!get' } } },
+        '/work',
+        undefined,
+        async () => 'v',
+      ) as unknown as DeferrableTransport,
+    );
+    expect(transport).toBeInstanceOf(FakeTransport);
+    expect(transport.stderr).toBe('');
+    await transport.start();
+    made[0].stderr = 'boom\n';
+    expect(transport.stderr).toBe('boom\n');
+  });
+
+  it('a deferred HTTP transport is not taken for a stdio one', () => {
+    const transport = createMcpTransport(
+      classes,
+      { name: 'h', config: { url: 'https://x/mcp', headers: { Authorization: '!get' } } },
+      '/work',
+      undefined,
+      async () => 'v',
+    );
+    expect(transport).toBeInstanceOf(DeferredTransport);
   });
 
   it("gives the command the server's own timeout", async () => {

@@ -134,6 +134,29 @@ describe('PiSettingsStore', () => {
     expect(reopened.settings()?.autoCompaction).toBe(false);
   });
 
+  it('regression: a section opened again while a save is pending shows that edit and saves after it', async () => {
+    const closing = Injector.create({ providers: [PiSettingsStore], parent: TestBed.inject(Injector) });
+    const first = closing.get(PiSettingsStore);
+    await vi.advanceTimersByTimeAsync(0);
+    let finish!: (value: PiSettings) => void;
+    api.patch.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)));
+    const saving = first.patch({ retryEnabled: false });
+    closing.destroy();
+    const reopened = Injector.create({ providers: [PiSettingsStore], parent: TestBed.inject(Injector) }).get(
+      PiSettingsStore,
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(reopened.settings()?.retryEnabled).toBe(false);
+    const next = reopened.patch({ retryEnabled: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(api.patch).toHaveBeenCalledTimes(1);
+    finish(values({ retryEnabled: false }));
+    await saving;
+    await next;
+    expect(api.patch).toHaveBeenLastCalledWith({ retryEnabled: true }, '/a');
+    expect(reopened.settings()?.retryEnabled).toBe(true);
+  });
+
   it('loading again after the thread moved to another folder reads and saves that folder', async () => {
     const store = TestBed.inject(PiSettingsStore);
     await vi.advanceTimersByTimeAsync(0);

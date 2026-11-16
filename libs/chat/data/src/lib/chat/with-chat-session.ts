@@ -2,7 +2,7 @@ import { DestroyRef, inject } from '@angular/core';
 import { Language } from '@pi-kit/i18n';
 import { WorkbenchSelectionSchema } from '@pi-kit/api';
 import { HttpAgent } from '@ag-ui/client';
-import { computed, effect, untracked } from '@angular/core';
+import { computed, effect, signal, untracked } from '@angular/core';
 import { type SignalStoreFeatureType, patchState, signalStoreFeature, type, withHooks } from '@ngrx/signals';
 import { withChatTools } from './with-chat-tools';
 import { ThreadReplayAgent } from '../thread-replay-agent';
@@ -101,8 +101,10 @@ export function withChatSession<_>() {
           };
         }
 
+        const connection = signal(0);
         const resetThread = (): void => {
           internal.threadEpoch++;
+          connection.update((count) => count + 1);
           internal.pendingRun = undefined;
           store._cancelRequests();
           store._resetModels();
@@ -250,18 +252,20 @@ export function withChatSession<_>() {
           wasRunning = running;
         });
 
-        // Model menus follow both the thread and its current model.
+        // Model menus follow the thread, each connection to it, and its current model.
         const modelKey = computed(() => {
           const current = store.model();
           return current ? `${current.provider}/${current.id}` : null;
         });
-        let modelsFor: { id: string | undefined; key: string | null; switched: boolean } | undefined;
+        let modelsFor: { id: string | undefined; key: string | null; at: number; switched: boolean } | undefined;
         effect(() => {
           const id = store.threadId();
           const key = modelKey();
+          const at = connection();
           untracked(() => {
-            const loaded = modelsFor?.switched === true && modelsFor.key === null && modelsFor.id === id;
-            modelsFor = { id, key, switched: modelsFor?.id !== id };
+            const loaded =
+              modelsFor?.switched === true && modelsFor.key === null && modelsFor.id === id && modelsFor.at === at;
+            modelsFor = { id, key, at, switched: modelsFor?.id !== id };
             if (loaded) return;
             if (id && store._agent.session) void store.loadModels(id);
             else patchState(store, { modelList: undefined });

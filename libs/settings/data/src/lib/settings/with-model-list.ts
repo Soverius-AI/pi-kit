@@ -43,7 +43,7 @@ export function withModelList<_>() {
       return {
         onInit() {
           leave = inject(SettingsStore).onProvidersChanged(async () => {
-            if (store.models() !== undefined) await store.loadModels();
+            if (store.models() !== undefined || store._requestStates()['models']) await store.loadModels();
           });
         },
         onDestroy() {

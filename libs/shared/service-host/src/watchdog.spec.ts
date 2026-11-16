@@ -290,6 +290,26 @@ describe('BackendWatchdog', () => {
     expect(host.statuses.at(-1)?.state).toBe('running');
   });
 
+  it('regression: a backend that hangs after every start ends in failed instead of restarting forever', async () => {
+    const host = new FakeHost();
+    await started(host, { ...DEFAULT_WATCHDOG_OPTIONS, baseDelayMs: 10, maxFailures: 2 });
+    host.pingAnswer = false;
+    for (let i = 0; i < 3; i++) await host.advance(DEFAULT_WATCHDOG_OPTIONS.pingIntervalMs * 3 + 100);
+    expect(host.statuses.filter((s) => s.state === 'restarting').map((s) => s.attempt)).toEqual([1, 2]);
+    expect(host.statuses.at(-1)?.state).toBe('failed');
+  });
+
+  it('a watchdog kill after a long healthy stretch still starts from a clean slate', async () => {
+    const host = new FakeHost();
+    await started(host, { pingIntervalMs: 1000, pingFailuresToKill: 3, stableAfterMs: 5000, baseDelayMs: 10 });
+    host.current?.die(1);
+    await host.advance(10);
+    await host.advance(6000);
+    host.pingAnswer = false;
+    await host.advance(3000);
+    expect(host.statuses.filter((s) => s.state === 'restarting').map((s) => s.attempt)).toEqual([1, 1]);
+  });
+
   it('one answered ping clears the missed ones', async () => {
     const host = new FakeHost();
     await started(host, { pingIntervalMs: 1000, pingFailuresToKill: 3 });

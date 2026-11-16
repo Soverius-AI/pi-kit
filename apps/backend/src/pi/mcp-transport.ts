@@ -11,7 +11,8 @@ import { join, resolve } from 'node:path';
  *   home directory in the command, the arguments and `cwd`;
  * - HTTP: `url` and `headers`, with the auth provider pi made for the server (OAuth tokens, a provider's token);
  * - values of `env` and `headers` may contain `${NAME}`, or be `!command` as a whole. A command runs when the server
- *   starts, within the server's `timeout` (default 60 s), and stops when the transport closes.
+ *   starts, within the server's `timeout` (default 60 s), and stops when the transport closes. Until then a stdio
+ *   server's transport still passes pi's `instanceof StdioTransport` check, and its `stderr` is the real transport's.
  *
  * The transport classes are passed in (they come from `@earendil-works/pi-mcp`, loaded by `PiSessionService`), so
  * this file imports nothing from pi.
@@ -111,12 +112,14 @@ export function createMcpTransport<T>(
         });
   if (!Object.values(values ?? {}).some((value) => value.startsWith('!'))) return build(resolveAll(values, label));
   const timeoutMs = (config.timeout ?? DeferredTransport.defaultTimeoutSeconds) * 1000;
-  return new DeferredTransport(
+  const deferred = new DeferredTransport(
     async (signal) =>
       build(
         await DeferredTransport.resolve(values, label, (command) => run(command, { timeoutMs, signal })),
       ) as unknown as DeferrableTransport,
-  ) as unknown as T;
+  );
+  if (config.url) return deferred as unknown as T;
+  return new Proxy(deferred, { getPrototypeOf: () => classes.StdioTransport.prototype as object }) as unknown as T;
 }
 
 export interface DeferrableTransport {
@@ -127,6 +130,7 @@ export interface DeferrableTransport {
   onError(listener: (error: Error) => void): () => void;
   onClose(listener: () => void): () => void;
   setProtocolVersion?(version: string): void;
+  readonly stderr?: string;
 }
 
 export class DeferredTransport implements DeferrableTransport {
@@ -142,6 +146,10 @@ export class DeferredTransport implements DeferrableTransport {
   static readonly defaultTimeoutSeconds = 60;
 
   constructor(private readonly build: (signal: AbortSignal) => Promise<DeferrableTransport>) {}
+
+  get stderr(): string {
+    return this.real?.stderr ?? '';
+  }
 
   static run(command: string, { timeoutMs, signal }: CommandOptions): Promise<string> {
     return new Promise((resolve, reject) => {

@@ -312,7 +312,7 @@ export class SessionLifecycle {
     const excess = this.opened.size - SessionLifecycle.idleLimit;
     if (excess <= 0) return;
     const idle = [...this.opened.values()]
-      .filter((thread) => !this.busy(thread))
+      .filter((thread) => !this.opening.has(thread.info.threadId) && !this.busy(thread))
       .sort((a, b) => (this.used.get(a.info.threadId) ?? 0) - (this.used.get(b.info.threadId) ?? 0))
       .slice(0, excess);
     for (const thread of idle) {
