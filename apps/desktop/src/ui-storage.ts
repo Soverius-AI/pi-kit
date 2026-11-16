@@ -1,15 +1,49 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-const allowed = (key: string): boolean =>
-  [
-    'pi-kit.theme',
-    'pi-kit.look',
-    'pi-kit.showUsage',
-    'pi-kit.copilotInspector',
-    'pi-kit.pinned-chips',
-    'pk.files.showIgnored',
-  ].includes(key) || key.startsWith('pk.graph.fold.');
+const MAX_VALUE_LENGTH = 512 * 1024;
+const GRAPH_FOLD_PREFIX = 'pk.graph.fold.';
+
+/** These preferences follow the project owner; the renderer wraps their keys for a remote owner. */
+const ownerAllowed = (key: string): boolean =>
+  ['pi-kit.pinned-chips', 'pk.files.showIgnored'].includes(key) ||
+  (key.startsWith(GRAPH_FOLD_PREFIX) && key.length > GRAPH_FOLD_PREFIX.length);
+
+const allowed = (key: string): boolean => {
+  if (
+    ownerAllowed(key) ||
+    [
+      'pi-kit.theme',
+      'pi-kit.look',
+      'pi-kit.showUsage',
+      'pi-kit.copilotInspector',
+      'pi-kit.entryInstance',
+      'pi-kit.workbench-ref.v1',
+      'pi-kit.preview-dismissals.v1',
+      'pi-kit.preview-auto-open.v1',
+      'pi-kit.preview-hint-dismissed.v1',
+      'pi-kit.remoteAccess.port',
+    ].includes(key)
+  )
+    return true;
+  // Match with-persistence's owner namespace, without admitting wrapped credentials or arbitrary keys.
+  try {
+    const scoped: unknown = JSON.parse(key);
+    return (
+      Array.isArray(scoped) &&
+      scoped.length === 3 &&
+      scoped[0] === 'pi-kit.owner.v1' &&
+      typeof scoped[1] === 'string' &&
+      scoped[1].length > 0 &&
+      typeof scoped[2] === 'string' &&
+      ownerAllowed(scoped[2])
+    );
+  } catch {
+    return false;
+  }
+};
+
+const validValue = (value: unknown): value is string => typeof value === 'string' && value.length <= MAX_VALUE_LENGTH;
 
 /** UI copies only; backend settings remain authoritative. Disk I/O never runs in the chat renderer. */
 export class UiStorage {
@@ -26,7 +60,7 @@ export class UiStorage {
     }
     if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
       this.values = Object.fromEntries(
-        Object.entries(saved).filter(([key, value]) => allowed(key) && typeof value === 'string'),
+        Object.entries(saved).filter(([key, value]) => allowed(key) && validValue(value)),
       );
     }
     await this.save();
@@ -37,7 +71,7 @@ export class UiStorage {
   }
 
   set(key: unknown, value: unknown): Promise<void> {
-    if (typeof key !== 'string' || !allowed(key) || typeof value !== 'string' || value.length > 512 * 1024)
+    if (typeof key !== 'string' || !allowed(key) || !validValue(value))
       return Promise.reject(new Error('Invalid UI preference'));
     this.values[key] = value;
     return this.save();
