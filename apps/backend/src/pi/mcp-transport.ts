@@ -10,7 +10,8 @@ import { join, resolve } from 'node:path';
  * - stdio: `command` is one executable with `args`; `cwd` is relative to the session's folder; `~/` names the
  *   home directory in the command, the arguments and `cwd`;
  * - HTTP: `url` and `headers`, with the auth provider pi made for the server (OAuth tokens, a provider's token);
- * - values of `env` and `headers` may contain `${NAME}`, or be `!command` as a whole.
+ * - values of `env` and `headers` may contain `${NAME}`, or be `!command` as a whole. A command runs when the server
+ *   starts, within the server's `timeout` (default 60 s), and stops when the transport closes.
  *
  * The transport classes are passed in (they come from `@earendil-works/pi-mcp`, loaded by `PiSessionService`), so
  * this file imports nothing from pi.
@@ -26,7 +27,13 @@ export interface McpEntryLike {
     args?: string[];
     env?: Record<string, string>;
     cwd?: string;
+    timeout?: number;
   };
+}
+
+export interface CommandOptions {
+  timeoutMs: number;
+  signal: AbortSignal;
 }
 
 export interface TransportClasses<T> {
@@ -87,7 +94,7 @@ export function createMcpTransport<T>(
   entry: McpEntryLike,
   cwd: string,
   authProvider: unknown,
-  run: (command: string) => Promise<string> = DeferredTransport.run,
+  run: (command: string, options: CommandOptions) => Promise<string> = DeferredTransport.run,
 ): T {
   const { config, name } = entry;
   const values = config.url ? config.headers : config.env;
@@ -103,8 +110,12 @@ export function createMcpTransport<T>(
           stderr: 'pipe',
         });
   if (!Object.values(values ?? {}).some((value) => value.startsWith('!'))) return build(resolveAll(values, label));
+  const timeoutMs = (config.timeout ?? DeferredTransport.defaultTimeoutSeconds) * 1000;
   return new DeferredTransport(
-    async () => build(await DeferredTransport.resolve(values, label, run)) as unknown as DeferrableTransport,
+    async (signal) =>
+      build(
+        await DeferredTransport.resolve(values, label, (command) => run(command, { timeoutMs, signal })),
+      ) as unknown as DeferrableTransport,
   ) as unknown as T;
 }
 
@@ -126,13 +137,18 @@ export class DeferredTransport implements DeferrableTransport {
   private version: string | undefined;
   private closed = false;
   private closeEmitted = false;
+  private readonly stopping = new AbortController();
 
-  constructor(private readonly build: () => Promise<DeferrableTransport>) {}
+  static readonly defaultTimeoutSeconds = 60;
 
-  static run(command: string): Promise<string> {
+  constructor(private readonly build: (signal: AbortSignal) => Promise<DeferrableTransport>) {}
+
+  static run(command: string, { timeoutMs, signal }: CommandOptions): Promise<string> {
     return new Promise((resolve, reject) => {
-      const child = exec(command, { encoding: 'utf8', timeout: 10_000, windowsHide: true }, (error, stdout) =>
-        error ? reject(error) : resolve(stdout),
+      const child = exec(
+        command,
+        { encoding: 'utf8', timeout: timeoutMs, signal, windowsHide: true },
+        (error, stdout) => (error ? reject(error) : resolve(stdout)),
       );
       child.stdin?.end();
     });
@@ -161,8 +177,10 @@ export class DeferredTransport implements DeferrableTransport {
   }
 
   async start(): Promise<void> {
-    const real = await this.build();
-    if (this.closed) throw new Error('The MCP transport was closed before it started.');
+    const real = await this.build(this.stopping.signal).catch((error: unknown) => {
+      if (!this.closed) throw error;
+    });
+    if (!real || this.closed) throw new Error('The MCP transport was closed before it started.');
     this.real = real;
     real.onMessage((message) => {
       for (const listener of [...this.messages]) listener(message);
@@ -183,6 +201,7 @@ export class DeferredTransport implements DeferrableTransport {
 
   async close(): Promise<void> {
     this.closed = true;
+    this.stopping.abort();
     if (this.real) await this.real.close();
     else this.emitClose();
   }

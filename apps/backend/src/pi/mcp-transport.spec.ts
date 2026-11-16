@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  type CommandOptions,
   createMcpTransport,
   type DeferrableTransport,
   DeferredTransport,
@@ -130,7 +131,12 @@ describe('MCP settings that run a command', () => {
     transport.onMessage((message) => seen.push(message));
     transport.setProtocolVersion?.('2025-06-18');
     const starting = transport.start();
-    await vi.waitFor(() => expect(run).toHaveBeenCalledWith('pi-kit-secret get connector-x --bearer'));
+    await vi.waitFor(() =>
+      expect(run).toHaveBeenCalledWith(
+        'pi-kit-secret get connector-x --bearer',
+        expect.objectContaining({ timeoutMs: 60_000 }),
+      ),
+    );
     finish('Bearer abc\n');
     await starting;
     expect(made[0].options).toMatchObject({ url: 'https://x/mcp', headers: { Authorization: 'Bearer abc' } });
@@ -153,7 +159,54 @@ describe('MCP settings that run a command', () => {
     await expect(transport.start()).rejects.toThrow('MCP server "s" env "TOKEN": the command boom failed: exit 1');
   });
 
+  it("gives the command the server's own timeout", async () => {
+    const run = vi.fn(async () => 'v');
+    const transport = createMcpTransport(
+      classes,
+      { name: 't', config: { command: 'node', env: { TOKEN: '!get' }, timeout: 5 } },
+      '/work',
+      undefined,
+      run,
+    ) as unknown as DeferrableTransport;
+    await transport.start();
+    expect(run).toHaveBeenCalledWith('get', expect.objectContaining({ timeoutMs: 5000 }));
+  });
+
+  it('closing the transport stops a command that is still running', async () => {
+    let signal: AbortSignal | undefined;
+    const run = vi.fn(
+      (_command: string, options: CommandOptions) =>
+        new Promise<string>((_resolve, reject) => {
+          signal = options.signal;
+          options.signal.addEventListener('abort', () => reject(new Error('aborted')));
+        }),
+    );
+    const transport = createMcpTransport(
+      classes,
+      { name: 'c', config: { command: 'node', env: { TOKEN: '!wait' } } },
+      '/work',
+      undefined,
+      run,
+    ) as unknown as DeferrableTransport;
+    const starting = transport.start();
+    await vi.waitFor(() => expect(run).toHaveBeenCalled());
+    await transport.close();
+    expect(signal?.aborted).toBe(true);
+    await expect(starting).rejects.toThrow('The MCP transport was closed before it started.');
+  });
+
   it('runs the command through the shell without blocking', async () => {
-    expect((await DeferredTransport.run('echo hi')).trim()).toBe('hi');
+    const options = { timeoutMs: 5000, signal: new AbortController().signal };
+    expect((await DeferredTransport.run('echo hi', options)).trim()).toBe('hi');
+  });
+
+  it('kills the command when it is aborted', async () => {
+    const stop = new AbortController();
+    const running = DeferredTransport.run(`"${process.execPath}" -e "setTimeout(() => {}, 30000)"`, {
+      timeoutMs: 60_000,
+      signal: stop.signal,
+    });
+    stop.abort();
+    await expect(running).rejects.toThrow();
   });
 });
