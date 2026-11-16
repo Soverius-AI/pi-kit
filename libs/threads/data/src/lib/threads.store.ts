@@ -342,6 +342,10 @@ export const ThreadsStore = signalStore(
         void (cwd ? trust.ensure(cwd) : Promise.resolve()).then(() => {
           if (token !== selectToken) return;
           store.setSelected(id);
+          const openedAt = Date.now();
+          patchState(store, (s) => ({
+            threads: s.threads.map((t) => (t.id === id ? { ...t, lastOpenedAt: openedAt } : t)),
+          }));
           rememberRef(id, cwd);
           if (cwd && cwd !== store.workspace()) {
             patchState(store, { workspace: cwd });

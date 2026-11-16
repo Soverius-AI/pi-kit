@@ -1,21 +1,10 @@
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import { NgTemplateOutlet } from '@angular/common';
-import {
-  ChangeDetectionStrategy,
-  Component,
-  ElementRef,
-  computed,
-  effect,
-  inject,
-  input,
-  output,
-  signal,
-  viewChild,
-} from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { PkIcon, PkTip } from '@pi-kit/design-system';
 import { type KeyShape, checkKeyShape, credentialStoreText, keyHelp } from '@pi-kit/ui';
-import { SecretsStore, SettingsStore } from '@pi-kit/settings/data';
+import { ProviderCardsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/data';
 
 /** “today”, “yesterday” or a date. */
 function whenText(at: number | undefined): string {
@@ -40,7 +29,6 @@ function whenText(at: number | undefined): string {
 @Component({
   selector: 'pk-key-workflow',
   imports: [NgTemplateOutlet, PkTip, TranslocoPipe, PkIcon],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '[class.contents]': 'embedded()' },
   template: `
     @if (store.keyWorkflow(); as wf) {
@@ -330,6 +318,7 @@ function whenText(at: number | undefined): string {
 export class KeyWorkflow {
   protected readonly i18n = inject(Language);
   protected readonly store = inject(SettingsStore);
+  private readonly cards = inject(ProviderCardsStore);
   protected readonly secrets = inject(SecretsStore);
   private readonly win = viewChild<ElementRef<HTMLElement>>('win');
   private readonly field = viewChild<ElementRef<HTMLInputElement>>('keyInput');
@@ -352,10 +341,10 @@ export class KeyWorkflow {
   protected readonly typed = signal(false);
 
   protected readonly keyProviders = computed(() =>
-    (this.store.overview()?.providers ?? []).filter((p) => p.methods.includes('api_key')),
+    (this.cards.providers() ?? this.store.providers() ?? []).filter((p) => p.methods.includes('api_key')),
   );
   protected readonly provider = computed(() =>
-    this.store.overview()?.providers.find((p) => p.id === this.store.keyWorkflow()?.provider),
+    (this.cards.providers() ?? this.store.providers())?.find((p) => p.id === this.store.keyWorkflow()?.provider),
   );
   protected readonly help = computed(() => keyHelp(this.i18n.t, this.store.keyWorkflow()?.provider ?? ''));
   /** pi’s secret prompt is waiting for the key. */

@@ -61,6 +61,7 @@ export function withChatState() {
         pendingRun: undefined as string | undefined,
         /** The runs this transcript saw start, own or joined: the channel's "running" for one of them is no news. */
         seenRuns: new Set<string>(),
+        idleReplay: false,
         retryTimer: undefined as ReturnType<typeof setTimeout> | undefined,
       },
     })),

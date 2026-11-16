@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ChatStore } from '@pi-kit/chat/api';
 import { DialogStore, UiStore } from '@pi-kit/data-access';
 import type { PackageItem, ResourceItem, ResourcesOverview } from '@pi-kit/protocol';
-import { PackagesStore, SettingsStore } from '@pi-kit/settings/api';
+import { PackagesStore, PiSettingsStore, SettingsStore } from '@pi-kit/settings/api';
 import { LearnStore, LearnedStore } from '@pi-kit/threads/api';
 import { ExtensionsSection } from './extensions-section';
 import { InstallSkillDialog } from './install-skill-dialog';
@@ -89,7 +89,7 @@ describe('Extensions and Skills sections', () => {
   const q = <T extends HTMLElement = HTMLElement>(f: { nativeElement: unknown }, selector: string): T | null =>
     el(f).querySelector<T>(selector);
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     settings.settings.set(undefined);
     items.set([
@@ -175,6 +175,10 @@ describe('Extensions and Skills sections', () => {
         { provide: LearnStore, useValue: { edit: async () => undefined } },
       ],
     });
+    TestBed.overrideComponent(ExtensionsSection, {
+      set: { providers: [{ provide: PiSettingsStore, useValue: settings }] },
+    });
+    await TestBed.compileComponents();
   });
 
   it('links the active tab to the section while preserving manual selection within a section', () => {

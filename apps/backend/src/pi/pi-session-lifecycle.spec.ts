@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LiteLlmService } from '../setup/litellm.service';
 import { PiPluginService, type PluginReplyShape } from './pi-plugin.service';
 import { PLUGIN_CHANNELS, replyChannel } from '@pi-kit/protocol';
 import { PiSessionService } from './pi-session.service';
+import { type OpenThread, SessionLifecycle } from './session-lifecycle';
 import { TrustService } from './trust.service';
 import { SandboxPackage } from './thread-protection.service';
 import { ThreadProtectionTesting } from './thread-protection.testing';
@@ -217,6 +219,63 @@ describe('open session ownership', () => {
     readFileSync(path, 'utf8')
       .split('\n')
       .filter((value) => value === id).length;
+
+  it('logs one successful opening with sequential phase timings, not one per concurrent reader', async () => {
+    const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const id = randomUUID();
+    try {
+      const [info] = await Promise.all([sessions.open(id, { cwd: base }), sessions.open(id, { cwd: base })]);
+      await sessions.open(id, { cwd: base });
+      const records = log.mock.calls
+        .map(([message]) => String(message))
+        .filter((message) => message.startsWith(`Opened thread ${id} `));
+      expect(records).toHaveLength(1);
+      expect(records[0]).toEqual(
+        expect.stringContaining(`Opened thread ${id} in ${base} (${info.sessionFile ?? 'no session file'})`),
+      );
+      expect(records[0]).toMatch(
+        /\[total=\d+ms sdk=\d+ms history=\d+ms sandbox=\d+ms resourcesSetup=\d+ms resourcesReload=\d+ms modelRuntime=\d+ms createAgentSession=\d+ms sessionUiBind=\d+ms\]$/,
+      );
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('regression: keeps the most recently used sessions open and closes the oldest idle ones, never a busy one', async () => {
+    const lifecycle = (sessions as unknown as { lifecycle: SessionLifecycle }).lifecycle;
+    const limit = SessionLifecycle.idleLimit;
+    const ids = Array.from({ length: limit + 2 }, () => randomUUID());
+    const [busy, idle, used] = ids;
+    const open = (): string[] => ids.filter((id) => sessions.has(id));
+    for (const id of ids.slice(0, limit)) await sessions.open(id, { cwd: base });
+    const busyThread = lifecycle.threads.get(busy) as OpenThread;
+    busyThread.prompting = new Promise(() => undefined);
+    expect(sessions.stats(used).sessionId).toBe(used);
+    await sessions.open(ids[limit], { cwd: base });
+    expect(open()).toHaveLength(limit);
+    expect(sessions.has(busy)).toBe(true);
+    expect(sessions.has(idle)).toBe(false);
+    expect(sessions.has(used)).toBe(true);
+    busyThread.prompting = undefined;
+    await sessions.open(ids[limit + 1], { cwd: base });
+    expect(open()).toHaveLength(limit);
+    expect(sessions.has(busy)).toBe(false);
+  }, 60_000);
+
+  it('regression: a session that just opened stays open while every older one is busy', async () => {
+    const lifecycle = (sessions as unknown as { lifecycle: SessionLifecycle }).lifecycle;
+    const limit = SessionLifecycle.idleLimit;
+    const ids = Array.from({ length: limit + 1 }, () => randomUUID());
+    for (const id of ids.slice(0, limit)) {
+      await sessions.open(id, { cwd: base });
+      (lifecycle.threads.get(id) as OpenThread).prompting = new Promise(() => undefined);
+    }
+    const last = ids[limit];
+    await sessions.open(last, { cwd: base });
+    expect(sessions.stats(last).sessionId).toBe(last);
+    expect(ids.filter((id) => sessions.has(id))).toHaveLength(limit + 1);
+    for (const id of ids.slice(0, limit)) (lifecycle.threads.get(id) as OpenThread).prompting = undefined;
+  }, 60_000);
 
   it('shares concurrent opens, disposes one session independently and initializes it again on reopen', async () => {
     const id = randomUUID();

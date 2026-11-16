@@ -142,13 +142,20 @@ export function withChatEvents<_>() {
             },
             onReasoningStartEvent: ({ event }) => time(event.messageId, { start: event.timestamp ?? Date.now() }),
             onReasoningEndEvent: ({ event }) => time(event.messageId, { end: event.timestamp ?? Date.now() }),
+            onRunInitialized: () => {
+              store._internal.idleReplay = false;
+            },
             onCustomEvent: ({ event }) => {
-              if (event.name === REPLAY_RESET_EVENT && (event.value as { reset?: boolean })?.reset === false) {
-                if ((event.value as { running?: boolean }).running === true) {
-                  store.requestDone();
-                  store._settleConnect();
+              if (event.name === REPLAY_RESET_EVENT) {
+                const replay = event.value as { reset?: boolean; running?: boolean } | undefined;
+                store._internal.idleReplay = replay?.running === false;
+                if (replay?.reset === false) {
+                  if (replay.running === true) {
+                    store.requestDone();
+                    store._settleConnect();
+                  }
+                  return;
                 }
-                return;
               }
               if (event.name === THREAD_HYDRATION_EVENT) {
                 const snapshot = event.value as ThreadHydration;

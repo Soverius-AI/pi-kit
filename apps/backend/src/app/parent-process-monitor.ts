@@ -8,8 +8,14 @@ export class ParentProcessMonitor implements OnApplicationBootstrap, OnModuleDes
   private timer?: ReturnType<typeof setInterval>;
   private deadline?: ReturnType<typeof setTimeout>;
   private stopping = false;
-  private readonly boundShutdown = (): void => {
+  private readonly onSigInt = (): void => this.boundShutdown('SIGINT');
+  private readonly onSigTerm = (): void => this.boundShutdown('SIGTERM');
+  private readonly boundShutdown = (signal: NodeJS.Signals): void => {
     if (this.deadline) return;
+    Logger.warn(
+      `BACKEND_SHUTDOWN ${JSON.stringify({ at: new Date().toISOString(), pid: process.pid, signal })}`,
+      ParentProcessMonitor.name,
+    );
     this.deadline = setTimeout(() => {
       Logger.error('Backend shutdown exceeded its grace period.');
       process.exit(1);
@@ -21,8 +27,8 @@ export class ParentProcessMonitor implements OnApplicationBootstrap, OnModuleDes
   constructor(@Inject(CONFIG) private readonly config: BackendConfig) {}
 
   onApplicationBootstrap(): void {
-    process.prependListener('SIGINT', this.boundShutdown);
-    process.prependListener('SIGTERM', this.boundShutdown);
+    process.prependListener('SIGINT', this.onSigInt);
+    process.prependListener('SIGTERM', this.onSigTerm);
     const parent = this.config.shutdown?.parentPid;
     if (!parent || parent === process.pid) return;
     this.timer = setInterval(() => {
@@ -44,8 +50,8 @@ export class ParentProcessMonitor implements OnApplicationBootstrap, OnModuleDes
   onModuleDestroy(): void {
     this.stopping = true;
     clearInterval(this.timer);
-    process.off('SIGINT', this.boundShutdown);
-    process.off('SIGTERM', this.boundShutdown);
+    process.off('SIGINT', this.onSigInt);
+    process.off('SIGTERM', this.onSigTerm);
     // An already armed, unref'ed deadline remains until Nest finishes every shutdown
     // hook and exits. Clearing it here would leave later hooks free to hang forever.
   }

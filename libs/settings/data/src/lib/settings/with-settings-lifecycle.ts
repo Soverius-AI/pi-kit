@@ -1,5 +1,5 @@
 import { Language } from '@pi-kit/i18n';
-import { effect, inject, untracked } from '@angular/core';
+import { computed, effect, inject, untracked } from '@angular/core';
 import { signalStoreFeature, type, withHooks } from '@ngrx/signals';
 import { UiStore } from '@pi-kit/data-access';
 import { ThreadsStore } from '@pi-kit/threads/api';
@@ -15,8 +15,9 @@ export function withSettingsLifecycle<_>() {
         setSearch: (value: string) => void;
         closeProject: () => void;
         select: (section: SettingsSectionId) => void;
-        load: () => Promise<void>;
+        loadProviders: () => Promise<void>;
         loadResources: () => Promise<void>;
+        loadKeybindings: () => Promise<void>;
         loadFolders: () => Promise<void>;
         signInTo: (provider: string) => Promise<void>;
       }>(),
@@ -29,7 +30,7 @@ export function withSettingsLifecycle<_>() {
         let wasOpen = false;
 
         // `UiStore.openSettings(tab, login)` (the sidebar, `/settings`, `/login`, the model chips) opens the dialog; the bus stays the switch because
-        // the chat code calls it. Opening reads pi’s settings fresh, since the CLI may have changed them; closing ends a sign-in in progress.
+        // the chat code calls it. Opening reads what the sidebar shows fresh, since the CLI may have changed it; closing ends a sign-in in progress.
         effect((onCleanup) => {
           let active = true;
           onCleanup(() => {
@@ -49,17 +50,23 @@ export function withSettingsLifecycle<_>() {
             }
             wasOpen = true;
             store.select(sectionOfTab(translate, open.tab));
-            void store.load().then(() => {
+            void store.loadProviders().then(() => {
               if (active && bus.settings() === open && open.login) void store.signInTo(open.login);
             });
             void store.loadResources();
+            void store.loadKeybindings();
           });
         });
 
-        // The folders' trust state is read when the list of workspaces first has entries and the Projects section is open.
+        // The folders' trust state is read when the Projects section is open and the set of project folders changes, not on every read of the list.
+        const folders = computed(() =>
+          threads
+            .workspaces()
+            .map((workspace) => workspace.cwd)
+            .join('\n'),
+        );
         effect(() => {
-          if (bus.settings() && store.section() === 'projects' && threads.workspaces().length > 0)
-            untracked(() => void store.loadFolders());
+          if (bus.settings() && store.section() === 'projects' && folders()) untracked(() => void store.loadFolders());
         });
       },
     }),

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Logger } from '@nestjs/common';
@@ -46,6 +46,7 @@ export abstract class PiKitPackage<Module> {
   protected readonly logger: Logger;
   private moduleDir: string | undefined;
   private loaded: Promise<Module> | undefined;
+  private found: { settings: string; dir: string | undefined } | undefined;
   /** How the package's module is imported: a native `import()` (the bundle compiles a plain one to `require`). A test replaces it. */
   importer: <T>(url: string) => Promise<T> = nativeImport;
 
@@ -68,16 +69,32 @@ export abstract class PiKitPackage<Module> {
 
   /** The folder of the package pi has configured (user scope), if it has one that is there. */
   async installedDir(): Promise<string | undefined> {
+    const pi = await loadPi();
+    const settings = this.settingsStamp(pi.getAgentDir());
+    if (this.found?.settings === settings) return this.found.dir;
     const { packages } = await this.context();
+    let dir: string | undefined;
     for (const configured of packages.listConfiguredPackages()) {
       if (configured.scope !== 'user' || !configured.installedPath) continue;
       if (
         nameOf(configured.installedPath) === this.spec.name &&
         existsSync(join(configured.installedPath, this.spec.entry))
-      )
-        return configured.installedPath;
+      ) {
+        dir = configured.installedPath;
+        break;
+      }
     }
-    return undefined;
+    this.found = { settings, dir };
+    return dir;
+  }
+
+  private settingsStamp(agentDir: string): string {
+    try {
+      const stat = statSync(join(agentDir, 'settings.json'));
+      return `${stat.mtimeMs}:${stat.size}`;
+    } catch {
+      return 'missing';
+    }
   }
 
   /** Installs the bundled package into the user's pi settings once. `<env>=off` skips it (a machine that wants no plugin). Returns what happened, for the log and the tests. */

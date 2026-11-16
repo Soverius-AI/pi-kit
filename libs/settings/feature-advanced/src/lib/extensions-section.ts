@@ -4,7 +4,7 @@ import { ChatStore } from '@pi-kit/chat/api';
 import { DialogStore, UiStore } from '@pi-kit/data-access';
 import { PkIcon, PkItem, PkScrollArea, PkTabPanel, PkTabs, PkTip } from '@pi-kit/design-system';
 import { type ResourceItem } from '@pi-kit/protocol';
-import { PackagesStore, PkSetting, SettingsStore } from '@pi-kit/settings/api';
+import { PackagesStore, PiSettingsStore, PkSetting, SettingsStore } from '@pi-kit/settings/api';
 import { packages } from '@pi-kit/settings/util';
 import { PkContextMenu, type PkMenuItem } from '@pi-kit/ui';
 import { errorMessage } from '@pi-kit/api';
@@ -16,6 +16,7 @@ import { PkLearnedRetired, PkLearnedSkill } from './learned-skill';
 
 @Component({
   selector: 'pk-extensions-section',
+  providers: [PiSettingsStore],
   imports: [
     AddPackageWizard,
     PkContextMenu,
@@ -36,7 +37,8 @@ export class ExtensionsSection {
   readonly section = input<'extensions' | 'skills'>('extensions');
   protected readonly tab = linkedSignal<string>(() => (this.section() === 'skills' ? 'inventory' : 'packages'));
   protected readonly i18n = inject(Language);
-  protected readonly store = inject(SettingsStore);
+  protected readonly dialog = inject(SettingsStore);
+  protected readonly store = inject(PiSettingsStore);
   protected readonly pkgs = inject(PackagesStore);
   protected readonly chat = inject(ChatStore);
   private readonly ui = inject(UiStore);
@@ -89,8 +91,8 @@ export class ExtensionsSection {
   }
 
   private readonly filtered = computed(() => {
-    const all = this.store.resources()?.items ?? [];
-    const words = this.store.search().toLowerCase().split(/\s+/).filter(Boolean);
+    const all = this.dialog.resources()?.items ?? [];
+    const words = this.dialog.search().toLowerCase().split(/\s+/).filter(Boolean);
     if (words.length === 0) return all;
     const hit = all.filter((i) =>
       words.every((w) => `${i.name} ${i.description ?? ''} ${i.path} ${i.label} ${i.type}`.toLowerCase().includes(w)),
@@ -138,11 +140,11 @@ export class ExtensionsSection {
   }
 
   protected busy(id: string): boolean {
-    return this.pkgs.busy().has(id) || this.store.resourcesBusy().includes(id);
+    return this.pkgs.busy().has(id) || this.dialog.resourcesBusy().includes(id);
   }
 
   protected contentsOf(source: string, scope: 'user' | 'project'): ResourceItem[] {
-    return (this.store.resources()?.items ?? []).filter(
+    return (this.dialog.resources()?.items ?? []).filter(
       (i) => i.origin === 'package' && i.source === source && i.scope === scope,
     );
   }

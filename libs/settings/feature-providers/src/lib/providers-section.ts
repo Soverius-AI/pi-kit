@@ -1,21 +1,11 @@
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import {
-  ChangeDetectionStrategy,
-  Component,
-  NgZone,
-  computed,
-  effect,
-  inject,
-  input,
-  signal,
-  untracked,
-} from '@angular/core';
+import { Component, NgZone, computed, effect, inject, input, signal, untracked } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { groupProviders } from '@pi-kit/protocol';
 import { PkIcon, PkItem, PkQuota, PkTip } from '@pi-kit/design-system';
-import { LoginFlow, ProviderCardsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/api';
+import { LoginFlow, PiSettingsStore, ProviderCardsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/api';
 import {
   type ProviderRow,
   addProvider,
@@ -63,6 +53,7 @@ const providerMarks = new Map<string, string>([
  */
 @Component({
   selector: 'pk-providers-section',
+  providers: [PiSettingsStore],
   imports: [
     AddProviderWizard,
     LoginFlow,
@@ -74,7 +65,6 @@ const providerMarks = new Map<string, string>([
     CdkTrapFocus,
     PkIcon,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(window:focus)': 'refreshUsage()' },
   styleUrl: './providers-section.css',
   templateUrl: './providers-section.html',
@@ -82,9 +72,10 @@ const providerMarks = new Map<string, string>([
 export class ProvidersSection {
   protected readonly i18n = inject(Language);
   readonly usageRefreshMs = input(60_000);
-  protected readonly store = inject(SettingsStore);
+  protected readonly dialog = inject(SettingsStore);
+  protected readonly store = inject(PiSettingsStore);
   protected readonly secrets = inject(SecretsStore);
-  private readonly cards = inject(ProviderCardsStore);
+  protected readonly cards = inject(ProviderCardsStore);
   private readonly toasts = inject(ToastStore);
   private readonly usage = inject(ProviderUsageStore);
   private readonly zone = inject(NgZone);
@@ -101,7 +92,7 @@ export class ProvidersSection {
     if (!row || this.removeBusy()) return;
     this.removeBusy.set(true);
     try {
-      if (await this.store.removeProvider(row.id)) this.removing.set(undefined);
+      if (await this.dialog.removeProvider(row.id)) this.removing.set(undefined);
     } finally {
       this.removeBusy.set(false);
     }
@@ -117,14 +108,14 @@ export class ProvidersSection {
       out[server.kind === 'ollama' ? 'ollama' : server.kind === 'llama-swap' ? 'llama-swap' : 'local'] = server.baseUrl;
     return out;
   });
-  private readonly configuredProviders = computed(() => this.store.overview()?.providers ?? []);
+  private readonly configuredProviders = computed(() => this.cards.providers() ?? []);
   private readonly usageIds = computed(() =>
     this.configuredProviders()
       .filter((p) => p.configured && p.methods.length > 0)
       .map((p) => p.id),
   );
   private readonly providers = computed(() => this.usage.withUsage(this.configuredProviders()));
-  private readonly models = computed(() => this.store.overview()?.models ?? []);
+  private readonly models = computed(() => this.cards.models() ?? []);
   protected readonly rows = computed(() =>
     providerRows(this.i18n.t, this.providers(), this.models(), this.secrets.status()?.label, this.addresses()),
   );

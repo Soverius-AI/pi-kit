@@ -1,10 +1,10 @@
 import { LocalRuntimeStore } from '@pi-kit/settings/data';
-import { signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideMockApi, usageGet } from '@pi-kit/api';
 import type { ProviderInfo, SettingsModel } from '@pi-kit/protocol';
 import { ToastStore } from '@pi-kit/data-access';
-import { ProviderCardsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/api';
+import { PiSettingsStore, ProviderCardsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/api';
 import { ProvidersSection } from './providers-section';
 
 const NOW = Date.now();
@@ -58,8 +58,6 @@ const runtimeStub = {
 describe('ProvidersSection', () => {
   const overview = signal<{ providers: ProviderInfo[]; models: SettingsModel[] } | undefined>({ providers, models });
   const store = {
-    overview,
-    settings: signal({ agentDir: '/agent' }),
     error: signal(''),
     logout: vi.fn(),
     removeProvider: vi.fn(async () => true),
@@ -71,9 +69,11 @@ describe('ProvidersSection', () => {
     closeKeyWorkflow: vi.fn(),
     dismissFlow: vi.fn(),
     login: vi.fn(),
-    patch: vi.fn(),
   };
+  const piSettings = { settings: signal({ agentDir: '/agent' }), patch: vi.fn() };
   const cards = {
+    providers: computed(() => overview()?.providers),
+    models: computed(() => overview()?.models),
     servers: signal([{ kind: 'llama-swap', baseUrl: 'http://localhost:8080/v1' }]),
     local: signal({ phase: 'idle' }),
     localUrl: signal(''),
@@ -101,7 +101,7 @@ describe('ProvidersSection', () => {
   };
   const el = (f: { nativeElement: unknown }): HTMLElement => f.nativeElement as HTMLElement;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     overview.set({ providers, models });
     for (const key of Object.keys(balances)) delete balances[key];
@@ -116,6 +116,10 @@ describe('ProvidersSection', () => {
         ...provideMockApi([[usageGet, usage, (o) => [o.path?.['id'], o.query?.['refresh']]]]),
       ],
     });
+    TestBed.overrideComponent(ProvidersSection, {
+      set: { providers: [{ provide: PiSettingsStore, useValue: piSettings }] },
+    });
+    await TestBed.compileComponents();
   });
   afterEach(() => vi.useRealTimers());
 

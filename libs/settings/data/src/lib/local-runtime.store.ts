@@ -128,7 +128,7 @@ export const LocalRuntimeStore = signalStore(
           if (job.kind === 'reload') reloadErrorToast = message;
           toasts.show('error', message);
         } else toasts.show('info', translate('settings.localRuntimeStore.localSetupCancelled'));
-        void Promise.all([catalog.detect(), settings.load(), loadStorage()]).catch(() => undefined);
+        void Promise.all([catalog.detect(), settings.providersChanged(), loadStorage()]).catch(() => undefined);
       }
       if (!views && !active(job)) stopPolling();
     };
@@ -174,7 +174,7 @@ export const LocalRuntimeStore = signalStore(
             void catalog.detect().catch(() => undefined);
           } else if ('canStart' in result) {
             publish({ ...(store.status() ?? { autostart: false }), managed: result });
-            void Promise.all([catalog.detect(), settings.load()]).catch(() => undefined);
+            void Promise.all([catalog.detect(), settings.providersChanged()]).catch(() => undefined);
           } else if ('issues' in result) {
             patchState(store, { doctor: result });
             void catalog.detect().catch(() => undefined);
@@ -267,7 +267,7 @@ export const LocalRuntimeStore = signalStore(
       },
       async register(modelId: string): Promise<void> {
         await perform((signal) => unwrap(localRuntimeRegister({ client: api.client, body: { modelId }, signal })));
-        await Promise.all([catalog.detect(), settings.load()]);
+        await Promise.all([catalog.detect(), settings.providersChanged()]);
       },
       install(tools: ('llama.cpp' | 'llama-swap')[]): Promise<void> {
         const chosen = [...tools];

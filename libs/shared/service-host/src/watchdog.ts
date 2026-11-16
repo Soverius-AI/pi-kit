@@ -8,9 +8,10 @@
  *                                       too many failures in a row --> failed --retry()--> starting
  *   any state --stop()--> stopped
  *
- * Failures count in a row: a backend that stayed up for `stableAfterMs` has earned a clean slate, so one crash a day
- * restarts after `baseDelayMs`, while a crash loop backs off (base, 2x, 4x ... up to `maxDelayMs`) and, after
- * `maxFailures` in a row, stops with `failed` instead of burning CPU.
+ * Failures count in a row: a backend that stayed up for `stableAfterMs` has earned a clean slate (for one the watchdog
+ * killed, only the time it kept answering health checks counts), so one crash a day restarts after `baseDelayMs`, while
+ * a crash loop backs off (base, 2x, 4x ... up to `maxDelayMs`) and, after `maxFailures` in a row, stops with `failed`
+ * instead of burning CPU.
  */
 
 export interface BackendHandle {
@@ -49,7 +50,7 @@ export const DEFAULT_WATCHDOG_OPTIONS: WatchdogOptions = {
   maxDelayMs: 15_000,
   maxFailures: 5,
   stableAfterMs: 30_000,
-  pingIntervalMs: 5_000,
+  pingIntervalMs: 30_000,
   pingFailuresToKill: 3,
 };
 
@@ -76,6 +77,7 @@ export class BackendWatchdog {
   private restarts = 0;
   private failures = 0;
   private startedAt: number | undefined;
+  private answeredAt: number | undefined;
   private handle: BackendHandle | undefined;
   private cancelTimer: (() => void) | undefined;
   private cancelPing: (() => void) | undefined;
@@ -132,13 +134,21 @@ export class BackendWatchdog {
         }
         this.handle = handle;
         this.startedAt = this.host.now();
+        this.answeredAt = this.startedAt;
         this.missedPings = 0;
         if (this.sawFailure) this.restarts += 1;
         this.sawFailure = false;
         this.state = 'running';
         this.emit();
         this.armPing(generation);
-        void handle.exited.then((info) => this.ended(generation, `the backend exited (${describe(info)})`));
+        void handle.exited.then((info) =>
+          this.ended(
+            generation,
+            this.missedPings >= this.options.pingFailuresToKill
+              ? `the watchdog stopped the backend after ${this.missedPings} consecutive failed health checks (${describe(info)})`
+              : `the backend exited (${describe(info)})`,
+          ),
+        );
       },
       (error: unknown) => {
         if (generation === this.generation)
@@ -156,8 +166,10 @@ export class BackendWatchdog {
     this.cancelPing?.();
     this.cancelPing = undefined;
     this.handle = undefined;
-    const uptime = this.startedAt === undefined ? 0 : this.host.now() - this.startedAt;
+    const until = this.missedPings >= this.options.pingFailuresToKill ? this.answeredAt : this.host.now();
+    const uptime = this.startedAt === undefined || until === undefined ? 0 : until - this.startedAt;
     this.startedAt = undefined;
+    this.answeredAt = undefined;
     if (uptime >= this.options.stableAfterMs) this.failures = 0;
     this.failures += 1;
     this.sawFailure = true;
@@ -189,6 +201,7 @@ export class BackendWatchdog {
   private pinged(generation: number, ok: boolean): void {
     if (generation !== this.generation || this.state !== 'running') return;
     this.missedPings = ok ? 0 : this.missedPings + 1;
+    if (ok) this.answeredAt = this.host.now();
     if (this.missedPings >= this.options.pingFailuresToKill) {
       // Alive but not answering: kill it; the exit takes the normal path.
       this.handle?.kill();

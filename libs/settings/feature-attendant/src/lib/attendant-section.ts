@@ -1,11 +1,11 @@
 import type { Translate } from '@pi-kit/i18n';
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import type { AttendantAction, PatchAttendantSettings } from '@pi-kit/protocol';
 import { AttendantStore, ThreadsStore } from '@pi-kit/threads/api';
 import { PkSetting } from '@pi-kit/settings/api';
-import { SettingsStore } from '@pi-kit/settings/data';
+import { AttendantSettingsStore, SettingsStore } from '@pi-kit/settings/data';
 import { PkTip, PkTabs, PkTabPanel, PkScrollArea } from '@pi-kit/design-system';
 import { UiStore } from '@pi-kit/data-access';
 
@@ -26,12 +26,12 @@ const kindLabels = (translate: Translate): Record<AttendantAction['kind'], strin
  */
 @Component({
   selector: 'pk-attendant-section',
+  providers: [AttendantSettingsStore],
   imports: [PkSetting, PkTip, PkTabs, PkTabPanel, PkScrollArea, TranslocoPipe],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-5" data-testid="section-attendant">
       <pk-tabs [label]="'settings.attendantSection.attendant' | transloco" [(value)]="tab">
-        @if (store.shows('attendant', 'attendant-model')) {
+        @if (dialog.shows('attendant', 'attendant-model')) {
           <pk-tab-panel value="general" [label]="'shared.catalog.general' | transloco">
             <section class="pk-group" [attr.aria-label]="'settings.attendantSection.attendant' | transloco">
               <header>
@@ -87,7 +87,7 @@ const kindLabels = (translate: Translate): Record<AttendantAction['kind'], strin
           </pk-tab-panel>
         }
         @if (
-          store.shows(
+          dialog.shows(
             'attendant-on-end',
             'attendant-on-question',
             'attendant-follow-ups',
@@ -99,7 +99,7 @@ const kindLabels = (translate: Translate): Record<AttendantAction['kind'], strin
           <pk-tab-panel value="automation" [label]="'settings.attendantSection.automation' | transloco">
             <div class="flex flex-col gap-5">
               @if (
-                store.shows('attendant-on-end', 'attendant-on-question', 'attendant-every', 'attendant-follow-ups')
+                dialog.shows('attendant-on-end', 'attendant-on-question', 'attendant-every', 'attendant-follow-ups')
               ) {
                 <section class="pk-group" [attr.aria-label]="'settings.attendantSection.schedule' | transloco">
                   <header>
@@ -160,7 +160,7 @@ const kindLabels = (translate: Translate): Record<AttendantAction['kind'], strin
                   </div>
                 </section>
               }
-              @if (store.shows('attendant-cap', 'attendant-no-cap')) {
+              @if (dialog.shows('attendant-cap', 'attendant-no-cap')) {
                 <section class="pk-group" [attr.aria-label]="'settings.attendantSection.budget' | transloco">
                   <header>
                     <div>
@@ -216,7 +216,7 @@ const kindLabels = (translate: Translate): Record<AttendantAction['kind'], strin
             </div>
           </pk-tab-panel>
         }
-        @if (store.shows('attendant-projects')) {
+        @if (dialog.shows('attendant-projects')) {
           <pk-tab-panel value="projects" [label]="'settings.attendantSection.projects' | transloco">
             <section
               class="pk-group"
@@ -255,7 +255,7 @@ const kindLabels = (translate: Translate): Record<AttendantAction['kind'], strin
           </pk-tab-panel>
         }
 
-        @if (store.shows('attendant-activity')) {
+        @if (dialog.shows('attendant-activity')) {
           <pk-tab-panel value="activity" [label]="'shared.catalog.activity' | transloco">
             <section
               class="pk-group"
@@ -352,7 +352,8 @@ const kindLabels = (translate: Translate): Record<AttendantAction['kind'], strin
 })
 export class AttendantSection implements OnInit, OnDestroy {
   protected readonly i18n = inject(Language);
-  protected readonly store = inject(SettingsStore);
+  protected readonly dialog = inject(SettingsStore);
+  protected readonly store = inject(AttendantSettingsStore);
   protected readonly attendant = inject(AttendantStore);
   protected readonly threads = inject(ThreadsStore);
 
@@ -360,7 +361,7 @@ export class AttendantSection implements OnInit, OnDestroy {
 
   /** The models pi can use, as `provider/id` options. */
   protected readonly models = computed(() =>
-    (this.store.overview()?.models ?? [])
+    (this.store.models() ?? [])
       .filter((m) => !m.virtual)
       .map((m) => ({
         value: `${m.provider}/${m.id}`,
@@ -412,7 +413,7 @@ export class AttendantSection implements OnInit, OnDestroy {
   }
 
   protected save(patch: PatchAttendantSettings): void {
-    void this.store.save(
+    void this.dialog.save(
       () => this.attendant.patch(patch),
       this.i18n.t('settings.attendantSection.couldNotSaveTheAttendantSSettings'),
     );
@@ -428,14 +429,14 @@ export class AttendantSection implements OnInit, OnDestroy {
   }
 
   protected setProject(cwd: string, on: boolean): void {
-    void this.store.save(
+    void this.dialog.save(
       () => this.threads.setAttendant(cwd, on),
       this.i18n.t('settings.attendantSection.couldNotSaveTheProjectSSetting'),
     );
   }
 
   protected runNow(): void {
-    void this.store.save(
+    void this.dialog.save(
       () => this.attendant.run(),
       this.i18n.t('settings.attendantSection.theAttendantCouldNotStart'),
     );

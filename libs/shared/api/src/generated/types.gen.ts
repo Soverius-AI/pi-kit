@@ -6368,6 +6368,87 @@ export type SettingsPatchResponses = {
 
 export type SettingsPatchResponse = SettingsPatchResponses[keyof SettingsPatchResponses];
 
+export type SettingsValuesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        cwd?: string;
+    };
+    url: '/api/pi-settings/values';
+};
+
+export type SettingsValuesErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type SettingsValuesError = SettingsValuesErrors[keyof SettingsValuesErrors];
+
+export type SettingsValuesResponses = {
+    /**
+     * OK
+     */
+    200: PiSettings;
+};
+
+export type SettingsValuesResponse = SettingsValuesResponses[keyof SettingsValuesResponses];
+
+export type SettingsProvidersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/pi-settings/providers';
+};
+
+export type SettingsProvidersErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type SettingsProvidersError = SettingsProvidersErrors[keyof SettingsProvidersErrors];
+
+export type SettingsProvidersResponses = {
+    /**
+     * OK
+     */
+    200: Array<ProviderInfo>;
+};
+
+export type SettingsProvidersResponse = SettingsProvidersResponses[keyof SettingsProvidersResponses];
+
+export type SettingsModelsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/pi-settings/models';
+};
+
+export type SettingsModelsErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type SettingsModelsError = SettingsModelsErrors[keyof SettingsModelsErrors];
+
+export type SettingsModelsResponses = {
+    /**
+     * OK
+     */
+    200: Array<SettingsModel>;
+};
+
+export type SettingsModelsResponse = SettingsModelsResponses[keyof SettingsModelsResponses];
+
 export type SettingsAboutData = {
     body?: never;
     path?: never;

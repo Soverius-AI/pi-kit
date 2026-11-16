@@ -70,8 +70,11 @@ interface LifecycleHooks {
 
 /** Session creation, open admission, ownership and shutdown for one backend. */
 export class SessionLifecycle {
+  static readonly idleLimit = 8;
   private readonly logger = new Logger(SessionLifecycle.name);
   private readonly opened = new Map<string, OpenThread>();
+  private readonly used = new Map<string, number>();
+  private uses = 0;
   private readonly opening = new Map<string, Promise<OpenThread>>();
   private readonly epochs = new Map<string, number>();
   private destroyed = false;
@@ -90,13 +93,17 @@ export class SessionLifecycle {
   get(threadId: string): OpenThread {
     const thread = this.opened.get(threadId);
     if (!thread) throw new Error(`Thread ${threadId} is not open.`);
+    this.used.set(threadId, ++this.uses);
     return thread;
   }
 
   ensure(threadId: string, target: OpenTarget): Promise<OpenThread> {
     if (this.destroyed) return Promise.reject(new Error('The backend is shutting down.'));
     const open = this.opened.get(threadId);
-    if (open) return Promise.resolve(open);
+    if (open) {
+      this.used.set(threadId, ++this.uses);
+      return Promise.resolve(open);
+    }
     let pending = this.opening.get(threadId);
     if (!pending) {
       // A failed open leaves no plugin binding behind: `create` binds the session before pi sets it up.
@@ -113,6 +120,7 @@ export class SessionLifecycle {
 
   dispose(threadId: string): void {
     this.epochs.set(threadId, (this.epochs.get(threadId) ?? 0) + 1);
+    this.used.delete(threadId);
     const thread = this.opened.get(threadId);
     // Choosing Sandboxed starts the sandbox before any session opens; it is bound to the folder it started in.
     if (!thread) return this.releaseSandbox(threadId);
@@ -143,6 +151,14 @@ export class SessionLifecycle {
   }
 
   private async create(threadId: string, target: OpenTarget): Promise<OpenThread> {
+    const startedAt = performance.now();
+    let phaseStartedAt = startedAt;
+    const timings: string[] = [];
+    const finishPhase = (name: string): void => {
+      const now = performance.now();
+      timings.push(`${name}=${Math.round(now - phaseStartedAt)}ms`);
+      phaseStartedAt = now;
+    };
     this.protection.assertAdmitted(threadId);
     const { generation } = this.protection.binding(threadId);
     const admittedEpoch = this.epochs.get(threadId) ?? 0;
@@ -151,6 +167,7 @@ export class SessionLifecycle {
         throw new Error('The thread was closed or changed its protection while its session was opening.');
     };
     const pi = await loadPi();
+    finishPhase('sdk');
     const existing = target.sessionPath && existsSync(target.sessionPath);
     const sessionManager = existing
       ? pi.SessionManager.open(target.sessionPath as string, undefined, target.forceCwd ? target.cwd : undefined)
@@ -167,12 +184,14 @@ export class SessionLifecycle {
     }
     const cwd = sessionManager.getCwd();
     const agentDir = pi.getAgentDir();
+    finishPhase('history');
     // A dispose during loadPi released the sandbox already; one started now would never be released.
     assertCurrent();
     const sandbox = await this.protection.prepare(threadId, cwd);
     const sandboxed = sandbox
       ? await ThreadProtectionExtension.create(pi, { threadId, cwd, client: sandbox, protection: this.protection })
       : undefined;
+    finishPhase('sandbox');
     // One settings manager for the loader and the session, so they agree on project trust. Trust is decided in
     // `reload()` below, before any project resource loads.
     const settingsManager = pi.SettingsManager.create(cwd, agentDir, { projectTrusted: false });
@@ -222,16 +241,21 @@ export class SessionLifecycle {
         ...(sandboxed ? [{ name: ThreadProtectionExtension.NAME, factory: sandboxed.factory, hidden: true }] : []),
       ],
     });
+    finishPhase('resourcesSetup');
     await resourceLoader.reload({
       resolveProjectTrust: ({ extensionsResult }) => this.trust.resolveForOpen(cwd, extensionsResult),
     });
+    finishPhase('resourcesReload');
+    const modelRuntime = await createModelRuntime(pi);
+    finishPhase('modelRuntime');
     const { session, modelFallbackMessage } = await pi.createAgentSession({
-      modelRuntime: await createModelRuntime(pi),
+      modelRuntime,
       cwd,
       resourceLoader,
       sessionManager,
       settingsManager,
     });
+    finishPhase('createAgentSession');
     if (modelFallbackMessage) this.logger.warn(modelFallbackMessage);
     if (sandboxed) {
       const tools = session.getAllTools();
@@ -244,6 +268,7 @@ export class SessionLifecycle {
       }
     }
     await sessionUi.bind(session);
+    finishPhase('sessionUiBind');
     try {
       assertCurrent();
       this.protection.assertGeneration(threadId, generation);
@@ -274,7 +299,37 @@ export class SessionLifecycle {
     }
     this.hooks.opened(thread);
     this.opened.set(threadId, thread);
-    this.logger.log(`Opened thread ${threadId} in ${cwd} (${session.sessionFile ?? 'no session file'})`);
+    this.used.set(threadId, ++this.uses);
+    this.logger.log(
+      `Opened thread ${threadId} in ${cwd} (${session.sessionFile ?? 'no session file'}) ` +
+        `[total=${Math.round(performance.now() - startedAt)}ms ${timings.join(' ')}]`,
+    );
+    this.closeIdle();
     return thread;
+  }
+
+  private closeIdle(): void {
+    const excess = this.opened.size - SessionLifecycle.idleLimit;
+    if (excess <= 0) return;
+    const idle = [...this.opened.values()]
+      .filter((thread) => !this.opening.has(thread.info.threadId) && !this.busy(thread))
+      .sort((a, b) => (this.used.get(a.info.threadId) ?? 0) - (this.used.get(b.info.threadId) ?? 0))
+      .slice(0, excess);
+    for (const thread of idle) {
+      this.dispose(thread.info.threadId);
+      this.logger.log(`Closed idle thread ${thread.info.threadId} (${this.opened.size} open)`);
+    }
+  }
+
+  private busy(thread: OpenThread): boolean {
+    const { session } = thread;
+    return (
+      session.isStreaming ||
+      session.isBashRunning ||
+      !!thread.prompting ||
+      thread.ui.size > 0 ||
+      session.getSteeringMessages().length > 0 ||
+      session.getFollowUpMessages().length > 0
+    );
   }
 }

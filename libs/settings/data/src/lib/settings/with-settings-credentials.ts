@@ -10,14 +10,14 @@ import { withSettingsSave } from './with-settings-save';
 
 type Saves = SignalStoreFeatureType<typeof withSettingsSave>;
 
-/** Owns provider sign-in and key workflows; requires only the overview and explicit save/reload operations. */
+/** Owns provider sign-in and key workflows; requires only the provider list and explicit save/reload operations. */
 export function withSettingsCredentials<_>() {
   return signalStoreFeature(
     {
-      state: type<Pick<CredentialsState, 'overview'>>(),
-      methods: type<Pick<Saves['methods'], '_trackSave' | '_showSaved'> & { load: () => Promise<void> }>(),
+      state: type<Pick<CredentialsState, 'providers'>>(),
+      methods: type<Pick<Saves['methods'], '_trackSave' | '_showSaved'> & { providersChanged: () => Promise<void> }>(),
     },
-    withState<Omit<CredentialsState, 'overview'>>({ flow: undefined, keyWorkflow: undefined, credentialsChanged: 0 }),
+    withState<Omit<CredentialsState, 'providers'>>({ flow: undefined, keyWorkflow: undefined, credentialsChanged: 0 }),
     withMethods((store) => {
       const translate = inject(Language).t;
       return createSettingsCredentials(translate, store, {
@@ -26,7 +26,7 @@ export function withSettingsCredentials<_>() {
         policy: inject(SETTINGS_POLICY),
         track: store._trackSave,
         showSaved: store._showSaved,
-        load: store.load,
+        load: store.providersChanged,
       });
     }),
   );

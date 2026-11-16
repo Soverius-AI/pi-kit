@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
 import type { LocalServer, LocalTestResult, SetupAuthEntry } from '@pi-kit/protocol';
 import { isProviderAccount, keyStorageOf } from '@pi-kit/protocol';
@@ -216,30 +217,53 @@ export async function findPathPi(
   env: NodeJS.ProcessEnv = process.env,
   platform: NodeJS.Platform = process.platform,
 ): Promise<{ found: boolean; path?: string; version?: string }> {
-  const names = platform === 'win32' ? ['pi.cmd', 'pi.exe', 'pi.bat'] : ['pi'];
-  for (const dir of (env['PATH'] ?? '').split(delimiter).filter(Boolean)) {
+  const windows = platform === 'win32';
+  const names = windows ? ['pi.cmd', 'pi.exe', 'pi.bat'] : ['pi'];
+  // Spreading process.env loses Windows' case-insensitive lookup; keep just one canonical PATH in the child.
+  const pathValue =
+    env['PATH'] ?? (windows ? Object.entries(env).find(([key]) => key.toLowerCase() === 'path')?.[1] : undefined) ?? '';
+  const probeEnv = {
+    ...Object.fromEntries(Object.entries(env).filter(([key]) => !windows || key.toLowerCase() !== 'path')),
+    ...(windows ? { PATH: pathValue } : {}),
+    PI_OFFLINE: '1',
+    PI_SKIP_VERSION_CHECK: '1',
+    NO_COLOR: '1',
+  };
+  for (const entry of pathValue.split(windows ? ';' : delimiter).filter(Boolean)) {
+    const dir = windows ? entry.replace(/^"(.*)"$/, '$1') : entry;
     if (own(dir)) continue;
     for (const name of names) {
       const path = join(dir, name);
       try {
-        if (!statSync(path).isFile()) continue;
+        // A slow or disconnected PATH location must not synchronously block every backend request.
+        if (!(await stat(path)).isFile()) continue;
       } catch {
         continue;
       }
       const version = await new Promise<string | undefined>((resolve) => {
-        execFile(
-          path,
-          ['--version'],
-          {
-            timeout: 3000,
-            env: { ...env, PI_OFFLINE: '1', PI_SKIP_VERSION_CHECK: '1', NO_COLOR: '1' },
-            windowsHide: true,
-          },
-          (error, stdout, stderr) => {
-            const text = `${stdout}\n${stderr}`;
-            resolve(error && !text.trim() ? undefined : /(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/.exec(text)?.[1]);
-          },
-        );
+        const batch = windows && /\.(cmd|bat)$/i.test(path);
+        try {
+          // Windows cannot execFile() an npm batch shim directly (spawn EINVAL). Expand the quoted
+          // path through one environment variable, with AutoRun and delayed expansion disabled:
+          // spaces, %, ! and shell metacharacters in a user's folder stay literal.
+          execFile(
+            batch ? env['ComSpec'] || env['COMSPEC'] || 'cmd.exe' : path,
+            batch ? ['/d', '/v:off', '/s', '/c', '""%PI_KIT_PI_VERSION_PROBE%" --version"'] : ['--version'],
+            {
+              timeout: 3000,
+              env: batch ? { ...probeEnv, PI_KIT_PI_VERSION_PROBE: path } : probeEnv,
+              windowsHide: true,
+              ...(batch ? { windowsVerbatimArguments: true } : {}),
+            },
+            (error, stdout, stderr) => {
+              const text = `${stdout}\n${stderr}`;
+              resolve(error && !text.trim() ? undefined : /(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/.exec(text)?.[1]);
+            },
+          );
+        } catch {
+          // The PATH command is optional diagnostic information, not a reason for /api/setup to fail.
+          resolve(undefined);
+        }
       });
       return { found: true, path, ...(version ? { version } : {}) };
     }

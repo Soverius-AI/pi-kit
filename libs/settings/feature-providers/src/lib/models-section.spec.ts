@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { SettingsStore } from '@pi-kit/settings/data';
+import { ModelsSettingsStore, SettingsStore } from '@pi-kit/settings/data';
 import { UpdateStore } from '@pi-kit/update/api';
 import { ModelsSection } from './models-section';
 
@@ -40,13 +40,8 @@ describe('chat model settings', () => {
         {
           provide: SettingsStore,
           useValue: {
-            overview,
-            settings: () => overview().settings,
-            error: signal(undefined),
             matches,
             shows: (...keys: string[]) => keys.some((key) => matches().has(key)),
-            patch,
-            setScope: scope,
             select,
           },
         },
@@ -61,6 +56,25 @@ describe('chat model settings', () => {
           },
         },
       ],
+    });
+    TestBed.overrideComponent(ModelsSection, {
+      set: {
+        providers: [
+          {
+            provide: ModelsSettingsStore,
+            useValue: {
+              settings: () => overview().settings,
+              providers: () => overview().providers,
+              models: () => overview().models,
+              piVersion: () => overview().piVersion,
+              settingsError: signal(undefined),
+              modelsError: signal(undefined),
+              patch,
+              setScope: scope,
+            },
+          },
+        ],
+      },
     });
   });
   const open = () => {

@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BackendConfig } from './config';
 import { ParentProcessMonitor } from './parent-process-monitor';
@@ -43,6 +44,22 @@ describe('parent process lifecycle', () => {
     await vi.advanceTimersByTimeAsync(30);
     expect(kill).toHaveBeenCalledTimes(3);
     expect(kill.mock.calls.every(([, signal]) => signal === 0)).toBe(true);
+  });
+
+  it.each(['SIGINT', 'SIGTERM'] as const)('records %s once before beginning shutdown', (signal) => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(Logger, 'warn').mockImplementation(() => undefined);
+    const before = process.listeners(signal);
+    monitor();
+    const guard = process.listeners(signal).find((fn) => !before.includes(fn));
+    guard!(signal);
+    guard!(signal);
+    expect(warn).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('BACKEND_SHUTDOWN '),
+      ParentProcessMonitor.name,
+    );
+    const record = JSON.parse((warn.mock.calls[0][0] as string).split('BACKEND_SHUTDOWN ')[1]);
+    expect(record).toMatchObject({ at: expect.any(String), pid: process.pid, signal });
   });
 
   it('retains the shutdown deadline through module destruction so a later hook cannot hang', async () => {

@@ -100,6 +100,8 @@ export function worstContext(
   return worst;
 }
 
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+
 const startOfDay = (ms: number): number => {
   const d = new Date(ms);
   d.setHours(0, 0, 0, 0);
@@ -113,11 +115,25 @@ export function shortTime(translate: Translate, at: number, now = Date.now()): s
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
   const date = new Date(at);
-  if (startOfDay(now) - startOfDay(at) < 7 * 86_400_000)
-    return date.toLocaleDateString(translate('common.locale'), { weekday: 'short' });
-  const sameYear = date.getFullYear() === new Date(now).getFullYear();
-  return date.toLocaleDateString(
-    translate('common.locale'),
-    sameYear ? { day: 'numeric', month: 'short' } : { day: 'numeric', month: 'short', year: 'numeric' },
-  );
+  const style =
+    startOfDay(now) - startOfDay(at) < 7 * 86_400_000
+      ? 'weekday'
+      : date.getFullYear() === new Date(now).getFullYear()
+        ? 'day'
+        : 'year';
+  const locale = translate('common.locale');
+  const key = `${locale}|${style}`;
+  let format = dateFormats.get(key);
+  if (!format) {
+    format = new Intl.DateTimeFormat(
+      locale,
+      style === 'weekday'
+        ? { weekday: 'short' }
+        : style === 'day'
+          ? { day: 'numeric', month: 'short' }
+          : { day: 'numeric', month: 'short', year: 'numeric' },
+    );
+    dateFormats.set(key, format);
+  }
+  return format.format(date);
 }

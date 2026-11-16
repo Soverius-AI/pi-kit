@@ -325,7 +325,7 @@ export class SettingsWindow {
     switch (id) {
       case 'providers': {
         const n = this.store.providersSignedIn();
-        return this.store.overview()
+        return this.store.providers()
           ? { text: this.i18n.t('settings.settingsWindow.signedIn', { value1: n }) }
           : undefined;
       }

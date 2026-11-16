@@ -40,7 +40,7 @@ describe('local setup observation through the generated API', () => {
     retry = vi.fn(),
     dismiss = vi.fn();
   const catalog = { detect: vi.fn(async () => undefined), rememberDownload: vi.fn() };
-  const settings = { load: vi.fn(async () => undefined) };
+  const settings = { providersChanged: vi.fn(async () => undefined) };
   const toasts = { show: vi.fn() };
   beforeEach(() => {
     vi.useFakeTimers();
@@ -52,7 +52,7 @@ describe('local setup observation through the generated API', () => {
       dismiss,
       catalog.detect,
       catalog.rememberDownload,
-      settings.load,
+      settings.providersChanged,
       toasts.show,
     ])
       mock.mockClear();
@@ -97,7 +97,7 @@ describe('local setup observation through the generated API', () => {
     expect(store.status()?.job?.state).toBe('complete');
     expect(catalog.rememberDownload).toHaveBeenCalledExactlyOnceWith('downloaded');
     expect(catalog.detect).toHaveBeenCalledOnce();
-    expect(settings.load).toHaveBeenCalledOnce();
+    expect(settings.providersChanged).toHaveBeenCalledOnce();
     expect(toasts.show).toHaveBeenCalledExactlyOnceWith('success', expect.stringContaining('complete'));
     const calls = status.mock.calls.length;
     await vi.advanceTimersByTimeAsync(500);

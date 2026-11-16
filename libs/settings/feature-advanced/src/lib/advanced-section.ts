@@ -1,12 +1,12 @@
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { COPILOT_INSPECTOR_AT_START, RedactionStore, UiStore, ViewPrefs } from '@pi-kit/data-access';
 import { PkLogo, PkTip, PkTabs, PkTabPanel } from '@pi-kit/design-system';
 import { type RedactionConfig, type UserRedactionPattern, compileUserPatterns } from '@pi-kit/protocol';
 import { PkSetting } from '@pi-kit/settings/api';
-import { SecretsStore, SettingsStore } from '@pi-kit/settings/data';
+import { AdvancedSettingsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/data';
 import { PkAdvanced } from './advanced-block';
 
 function size(bytes: number): string {
@@ -23,12 +23,12 @@ function size(bytes: number): string {
  */
 @Component({
   selector: 'pk-advanced-section',
+  providers: [AdvancedSettingsStore],
   imports: [PkAdvanced, PkLogo, PkSetting, PkTip, PkTabs, PkTabPanel, TranslocoPipe, CdkTrapFocus],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-5" data-testid="section-advanced">
       <pk-tabs [label]="'shared.catalog.advanced' | transloco" [(value)]="tab">
-        @if (store.shows('diagnostics')) {
+        @if (dialog.shows('diagnostics')) {
           <pk-tab-panel value="diagnostics" [label]="'settings.advancedSection.diagnostics' | transloco">
             <section
               class="pk-group"
@@ -149,7 +149,7 @@ function size(bytes: number): string {
             </section>
           </pk-tab-panel>
         }
-        @if (store.shows('secret-store', 'database-encryption', 'disk-encryption')) {
+        @if (dialog.shows('secret-store', 'database-encryption', 'disk-encryption')) {
           <pk-tab-panel value="security" [label]="'settings.sectionTabs.security' | transloco">
             <section
               class="pk-group"
@@ -170,7 +170,7 @@ function size(bytes: number): string {
                 >
               </header>
 
-              @if (store.shows('secret-store')) {
+              @if (dialog.shows('secret-store')) {
                 <div class="row" data-testid="secret-store">
                   <div class="min-w-0">
                     <div class="lbl">
@@ -290,7 +290,7 @@ function size(bytes: number): string {
                 </div>
               }
 
-              @if (store.shows('database-encryption')) {
+              @if (dialog.shows('database-encryption')) {
                 <div class="row" data-testid="database-protection">
                   <div class="min-w-0">
                     <div class="lbl">
@@ -351,7 +351,7 @@ function size(bytes: number): string {
                 </div>
               }
 
-              @if (store.shows('disk-encryption')) {
+              @if (dialog.shows('disk-encryption')) {
                 <div class="row" data-testid="disk-encryption">
                   <div class="min-w-0">
                     <div class="lbl">
@@ -379,7 +379,7 @@ function size(bytes: number): string {
             </section>
           </pk-tab-panel>
         }
-        @if (store.shows('redaction')) {
+        @if (dialog.shows('redaction')) {
           <pk-tab-panel value="privacy" [label]="'shared.catalog.privacy' | transloco">
             <section
               class="pk-group"
@@ -391,7 +391,7 @@ function size(bytes: number): string {
                   <h4>{{ 'settings.advancedSection.redaction' | transloco }}</h4>
                 </div>
               </header>
-              @if (store.shows('redaction')) {
+              @if (dialog.shows('redaction')) {
                 <div class="row" data-testid="redaction">
                   <div class="min-w-0">
                     <div class="lbl">{{ 'settings.advancedSection.redaction' | transloco }}</div>
@@ -402,7 +402,7 @@ function size(bytes: number): string {
                     </div>
                   </div>
                 </div>
-                @for (workspace of store.workspaces(); track workspace.cwd) {
+                @for (workspace of dialog.workspaces(); track workspace.cwd) {
                   <div class="row" [attr.data-testid]="'redaction-folder-' + workspace.name">
                     <div class="min-w-0">
                       <div class="lbl" [id]="'lbl-redact-' + workspace.name">
@@ -494,14 +494,14 @@ function size(bytes: number): string {
             </section>
           </pk-tab-panel>
         }
-        @if (store.shows('pi-release', 'copilot-inspector')) {
+        @if (dialog.shows('pi-release', 'copilot-inspector')) {
           <pk-tab-panel value="runtime" [label]="'settings.sectionTabs.runtime' | transloco">
             <div class="flex flex-col gap-5">
-              @if (store.shows('pi-release')) {
+              @if (dialog.shows('pi-release')) {
                 <pk-advanced />
               }
 
-              @if (store.shows('copilot-inspector')) {
+              @if (dialog.shows('copilot-inspector')) {
                 <section
                   class="pk-group"
                   [attr.aria-label]="'settings.advancedSection.developerTools' | transloco"
@@ -526,7 +526,7 @@ function size(bytes: number): string {
                       aria-describedby="hint-copilot-inspector"
                       data-testid="copilot-inspector"
                       [checked]="prefs.copilotInspector()"
-                      (change)="store.setPref('copilotInspector', $any($event.target).checked)"
+                      (change)="dialog.setPref('copilotInspector', $any($event.target).checked)"
                     />
                   </div>
                 </section>
@@ -534,7 +534,7 @@ function size(bytes: number): string {
             </div>
           </pk-tab-panel>
         }
-        @if (store.shows('trust-list')) {
+        @if (dialog.shows('trust-list')) {
           <pk-tab-panel value="trust" [label]="'shared.catalog.trust' | transloco">
             <section
               class="pk-group"
@@ -721,7 +721,8 @@ export class AdvancedSection {
 
   protected readonly tab = signal('diagnostics');
   protected readonly i18n = inject(Language);
-  protected readonly store = inject(SettingsStore);
+  protected readonly dialog = inject(SettingsStore);
+  protected readonly store = inject(AdvancedSettingsStore);
   protected readonly secrets = inject(SecretsStore);
   protected readonly redaction = inject(RedactionStore);
   protected readonly prefs = inject(ViewPrefs);
@@ -733,8 +734,6 @@ export class AdvancedSection {
   protected readonly draftError = signal('');
 
   constructor() {
-    void this.store.loadDiagnostics();
-    void this.store.loadTrustList();
     void this.secrets.loadStatus();
     void this.secrets.loadProtection();
     void this.redaction.load();
@@ -750,7 +749,7 @@ export class AdvancedSection {
   }
 
   private async saveConfig(config: RedactionConfig): Promise<void> {
-    await this.store.save(
+    await this.dialog.save(
       () =>
         this.redaction
           .save(config)

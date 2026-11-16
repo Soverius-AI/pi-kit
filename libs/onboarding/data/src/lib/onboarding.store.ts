@@ -2,9 +2,9 @@ import { Language } from '@pi-kit/i18n';
 import { computed, effect, inject, untracked } from '@angular/core';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
 import { ApiClient, isLocalExecution, errorMessage, setupReady, setupScratch, setupState, unwrap } from '@pi-kit/api';
-import { ToastStore, UiStore } from '@pi-kit/data-access';
+import { ToastStore, UiStore, withLatestRequest } from '@pi-kit/data-access';
 import type { ReadyResult } from '@pi-kit/protocol';
-import { ProviderCardsStore, SettingsStore } from '@pi-kit/settings/api';
+import { ProviderCardsStore, withPiSettings } from '@pi-kit/settings/api';
 import { ThreadsStore } from '@pi-kit/threads/api';
 import {
   EFFORT_LEVELS,
@@ -31,9 +31,9 @@ interface OnboardingState {
 /**
  * First-run onboarding. The flow is one card at a time with a progress rail: Welcome (what was found, "Use my existing
  * pi setup"), Get a model (Radius, a subscription, an API key, a local model: the cards of `pk-get-model`), Pick defaults, Open a folder, First prompt. It opens
- * by itself on a first run or when no provider has a model (`shouldAutoOpen`), and with `/setup`; every step can be skipped. Signing in, the API-key workflow, pi's
- * settings and the provider overview are `SettingsStore` (the same calls as Settings › Providers); this store keeps what is only the flow's: the step, the folder,
- * the readiness check. What detection found, the subscription picker and the local-server card are `ProviderCardsStore` (the `settings` domain: Settings › Providers
+ * by itself on a first run or when no provider has a model (`shouldAutoOpen`), and with `/setup`; every step can be skipped. Signing in and the API-key workflow are
+ * `SettingsStore` (the same calls as Settings › Providers); this store keeps pi's settings for the defaults and what is only the flow's: the step, the folder,
+ * the readiness check. What detection found, the providers and models, the subscription picker and the local-server card are `ProviderCardsStore` (the `settings` domain: Settings › Providers
  * shows the same cards), which this store passes through so the flow's components read one store. The last step is not a card: the flow docks into a strip above the
  * real chat page, so the first prompt is typed into the real composer.
  */
@@ -46,12 +46,13 @@ export const OnboardingStore = signalStore(
     ready: { phase: 'idle' },
     firstThread: undefined,
   }),
+  withLatestRequest(),
+  withPiSettings(),
   withComputed((store) => {
     const translate = inject(Language).t;
-    const settings = inject(SettingsStore);
     const cards = inject(ProviderCardsStore);
     const ui = inject(UiStore);
-    const models = computed(() => settings.overview()?.models ?? []);
+    const models = computed(() => cards.models() ?? []);
     const current = computed(() => stepIndex(translate, store.step()));
     return {
       /** The flow is showing (the full-window cards, or at the last step the strip above the real chat page); `UiStore` is the switch, the first-run check and `/setup` flip it. */
@@ -82,7 +83,7 @@ export const OnboardingStore = signalStore(
       radius: cards.radius,
       servers: cards.servers,
       defaults: computed(() => {
-        const s = settings.settings();
+        const s = store.settings();
         const list = models();
         const selected = list.find((m) => m.provider === s?.defaultProvider && m.id === s?.defaultModel);
         return {
@@ -101,7 +102,6 @@ export const OnboardingStore = signalStore(
   withMethods((store) => {
     const translate = inject(Language).t;
     const api = inject(ApiClient);
-    const settings = inject(SettingsStore);
     const cards = inject(ProviderCardsStore);
     const threads = inject(ThreadsStore);
     const ui = inject(UiStore);
@@ -111,7 +111,7 @@ export const OnboardingStore = signalStore(
       patchState(store, (s) => ({ folder: { ...s.folder, ...patch } }));
 
     const methods = {
-      /** Looks at the machine again: detection, and pi's own overview for the cards. */
+      /** Looks at the machine again: detection, and pi's providers and models for the cards. */
       detect: (): Promise<void> => cards.detect(),
 
       /** The flow opened (`UiStore.onboarding` turned true): from its first card, with fresh facts. */
@@ -122,7 +122,7 @@ export const OnboardingStore = signalStore(
           firstThread: undefined,
           ready: { phase: 'idle' },
         });
-        await Promise.all([methods.detect(), settings.load()]);
+        await Promise.all([methods.detect(), store.loadSettings()]);
         if (store.subscription() === '' && store.subscriptions().length > 0)
           cards.setSubscription(store.subscriptions()[0].id);
       },
@@ -169,26 +169,27 @@ export const OnboardingStore = signalStore(
 
       // ---- Pick defaults
 
-      /** Entering the card: when pi has no usable default, the first model of what was just added becomes it, so the page never shows an empty choice. The overview is the one the cards just loaded. */
+      /** Entering the card: when pi has no usable default, the first model of what was just added becomes it, so the page never shows an empty choice. The models are the ones the cards just loaded. */
       async prepareDefaults(): Promise<void> {
         const first = store.models().find((m) => m.provider !== 'pi');
         if (!store.defaults().selected && first)
-          await settings.patch({ defaultModel: { provider: first.provider, modelId: first.id } });
+          await store.patch({ defaultModel: { provider: first.provider, modelId: first.id } });
       },
       chooseModel(value: string): Promise<void> {
         const [provider, ...rest] = value.split('/');
-        return settings.patch({ defaultModel: { provider, modelId: rest.join('/') } });
+        return store.patch({ defaultModel: { provider, modelId: rest.join('/') } });
       },
       chooseEffort(level: string): Promise<void> {
-        return settings.patch({ defaultThinkingLevel: level });
+        return store.patch({ defaultThinkingLevel: level });
       },
       /** The pinned models ⌘⇧M cycles; none checked puts every model in the cycle. */
       togglePinned(value: string, on: boolean): Promise<void> {
         const now = store.defaults().pinned;
-        return settings.setScope(on ? [...now.filter((p) => p !== value), value] : now.filter((p) => p !== value));
+        const next = on ? [...now.filter((p) => p !== value), value] : now.filter((p) => p !== value);
+        return store.patch({ enabledModels: next.length > 0 ? next : null });
       },
       setCompaction(on: boolean): Promise<void> {
-        return settings.patch({ autoCompaction: on });
+        return store.patch({ autoCompaction: on });
       },
 
       // ---- Open a folder

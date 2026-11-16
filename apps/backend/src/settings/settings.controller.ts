@@ -37,6 +37,10 @@ import {
   type PiSettings,
   PiSettingsSchema,
   type PiUpdateCheck,
+  type ProviderInfo,
+  ProviderInfoSchema,
+  type SettingsModel,
+  SettingsModelSchema,
   PiUpdateCheckSchema,
   type ResourcesOverview,
   ResourcesOverviewSchema,
@@ -111,14 +115,46 @@ export class SettingsController {
   async overview(@Query({ schema: CwdQuerySchema }) query: z.infer<typeof CwdQuerySchema>): Promise<SettingsOverview> {
     const cwd = query.cwd;
     const overview = await this.config.overview(cwd && existsSync(cwd) ? cwd : this.backend.defaultCwd);
-    // When pi-kit stored a credential (pi's auth.json has no date of its own); a credential added in the CLI has none.
-    const dates = this.credentialDates();
-    return {
-      ...overview,
-      providers: overview.providers.map((p) =>
-        p.credential && dates[p.id] ? { ...p, credential: { ...p.credential, addedAt: dates[p.id] } } : p,
-      ),
-    };
+    return { ...overview, providers: this.withCredentialDates(overview.providers) };
+  }
+
+  @Remote()
+  @ApiTags('pi-settings')
+  @Get('pi-settings/values')
+  @ApiOperation({
+    summary: "Get pi's settings values",
+    description:
+      "Returns only pi's settings, read for `cwd` (the default folder without it): no providers, models or credentials, so it answers without building a model runtime.",
+  })
+  @Responds(PiSettingsSchema)
+  values(@Query({ schema: CwdQuerySchema }) query: z.infer<typeof CwdQuerySchema>): Promise<PiSettings> {
+    const cwd = query.cwd;
+    return this.config.settings(cwd && existsSync(cwd) ? cwd : this.backend.defaultCwd);
+  }
+
+  @Remote()
+  @ApiTags('pi-settings')
+  @Get('pi-settings/providers')
+  @ApiOperation({
+    summary: 'List the providers',
+    description:
+      'Returns the providers with the state of their credentials. It reads no live model catalog, so it answers without the network a model list may need.',
+  })
+  @Responds(ProviderInfoSchema, { array: true })
+  async providers(): Promise<ProviderInfo[]> {
+    return this.withCredentialDates(await this.config.providerList());
+  }
+
+  @Remote()
+  @ApiTags('pi-settings')
+  @Get('pi-settings/models')
+  @ApiOperation({
+    summary: 'List the models',
+    description: "Returns the models pi can use, including a subscription's live model catalog.",
+  })
+  @Responds(SettingsModelSchema, { array: true })
+  models(): Promise<SettingsModel[]> {
+    return this.config.modelList();
   }
 
   @ApiTags('pi-settings')
@@ -502,6 +538,14 @@ export class SettingsController {
   private credentialDates(): Record<string, number> {
     const value = this.meta.getSetting('credentialDates');
     return value && typeof value === 'object' ? (value as Record<string, number>) : {};
+  }
+
+  /** When pi-kit stored a credential (pi's auth.json has no date of its own); a credential added in the CLI has none. */
+  private withCredentialDates(providers: ProviderInfo[]): ProviderInfo[] {
+    const dates = this.credentialDates();
+    return providers.map((p) =>
+      p.credential && dates[p.id] ? { ...p, credential: { ...p.credential, addedAt: dates[p.id] } } : p,
+    );
   }
 
   private recordSignIn(provider: string): void {

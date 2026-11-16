@@ -2,13 +2,13 @@ import type { Translate } from '@pi-kit/i18n';
 import { isLocalExecution } from '@pi-kit/api';
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import type { ProjectScores } from '@pi-kit/protocol';
 import { PkIcon, PkItem, PkScoreHistogram, PkScrollArea, PkTabPanel, PkTabs, PkTip } from '@pi-kit/design-system';
 import { settingsCatalog } from '@pi-kit/ui';
 import { ScoreStore, ThreadsStore } from '@pi-kit/threads/api';
 import { PkSetting } from '@pi-kit/settings/api';
-import { ProjectPageStore, SettingsStore } from '@pi-kit/settings/data';
+import { PiSettingsStore, ProjectPageStore, SettingsStore } from '@pi-kit/settings/data';
 import {
   defaultStartOptions,
   dropBefore,
@@ -34,6 +34,7 @@ const projectSettingIds = (translate: Translate) =>
  */
 @Component({
   selector: 'pk-projects-section',
+  providers: [PiSettingsStore],
   imports: [
     PkItem,
     PkScoreHistogram,
@@ -46,14 +47,13 @@ const projectSettingIds = (translate: Translate) =>
     TranslocoPipe,
     PkIcon,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-5" data-testid="section-projects">
-      @if (store.project() && !store.searching()) {
+      @if (dialog.project() && !dialog.searching()) {
         <pk-project-page />
       } @else {
         <pk-tabs [label]="'settings.projectsSection.projects' | transloco" [(value)]="tab">
-          @if (store.shows('projects-list', ...pageIds)) {
+          @if (dialog.shows('projects-list', ...pageIds)) {
             <pk-tab-panel value="folders" [label]="'settings.sectionTabs.folders' | transloco">
               <section
                 class="pk-group"
@@ -194,7 +194,7 @@ const projectSettingIds = (translate: Translate) =>
             </pk-tab-panel>
           }
           @if (
-            store.shows('default-trust', 'default-worktree-root', 'default-start') && store.settings();
+            dialog.shows('default-trust', 'default-worktree-root', 'default-start') && store.settings();
             as settings
           ) {
             <pk-tab-panel value="defaults" [label]="'settings.sectionTabs.defaults' | transloco">
@@ -258,7 +258,7 @@ const projectSettingIds = (translate: Translate) =>
               </section>
             </pk-tab-panel>
           }
-          @if (store.shows('score-histogram') && score.overview()?.installed) {
+          @if (dialog.shows('score-histogram') && score.overview()?.installed) {
             <pk-tab-panel value="scores" [label]="'settings.sectionTabs.scores' | transloco">
               <section
                 class="pk-group"
@@ -275,7 +275,7 @@ const projectSettingIds = (translate: Translate) =>
                     </p>
                   </div>
                 </header>
-                @for (workspace of store.workspaces(); track workspace.cwd) {
+                @for (workspace of dialog.workspaces(); track workspace.cwd) {
                   @if (scoresOf(workspace.cwd); as scores) {
                     <div class="row" [attr.data-testid]="'score-' + workspace.name">
                       <div class="min-w-0">
@@ -318,7 +318,8 @@ const projectSettingIds = (translate: Translate) =>
 export class ProjectsSection {
   protected readonly tab = signal('folders');
   protected readonly i18n = inject(Language);
-  protected readonly store = inject(SettingsStore);
+  protected readonly dialog = inject(SettingsStore);
+  protected readonly store = inject(PiSettingsStore);
   protected readonly page = inject(ProjectPageStore);
   private readonly threads = inject(ThreadsStore);
   protected readonly score = inject(ScoreStore);
@@ -339,14 +340,14 @@ export class ProjectsSection {
   private lastOpened: string | undefined;
 
   protected readonly rows = computed<ProjectRow[]>(() =>
-    projectRows(this.i18n.t, this.store.workspaces(), this.store.folders(), worktreeCounts(this.threads.threads())),
+    projectRows(this.i18n.t, this.dialog.workspaces(), this.dialog.folders(), worktreeCounts(this.threads.threads())),
   );
   /** The search matched settings of a project's page and nothing the list itself shows. */
   protected readonly onlyPageHits = computed(
     () =>
-      this.store.searching() &&
-      !this.store.shows('projects-list') &&
-      this.store.shows(...projectSettingIds(this.i18n.t)),
+      this.dialog.searching() &&
+      !this.dialog.shows('projects-list') &&
+      this.dialog.shows(...projectSettingIds(this.i18n.t)),
   );
 
   constructor() {
@@ -354,7 +355,7 @@ export class ProjectsSection {
     void this.page.loadDefaults();
     // Back from a project's page: the list returns and the focus goes to the project that was open.
     effect(() => {
-      const open = this.store.project();
+      const open = this.dialog.project();
       untracked(() => {
         if (open) this.lastOpened = this.rows().find((r) => r.cwd === open)?.name;
         else if (this.lastOpened) {
@@ -378,13 +379,13 @@ export class ProjectsSection {
 
   protected hasScores(): boolean {
     return (this.score.overview()?.projects ?? []).some(
-      (p) => p.scored > 0 && this.store.workspaces().some((w) => w.cwd === p.cwd),
+      (p) => p.scored > 0 && this.dialog.workspaces().some((w) => w.cwd === p.cwd),
     );
   }
 
   protected open(row: ProjectRow): void {
     this.cameBack.set(false);
-    this.store.openProject(row.cwd);
+    this.dialog.openProject(row.cwd);
   }
 
   // ---- add a folder
@@ -410,7 +411,7 @@ export class ProjectsSection {
   }
 
   private async addPath(path: string): Promise<boolean> {
-    const done = await this.store.save(async () => {
+    const done = await this.dialog.save(async () => {
       await this.threads.openWorkspace(path);
       return true;
     }, this.i18n.t('settings.projectsSection.couldNotAddTheFolder'));
@@ -440,12 +441,12 @@ export class ProjectsSection {
     this.dragEnd();
     if (!from) return;
     const move = dropBefore(
-      this.store.workspaces().map((w) => w.cwd),
+      this.dialog.workspaces().map((w) => w.cwd),
       from,
       cwd,
     );
     if (move)
-      void this.store.save(
+      void this.dialog.save(
         () => this.threads.moveProject(from, move.before),
         this.i18n.t('settings.projectsSection.couldNotMoveTheProject'),
       );
@@ -461,12 +462,12 @@ export class ProjectsSection {
     event.preventDefault();
     event.stopPropagation();
     const move = neighbour(
-      this.store.workspaces().map((w) => w.cwd),
+      this.dialog.workspaces().map((w) => w.cwd),
       cwd,
       offset,
     );
     if (move)
-      void this.store.save(
+      void this.dialog.save(
         () => this.threads.moveProject(cwd, move.before),
         this.i18n.t('settings.projectsSection.couldNotMoveTheProject'),
       );

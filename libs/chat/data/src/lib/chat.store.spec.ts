@@ -328,6 +328,67 @@ describe('ChatStore', () => {
     }
   });
 
+  it('regression: replaying an idle thread is not a finished run, so the list, stats and tree are not read again', async () => {
+    const subscribe = vi.spyOn(HttpAgent.prototype, 'subscribe');
+    try {
+      const chat = await make();
+      chat.requestDone();
+      const ours = subscribe.mock.calls
+        .map(([value]) => value)
+        .find(
+          (value): value is AgentSubscriber =>
+            !!value && typeof value === 'object' && 'onSubagentStartedEvent' in value && 'onRunFinishedEvent' in value,
+        )!;
+      const agent = chat.agent() as unknown as {
+        subscribers: Record<string, ((params: unknown) => void) | undefined>[];
+      };
+      const lifecycle = (hook: 'onRunInitialized' | 'onRunFinalized'): void => {
+        for (const subscriber of agent.subscribers) subscriber[hook]?.({ agent, messages: [], state: {}, input: {} });
+        TestBed.tick();
+      };
+      const replay = (value: { reset: boolean; running: boolean }): void => {
+        ours.onCustomEvent?.({ event: { type: 'CUSTOM', name: 'pi.replay', value } } as never);
+        TestBed.tick();
+      };
+      const started = (runId: string): void => {
+        ours.onRunStartedEvent?.({ event: { type: 'RUN_STARTED', threadId: 't1', runId } } as never);
+        TestBed.tick();
+      };
+      const ui = TestBed.inject(UiStore);
+      threads.refresh.mockClear();
+      api.stats.mockClear();
+      const stale = ui.treeStale();
+
+      lifecycle('onRunInitialized');
+      replay({ reset: true, running: false });
+      started('history-1');
+      expect(chat.running()).toBe(true);
+      lifecycle('onRunFinalized');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(threads.refresh).not.toHaveBeenCalled();
+      expect(api.stats).not.toHaveBeenCalled();
+      expect(ui.treeStale()).toBe(stale);
+
+      lifecycle('onRunInitialized');
+      started('turn-2');
+      lifecycle('onRunFinalized');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(threads.refresh).toHaveBeenCalledTimes(1);
+      expect(api.stats).toHaveBeenCalledWith('t1', expect.any(AbortSignal));
+      expect(ui.treeStale()).toBe(stale + 1);
+
+      lifecycle('onRunInitialized');
+      replay({ reset: false, running: true });
+      started('turn-3');
+      lifecycle('onRunFinalized');
+      await vi.advanceTimersByTimeAsync(0);
+      expect(threads.refresh).toHaveBeenCalledTimes(2);
+      expect(ui.treeStale()).toBe(stale + 2);
+    } finally {
+      subscribe.mockRestore();
+    }
+  });
+
   it('remembers the names of the background agents the stream announces', async () => {
     const subscribe = vi.spyOn(HttpAgent.prototype, 'subscribe');
     try {
@@ -1047,6 +1108,76 @@ describe('ChatStore', () => {
       expect(chat.chips().map((c) => c.name)).toEqual(['beta']);
       expect(chat.draft()).toBe('');
     });
+  });
+
+  it('regression: a thread switch reads the model list once, and again only when the model really changes', async () => {
+    const chat = await make();
+    const settle = async (): Promise<void> => {
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+    };
+    api.models.mockClear();
+    threads.open(thread('t2'));
+    await settle();
+    expect(chat.model()).toEqual({ provider: 'anthropic', id: 'opus' });
+    expect(api.models).toHaveBeenCalledExactlyOnceWith('t2', expect.any(AbortSignal));
+    await chat.refreshStats();
+    await settle();
+    expect(api.models).toHaveBeenCalledTimes(1);
+    api.stats.mockImplementationOnce(async () =>
+      stats({ model: { provider: 'anthropic', id: 'sonnet', name: 'Sonnet' } }),
+    );
+    await chat.refreshStats();
+    await settle();
+    expect(chat.model()).toMatchObject({ provider: 'anthropic', id: 'sonnet' });
+    expect(api.models).toHaveBeenCalledTimes(2);
+  });
+
+  it('regression: a reconnect of the same thread that lands on another model reads the model list again', async () => {
+    const chat = await make();
+    const settle = async (): Promise<void> => {
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+    };
+    await settle();
+    api.models.mockClear();
+    api.stats.mockImplementation(async () => stats({ model: { provider: 'anthropic', id: 'sonnet', name: 'Sonnet' } }));
+    try {
+      chat.reconnect();
+      await settle();
+      expect(chat.model()).toMatchObject({ id: 'sonnet' });
+      expect(api.models).toHaveBeenCalledTimes(2);
+    } finally {
+      api.stats.mockImplementation(async (id: string) => (void id, stats()));
+    }
+  });
+
+  it('regression: a reconnect that restores the same model from the replay cache reads the model list again', async () => {
+    const chat = await make();
+    const settle = async (): Promise<void> => {
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+    };
+    await settle();
+    expect(chat.modelList()).toBeDefined();
+    TestBed.inject(ThreadReplayCacheStore).record('t1', {
+      cursor: 'g:1',
+      messages: [],
+      state: {},
+      interrupts: [],
+      view: { stats: chat.stats() } as never,
+    });
+    api.models.mockClear();
+    chat.reconnect();
+    await settle();
+    expect(api.models).toHaveBeenCalledTimes(1);
+    expect(chat.modelList()).toBeDefined();
   });
 
   it('starts over when another thread opens', async () => {

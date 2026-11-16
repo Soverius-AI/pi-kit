@@ -10,12 +10,14 @@ import {
   settingsOverview,
   settingsPatch,
   settingsSaveKeybindings,
+  settingsKeybindings,
+  settingsProviders,
   settingsTrustList,
   settingsTrustState,
 } from '@pi-kit/api';
 import { ChatStore, VoiceStore } from '@pi-kit/chat/api';
 import { ToastStore, UiStore } from '@pi-kit/data-access';
-import type { SettingsOverview } from '@pi-kit/protocol';
+import type { ProviderInfo, SettingsOverview } from '@pi-kit/protocol';
 import { fakeThreads, thread } from '@pi-kit/testing';
 import { ThreadsStore, TrustStore } from '@pi-kit/threads/api';
 import { ConnectorsStore } from './connectors.store';
@@ -45,6 +47,8 @@ describe('SettingsStore', () => {
     resources: vi.fn(async () => ({ items: [{ key: 'a' }], projectSkipped: false, errors: [] })),
     diagnostics: vi.fn(async () => ({})),
     trustList: vi.fn(async () => ({})),
+    keybindings: vi.fn(async () => []),
+    providers: vi.fn(async (): Promise<ProviderInfo[]> => overview().providers),
     saveKeybindings: vi.fn(),
   };
   const uiApi = { all: vi.fn(async () => ({})), set: vi.fn(async (key: string, value: unknown) => void [key, value]) };
@@ -75,6 +79,8 @@ describe('SettingsStore', () => {
           [settingsListResources, api.resources, (o) => [o.query?.['cwd'], o.signal]],
           [settingsDiagnose, api.diagnostics, () => []],
           [settingsTrustList, api.trustList, () => []],
+          [settingsKeybindings, api.keybindings, () => []],
+          [settingsProviders, api.providers, () => []],
           [settingsSaveKeybindings, api.saveKeybindings, (o) => [o.body?.['overrides']]],
           [appSettingsSettings, uiApi.all, () => []],
           [appSettingsSetSetting, uiApi.set, (o) => [o.path?.['key'], o.body?.['value']]],
@@ -125,45 +131,6 @@ describe('SettingsStore', () => {
     expect(settings.visibleSections()).toEqual([]);
   });
 
-  it("load reads the overview for the thread's folder; a failure is the error", async () => {
-    const settings = make();
-    const loading = settings.load();
-    expect(settings.loading()).toBe(true);
-    await loading;
-    expect(api.overview).toHaveBeenCalledWith('/a', expect.any(AbortSignal));
-    expect(settings.providersSignedIn()).toBe(1);
-    expect(settings.loading()).toBe(false);
-    api.overview.mockRejectedValueOnce(new Error('pi is not running'));
-    await settings.load();
-    expect(settings.error()).toBe('pi is not running');
-  });
-
-  it('a pi setting shows at once, is saved, ends in the "Saved" tick and notes a reload when one is needed', async () => {
-    const settings = make();
-    await settings.load();
-    const pending = settings.patch({ enabledModels: ['a/*'] }, 'the model scope');
-    expect(settings.settings()?.enabledModels).toEqual(['a/*']);
-    expect(settings.saving()).toBe(1);
-    await pending;
-    expect(api.patch).toHaveBeenCalledWith({ enabledModels: ['a/*'] }, '/a');
-    expect(settings.saving()).toBe(0);
-    expect(settings.saved()).toBe(true);
-    expect(settings.reloadReasons()).toEqual(['the model scope']);
-    await vi.advanceTimersByTimeAsync(2600);
-    expect(settings.saved()).toBe(false);
-  });
-
-  it('a pi setting that cannot be saved is a toast, and the dialog reads pi again', async () => {
-    const settings = make();
-    await settings.load();
-    api.patch.mockRejectedValueOnce(new Error('read-only file'));
-    api.overview.mockClear();
-    await settings.patch({ enabledModels: ['a/*'] });
-    expect(TestBed.inject(ToastStore).items().at(-1)?.text).toBe('pi could not save the setting: read-only file');
-    expect(api.overview).toHaveBeenCalledTimes(1);
-    expect(settings.saved()).toBe(false);
-  });
-
   it('a pi-kit preference goes to the database; when it refuses, a toast and the saved values are read back', async () => {
     const settings = make();
     await settings.setPref('proseSize', 16);
@@ -190,24 +157,14 @@ describe('SettingsStore', () => {
     TestBed.tick();
     await vi.advanceTimersByTimeAsync(0);
     expect(settings.section()).toBe('providers');
-    expect(api.overview).toHaveBeenCalled();
+    expect(api.providers).toHaveBeenCalled();
     expect(api.resources).toHaveBeenCalled();
+    expect(api.keybindings).toHaveBeenCalled();
+    expect(api.overview).not.toHaveBeenCalled();
     settings.setSearch('x');
     ui.closeSettings();
     TestBed.tick();
     expect(settings.search()).toBe('');
-  });
-
-  it('exports only the keybindings that differ from the defaults', () => {
-    const settings = make();
-    const file = JSON.parse(settings.exportKeybindings()) as {
-      format: string;
-      'pi-kit': Record<string, string>;
-      pi: Record<string, string[]>;
-    };
-    expect(file.format).toBe('pi-kit-keybindings');
-    expect(file['pi-kit']).toEqual({});
-    expect(file.pi).toEqual({});
   });
 
   it('maps settings shortcuts to sections and opens MCP servers from the sidebar’s count', () => {
@@ -236,8 +193,8 @@ describe('SettingsStore', () => {
     const settings = make();
     const ui = TestBed.inject(UiStore);
     const signIn = vi.spyOn(settings, 'signInTo');
-    let finish!: (value: SettingsOverview) => void;
-    api.overview.mockImplementationOnce(
+    let finish!: (value: ProviderInfo[]) => void;
+    api.providers.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           finish = resolve;
@@ -247,113 +204,28 @@ describe('SettingsStore', () => {
     TestBed.tick();
     ui.closeSettings();
     TestBed.tick();
-    finish(overview());
+    finish(overview().providers);
     await vi.advanceTimersByTimeAsync(0);
     expect(signIn).not.toHaveBeenCalled();
     expect(settings.flow()).toBeUndefined();
   });
 
-  it('regression: serializes settings saves and preserves newer optimistic edits', async () => {
+  it('regression: a provider change resolves only after every open section read its slice again', async () => {
     const settings = make();
-    await settings.load();
-    let finish!: (value: Awaited<ReturnType<typeof api.patch>>) => void;
-    api.patch.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const first = settings.patch({ defaultModel: { provider: 'first', modelId: 'old' } });
-    api.patch.mockResolvedValueOnce({ defaultProvider: 'second', defaultModel: 'new', enabledModels: null });
-    const second = settings.patch({ defaultModel: { provider: 'second', modelId: 'new' } });
+    let finish!: () => void;
+    const refresh = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    const leave = settings.onProvidersChanged(refresh);
+    let done = false;
+    const changed = settings.providersChanged().then(() => (done = true));
     await vi.advanceTimersByTimeAsync(0);
-    expect(api.patch).toHaveBeenCalledTimes(1);
-    expect(settings.settings()?.defaultModel).toBe('new');
-    finish({ defaultProvider: 'first', defaultModel: 'old', enabledModels: null });
-    await first;
-    expect(settings.settings()?.defaultModel).toBe('new');
-    await second;
-    expect(api.patch).toHaveBeenCalledTimes(2);
-  });
-
-  it('regression: a save from a previous project cannot overwrite the current overview', async () => {
-    const settings = make();
-    await settings.load();
-    let finish!: (value: Awaited<ReturnType<typeof api.patch>>) => void;
-    api.patch.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const saving = settings.patch({ defaultModel: { provider: 'first', modelId: 'old' } });
-    await vi.advanceTimersByTimeAsync(0);
-    threads.open(thread('t2', { cwd: '/b' }));
-    await settings.load();
-    finish({ defaultProvider: 'first', defaultModel: 'old', enabledModels: null });
-    await saving;
-    expect(settings.settings()?.defaultModel).toBe('opus');
-  });
-
-  it('retains the newest settings when a read started during a save finishes afterward', async () => {
-    const settings = make();
-    await settings.load();
-    let finishRead!: (value: SettingsOverview) => void;
-    api.overview.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishRead = resolve;
-        }),
-    );
-    api.patch.mockResolvedValueOnce({ defaultProvider: 'new', defaultModel: 'new', enabledModels: null });
-    const saving = settings.patch({ defaultModel: { provider: 'new', modelId: 'new' } });
-    const reading = settings.load();
-    await saving;
-    finishRead(overview());
-    await reading;
-    expect(settings.settings()?.defaultModel).toBe('new');
-  });
-
-  it('continues the settings queue after failure while retaining the newer optimistic edit', async () => {
-    const settings = make();
-    await settings.load();
-    let fail!: (error: Error) => void;
-    api.patch.mockImplementationOnce(
-      () =>
-        new Promise((_, reject) => {
-          fail = reject;
-        }),
-    );
-    api.patch.mockResolvedValueOnce({ defaultProvider: 'new', defaultModel: 'new', enabledModels: null });
-    const first = settings.patch({ defaultModel: { provider: 'old', modelId: 'old' } });
-    const second = settings.patch({ defaultModel: { provider: 'new', modelId: 'new' } });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(settings.settings()?.defaultModel).toBe('new');
-    fail(new Error('read-only file'));
-    await first;
-    expect(settings.settings()?.defaultModel).toBe('new');
-    await second;
-    expect(settings.settings()?.defaultModel).toBe('new');
-    expect(settings.saving()).toBe(0);
-  });
-
-  it('keeps a queued settings write bound to the project where it was requested', async () => {
-    const settings = make();
-    await settings.load();
-    let finish!: (value: Awaited<ReturnType<typeof api.patch>>) => void;
-    api.patch.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    const first = settings.patch({ enabledModels: ['a/*'] });
-    await vi.advanceTimersByTimeAsync(0);
-    threads.open(thread('t2', { cwd: '/b' }));
-    const second = settings.patch({ enabledModels: ['b/*'] });
-    threads.open(thread('t3', { cwd: '/c' }));
-    finish({ defaultProvider: 'a', defaultModel: 'a', enabledModels: null });
-    await Promise.all([first, second]);
-    expect(api.patch).toHaveBeenLastCalledWith({ enabledModels: ['b/*'] }, '/b');
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(api.providers).toHaveBeenCalled();
+    expect(done).toBe(false);
+    finish();
+    await changed;
+    expect(done).toBe(true);
+    leave();
+    await settings.providersChanged();
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 });

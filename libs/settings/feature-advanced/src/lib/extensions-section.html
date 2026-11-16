@@ -1,19 +1,19 @@
 <div class="flex flex-col gap-5" [attr.data-testid]="section() === 'skills' ? 'section-skills' : 'section-extensions'">
-  @if (section() === 'skills' ? store.shows('skills', 'skill-commands') : store.shows('packages', 'resources')) {
+  @if (section() === 'skills' ? dialog.shows('skills', 'skill-commands') : dialog.shows('packages', 'resources')) {
     <div class="flex items-center gap-3 flex-wrap">
       <button
         type="button"
         class="btn btn-sm"
         data-testid="reload-resources"
-        [disabled]="store.reloading() || !store.canReload()"
+        [disabled]="dialog.reloading() || !dialog.canReload()"
         [pkTip]="
-          store.canReload()
+          dialog.canReload()
             ? ('settings.extensionsSection.runsReloadInTheOpenThread' | transloco)
             : ('settings.extensionsSection.openAThreadFirst' | transloco)
         "
-        (click)="store.reload()"
+        (click)="dialog.reload()"
       >
-        @if (store.reloading()) {
+        @if (dialog.reloading()) {
           <span class="loading loading-spinner loading-xs"></span>
         }
         {{ 'settings.extensionsSection.reload' | transloco }}
@@ -29,7 +29,7 @@
     [label]="(section() === 'skills' ? 'shared.catalog.skills' : 'shared.catalog.extensions') | transloco"
     [(value)]="tab"
   >
-    @if (section() === 'extensions' && store.shows('packages')) {
+    @if (section() === 'extensions' && dialog.shows('packages')) {
       <pk-tab-panel value="packages" [label]="'shared.catalog.packages' | transloco">
         <section
           class="pk-group"
@@ -250,7 +250,7 @@
                                 "
                                 [checked]="item.enabled"
                                 [disabled]="busy(item.key) || !row.item.enabled"
-                                (change)="store.toggleResource(item.key, $any($event.target).checked)"
+                                (change)="dialog.toggleResource(item.key, $any($event.target).checked)"
                               />
                             </div>
                           }
@@ -279,7 +279,7 @@
         </section>
       </pk-tab-panel>
     }
-    @if (section() === 'skills' ? store.shows('skills') : store.shows('resources')) {
+    @if (section() === 'skills' ? dialog.shows('skills') : dialog.shows('resources')) {
       <pk-tab-panel
         value="inventory"
         [label]="
@@ -287,7 +287,7 @@
         "
       >
         <div class="flex flex-col gap-5">
-          @if (store.resources(); as resources) {
+          @if (dialog.resources(); as resources) {
             @for (error of resources.errors; track $index) {
               <p class="text-sm text-error break-words m-0" role="alert">{{ error }}</p>
             }
@@ -394,7 +394,7 @@
                             "
                             [checked]="row.enabled"
                             [disabled]="busy(row.key)"
-                            (change)="store.toggleResource(row.key, $any($event.target).checked)"
+                            (change)="dialog.toggleResource(row.key, $any($event.target).checked)"
                           />
                         </ng-container>
                       </div>
@@ -492,7 +492,7 @@
                             "
                             [checked]="row.enabled"
                             [disabled]="busy(row.key) || row.origin === 'builtin'"
-                            (change)="store.toggleResource(row.key, $any($event.target).checked)"
+                            (change)="dialog.toggleResource(row.key, $any($event.target).checked)"
                           />
                         </ng-container>
                       </div>
@@ -519,7 +519,7 @@
         </div>
       </pk-tab-panel>
     }
-    @if (section() === 'skills' && store.shows('skill-commands') && store.settings(); as settings) {
+    @if (section() === 'skills' && dialog.shows('skill-commands') && store.settings(); as settings) {
       <pk-tab-panel value="commands" [label]="'settings.sectionTabs.commands' | transloco">
         <section class="pk-group" [attr.aria-label]="'settings.extensionsSection.skillsAsCommands' | transloco">
           <header>

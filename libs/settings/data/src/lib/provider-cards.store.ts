@@ -3,7 +3,10 @@ import { computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import { ApiClient, errorMessage, setupDetect, setupSaveLocal, setupTestLocal, unwrap } from '@pi-kit/api';
 import { localProviderId, type LocalServer, type LocalTestResult, type SetupInfo } from '@pi-kit/protocol';
+import { withLatestRequest } from '@pi-kit/data-access';
 import { cardStatuses } from '@pi-kit/ui';
+import { withModelList } from './settings/with-model-list';
+import { withProviderList } from './settings/with-provider-list';
 import { SettingsStore } from './settings.store';
 
 interface ProviderCardsState {
@@ -40,13 +43,14 @@ export const ProviderCardsStore = signalStore(
     localOpen: false,
     local: { phase: 'idle' },
   }),
+  withLatestRequest(),
+  withProviderList(),
+  withModelList(),
   withComputed((store) => {
     const translate = inject(Language).t;
-    const settings = inject(SettingsStore);
-    const providers = computed(() => settings.overview()?.providers ?? []);
-    const models = computed(() => settings.overview()?.models ?? []);
+    const providers = computed(() => store.providers() ?? []);
+    const models = computed(() => store.models() ?? []);
     return {
-      providers,
       statuses: computed(() => cardStatuses(translate, providers(), models())),
       /** The providers that sign in as a subscription, Radius aside. */
       subscriptions: computed(() => providers().filter((p) => p.subscription && p.methods.includes('oauth'))),
@@ -62,20 +66,31 @@ export const ProviderCardsStore = signalStore(
     const patchLocal = (patch: Partial<ProviderCardsState['local']>): void =>
       patchState(store, (s) => ({ local: { ...s.local, ...patch } }));
 
+    const readMachine = async (): Promise<void> => {
+      patchState(store, { detecting: true, detectError: undefined });
+      try {
+        const info = await unwrap(setupDetect({ client: api.client, signal: undefined }));
+        patchState(store, (s) => ({
+          info,
+          detecting: false,
+          localUrl: s.localUrl || info.localServers[0]?.baseUrl || '',
+        }));
+      } catch (error) {
+        patchState(store, { detecting: false, detectError: errorMessage(error) });
+      }
+    };
+
     const methods = {
-      /** Looks at the machine again: detection, and pi's own overview for the cards. */
+      /** Looks at the machine again: detection, and pi's providers and models for the cards. */
       async detect(): Promise<void> {
-        patchState(store, { detecting: true, detectError: undefined });
-        try {
-          const info = await unwrap(setupDetect({ client: api.client, signal: undefined }));
-          patchState(store, (s) => ({
-            info,
-            detecting: false,
-            localUrl: s.localUrl || info.localServers[0]?.baseUrl || '',
-          }));
-        } catch (error) {
-          patchState(store, { detecting: false, detectError: errorMessage(error) });
-        }
+        await Promise.all([
+          readMachine(),
+          store.loadProviders().then(() => {
+            const providers = store.providers();
+            if (providers) settings.showProviders(providers);
+          }),
+          store.loadModels(),
+        ]);
       },
 
       setSubscription(id: string): void {
@@ -129,7 +144,7 @@ export const ProviderCardsStore = signalStore(
             setupSaveLocal({ client: api.client, body: { provider: localProviderId(kind), baseUrl, models: ids } }),
           );
           patchLocal({ phase: 'idle', saved: { provider: saved.provider, models: saved.models } });
-          await Promise.all([settings.load(), methods.detect()]);
+          await Promise.all([settings.providersChanged(), readMachine()]);
         } catch (error) {
           patchLocal({ phase: 'idle', error: errorMessage(error) });
         }

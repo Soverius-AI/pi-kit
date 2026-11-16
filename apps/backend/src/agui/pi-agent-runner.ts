@@ -141,9 +141,13 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     this.listeners.splice(0).forEach((leave) => leave());
     for (const queued of this.pendingComposer.values()) clearTimeout(queued.timer);
     this.pendingComposer.clear();
-    const runs = [...this.active.values()];
+    const runs = [...this.active.entries()];
     this.active.clear();
-    for (const run of runs) {
+    if (runs.length)
+      logger.warn(
+        `RUN_SHUTDOWN ${JSON.stringify({ pid: process.pid, runs: runs.map(([threadId, { runId }]) => ({ threadId, runId })) })}`,
+      );
+    for (const [, run] of runs) {
       try {
         run.upstream?.unsubscribe();
       } catch (error) {
@@ -462,11 +466,17 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     const run = this.active.get(request.threadId);
     if (!run) {
       if (this.sessions.pendingDialogs(request.threadId).length === 0) return false;
+      logger.warn(
+        `RUN_STOP ${JSON.stringify({ pid: process.pid, threadId: request.threadId, reason: 'stop-request', waitingForAnswer: true })}`,
+      );
       await this.sessions.abort(request.threadId);
       return true;
     }
     if (request.runId !== undefined && request.runId !== run.runId) return false;
     run.stopped = true;
+    logger.warn(
+      `RUN_STOP ${JSON.stringify({ pid: process.pid, threadId: request.threadId, runId: run.runId, reason: 'stop-request' })}`,
+    );
     await this.sessions.abort(request.threadId);
     return true;
   }

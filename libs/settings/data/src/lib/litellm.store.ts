@@ -19,7 +19,7 @@ export const LiteLlmStore = signalStore(
       },
       async save(body: LiteLlmConnect, signal?: AbortSignal): Promise<LiteLlmConnection> {
         const connection = await unwrap(liteLlmSave({ client: api.client, body, signal }));
-        await settings.load();
+        await settings.providersChanged();
         return connection;
       },
     };

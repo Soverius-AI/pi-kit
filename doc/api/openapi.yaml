@@ -3759,6 +3759,87 @@ paths:
       summary: Change pi's settings
       tags:
         - pi-settings
+  /api/pi-settings/values:
+    get:
+      description: "Returns only pi's settings, read for `cwd` (the default folder without it): no providers, models or credentials, so it answers without building a model runtime."
+      operationId: Settings_values
+      parameters:
+        - name: cwd
+          required: false
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PiSettings'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Get pi's settings values
+      tags:
+        - pi-settings
+      x-remote: true
+  /api/pi-settings/providers:
+    get:
+      description: Returns the providers with the state of their credentials. It reads no live model catalog, so it answers without the network a model list may need.
+      operationId: Settings_providers
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProviderInfo'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: List the providers
+      tags:
+        - pi-settings
+      x-remote: true
+  /api/pi-settings/models:
+    get:
+      description: Returns the models pi can use, including a subscription's live model catalog.
+      operationId: Settings_models
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SettingsModel'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: List the models
+      tags:
+        - pi-settings
+      x-remote: true
   /api/about:
     get:
       description: Returns the version of the app, of the pi it runs sessions with, where that pi came from and the SDK range the app supports.

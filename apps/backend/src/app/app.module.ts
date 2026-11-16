@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { AguiModule } from '../agui/agui.module';
 import { BgAgentsModule } from '../bg-agents/bg-agents.module';
 import { BrowserModule } from '../browser/browser.module';
@@ -27,6 +27,7 @@ import { TreeModule } from '../tree/tree.module';
 import { UpdateModule } from '../update/update.module';
 import { TranscribeModule } from '../transcribe/transcribe.module';
 import { BearerTokenGuard } from './auth.guard';
+import { BackendExceptionFilter } from './backend-exception.filter';
 import { loadConfig } from './config';
 import { ConfigModule } from './config.module';
 import { DevController } from './dev.controller';
@@ -72,6 +73,10 @@ const config = loadConfig();
     PeersModule,
   ],
   controllers: [HealthController, InstanceController, ...(config.dev ? [DevController] : [])],
-  providers: [ParentProcessMonitor, { provide: APP_GUARD, useClass: BearerTokenGuard }],
+  providers: [
+    ParentProcessMonitor,
+    { provide: APP_GUARD, useClass: BearerTokenGuard },
+    { provide: APP_FILTER, useClass: BackendExceptionFilter },
+  ],
 })
 export class AppModule {}

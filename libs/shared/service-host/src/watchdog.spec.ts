@@ -106,6 +106,61 @@ describe('BackendWatchdog', () => {
     expect(dog.status).toEqual({ state: 'running', restarts: 0 });
   });
 
+  it('checks every 30 seconds by default and logs when three failed checks cause a termination', async () => {
+    const host = new FakeHost();
+    const dog = new BackendWatchdog(host);
+    dog.start();
+    await settle();
+    const backend = host.current;
+    host.pingAnswer = false;
+    await host.advance(29_999);
+    expect(host.pings).toBe(0);
+    expect(backend?.killed).toBe(false);
+    await host.advance(1);
+    expect(host.pings).toBe(1);
+    await host.advance(30_000);
+    expect(host.pings).toBe(2);
+    expect(backend?.killed).toBe(false);
+    await host.advance(30_000);
+    expect(host.pings).toBe(3);
+    expect(backend?.killed).toBe(true);
+    expect(host.statuses.at(-1)).toMatchObject({
+      state: 'restarting',
+      reason: 'the watchdog stopped the backend after 3 consecutive failed health checks (signal SIGTERM)',
+    });
+  });
+
+  it('does not kill a slow backend that recovers before the third default health check', async () => {
+    const host = new FakeHost();
+    const dog = new BackendWatchdog(host);
+    dog.start();
+    await settle();
+    host.pingAnswer = false;
+    await host.advance(60_000);
+    host.pingAnswer = true;
+    await host.advance(30_000);
+    expect(host.pings).toBe(3);
+    expect(host.current?.killed).toBe(false);
+    expect(dog.status.state).toBe('running');
+  });
+
+  it('still restarts an actual process exit without waiting for the 30-second health interval', async () => {
+    const host = new FakeHost();
+    const dog = new BackendWatchdog(host);
+    dog.start();
+    await settle();
+    host.current?.die(1);
+    await settle();
+    expect(host.statuses.at(-1)).toMatchObject({
+      state: 'restarting',
+      delayMs: 500,
+      reason: 'the backend exited (code 1)',
+    });
+    await host.advance(500);
+    expect(host.launches).toBe(2);
+    expect(host.pings).toBe(0);
+  });
+
   it('restarts a crashed backend after the base delay and counts the restart', async () => {
     const host = new FakeHost();
     const dog = await started(host);
@@ -233,6 +288,26 @@ describe('BackendWatchdog', () => {
     await host.advance(10);
     expect(host.launches).toBe(2);
     expect(host.statuses.at(-1)?.state).toBe('running');
+  });
+
+  it('regression: a backend that hangs after every start ends in failed instead of restarting forever', async () => {
+    const host = new FakeHost();
+    await started(host, { ...DEFAULT_WATCHDOG_OPTIONS, baseDelayMs: 10, maxFailures: 2 });
+    host.pingAnswer = false;
+    for (let i = 0; i < 3; i++) await host.advance(DEFAULT_WATCHDOG_OPTIONS.pingIntervalMs * 3 + 100);
+    expect(host.statuses.filter((s) => s.state === 'restarting').map((s) => s.attempt)).toEqual([1, 2]);
+    expect(host.statuses.at(-1)?.state).toBe('failed');
+  });
+
+  it('a watchdog kill after a long healthy stretch still starts from a clean slate', async () => {
+    const host = new FakeHost();
+    await started(host, { pingIntervalMs: 1000, pingFailuresToKill: 3, stableAfterMs: 5000, baseDelayMs: 10 });
+    host.current?.die(1);
+    await host.advance(10);
+    await host.advance(6000);
+    host.pingAnswer = false;
+    await host.advance(3000);
+    expect(host.statuses.filter((s) => s.state === 'restarting').map((s) => s.attempt)).toEqual([1, 1]);
   });
 
   it('one answered ping clears the missed ones', async () => {

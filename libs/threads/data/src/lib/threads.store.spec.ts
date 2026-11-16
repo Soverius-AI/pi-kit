@@ -461,6 +461,22 @@ describe('ThreadsStore', () => {
       expect(store.workspace()).toBe('/b');
     });
 
+    it('regression: opening a thread makes it the last opened one without reading the list again', async () => {
+      workspaces = [ws('/a'), ws('/b')];
+      threads = [thread('t1', '/a', { lastOpenedAt: 9 }), thread('t2', '/a', { lastOpenedAt: 5 }), thread('t3', '/b')];
+      const store = make();
+      await store.init();
+      const reads = api.list.mock.calls.length;
+      store.select('t2');
+      await vi.advanceTimersByTimeAsync(0);
+      store.select('t3');
+      await vi.advanceTimersByTimeAsync(0);
+      store.jumpToProject(0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(store.selectedId()).toBe('t2');
+      expect(api.list.mock.calls.length).toBe(reads);
+    });
+
     it('⌘[ and ⌘] step through the open project’s threads in the sidebar order and stop at the ends', async () => {
       threads = [
         thread('x', '/a', { updatedAt: 1 }),

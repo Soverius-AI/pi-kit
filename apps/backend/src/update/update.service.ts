@@ -94,8 +94,8 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
     }, watchMs);
     watch.unref();
     this.timers.push(watch as unknown as ReturnType<typeof setTimeout>);
-    const first = setTimeout(() => void this.check(), FIRST_CHECK_DELAY_MS);
-    const every = setInterval(() => void this.check(), CHECK_INTERVAL_MS);
+    const first = setTimeout(() => void this.checkQuietly(), FIRST_CHECK_DELAY_MS);
+    const every = setInterval(() => void this.checkQuietly(), CHECK_INTERVAL_MS);
     first.unref();
     every.unref();
     this.timers.push(first, every as unknown as ReturnType<typeof setTimeout>);
@@ -511,7 +511,7 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
     this.writeState(state);
     this.log(`Update ${job.state}.`);
     this.publish();
-    void this.check(true);
+    void this.checkQuietly(true);
   }
 
   // ---- the pi command, the pin, the restart
@@ -564,6 +564,14 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   // ---- log, listeners, state file
+
+  private checkQuietly(force = false): Promise<void> {
+    return this.check(force).then(
+      () => undefined,
+      (error: unknown) =>
+        this.logger.warn(`The update check failed: ${error instanceof Error ? error.message : String(error)}`),
+    );
+  }
 
   private log(text: string, target?: UpdateTarget): void {
     const at = Date.now();

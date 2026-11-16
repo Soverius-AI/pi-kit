@@ -2,6 +2,10 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   provideMockApi,
+  settingsModels,
+  settingsPatch,
+  settingsProviders,
+  settingsValues,
   setupDetect,
   setupReady,
   setupSaveLocal,
@@ -10,7 +14,7 @@ import {
   setupTestLocal,
 } from '@pi-kit/api';
 import { UiStore } from '@pi-kit/data-access';
-import type { SettingsOverview, SetupInfo } from '@pi-kit/protocol';
+import type { PiSettings, SettingsModel, SetupInfo } from '@pi-kit/protocol';
 import { SettingsStore } from '@pi-kit/settings/api';
 import { ThreadsStore } from '@pi-kit/threads/api';
 import { OnboardingStore } from './onboarding.store';
@@ -52,7 +56,8 @@ const model = (provider: string, id: string, reasoning = false) => ({
 });
 
 describe('OnboardingStore', () => {
-  let overview: ReturnType<typeof signal<SettingsOverview | undefined>>;
+  let values: PiSettings;
+  let models: SettingsModel[];
   const api = {
     detect: vi.fn(async () => info()),
     setState: vi.fn(async (state: string) => ({ state, at: 1 })),
@@ -74,17 +79,23 @@ describe('OnboardingStore', () => {
       message: 'ok',
       ms: 400,
     })),
+    values: vi.fn(async () => values),
+    patch: vi.fn(async (patch: Partial<PiSettings>) => (values = { ...values, ...patch })),
+    providers: vi.fn(async () => []),
+    models: vi.fn(async () => models),
   };
   const settings = {
-    overview: undefined as unknown as typeof overview,
-    settings: undefined as unknown as ReturnType<typeof signal<SettingsOverview['settings'] | undefined>>,
-    load: vi.fn(async () => undefined),
-    patch: vi.fn(async () => undefined),
-    setScope: vi.fn(async () => undefined),
+    save: vi.fn(<T>(work: () => Promise<T>) => work().catch(() => undefined)),
+    markReload: vi.fn(),
+    providersChanged: vi.fn(async () => undefined),
+    showProviders: vi.fn(),
+    onProvidersChanged: () => () => undefined,
     login: vi.fn(async () => undefined),
     openKeyWorkflow: vi.fn(),
   };
   const threads = {
+    selected: signal(undefined),
+    workspace: signal(undefined),
     openWorkspace: vi.fn(async () => undefined),
     create: vi.fn(async (cwd: string) => ({ id: 't-1', cwd })),
     select: vi.fn(),
@@ -95,28 +106,27 @@ describe('OnboardingStore', () => {
     TestBed.tick();
     return store;
   };
+  const given = async (store: OnboardingStore, list: SettingsModel[], current: Partial<PiSettings> = {}) => {
+    models = list;
+    values = { ...values, ...current };
+    await Promise.all([store.detect(), store.loadSettings()]);
+  };
 
   beforeEach(() => {
-    overview = signal<SettingsOverview | undefined>({
-      settings: {},
-      providers: [],
-      models: [],
-      keybindings: [],
-      piVersion: '1.3.0',
-    } as unknown as SettingsOverview);
-    settings.overview = overview;
-    settings.settings = signal<SettingsOverview['settings'] | undefined>({
+    values = {
       defaultProvider: null,
       defaultModel: null,
       defaultThinkingLevel: null,
       autoCompaction: true,
       enabledModels: null,
-    } as never);
+    } as never;
+    models = [];
     for (const fn of [
       ...Object.values(api),
-      settings.load,
-      settings.patch,
-      settings.setScope,
+      settings.save,
+      settings.markReload,
+      settings.providersChanged,
+      settings.showProviders,
       settings.login,
       settings.openKeyWorkflow,
       threads.openWorkspace,
@@ -136,6 +146,10 @@ describe('OnboardingStore', () => {
           [setupSaveLocal, api.saveLocal, (o) => [o.body?.['provider'], o.body?.['baseUrl'], o.body?.['models']]],
           [setupScratch, api.scratch, () => []],
           [setupReady, api.ready, (o) => [o.body?.['provider'], o.body?.['modelId']]],
+          [settingsValues, api.values, () => []],
+          [settingsPatch, api.patch, (o) => [o.body]],
+          [settingsProviders, api.providers, () => []],
+          [settingsModels, api.models, () => []],
         ]),
       ],
     });
@@ -150,7 +164,8 @@ describe('OnboardingStore', () => {
     expect(store.open()).toBe(true);
     expect(store.step()).toBe('welcome');
     expect(api.detect).toHaveBeenCalledOnce();
-    expect(settings.load).toHaveBeenCalledOnce();
+    expect(api.values).toHaveBeenCalledOnce();
+    expect(api.models).toHaveBeenCalledOnce();
     expect(store.servers()).toHaveLength(1);
     // The address field starts with the first server found.
     expect(store.localUrl()).toBe('http://127.0.0.1:8080/v1');
@@ -204,7 +219,7 @@ describe('OnboardingStore', () => {
     await store.saveLocal('http://127.0.0.1:8080/v1');
     expect(api.saveLocal).toHaveBeenCalledWith('llama-swap', 'http://127.0.0.1:8080/v1', ['gemma', 'llama']);
     expect(store.local().saved).toEqual({ provider: 'llama-swap', models: 2 });
-    expect(settings.load).toHaveBeenCalled();
+    expect(settings.providersChanged).toHaveBeenCalled();
   });
 
   it('says so when a server lists no model, and writes nothing', async () => {
@@ -234,75 +249,44 @@ describe('OnboardingStore', () => {
 
   it('picks a default model when pi has none, never when it has one, and splits provider and id at the first slash', async () => {
     const store = make();
-    overview.set({
-      settings: {},
-      providers: [],
-      models: [model('openrouter', 'anthropic/claude-5'), model('llama-swap', 'gemma')],
-      keybindings: [],
-      piVersion: '1',
-    } as unknown as SettingsOverview);
+    await given(store, [model('openrouter', 'anthropic/claude-5'), model('llama-swap', 'gemma')]);
     await store.prepareDefaults();
-    expect(settings.patch).toHaveBeenCalledWith({
+    expect(api.patch).toHaveBeenCalledWith({
       defaultModel: { provider: 'openrouter', modelId: 'anthropic/claude-5' },
     });
-    settings.patch.mockClear();
-    settings.settings.set({
+    api.patch.mockClear();
+    await given(store, [model('openrouter', 'anthropic/claude-5'), model('llama-swap', 'gemma')], {
       defaultProvider: 'llama-swap',
       defaultModel: 'gemma',
       defaultThinkingLevel: 'off',
-      autoCompaction: true,
-      enabledModels: null,
-    } as never);
+    });
     await store.prepareDefaults();
-    expect(settings.patch).not.toHaveBeenCalled();
+    expect(api.patch).not.toHaveBeenCalled();
     await store.chooseModel('openrouter/anthropic/claude-5');
-    expect(settings.patch).toHaveBeenCalledWith({
+    expect(api.patch).toHaveBeenCalledWith({
       defaultModel: { provider: 'openrouter', modelId: 'anthropic/claude-5' },
     });
   });
 
-  it('offers the effort levels of a model that thinks and only "off" for one that does not', () => {
+  it('offers the effort levels of a model that thinks and only "off" for one that does not', async () => {
     const store = make();
-    overview.set({
-      settings: {},
-      providers: [],
-      models: [model('p', 'plain'), model('p', 'thinker', true)],
-      keybindings: [],
-      piVersion: '1',
-    } as unknown as SettingsOverview);
-    settings.settings.set({
-      defaultProvider: 'p',
-      defaultModel: 'plain',
-      defaultThinkingLevel: 'off',
-      autoCompaction: true,
-      enabledModels: null,
-    } as never);
+    const list = [model('p', 'plain'), model('p', 'thinker', true)];
+    await given(store, list, { defaultProvider: 'p', defaultModel: 'plain', defaultThinkingLevel: 'off' });
     expect(store.defaults().levels).toEqual(['off']);
     expect(store.defaults().reasoning).toBe(false);
-    settings.settings.set({
-      defaultProvider: 'p',
-      defaultModel: 'thinker',
-      defaultThinkingLevel: 'high',
-      autoCompaction: true,
-      enabledModels: null,
-    } as never);
+    await given(store, list, { defaultProvider: 'p', defaultModel: 'thinker', defaultThinkingLevel: 'high' });
     expect(store.defaults().levels).toContain('high');
     expect(store.defaults().effort).toBe('high');
   });
 
   it('scopes models for the ⌘⇧M cycle one at a time, and none checked clears the scope', async () => {
     const store = make();
-    settings.settings.set({
-      defaultProvider: null,
-      defaultModel: null,
-      defaultThinkingLevel: null,
-      autoCompaction: true,
-      enabledModels: ['p/a'],
-    } as never);
+    await given(store, [], { enabledModels: ['p/a'] });
     await store.togglePinned('p/b', true);
-    expect(settings.setScope).toHaveBeenLastCalledWith(['p/a', 'p/b']);
+    expect(api.patch).toHaveBeenLastCalledWith({ enabledModels: ['p/a', 'p/b'] });
     await store.togglePinned('p/a', false);
-    expect(settings.setScope).toHaveBeenLastCalledWith([]);
+    await store.togglePinned('p/b', false);
+    expect(api.patch).toHaveBeenLastCalledWith({ enabledModels: null });
   });
 
   it('opens the scratch folder as a project and remembers that it is one', async () => {
@@ -324,20 +308,7 @@ describe('OnboardingStore', () => {
 
   it('enters the last step by opening a thread in the folder and asking pi once through the default model', async () => {
     const store = make();
-    overview.set({
-      settings: {},
-      providers: [],
-      models: [model('llama-swap', 'gemma')],
-      keybindings: [],
-      piVersion: '1',
-    } as unknown as SettingsOverview);
-    settings.settings.set({
-      defaultProvider: 'llama-swap',
-      defaultModel: 'gemma',
-      defaultThinkingLevel: 'off',
-      autoCompaction: true,
-      enabledModels: null,
-    } as never);
+    await given(store, [model('llama-swap', 'gemma')], { defaultProvider: 'llama-swap', defaultModel: 'gemma' });
     store.setFolderPath('/p');
     await store.openFolder();
     await store.enterPrompt();
@@ -353,20 +324,7 @@ describe('OnboardingStore', () => {
   it('shows why pi is not ready, and the check can run again', async () => {
     api.ready.mockResolvedValueOnce({ ok: false, model: 'p/m', message: '401: User not found.', ms: 90 });
     const store = make();
-    settings.settings.set({
-      defaultProvider: 'p',
-      defaultModel: 'm',
-      defaultThinkingLevel: 'off',
-      autoCompaction: true,
-      enabledModels: null,
-    } as never);
-    overview.set({
-      settings: {},
-      providers: [],
-      models: [model('p', 'm')],
-      keybindings: [],
-      piVersion: '1',
-    } as unknown as SettingsOverview);
+    await given(store, [model('p', 'm')], { defaultProvider: 'p', defaultModel: 'm' });
     await store.checkReady();
     expect(store.ready()).toMatchObject({ phase: 'done', result: { ok: false, message: '401: User not found.' } });
     await store.checkReady();

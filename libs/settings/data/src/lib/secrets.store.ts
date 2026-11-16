@@ -73,7 +73,7 @@ export const SecretsStore = signalStore(
           const storageResult = await unwrap(secretsCredentialStorage({ client: api.client, body: { enabled } }));
           patchState(store, { storageResult });
           await methods.loadStatus();
-          await settings.load();
+          await settings.providersChanged();
           return true;
         } catch {
           toasts.show('error', translate('settings.advancedSection.storageChangeFailed'));
@@ -88,7 +88,7 @@ export const SecretsStore = signalStore(
         patchState(store, { retrying: true });
         try {
           patchState(store, { status: await unwrap(secretsRetry({ client: api.client })) });
-          await settings.load();
+          await settings.providersChanged();
           patchState(store, { status: await unwrap(secretsStatus({ client: api.client })) });
         } catch (error) {
           toasts.show(
@@ -142,7 +142,7 @@ export const SecretsStore = signalStore(
         try {
           const moved = await unwrap(secretsMove({ client: api.client }));
           patchState(store, { moved });
-          await settings.load();
+          await settings.providersChanged();
           patchState(store, { status: await unwrap(secretsStatus({ client: api.client })) });
           if (moved.failed.length > 0)
             toasts.show(

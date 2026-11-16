@@ -177,7 +177,8 @@ export class AgentQuestions {
       signal?.addEventListener('abort', () => resolve(undefined), { once: true });
       void this.harness()
         .snapshot(QuestionsDoc, conversationId(id), ctx)
-        .then((state) => void (settledOf(state) && resolve(settledOf(state))));
+        .then((state) => void (settledOf(state) && resolve(settledOf(state))))
+        .catch(() => undefined);
     });
     await watch.stop();
     return done;

@@ -41,7 +41,13 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
   onModuleInit(): void {
     this.unsubscribe = this.sessions.onToolStart((start) => this.record(start));
     this.sessions.setCoordination(this);
-    this.timer = setInterval(() => this.leases.prune(), PRUNE_MS);
+    this.timer = setInterval(() => {
+      try {
+        this.leases.prune();
+      } catch (error) {
+        this.logger.warn(`Pruning leases failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }, PRUNE_MS);
     this.timer.unref();
   }
 

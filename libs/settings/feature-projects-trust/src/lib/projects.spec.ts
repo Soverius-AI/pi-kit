@@ -11,7 +11,7 @@ import type {
 } from '@pi-kit/protocol';
 import { provideMockApi, sessionCompact } from '@pi-kit/api';
 import { ScoreStore, ThreadsStore } from '@pi-kit/threads/api';
-import { ProjectPageStore, SettingsStore } from '@pi-kit/settings/data';
+import { PiSettingsStore, ProjectPageStore, SettingsStore } from '@pi-kit/settings/data';
 import { settingsCatalog } from '@pi-kit/ui';
 import { type OpenWorktreeRow, baseOptions } from '@pi-kit/settings/util';
 import { ProjectPage } from './project-page';
@@ -183,6 +183,9 @@ describe('Settings › Projects', () => {
         { provide: ScoreStore, useValue: score },
         ...provideMockApi([[sessionCompact, compactSession, (options) => [options.path?.['id']]]]),
       ],
+    });
+    TestBed.overrideComponent(ProjectsSection, {
+      set: { providers: [{ provide: PiSettingsStore, useValue: store }] },
     });
   });
   afterEach(() => vi.useRealTimers());
