@@ -40,7 +40,7 @@ export class AgentQuestions {
     private readonly harness: () => DurableHarness,
     private readonly agents: BgAgentsRepository,
     private readonly threads: Pick<ThreadHost, 'deliver'>,
-    private readonly changed: (id: string) => void,
+    private readonly changed: (id: string) => void | Promise<void>,
   ) {}
 
   current(id: string): AgentQuestion | null {
@@ -54,12 +54,12 @@ export class AgentQuestions {
 
   async recover(id: string): Promise<void> {
     await this.questionsOf(id);
-    this.changed(id);
+    await this.changed(id);
   }
 
   /** The `ask` tool committed a question (or ran again after a restart): a `main` question goes to the main agent once. */
   async asked(id: string, questionId: string): Promise<void> {
-    const row = this.agents.get(id);
+    const row = await this.agents.get(id);
     const q = (await this.questionsOf(id))[questionId];
     if (!row || !q || !isOpen(q)) return;
     if (q.state === 'pending') {
@@ -73,7 +73,7 @@ export class AgentQuestions {
           content: `Question from agent "${row.name}" (agent ${id}, question ${questionId}): ${q.text}${q.choices ? ` Choices: ${q.choices.join(' | ')}.` : ''} Answer with agent_reply, or agent_forward if the user must decide.`,
         });
     }
-    this.changed(id);
+    await this.changed(id);
   }
 
   /** `agent_forward`: the question is the user's from now on; it shows in the thread and the panel, and "Needs you" counts it. */
@@ -84,7 +84,7 @@ export class AgentQuestions {
       if (block) throw new Error(block);
       return forwarded(q, note);
     });
-    this.changed(id);
+    await this.changed(id);
   }
 
   /** The user's answer as an AG-UI resume carries it (the thread's card, a sidebar chip): false when the interrupt is not an agent's question. */
@@ -102,7 +102,7 @@ export class AgentQuestions {
 
   /** Settles a question: the record, the waiting tool (through the document), the panel, and the main agent's one-line receipt of a user's answer (a turn, so it can act on it). */
   async answer(id: string, questionId: string, by: AnsweredBy, text: string | null): Promise<void> {
-    const row = this.agents.get(id);
+    const row = await this.agents.get(id);
     if (!row) throw new Error(`Agent ${id} has no question ${questionId}.`);
     const done = await this.changeQuestion(id, questionId, (q) => {
       if (!q) throw new Error(`Agent ${id} has no question ${questionId}.`);
@@ -110,7 +110,7 @@ export class AgentQuestions {
       if (block) throw new Error(block);
       return settled(q, by, text, Date.now());
     });
-    this.changed(id);
+    await this.changed(id);
     if (by === 'user' || by === 'cancelled') {
       const content =
         by === 'user'
@@ -148,7 +148,7 @@ export class AgentQuestions {
         questionId,
         (current) => current ?? hostQuestion(questionId, origin, text, choices, Date.now()),
       );
-      this.changed(id);
+      await this.changed(id);
     }
     const done = await this.settledQuestion(id, questionId, signal);
     return done?.state === 'answered' ? done.answer : null;
@@ -185,9 +185,9 @@ export class AgentQuestions {
   }
 
   /** The open questions of the thread's agents the user has to answer, as dialogs of the thread (the status channel, "Needs you"). */
-  userQuestions(threadId: string): AgentQuestionDialog[] {
+  async userQuestions(threadId: string): Promise<AgentQuestionDialog[]> {
     const out: AgentQuestionDialog[] = [];
-    for (const row of this.agents.byThread(threadId)) {
+    for (const row of await this.agents.byThread(threadId)) {
       if (row.status !== 'active' && row.status !== 'blocked') continue;
       const q = openQuestion(this.cache.get(row.id) ?? {});
       if (q?.kind === 'user') out.push(toDialog(row, q));
@@ -196,7 +196,7 @@ export class AgentQuestions {
   }
 
   private async questionsOf(id: string): Promise<Record<string, QuestionRecord>> {
-    if (!this.agents.get(id)) throw new Error(`Agent ${id} does not exist.`);
+    if (!(await this.agents.get(id))) throw new Error(`Agent ${id} does not exist.`);
     const doc = await this.harness().snapshot(QuestionsDoc, conversationId(id), ctx);
     const questions = doc?.questions ?? {};
     this.cache.set(id, questions);

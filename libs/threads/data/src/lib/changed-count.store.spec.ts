@@ -37,6 +37,7 @@ describe('ChangedCountStore (the badge of "Working tree changes")', () => {
     vi.useFakeTimers();
     folder.set('/a');
     threads.set([]);
+    now.set(1_000_000);
     folderChanges = new Subject();
     api.status.mockClear();
     api.status.mockResolvedValue({ entries: [{}, {}, {}], thread: [] });
@@ -111,6 +112,27 @@ describe('ChangedCountStore (the badge of "Working tree changes")', () => {
     now.set(now() + 11_000);
     await settle(1000);
     expect(api.status).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not poll status on every one-second clock tick within the refresh interval', async () => {
+    make();
+    await settle();
+    api.status.mockClear();
+
+    // Exercise the real ClockStore cadence, not just a jump across a bucket.
+    for (let second = 1; second < 10; second += 1) {
+      now.set(1_000_000 + second * 1000);
+      TestBed.tick();
+      await settle(1000);
+      expect(api.status).not.toHaveBeenCalled();
+    }
+
+    now.set(1_010_000);
+    TestBed.tick();
+    await settle(799);
+    expect(api.status).not.toHaveBeenCalled();
+    await settle(1);
+    expect(api.status).toHaveBeenCalledTimes(1);
   });
 
   it('is 0 when there is no folder, and when the folder is not a repository or the read fails', async () => {

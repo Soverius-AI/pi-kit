@@ -1,257 +1,167 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { Inject, Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
-import { DB_KEY_ACCOUNT, type DatabaseProtection } from '@pi-kit/protocol';
-import type { SecretStore } from '@pi-kit/secret-store';
-import Database from 'better-sqlite3-multiple-ciphers';
-import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
+import { DATABASE_RESET_PENDING_FILE, EnvironmentSchema } from '@pi-kit/protocol';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
-import {
-  assertNoPendingDatabaseTransition,
-  encryptDatabaseFile,
-  isPlainDatabase,
-  keyOpens,
-  newDatabaseKey,
-  useKey,
-} from './encryption';
+import { AsyncSqlite } from './async-sqlite';
+import { assertNoPendingDatabaseTransition, isPlainDatabase } from './database-file-guards';
 
 export const DB_FILE = 'pi-kit.sqlite';
 export const BG_DB_FILE = 'bg-agents.sqlite';
-interface DatabaseKey {
-  key?: string;
-  reason?: string;
-}
-
 /** Damaged; the desktop may offer recreation. Never thrown for key/version problems. */
 export class DatabaseBrokenError extends Error {}
-/** Incompatible schema is not corruption. Never offer destructive recreation on this error. */
+/** Incompatible schema is not corruption. Never offer a reset; the matching pi-kit version opens it. */
 export class DatabaseVersionError extends Error {}
+/** Encrypted originals require offline migration or an explicitly confirmed backup and reset. */
+export class DatabaseEncryptionMigrationError extends Error {}
+export class DatabaseResetIncompleteError extends Error {}
 
-/**
- * Owns the SQLite connection and applies the plain SQL files in `migrations/`
- * in name order at construction, each in its own transaction, recorded in `schema_migrations`. The
- * connection is open once the service exists, so repositories can use it from their constructors.
- *
- * Protection follows the startup preference: fresh macOS profiles use private plaintext storage;
- * opted-in profiles use `better-sqlite3-multiple-ciphers` with a random 256-bit key held as `pi-kit/db`.
- * Opt-in encrypts plaintext files on restart. Opt-out never decrypts existing data; encrypted
- * files and interrupted-transition originals are retained when access or verification fails.
- */
+/** Owns the async SQLite connection. Nest's factory awaits every migration and identity hydration. */
 @Injectable()
 export class DatabaseService implements OnApplicationShutdown {
   private readonly logger = new Logger(DatabaseService.name);
-  readonly db: Database.Database;
-  /** Typed queries share the already-keyed connection and its shutdown owner. */
-  readonly orm: BetterSQLite3Database;
+  db!: AsyncSqlite;
+  readonly ready: Promise<void>;
   readonly path: string;
-  /** What Settings › Advanced says about the file. */
-  readonly protection: Pick<DatabaseProtection, 'state' | 'path' | 'reason'>;
-  private readonly key: string | undefined;
+  private cachedInstanceId?: string;
+  get instanceId(): string {
+    if (!this.cachedInstanceId)
+      throw new Error('Database identity is not ready; await DatabaseService.create() or ready.');
+    return this.cachedInstanceId;
+  }
 
-  constructor(
-    @Inject(CONFIG) config: Pick<BackendConfig, 'dataDir'>,
-    keyed: DatabaseKey = { reason: 'No credential store is configured for this backend.' },
-  ) {
-    mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
+  constructor(@Inject(CONFIG) config: Pick<BackendConfig, 'dataDir'>) {
     this.path = join(config.dataDir, DB_FILE);
-    this.key = keyed.key;
-    this.db = this.open(this.key);
+    this.ready = this.initialize(config.dataDir);
+  }
+
+  private async initialize(dataDir: string): Promise<void> {
+    mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+    if (existsSync(join(dataDir, DATABASE_RESET_PENDING_FILE))) {
+      throw new DatabaseResetIncompleteError(
+        `A database reset was interrupted in ${dataDir}. Startup stopped before opening either database. ` +
+          `${DATABASE_RESET_PENDING_FILE} names the database-backup folder holding the original files; the desktop app can move them back.`,
+      );
+    }
+    // Check both files BEFORE opening either. Unknown headers may be encrypted, not corrupt.
+    for (const path of [this.path, join(dataDir, BG_DB_FILE)]) {
+      try {
+        assertNoPendingDatabaseTransition(path);
+      } catch (error) {
+        throw new DatabaseEncryptionMigrationError((error as Error).message, { cause: error });
+      }
+      if (existsSync(path) && statSync(path).size > 0 && !isPlainDatabase(path)) {
+        throw new DatabaseEncryptionMigrationError(
+          `${path} is encrypted or has an unrecognized header and cannot be opened by this version of pi-kit. ` +
+            'All original files were retained unchanged.',
+        );
+      }
+    }
+    this.db = await AsyncSqlite.open(this.path);
     try {
-      // Plain storage is still private to the OS user; WAL sidecars inherit these permissions.
       chmodSync(this.path, 0o600);
-      this.protection = {
-        state: this.key ? 'encrypted' : 'plain',
-        path: this.path,
-        ...(keyed.reason ? { reason: keyed.reason } : {}),
-      };
-      // WAL: appends from the run loop never block readers; committed rows survive a killed process.
-      this.db.pragma('journal_mode = WAL');
-      this.db.pragma('synchronous = NORMAL');
-      this.db.pragma('busy_timeout = 5000');
-      // 32 MB of decrypted pages in memory (the default is 2 MB).
-      this.db.pragma('cache_size = -32768');
-      // The WAL file shrinks back to 64 MB after a checkpoint instead of keeping the size of the biggest compaction it ever held.
-      this.db.pragma('journal_size_limit = 67108864');
-      this.migrate(join(__dirname, 'migrations'));
-      this.orm = drizzle(this.db);
+      await this.db.pragma('busy_timeout = 5000');
+      await this.db.pragma('journal_mode = WAL');
+      await this.db.pragma('synchronous = NORMAL');
+      await this.db.pragma('cache_size = -32768');
+      await this.db.pragma('journal_size_limit = 67108864');
+      await this.migrate(join(__dirname, 'migrations'));
+      // Owner identity must survive a power loss before startup publishes it. Do not call durable()
+      // here: it waits on ready, which initialization itself is resolving.
+      this.cachedInstanceId = await this.withFullDurability(async () =>
+        this.db
+          .transaction(async () => {
+            await this.db
+              .prepare(
+                'INSERT OR IGNORE INTO instance_identity(singleton, instance_id, name, created_at) VALUES (1, ?, ?, ?)',
+              )
+              .run(randomUUID(), hostname().slice(0, 80) || 'My pi-kit', Date.now());
+            const row = (await this.db
+              .prepare('SELECT instance_id, name FROM instance_identity WHERE singleton = 1')
+              .get<{ instance_id: string; name: string }>())!;
+            // Never silently replace an invalid stored identity: it may already be trusted by peers.
+            return EnvironmentSchema.parse({ instanceId: row.instance_id, name: row.name, protocolVersion: 1 })
+              .instanceId;
+          })
+          .immediate(),
+      );
+      this.logger.log(`Database ready at ${this.path}`);
     } catch (error) {
-      this.db.close();
+      await this.db.close().catch(() => undefined);
       if (isCorruption(error))
         throw new DatabaseBrokenError(`${this.path} is damaged (${(error as Error).message}).`, { cause: error });
       throw error;
     }
   }
 
-  /** Security-sensitive writes fsync the WAL before acknowledging; ordinary writes keep `synchronous = NORMAL`. */
-  durable<T>(write: () => T): T {
-    const previous = this.db.pragma('synchronous', { simple: true }) as number;
-    this.db.pragma('synchronous = FULL');
-    try {
-      return write();
-    } finally {
-      this.db.pragma(`synchronous = ${previous}`);
-    }
+  /** Security-sensitive writes use FULL through the commit; the entire scope is fenced from other work. */
+  async durable<T>(write: () => Promise<T>): Promise<T> {
+    await this.ready;
+    return this.withFullDurability(write);
   }
 
-  /** Nest awaits this factory before any repository can open the encrypted database. */
-  static async create(
-    config: Pick<BackendConfig, 'dataDir'>,
-    secrets?: SecretStore,
-    encryptionEnabled = true,
-  ): Promise<DatabaseService> {
-    mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
-    const path = join(config.dataDir, DB_FILE);
-    assertNoPendingDatabaseTransition(path);
-    assertNoPendingDatabaseTransition(join(config.dataDir, BG_DB_FILE));
-    const encrypted = [path, join(config.dataDir, BG_DB_FILE)].find(
-      (file) => existsSync(file) && statSync(file).size > 0 && !isPlainDatabase(file),
-    );
-    if (!encryptionEnabled && !encrypted) {
-      return new DatabaseService(config, { reason: 'Protected storage is off. You can enable it in Settings.' });
-    }
-    // Existing app or agents data always keeps its original protection, even after opting out.
-    const keyed = await DatabaseService.resolveKey(encrypted ?? path, secrets);
-    if (encrypted && (!keyed.key || !keyOpens(encrypted, keyed.key))) {
-      throw new Error('The original key is required to open the encrypted database. The database was retained.');
-    }
-    return new DatabaseService(config, keyed);
+  private async withFullDurability<T>(write: () => Promise<T>): Promise<T> {
+    return this.db.exclusive(async () => {
+      const previous = (await this.db.pragma('synchronous', { simple: true })) as number;
+      await this.db.pragma('synchronous = FULL');
+      try {
+        return await write();
+      } finally {
+        await this.db.pragma(`synchronous = ${previous}`);
+      }
+    });
   }
 
-  /** Keep storage available until session disposal and every module's asynchronous cleanup have finished. */
-  onApplicationShutdown(): void {
-    if (!this.db.open) return;
-    // Lets SQLite refresh the statistics its planner uses for the queries this session ran; cheap, and skipped when nothing needs it.
+  static async create(config: Pick<BackendConfig, 'dataDir'>): Promise<DatabaseService> {
+    const service = new DatabaseService(config);
+    await service.ready;
+    return service;
+  }
+
+  /** Drain accepted writes only after all modules finish their asynchronous disposal. */
+  async onApplicationShutdown(): Promise<void> {
+    await this.ready.catch(() => undefined);
+    if (!this.db?.open) return;
     try {
-      this.db.pragma('optimize');
+      await this.db.pragma('optimize');
     } catch {
-      /* a read-only or busy file is closed anyway */
+      /* Busy/read-only connections still close. */
     }
-    this.db.close();
+    await this.db.close();
   }
 
-  /** The key, for the one-time "Export recovery key" (Settings › Advanced) and for nothing else. */
-  recoveryKey(): string | undefined {
-    return this.key;
-  }
-
-  /**
-   * Which key opens the file, if any. `PI_KIT_DB_KEY` (a recovery key, 64 hex characters) wins and is written back into the store when the store has no entry. Otherwise the store's `pi-kit/db`; a
-   * file that the key does not open is retained unchanged. Missing keys never cause a replacement database.
-   */
-  private static async resolveKey(path: string, secrets: SecretStore | undefined): Promise<DatabaseKey> {
-    const recovery = process.env['PI_KIT_DB_KEY'];
-    if (recovery && /^[0-9a-f]{64}$/.test(recovery)) {
-      try {
-        if (secrets?.available() && !(await secrets.get(DB_KEY_ACCOUNT))) await secrets.set(DB_KEY_ACCOUNT, recovery);
-      } catch {
-        // The store is not needed to use a key that was handed over.
-      }
-      return { key: recovery };
-    }
-    if (!secrets) return { reason: 'No credential store is configured for this backend.' };
-    if (!secrets.available()) {
-      if (secrets.protected)
-        throw new Error(
-          'Biometric credential storage is unavailable. Use a signed pi-kit build with Keychain Sharing.',
-        );
-      return { reason: `There is no credential store on this machine, so the key cannot be kept (${secrets.label}).` };
-    }
-    try {
-      const held = await secrets.get(DB_KEY_ACCOUNT);
-      const exists = existsSync(path) && statSync(path).size > 0;
-      if (held && (!exists || isPlainDatabase(path) || keyOpens(path, held))) return { key: held };
-      if (exists && !isPlainDatabase(path)) {
-        throw new Error(
-          'The credential does not open the encrypted database. Restore its original key before retrying. The database was retained.',
-        );
-      }
-      // New encryption is explicit; never replace the key of an unreadable existing file.
-      const key = held ?? newDatabaseKey();
-      if (!held) await secrets.set(DB_KEY_ACCOUNT, key);
-      return { key };
-    } catch (error) {
-      if (secrets.protected || (existsSync(path) && statSync(path).size > 0 && !isPlainDatabase(path))) throw error;
-      return {
-        reason: `The credential store did not take the database key: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-  }
-
-  private open(key: string | undefined): Database.Database {
-    if (!key) {
-      if (existsSync(this.path) && statSync(this.path).size > 0 && !isPlainDatabase(this.path)) {
-        throw new Error(
-          `${this.path} is encrypted and there is no key for it. Start pi-kit with PI_KIT_DB_KEY set to the recovery key, or move the file away (pi's session files rebuild the threads).`,
-        );
-      }
-      return new Database(this.path);
-    }
-    const openKeyed = (): Database.Database => {
-      const db = new Database(this.path);
-      try {
-        useKey(db, key);
-        db.prepare('SELECT count(*) FROM sqlite_master').get();
-        return db;
-      } catch (error) {
-        db.close();
-        throw error;
-      }
-    };
-    if (existsSync(this.path) && isPlainDatabase(this.path)) {
-      const result = encryptDatabaseFile(this.path, key);
-      let db: Database.Database | undefined;
-      try {
-        db = openKeyed();
-        result.discardOriginal();
-        this.logger.log(
-          `Encrypted the database (${Object.keys(result.tables).length} tables); the plaintext file was removed.`,
-        );
-        return db;
-      } catch (error) {
-        db?.close();
-        result.restoreOriginal();
-        throw error;
-      }
-    }
-    return openKeyed();
-  }
-
-  /**
-   * Applies the files of `migrations/` that this database has not seen, in name order, all in one `BEGIN IMMEDIATE` transaction so two
-   * processes opening a fresh file do not both create the tables. Each file is recorded with a hash of its SQL (comments and spacing left
-   * out): a database that recorded a file that is gone, or a different text of the same file, came from another pi-kit version and is refused.
-   */
-  private migrate(dir: string): void {
+  private async migrate(dir: string): Promise<void> {
     const files = readdirSync(dir)
       .filter((file) => file.endsWith('.sql'))
       .sort()
       .map((name) => ({ name, sql: readFileSync(join(dir, name), 'utf8') }));
-    const applied = this.db
-      .transaction(() => {
-        this.db.exec(
+    const applied = await this.db
+      .transaction(async () => {
+        await this.db.exec(
           'CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL, sha256 TEXT)',
         );
+        // Older pre-squash tables lack sha256; SELECT * deliberately supports recognizing them.
         const recorded = new Map(
-          (this.db.prepare('SELECT * FROM schema_migrations').all() as { name: string; sha256?: string | null }[]).map(
-            (row) => [row.name, row.sha256 ?? null],
-          ),
+          (
+            await this.db.prepare('SELECT * FROM schema_migrations').all<{ name: string; sha256?: string | null }>()
+          ).map((row) => [row.name, row.sha256 ?? null]),
         );
         const changed = [...recorded].filter(([name, hash]) => {
           const file = files.find((f) => f.name === name);
           return !file || hash !== schemaHash(file.sql);
         });
-        if (changed.length) {
+        if (changed.length)
           throw new DatabaseVersionError(
             `${this.path} was created by a different pi-kit version (migrations ${changed.map(([name]) => name).join(', ')}). The database was retained. Open it with the matching app version or restore a compatible backup; recreating it would lose metadata.`,
           );
-        }
         const added: string[] = [];
         for (const file of files) {
           if (recorded.has(file.name)) continue;
-          this.db.exec(file.sql);
-          this.db
+          await this.db.exec(file.sql);
+          await this.db
             .prepare('INSERT INTO schema_migrations (name, applied_at, sha256) VALUES (?, ?, ?)')
             .run(file.name, Date.now(), schemaHash(file.sql));
           added.push(file.name);
@@ -260,20 +170,24 @@ export class DatabaseService implements OnApplicationShutdown {
       })
       .immediate();
     for (const name of applied) this.logger.log(`Applied migration ${name}`);
-    this.logger.log(`Database ready at ${this.path} (${this.protection.state})`);
   }
 }
 
-/** `SQLITE_NOTADB` is excluded: a wrong key reports it too. */
+/** NOTADB is deliberately not corruption: encrypted/wrong-key files must never trigger recreation. */
 function isCorruption(error: unknown): boolean {
-  return error instanceof Database.SqliteError && error.code.startsWith('SQLITE_CORRUPT');
+  return (
+    typeof error === 'object' && error !== null && 'code' in error && String(error.code).startsWith('SQLITE_CORRUPT')
+  );
 }
 
-/** The hash a migration is recorded with: its SQL without `--` comments and with spacing collapsed, so editing a comment changes nothing. */
+/** Hash SQL without line comments and with spacing collapsed. */
 export function schemaHash(sql: string): string {
-  const text = sql
-    .replace(/--[^\n]*/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return createHash('sha256').update(text).digest('hex');
+  return createHash('sha256')
+    .update(
+      sql
+        .replace(/--[^\n]*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
+    )
+    .digest('hex');
 }

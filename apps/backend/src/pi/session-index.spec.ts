@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { SessionIndex, titleText } from './session-index';
+import { SessionIndex, summarize, titleText } from './session-index';
 
 let root: string;
 beforeEach(() => {
@@ -73,6 +73,27 @@ function writeSession(
 }
 
 describe('SessionIndex', () => {
+  it('bounds a summary to the statted snapshot even if the file has since grown', async () => {
+    const path = writeSession('a', 'aaaa0001', 1);
+    const size = statSync(path).size;
+    writeSession('a', 'aaaa0001', 3);
+    const summary = await summarize(path, new Date(), size);
+    expect(summary?.messageCount).toBe(2);
+    expect((await summarize(path, new Date()))?.messageCount).toBe(6);
+  });
+
+  it('coalesces overlapping list/reconcile scans and permits a new pass afterward', async () => {
+    writeSession('a', 'aaaa0001', 2);
+    const index = new SessionIndex(() => join(root, 'sessions'));
+    const first = index.scan();
+    const second = index.scan();
+    expect(second).toBe(first);
+    expect(await first).toMatchObject({ files: 1, read: 1 });
+    const next = index.scan();
+    expect(next).not.toBe(first);
+    expect(await next).toMatchObject({ files: 1, read: 0 });
+  });
+
   it('reads the same facts as pi’s own listAll()', async () => {
     writeSession('a', 'aaaa0001', 3, { name: 'First' });
     writeSession('a', 'aaaa0002', 1);

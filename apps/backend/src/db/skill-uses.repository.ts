@@ -29,22 +29,22 @@ export class SkillUsesRepository {
     return this.database.db;
   }
 
-  record(use: { learnedFrom: string; threadId: string }, now = Date.now()): void {
+  async record(use: { learnedFrom: string; threadId: string }, now = Date.now()): Promise<void> {
     // The outcome comes later: a use is "followed by" the outcome its thread lands after it, so a new use starts with none.
-    this.db
+    await this.db
       .prepare('INSERT INTO skill_uses (learned_from, thread_id, at, outcome) VALUES (?, ?, ?, ?)')
       .run(use.learnedFrom, use.threadId, now, null);
   }
 
   /** The thread landed an outcome (or a later one replaced it): all its uses carry its kind. */
-  markOutcome(threadId: string, kind: UseOutcome): number {
-    return this.db.prepare('UPDATE skill_uses SET outcome = ? WHERE thread_id = ?').run(kind, threadId).changes;
+  async markOutcome(threadId: string, kind: UseOutcome): Promise<number> {
+    return (await this.db.prepare('UPDATE skill_uses SET outcome = ? WHERE thread_id = ?').run(kind, threadId)).changes;
   }
 
-  summary(learnedFrom: string): SkillUseSummary {
-    const rows = this.db
+  async summary(learnedFrom: string): Promise<SkillUseSummary> {
+    const rows = (await this.db
       .prepare('SELECT thread_id, at, outcome FROM skill_uses WHERE learned_from = ? ORDER BY at ASC, id ASC')
-      .all(learnedFrom) as RawUse[];
+      .all(learnedFrom)) as RawUse[];
     const threads = new Map<string, { threadId: string; lastUseAt: number; outcome: UseOutcome | null }>();
     let merged = 0;
     for (const row of rows) {

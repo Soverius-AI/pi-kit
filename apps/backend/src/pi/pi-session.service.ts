@@ -82,7 +82,7 @@ const logger = new Logger('PiSessionService');
 
 /** Callbacks of other services: one that throws is logged and does not stop the rest. */
 class Listeners<Args extends unknown[]> {
-  private readonly all = new Set<(...args: Args) => void>();
+  private readonly all = new Set<(...args: Args) => void | Promise<void>>();
 
   constructor(private readonly what: string) {}
 
@@ -90,7 +90,7 @@ class Listeners<Args extends unknown[]> {
     return this.all.size;
   }
 
-  add(listener: (...args: Args) => void): () => void {
+  add(listener: (...args: Args) => void | Promise<void>): () => void {
     this.all.add(listener);
     return () => this.all.delete(listener);
   }
@@ -98,11 +98,26 @@ class Listeners<Args extends unknown[]> {
   emit(...args: Args): void {
     for (const listener of [...this.all]) {
       try {
-        listener(...args);
+        const pending = listener(...args);
+        if (pending)
+          void pending.catch((error: unknown) => {
+            logger.warn(`A ${this.what} listener failed: ${error instanceof Error ? error.message : String(error)}`);
+          });
       } catch (error) {
         logger.warn(`A ${this.what} listener failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+  }
+  async emitAsync(...args: Args): Promise<void> {
+    await Promise.all(
+      [...this.all].map(async (listener) => {
+        try {
+          await listener(...args);
+        } catch (error) {
+          logger.warn(`A ${this.what} listener failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }),
+    );
   }
 }
 
@@ -401,11 +416,11 @@ export class PiSessionService implements OnModuleDestroy {
    * may be a long time after the AG-UI run that started it ended, if an extension dialog interrupted it.
    * It is also kept as `whenPromptDone()`, so the run that resumes the dialog can wait for the same thing.
    */
-  prompt(threadId: string, text: string, options: { images?: PiImage[] } = {}): Promise<void> {
-    this.protection.assertAdmitted(threadId);
+  async prompt(threadId: string, text: string, options: { images?: PiImage[] } = {}): Promise<void> {
+    await this.protection.assertAdmitted(threadId);
     const thread = this.lifecycle.get(threadId);
     const { session } = thread;
-    this.noteSkills(threadId, text, thread);
+    await this.noteSkills(threadId, text, thread);
     return this.track(
       thread,
       session.prompt(text, {
@@ -443,18 +458,18 @@ export class PiSessionService implements OnModuleDestroy {
   }
 
   /** Told when a prompt, steer or follow-up uses a skill (a chip's block or a typed `/skill:name`): the learned skills' record counts these. A listener's failure is its own. */
-  onSkillsUsed(listener: (threadId: string, uses: SkillUse[]) => void): () => void {
+  onSkillsUsed(listener: (threadId: string, uses: SkillUse[]) => void | Promise<void>): () => void {
     return this.skillsUsed.add(listener);
   }
 
-  private noteSkills(threadId: string, text: string, thread: OpenThread): void {
+  private async noteSkills(threadId: string, text: string, thread: OpenThread): Promise<void> {
     if (this.skillsUsed.size === 0 || !text.includes('skill')) return;
     try {
       const uses = skillsUsedBy(
         text,
         (name) => thread.session.resourceLoader.getSkills().skills.find((s) => s.name === name)?.filePath,
       );
-      if (uses.length) this.skillsUsed.emit(threadId, uses);
+      if (uses.length) await this.skillsUsed.emitAsync(threadId, uses);
     } catch (error) {
       logger.debug(
         `Could not read the skills of a prompt of ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -467,15 +482,15 @@ export class PiSessionService implements OnModuleDestroy {
     return this.lifecycle.threads.get(threadId)?.prompting;
   }
 
-  steer(threadId: string, text: string, images: PiImage[] = []): Promise<'queued' | 'handled'> {
+  async steer(threadId: string, text: string, images: PiImage[] = []): Promise<'queued' | 'handled'> {
     const thread = this.lifecycle.get(threadId);
-    this.noteSkills(threadId, text, thread);
+    await this.noteSkills(threadId, text, thread);
     return thread.queue.enqueue('steer', text, images);
   }
 
-  followUp(threadId: string, text: string, images: PiImage[] = []): Promise<'queued' | 'handled'> {
+  async followUp(threadId: string, text: string, images: PiImage[] = []): Promise<'queued' | 'handled'> {
     const thread = this.lifecycle.get(threadId);
-    this.noteSkills(threadId, text, thread);
+    await this.noteSkills(threadId, text, thread);
     return thread.queue.enqueue('followUp', text, images);
   }
 
@@ -734,7 +749,7 @@ export class PiSessionService implements OnModuleDestroy {
     onChunk: (chunk: string) => void,
     excludeFromContext = false,
   ): Promise<BashRun> {
-    this.protection.assertAdmitted(threadId);
+    await this.protection.assertAdmitted(threadId);
     const { session, bash } = this.lifecycle.get(threadId);
     return session.executeBash(command, onChunk, { excludeFromContext, ...(bash ? { operations: bash } : {}) });
   }

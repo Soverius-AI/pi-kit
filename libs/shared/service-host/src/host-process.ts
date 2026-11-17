@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { RemoteAccessStatus } from '@pi-kit/protocol';
 import { type HostDiscovery, liveDiscovery } from './discovery';
+import type { DatabaseBackup } from './database-reset';
 import { connectHostChannel, RpcError, type RpcPeer } from './host-channel';
 import {
   asStartupFailure,
@@ -137,6 +138,14 @@ export class HostClient {
       const failure = fields(error instanceof RpcError ? error.data : undefined)?.['failure'];
       throw new HostStartError(error instanceof Error ? error.message : String(error), asStartupFailure(failure));
     }
+  }
+
+  backupDatabases(): Promise<DatabaseBackup> {
+    return this.peer.call<DatabaseBackup>('database.reset');
+  }
+
+  restoreDatabases(): Promise<DatabaseBackup> {
+    return this.peer.call<DatabaseBackup>('database.restore');
   }
 
   retry(): void {

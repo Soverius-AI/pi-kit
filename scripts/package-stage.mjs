@@ -120,10 +120,11 @@ for (const specifier of required) {
     );
 }
 // Core JavaScript comes from Nx/esbuild outputs. The self-contained keychain-store
-// vendor loader is provisioned with its native prebuild; no JavaScript dependency closure is copied.
+// vendor loader is provisioned with its native prebuild. AppThreat and its loader
+// dependency closure are copied intact by bundle-natives (never CJS-bundled).
 cpSync(join(dist, 'apps/backend-runtime/assets'), join(backendOut, 'assets'), { recursive: true });
 cpSync(join(dist, 'apps/backend-runtime-natives/node_modules'), join(backendOut, 'node_modules'), { recursive: true });
-for (const name of runtime.nativePackages) {
+for (const name of new Set([...runtime.nativePackages, ...runtime.packageCopyClosure])) {
   if (!existsSync(join(backendOut, 'node_modules', name, 'package.json')))
     throw new Error(`Missing built native loader ${name}; run backend-runtime:build.`);
 }

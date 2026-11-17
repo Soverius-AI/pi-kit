@@ -79,51 +79,53 @@ export class BgAgentsRepository {
     return this.database.db;
   }
 
-  insert(row: NewRow, epoch: number): void {
+  async insert(row: NewRow, epoch: number): Promise<void> {
     const keys = Object.keys(row) as (keyof NewRow)[];
-    this.db
+    await this.db
       .prepare(
         `INSERT INTO bg_agents (${keys.map((key) => COLUMNS[key]).join(', ')}, owner_epoch) VALUES (${keys.map(() => '?').join(', ')}, ?)`,
       )
       .run(...keys.map((key) => row[key] ?? null), epoch);
   }
 
-  get(id: string): BgAgentRow | undefined {
-    const raw = this.db.prepare('SELECT * FROM bg_agents WHERE id = ?').get(id) as Record<string, unknown> | undefined;
+  async get(id: string): Promise<BgAgentRow | undefined> {
+    const raw = (await this.db.prepare('SELECT * FROM bg_agents WHERE id = ?').get(id)) as
+      Record<string, unknown> | undefined;
     return raw && toRow(raw);
   }
 
-  byThread(threadId: string): BgAgentRow[] {
+  async byThread(threadId: string): Promise<BgAgentRow[]> {
     return (
-      this.db.prepare('SELECT * FROM bg_agents WHERE thread_id = ? ORDER BY created_at, rowid').all(threadId) as Record<
-        string,
-        unknown
-      >[]
+      (await this.db
+        .prepare('SELECT * FROM bg_agents WHERE thread_id = ? ORDER BY created_at, rowid')
+        .all(threadId)) as Record<string, unknown>[]
     ).map(toRow);
   }
 
   /** The agents a start has to resume or hold: everything that is not finished. */
-  unfinished(): BgAgentRow[] {
+  async unfinished(): Promise<BgAgentRow[]> {
     return (
-      this.db
+      (await this.db
         .prepare("SELECT * FROM bg_agents WHERE status IN ('active', 'blocked') ORDER BY created_at, rowid")
-        .all() as Record<string, unknown>[]
+        .all()) as Record<string, unknown>[]
     ).map(toRow);
   }
 
   /** Writes the patch with this owner's epoch; false when a newer owner wrote the row already (the write is dropped). */
-  update(id: string, epoch: number, patch: BgAgentPatch): boolean {
+  async update(id: string, epoch: number, patch: BgAgentPatch): Promise<boolean> {
     const keys = Object.keys(patch) as (keyof BgAgentPatch)[];
     const values = keys.map((key) => (JSON_COLUMNS.has(key) ? JSON.stringify(patch[key]) : (patch[key] ?? null)));
     const sets = keys.map((key) => `${COLUMNS[key]} = ?`);
     return (
-      this.db
-        .prepare(`UPDATE bg_agents SET ${[...sets, 'owner_epoch = ?'].join(', ')} WHERE id = ? AND owner_epoch <= ?`)
-        .run(...values, epoch, id, epoch).changes > 0
+      (
+        await this.db
+          .prepare(`UPDATE bg_agents SET ${[...sets, 'owner_epoch = ?'].join(', ')} WHERE id = ? AND owner_epoch <= ?`)
+          .run(...values, epoch, id, epoch)
+      ).changes > 0
     );
   }
 
-  remove(id: string): void {
-    this.db.prepare('DELETE FROM bg_agents WHERE id = ?').run(id);
+  async remove(id: string): Promise<void> {
+    await this.db.prepare('DELETE FROM bg_agents WHERE id = ?').run(id);
   }
 }

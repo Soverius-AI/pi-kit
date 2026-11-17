@@ -6,7 +6,12 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app/app.module';
 import { configureJsonBody } from './app/http-body';
 import { loadConfig } from './app/config';
-import { DatabaseBrokenError, DatabaseVersionError } from './db/database.service';
+import {
+  DatabaseBrokenError,
+  DatabaseEncryptionMigrationError,
+  DatabaseResetIncompleteError,
+  DatabaseVersionError,
+} from './db/database.service';
 import { mountContract } from './contract';
 import { REPLAY_CURSOR_HEADER, THREAD_HYDRATION_HEADER } from '@pi-kit/protocol';
 
@@ -46,6 +51,10 @@ void bootstrap().catch((error: unknown) => {
     process.send?.({ type: 'startup-failure', reason: 'database-broken', message: error.message });
   if (error instanceof DatabaseVersionError)
     process.send?.({ type: 'startup-failure', reason: 'database-version', message: error.message });
+  if (error instanceof DatabaseEncryptionMigrationError)
+    process.send?.({ type: 'startup-failure', reason: 'database-encrypted', message: error.message });
+  if (error instanceof DatabaseResetIncompleteError)
+    process.send?.({ type: 'startup-failure', reason: 'database-reset-incomplete', message: error.message });
   // Open handles (e.g. the desktop IPC listener) would otherwise keep the process alive.
   setTimeout(() => process.exit(1), 1000).unref();
 });

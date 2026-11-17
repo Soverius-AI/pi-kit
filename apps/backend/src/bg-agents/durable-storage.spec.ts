@@ -3,112 +3,89 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as encryption from '../db/encryption';
+import * as guards from '../db/database-file-guards';
 import { LOCK_FILE, openDurableStore, StoreOwnedError, takeOwnerLock } from './durable-storage';
 
-const key = 'ab'.repeat(32);
 let dir: string;
 afterEach(() => {
   vi.restoreAllMocks();
   rmSync(dir, { recursive: true, force: true });
 });
 
-describe('openDurableStore', () => {
-  it('runs SQL through the facade, rolls a failed transaction back, and the file is encrypted at rest', async () => {
+describe('openDurableStore', async () => {
+  it('uses native async SQL, rolls back, and drains accepted operations on close', async () => {
     dir = mkdtempSync(join(tmpdir(), 'pk-bg-store-'));
     const path = join(dir, 'bg-agents.sqlite');
-    const store = openDurableStore(path, key);
+    const store = await openDurableStore(path);
     await store.exec('CREATE TABLE notes (text TEXT)');
-    await store.run('INSERT INTO notes (text) VALUES (?)', 'one');
-    await store.transaction(async (tx) => {
-      await tx.run('INSERT INTO notes (text) VALUES (?)', 'two');
-    });
+    await store.run('INSERT INTO notes VALUES (?)', 'one');
     await expect(
       store.transaction(async (tx) => {
-        await tx.run('INSERT INTO notes (text) VALUES (?)', 'three');
+        await tx.run('INSERT INTO notes VALUES (?)', 'rolled back');
         throw new Error('no');
       }),
     ).rejects.toThrow('no');
-    expect(await store.all<{ text: string }>('SELECT text FROM notes ORDER BY rowid')).toEqual([
-      { text: 'one' },
-      { text: 'two' },
-    ]);
-    expect(await store.get<{ n: number }>('SELECT count(*) AS n FROM notes')).toEqual({ n: 2 });
+    const write = store.run('INSERT INTO notes VALUES (?)', 'two');
     await store.close();
+    await write;
     await expect(store.run('SELECT 1')).rejects.toThrow('closing');
-    expect(readFileSync(path).subarray(0, 16).toString('latin1')).not.toBe('SQLite format 3\0');
-    expect(() => openDurableStore(path, 'cd'.repeat(32))).toThrow();
-  });
-});
-
-describe('durable store protection follows the app database', () => {
-  const pathOf = () => {
-    dir = mkdtempSync(join(tmpdir(), 'pk-bg-protection-'));
-    return join(dir, 'bg-agents.sqlite');
-  };
-  const seed = async (path: string, targetKey?: string) => {
-    const store = openDurableStore(path, targetKey);
-    await store.exec('CREATE TABLE notes (text TEXT)');
-    await store.run('INSERT INTO notes VALUES (?)', 'durable conversation');
-    await store.close();
-  };
-  const check = async (path: string, targetKey?: string) => {
-    const store = openDurableStore(path, targetKey);
-    expect(await store.all('SELECT text FROM notes')).toEqual([{ text: 'durable conversation' }]);
-    await store.close();
-  };
-
-  it('creates and reopens a durable plaintext store without any key', async () => {
-    const path = pathOf();
-    await seed(path);
-    await check(path);
-    expect(encryption.isPlainDatabase(path)).toBe(true);
+    const reopened = await openDurableStore(path);
+    expect(await reopened.all('SELECT text FROM notes ORDER BY rowid')).toEqual([{ text: 'one' }, { text: 'two' }]);
+    await reopened.close();
+    expect(guards.isPlainDatabase(path)).toBe(true);
     if (process.platform !== 'win32') expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
-  it('preserves rows through plaintext → encrypted restarts', async () => {
-    const path = pathOf();
-    await seed(path);
-    await check(path, key);
-    expect(encryption.isPlainDatabase(path)).toBe(false);
-    expect(encryption.keyOpens(path, key)).toBe(true);
-    expect(existsSync(`${path}.plaintext`)).toBe(false);
-    await check(path, key);
-  });
-
-  it('retains encrypted bytes with missing/wrong key, then can retry with the original key', async () => {
-    const path = pathOf();
-    await seed(path, key);
-    const original = readFileSync(path);
-    expect(() => openDurableStore(path)).toThrow(/original key.*retained/i);
-    expect(readFileSync(path)).toEqual(original);
-    expect(() => openDurableStore(path, 'ef'.repeat(32))).toThrow();
-    expect(readFileSync(path)).toEqual(original);
-    await check(path, key);
-  });
-
-  it('rolls back encryption if opening the verified replacement fails', async () => {
-    const path = pathOf();
-    await seed(path);
-    vi.spyOn(encryption, 'useKey').mockImplementationOnce(() => {
-      throw new Error('replacement open failed');
+  it('serializes transactions exclusively with FIFO top-level SQL, and rejects escaped executors', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'pk-bg-fifo-'));
+    const store = await openDurableStore(join(dir, 'bg-agents.sqlite'));
+    await store.exec('CREATE TABLE notes (text TEXT)');
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    expect(() => openDurableStore(path, key)).toThrow('replacement open failed');
-    expect(encryption.isPlainDatabase(path)).toBe(true);
-    expect(existsSync(`${path}.plaintext`)).toBe(false);
-    await check(path);
-    await check(path, key);
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let escaped: Parameters<Parameters<typeof store.transaction>[0]>[0] | undefined;
+    const transaction = store.transaction(async (tx) => {
+      escaped = tx;
+      await tx.run('INSERT INTO notes VALUES (?)', 'first');
+      entered();
+      await gate;
+      await tx.run('INSERT INTO notes VALUES (?)', 'second');
+    });
+    await started;
+    const outside = store.run('INSERT INTO notes VALUES (?)', 'third');
+    release();
+    await Promise.all([transaction, outside]);
+    await expect(escaped!.run('SELECT 1')).rejects.toThrow('ended');
+    expect(await store.all('SELECT text FROM notes ORDER BY rowid')).toEqual([
+      { text: 'first' },
+      { text: 'second' },
+      { text: 'third' },
+    ]);
+    await store.close();
+  });
+
+  it('refuses encrypted bytes with an actionable message and never alters them', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'pk-bg-encrypted-'));
+    const path = join(dir, 'bg-agents.sqlite');
+    const bytes = Buffer.alloc(4096, 0x91);
+    writeFileSync(path, bytes);
+    await expect(openDurableStore(path)).rejects.toThrow(/encrypted.*retained.*recover/i);
+    expect(readFileSync(path)).toEqual(bytes);
   });
 
   it.each(['.plaintext', '.encrypted', '.encrypting', '.decrypting'])(
-    'retains recovery artifacts from an interrupted transition: %s',
+    'retains recovery artifacts: %s',
     async (suffix) => {
-      const path = pathOf();
-      await seed(path);
-      writeFileSync(`${path}${suffix}`, 'recovery original');
-      expect(() => openDurableStore(path, key)).toThrow(/recovery/);
-      expect(readFileSync(`${path}${suffix}`, 'utf8')).toBe('recovery original');
-      expect(encryption.isPlainDatabase(path)).toBe(true);
+      dir = mkdtempSync(join(tmpdir(), 'pk-bg-recovery-'));
+      const path = join(dir, 'bg-agents.sqlite');
+      writeFileSync(path + suffix, 'recovery original');
+      await expect(openDurableStore(path)).rejects.toThrow(/recovery/);
+      expect(readFileSync(path + suffix, 'utf8')).toBe('recovery original');
     },
   );
 });
@@ -116,7 +93,7 @@ describe('durable store protection follows the app database', () => {
 const owner = new URL('./fixtures/competing-owner.mjs', import.meta.url).pathname;
 const note = () => JSON.parse(readFileSync(join(dir, LOCK_FILE), 'utf8')) as { pid: number; epoch: number };
 
-describe('takeOwnerLock (one process owns the store)', () => {
+describe('takeOwnerLock (one process owns the store)', async () => {
   it('admits exactly one of two processes that contend for the unowned folder together', async () => {
     dir = mkdtempSync(join(tmpdir(), 'pk-bg-competing-'));
     const workers = Array.from({ length: 2 }, () => spawn(process.execPath, [owner, dir]));
@@ -147,47 +124,47 @@ describe('takeOwnerLock (one process owns the store)', () => {
     }
   }, 20_000);
 
-  it('takes a free folder with epoch 1, refuses a second host with or without the note, keeps the epoch across a clean release, and ignores a repeated release of an old handle', () => {
+  it('takes a free folder with epoch 1, refuses a second host with or without the note, keeps the epoch across a clean release, and ignores a repeated release of an old handle', async () => {
     dir = mkdtempSync(join(tmpdir(), 'pk-bg-lock-'));
-    const first = takeOwnerLock(dir);
+    const first = await takeOwnerLock(dir);
     try {
       expect(first.epoch).toBe(1);
       expect(note()).toMatchObject({ pid: process.pid, epoch: 1 });
       // Two hosts inside one backend must not overlap either, and the note is not what refuses them.
-      expect(() => takeOwnerLock(dir)).toThrow(StoreOwnedError);
+      await expect(takeOwnerLock(dir)).rejects.toThrow(StoreOwnedError);
       rmSync(join(dir, LOCK_FILE));
-      expect(() => takeOwnerLock(dir)).toThrow(StoreOwnedError);
+      await expect(takeOwnerLock(dir)).rejects.toThrow(StoreOwnedError);
     } finally {
-      first.release();
+      await first.release();
     }
-    const next = takeOwnerLock(dir);
+    const next = await takeOwnerLock(dir);
     try {
       expect(next.epoch).toBe(2);
-      first.release();
+      await first.release();
       expect(note()).toMatchObject({ pid: process.pid, epoch: 2 });
-      expect(() => takeOwnerLock(dir)).toThrow(StoreOwnedError);
+      await expect(takeOwnerLock(dir)).rejects.toThrow(StoreOwnedError);
     } finally {
-      next.release();
+      await next.release();
     }
     expect(existsSync(join(dir, LOCK_FILE))).toBe(false);
   });
 
-  it('diagnostic note failures cannot refuse SQLite ownership or release', () => {
+  it('diagnostic note failures cannot refuse SQLite ownership or release', async () => {
     dir = mkdtempSync(join(tmpdir(), 'pk-bg-unwritable-note-'));
     // A stale directory where the note would go makes rename fail even though the owner database is writable.
     mkdirSync(join(dir, LOCK_FILE));
-    const first = takeOwnerLock(dir);
+    const first = await takeOwnerLock(dir);
     try {
       expect(first.epoch).toBe(1);
-      expect(() => takeOwnerLock(dir)).toThrow(StoreOwnedError);
+      await expect(takeOwnerLock(dir)).rejects.toThrow(StoreOwnedError);
     } finally {
-      first.release();
+      await first.release();
     }
-    const next = takeOwnerLock(dir);
+    const next = await takeOwnerLock(dir);
     try {
       expect(next.epoch).toBe(2);
     } finally {
-      next.release();
+      await next.release();
     }
     expect(existsSync(join(dir, LOCK_FILE))).toBe(true);
   });
@@ -197,16 +174,16 @@ describe('takeOwnerLock (one process owns the store)', () => {
     // on the note (a live pid refused with StoreOwnedError before the owner database was even opened) and took the
     // larger of the two epochs, so a reused pid shut background agents off until someone deleted the file by hand.
     dir = mkdtempSync(join(tmpdir(), 'pk-bg-stale-note-'));
-    takeOwnerLock(dir).release(); // the owner database knows epoch 1
+    await (await takeOwnerLock(dir)).release(); // the owner database knows epoch 1
     const unrelated = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
     try {
       writeFileSync(join(dir, LOCK_FILE), JSON.stringify({ pid: unrelated.pid, epoch: 7, takenAt: Date.now() }));
-      const lock = takeOwnerLock(dir);
+      const lock = await takeOwnerLock(dir);
       try {
         expect(lock.epoch).toBe(2);
         expect(note()).toMatchObject({ pid: process.pid, epoch: 2 });
       } finally {
-        lock.release();
+        await lock.release();
       }
     } finally {
       unrelated.kill('SIGKILL');
@@ -227,17 +204,17 @@ describe('takeOwnerLock (one process owns the store)', () => {
       writeFileSync(join(dir, 'acquire'), '');
       await expect.poll(() => output.includes('\n'), { timeout: 8000 }).toBe(true);
       expect(JSON.parse(output.trim())).toEqual({ owned: true, epoch: 1 });
-      expect(() => takeOwnerLock(dir)).toThrow(new StoreOwnedError(holder.pid));
+      await expect(takeOwnerLock(dir)).rejects.toThrow(new StoreOwnedError(holder.pid));
     } finally {
       holder.kill('SIGKILL');
       await exited;
     }
-    const next = takeOwnerLock(dir);
+    const next = await takeOwnerLock(dir);
     try {
       expect(next.epoch).toBe(2);
       expect(note()).toMatchObject({ pid: process.pid, epoch: 2 });
     } finally {
-      next.release();
+      await next.release();
     }
   }, 20_000);
 });

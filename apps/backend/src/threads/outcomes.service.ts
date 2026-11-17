@@ -40,19 +40,23 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OutcomesService.name);
   /** The `HEAD` each tracked folder was on when it was last looked at. */
   private readonly heads = new Map<string, string>();
-  private readonly headWatcher = new HeadWatcher((folder) => this.enqueue(folder, () => this.headMoved(folder)));
+  private readonly headWatcher = new HeadWatcher(
+    async (folder) => await this.enqueue(folder, async () => await this.headMoved(folder)),
+  );
   private readonly starting = new Map<string, Promise<void>>();
+  /** Run observers are pending even before their asynchronous thread lookup finds a folder. */
+  private readonly runChecks = new Set<Promise<void>>();
   /** Counts `track` calls: only the newest one moves the watch. */
   private tracked = 0;
   /** One folder's work at a time, in order. */
   private readonly queues = new Map<string, Promise<void>>();
   /** Commits pi-kit made itself (the merge commit of a merge back): they are the worktree's outcome, not a terminal commit. */
   private readonly own = new Set<string>();
-  private excluded: ((threadId: string) => boolean) | undefined;
+  private excluded: ((threadId: string) => boolean | Promise<boolean>) | undefined;
   private estimating = false;
   private offRun: (() => void) | undefined;
   private readonly outcomeListeners = new Set<
-    (threadId: string, kind: ThreadOutcome['kind'], firstTime: boolean) => void
+    (threadId: string, kind: ThreadOutcome['kind'], firstTime: boolean) => void | Promise<void>
   >();
 
   constructor(
@@ -68,8 +72,16 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   onModuleInit(): void {
     // A run's start and end compare its folder with the `HEAD` last seen: a commit made meanwhile in a terminal is found then.
     this.offRun = this.events.onRunChange((threadId) => {
-      const row = this.threads.get(threadId);
-      if (row) void this.remember(workFolderOf(row));
+      // Event notifications do not await observers: register before the first asynchronous lookup so idle() sees all their work.
+      const check = (async () => {
+        const row = await this.threads.get(threadId);
+        if (row) await this.remember(workFolderOf(row));
+      })()
+        .catch((error) =>
+          this.logger.warn(`Commits for ${threadId}: ${error instanceof Error ? error.message : String(error)}`),
+        )
+        .finally(() => this.runChecks.delete(check));
+      this.runChecks.add(check);
     });
   }
 
@@ -79,7 +91,9 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Told whenever an outcome is written (`firstTime`: the thread had none before). The learning service uses it to draft a skill; a listener's failure is its own. */
-  onOutcome(listener: (threadId: string, kind: ThreadOutcome['kind'], firstTime: boolean) => void): () => void {
+  onOutcome(
+    listener: (threadId: string, kind: ThreadOutcome['kind'], firstTime: boolean) => void | Promise<void>,
+  ): () => void {
     this.outcomeListeners.add(listener);
     return () => this.outcomeListeners.delete(listener);
   }
@@ -87,9 +101,9 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   // ---- reads
 
   /** The whole outcome of a thread, or `undefined`. */
-  get(threadId: string): ThreadOutcome | undefined {
-    const row = this.outcomes.get(threadId);
-    const thread = this.threads.get(threadId);
+  async get(threadId: string): Promise<ThreadOutcome | undefined> {
+    const row = await this.outcomes.get(threadId);
+    const thread = await this.threads.get(threadId);
     if (!row || !thread) return undefined;
     return {
       kind: row.kind,
@@ -105,8 +119,8 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The two commits the Outcome source of review mode compares, if the thread has an outcome. */
-  range(threadId: string): { base: string; head: string } | undefined {
-    const row = this.outcomes.get(threadId);
+  async range(threadId: string): Promise<{ base: string; head: string } | undefined> {
+    const row = await this.outcomes.get(threadId);
     return row && { base: row.baseCommit, head: row.headCommit };
   }
 
@@ -123,7 +137,7 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   async refreshBase(row: ThreadRow): Promise<void> {
     if (row.messageCount > 0 || row.baseSource === 'estimated') return;
     const head = await this.headOf(workFolderOf(row));
-    if (head !== row.baseCommit) this.threads.setBase(row.id, head, head ? 'start' : 'none');
+    if (head !== row.baseCommit) await this.threads.setBase(row.id, head, head ? 'start' : 'none');
   }
 
   /**
@@ -141,14 +155,14 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async estimateAll(): Promise<void> {
-    for (const row of this.threads.all()) {
+    for (const row of await this.threads.all()) {
       if (row.baseSource !== null) continue;
       const folder = workFolderOf(row);
       if (!existsSync(folder)) continue;
       try {
         const inside = await wt.run(folder, ['rev-parse', '--is-inside-work-tree']);
         if (!inside.ok) {
-          this.threads.setBase(row.id, null, 'none');
+          await this.threads.setBase(row.id, null, 'none');
           continue;
         }
         const found = await wt.run(folder, [
@@ -158,7 +172,7 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
           'HEAD',
         ]);
         const commit = found.ok ? found.stdout.trim() : '';
-        this.threads.setBase(row.id, commit || null, commit ? 'estimated' : 'none');
+        await this.threads.setBase(row.id, commit || null, commit ? 'estimated' : 'none');
       } catch (error) {
         this.logger.debug(
           `Could not estimate the base of ${row.id}: ${error instanceof Error ? error.message : String(error)}`,
@@ -237,13 +251,13 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
    * Knows the folder's `HEAD` from now on and catches up with commits made since it was last seen; false for a folder whose commits are not
    * looked at: one outside git, a worktree (its `.git` is a file) or a subfolder, whose threads get their outcome from the merge back.
    */
-  private remember(folder: string): Promise<boolean> {
+  private async remember(folder: string): Promise<boolean> {
     if (this.heads.has(folder)) {
-      this.enqueue(folder, () => this.headMoved(folder));
-      return Promise.resolve(true);
+      await this.enqueue(folder, async () => await this.headMoved(folder));
+      return await Promise.resolve(true);
     }
     const pending = this.starting.get(folder);
-    if (pending) return pending.then(() => this.heads.has(folder));
+    if (pending) return await pending.then(() => this.heads.has(folder));
     const start = (async () => {
       try {
         const head = await this.headOf(folder);
@@ -258,10 +272,10 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
       }
     })();
     this.starting.set(folder, start);
-    return start.then(() => this.heads.has(folder));
+    return await start.then(() => this.heads.has(folder));
   }
 
-  private enqueue(folder: string, work: () => Promise<void>): void {
+  private async enqueue(folder: string, work: () => Promise<void>): Promise<void> {
     const next = (this.queues.get(folder) ?? Promise.resolve())
       .then(work)
       .catch((error) =>
@@ -271,12 +285,13 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
         if (this.queues.get(folder) === next) this.queues.delete(folder);
       });
     this.queues.set(folder, next);
+    await next;
   }
 
-  /** Resolves when the folder's pending work is done (tests). */
+  /** Resolves when pending run observers and folder work are done (tests). */
   async idle(): Promise<void> {
-    while (this.queues.size > 0 || this.starting.size > 0)
-      await Promise.all([...this.queues.values(), ...this.starting.values()]);
+    while (this.runChecks.size > 0 || this.queues.size > 0 || this.starting.size > 0)
+      await Promise.all([...this.runChecks, ...this.queues.values(), ...this.starting.values()]);
   }
 
   /** `HEAD` of the folder may have moved: if it was a commit (not a checkout or a reset), attribute the new commits one by one. */
@@ -309,7 +324,7 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
     const when = Number((await wt.run(folder, ['log', '-1', '--format=%ct', sha])).stdout.trim()) * 1000 || Date.now();
     const threadId = attribute(files, await this.candidates(folder, when));
     if (!threadId) return undefined;
-    const row = this.threads.get(threadId);
+    const row = await this.threads.get(threadId);
     if (!row) return undefined;
     const parent = await this.resolve(folder, `${sha}^`);
     await this.put({
@@ -324,18 +339,21 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Threads that never get an outcome (a verification run: it replays work, it does not do any). The learning service registers the test. */
-  excludeThreads(excluded: ((threadId: string) => boolean) | undefined): void {
+  excludeThreads(excluded: ((threadId: string) => boolean | Promise<boolean>) | undefined): void {
     this.excluded = excluded;
   }
 
   /** The threads that work in the folder, as `attribute()` wants them. A thread that already merged or opened a pull request is not asked: a commit does not replace those. */
   private async candidates(folder: string, commitAt: number): Promise<Candidate[]> {
-    const rows = this.threads.all().filter((row) => workFolderOf(row) === folder && !this.excluded?.(row.id));
-    const runs = this.events.lastRunByThread();
+    const rows: ThreadRow[] = [];
+    for (const row of await this.threads.all()) {
+      if (workFolderOf(row) === folder && !(await this.excluded?.(row.id))) rows.push(row);
+    }
+    const runs = await this.events.lastRunByThread();
     const newest = Math.max(0, ...rows.map((row) => runs.get(row.id)?.startedAt ?? 0));
     const out: Candidate[] = [];
     for (const row of rows) {
-      const existing = this.outcomes.get(row.id);
+      const existing = await this.outcomes.get(row.id);
       if (existing && existing.kind !== 'committed') continue;
       const lastRunAt = runs.get(row.id)?.startedAt ?? 0;
       const changed = await this.snapshots.runChanges(row.id);
@@ -354,18 +372,18 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
 
   /** Writes the outcome the rules allow and tells the sidebars. */
   private async put(incoming: Incoming): Promise<void> {
-    if (this.excluded?.(incoming.threadId)) return;
-    const existing = this.outcomes.get(incoming.threadId);
+    if (await this.excluded?.(incoming.threadId)) return;
+    const existing = await this.outcomes.get(incoming.threadId);
     const next = nextOutcome(existing, incoming);
     if (!next) return;
-    this.outcomes.put(next);
-    this.status.touch(incoming.threadId);
+    await this.outcomes.put(next);
+    await this.status.touch(incoming.threadId);
     this.logger.log(
       `Thread ${incoming.threadId}: ${next.kind} at ${next.headCommit.slice(0, 7)} (${next.files.length} files)`,
     );
     for (const listener of [...this.outcomeListeners]) {
       try {
-        listener(incoming.threadId, next.kind, existing === undefined);
+        await listener(incoming.threadId, next.kind, existing === undefined);
       } catch (error) {
         this.logger.warn(`An outcome listener failed: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -380,7 +398,7 @@ export class OutcomesService implements OnModuleInit, OnModuleDestroy {
   /** The files a commit changed against its first parent (a root commit: against nothing), relative to `folder`. */
   private async filesOf(folder: string, sha: string): Promise<string[]> {
     const parent = (await this.resolve(folder, `${sha}^`)) ?? EMPTY_TREE;
-    return this.filesBetween(folder, parent, sha);
+    return await this.filesBetween(folder, parent, sha);
   }
 
   private async filesBetween(folder: string, base: string, head: string): Promise<string[]> {

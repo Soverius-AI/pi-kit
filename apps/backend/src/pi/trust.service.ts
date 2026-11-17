@@ -40,10 +40,10 @@ export class TrustService {
   /** What user-level extensions said about a folder (they are loaded once per folder for the dialog). */
   private readonly probed = new Map<string, Promise<{ trusted: Trusted; remember: boolean }>>();
   /** Which project a folder is a thread worktree; set by the worktree service. */
-  private worktreeOwner: ((path: string) => string | undefined) | undefined;
+  private worktreeOwner: ((path: string) => string | undefined | Promise<string | undefined>) | undefined;
 
   /** Registers the lookup from a worktree folder to the project it belongs to. */
-  useWorktrees(owner: (path: string) => string | undefined): void {
+  useWorktrees(owner: (path: string) => string | undefined | Promise<string | undefined>): void {
     this.worktreeOwner = owner;
   }
 
@@ -52,7 +52,7 @@ export class TrustService {
    * project resources (the same `.pi` files with the same content), so a worktree whose branch changed an extension asks on its own.
    */
   private async canonical(cwd: string): Promise<string> {
-    const project = this.worktreeOwner?.(cwd);
+    const project = await this.worktreeOwner?.(cwd);
     if (!project || project === cwd) return cwd;
     return (await this.sameResources(project, cwd)) ? project : cwd;
   }

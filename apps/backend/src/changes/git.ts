@@ -126,8 +126,8 @@ export async function numstat(
 }
 
 /** The unified diff of one file against `base` (staged and unstaged together). */
-export function diffFile(cwd: string, base: string, path: string, head?: string): Promise<string> {
-  return git(cwd, [
+export async function diffFile(cwd: string, base: string, path: string, head?: string): Promise<string> {
+  return await git(cwd, [
     'diff',
     base,
     ...(head ? [head] : []),

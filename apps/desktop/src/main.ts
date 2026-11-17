@@ -48,7 +48,7 @@ import {
   type WatchdogStatus,
 } from '@pi-kit/service-host';
 import { backgroundService } from './background-service';
-import { removeDatabases } from './database-reset';
+import { DatabaseResetDialog } from './database-reset';
 import { setUpLinuxSandbox } from './linux-sandbox-setup';
 import { configureLoopbackConnections } from './loopback-network';
 import { BrowserArtifacts } from './browser';
@@ -523,8 +523,13 @@ function appUpdates(): AppUpdater {
 /** Quit was chosen in a startup dialog. */
 class StartupCancelled extends Error {}
 
-/** The first start; a broken database can be recreated and the backend started again. */
+/** The first start; incompatible encrypted/damaged profiles may be archived only with explicit consent. */
 async function firstLaunch(host: HostClient, splash: BrowserWindow): Promise<{ bootId?: string }> {
+  const databases = new DatabaseResetDialog({
+    showMessageBox: (options) => dialog.showMessageBox(options),
+    backup: () => host.backupDatabases(),
+    restore: () => host.restoreDatabases(),
+  });
   for (;;) {
     try {
       return await host.start();
@@ -535,33 +540,31 @@ async function firstLaunch(host: HostClient, splash: BrowserWindow): Promise<{ b
           type: 'error',
           title: 'pi-kit',
           message: 'This profile needs a compatible pi-kit version.',
-          detail: failure.message,
+          detail: `It was last opened by a newer or different pi-kit. Install that version to open it; nothing was changed.\n\nDetails: ${failure.message}`,
           buttons: ['Quit'],
           defaultId: 0,
           cancelId: 0,
         });
         throw new StartupCancelled();
       }
-      if (failure?.reason !== 'database-broken') throw error;
-      if (!(await offerDatabaseReset(failure.message))) throw new StartupCancelled();
-      const removed = removeDatabases(app.getPath('userData'));
-      mainLog?.line(`database recreated on request: removed ${removed.join(', ') || 'nothing'}`);
-      setSplashStatus(splash, 'Creating a new database…');
+      if (failure?.reason === 'database-reset-incomplete') {
+        mainLog?.line(`database startup failure (${failure.reason}): ${failure.message}`);
+        const restored = await databases.offerRestore(failure.message);
+        if (!restored) throw new StartupCancelled();
+        mainLog?.line(
+          `database reset undone: restored ${restored.files.join(', ') || 'nothing'} from ${restored.directory}`,
+        );
+        setSplashStatus(splash, 'Starting with the restored databases…');
+        continue;
+      }
+      if (failure?.reason !== 'database-broken' && failure?.reason !== 'database-encrypted') throw error;
+      mainLog?.line(`database startup failure (${failure.reason}): ${failure.message}`);
+      const backup = await databases.offer(failure.reason, failure.message);
+      if (!backup) throw new StartupCancelled();
+      mainLog?.line(`database fresh start confirmed: backed up ${backup.files.join(', ')} to ${backup.directory}`);
+      setSplashStatus(splash, 'Creating new databases from an empty profile…');
     }
   }
-}
-
-async function offerDatabaseReset(reason: string): Promise<boolean> {
-  const { response } = await dialog.showMessageBox({
-    type: 'error',
-    title: 'pi-kit',
-    message: 'The pi-kit database is broken.',
-    detail: `${reason}\n\nRecreate deletes pi-kit's databases and starts with new, empty ones. Your pi sessions are kept and the threads are rebuilt from them; what pi-kit kept only in its database (feedback, reviews, background agents, paired instances) is lost.\n\nThe log is in ${app.getPath('logs')}.`,
-    buttons: ['Recreate database', 'Quit'],
-    defaultId: 0,
-    cancelId: 1,
-  });
-  return response === 0;
 }
 
 let loginPath: string | null | undefined;

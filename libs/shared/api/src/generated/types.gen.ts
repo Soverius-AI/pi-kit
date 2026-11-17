@@ -448,13 +448,6 @@ export type CredentialStorage = {
     enabled: boolean;
 };
 
-export type DatabaseProtection = {
-    state: 'encrypted' | 'plain';
-    path: string;
-    reason?: string;
-    recoveryKeyShown: boolean;
-};
-
 export type DeleteSkill = {
     mtime: number;
 };
@@ -1904,10 +1897,6 @@ export type ReadyResult = {
     ms: number;
 };
 
-export type RecoveryKey = {
-    key: string;
-};
-
 export type RedactionState = {
     config: {
         patterns: Array<{
@@ -2034,7 +2023,6 @@ export type ScratchFolder = {
 };
 
 export type SecretsProtection = {
-    database: DatabaseProtection;
     disk: DiskEncryption;
 };
 
@@ -6306,6 +6294,68 @@ export type CoordinationGetResponses = {
 
 export type CoordinationGetResponse = CoordinationGetResponses[keyof CoordinationGetResponses];
 
+export type SettingsWatchdogData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/watchdog';
+};
+
+export type SettingsWatchdogErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type SettingsWatchdogError = SettingsWatchdogErrors[keyof SettingsWatchdogErrors];
+
+export type SettingsWatchdogResponses = {
+    /**
+     * OK
+     */
+    200: {
+        enabled: boolean;
+        supported: boolean;
+    };
+};
+
+export type SettingsWatchdogResponse = SettingsWatchdogResponses[keyof SettingsWatchdogResponses];
+
+export type SettingsSetWatchdogData = {
+    body: {
+        enabled: boolean;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/watchdog';
+};
+
+export type SettingsSetWatchdogErrors = {
+    /**
+     * The service host is unavailable or could not save the setting.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type SettingsSetWatchdogError = SettingsSetWatchdogErrors[keyof SettingsSetWatchdogErrors];
+
+export type SettingsSetWatchdogResponses = {
+    /**
+     * OK
+     */
+    200: {
+        enabled: boolean;
+        supported: boolean;
+    };
+};
+
+export type SettingsSetWatchdogResponse = SettingsSetWatchdogResponses[keyof SettingsSetWatchdogResponses];
+
 export type SettingsOverviewData = {
     body?: never;
     path?: never;
@@ -7209,35 +7259,6 @@ export type SecretsProtectionResponses = {
 };
 
 export type SecretsProtectionResponse = SecretsProtectionResponses[keyof SecretsProtectionResponses];
-
-export type SecretsRecoveryKeyData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/secrets/recovery-key';
-};
-
-export type SecretsRecoveryKeyErrors = {
-    /**
-     * The bearer token is missing or wrong.
-     */
-    401: Problem;
-    /**
-     * The recovery key was shown already, or there is none.
-     */
-    409: Problem;
-};
-
-export type SecretsRecoveryKeyError = SecretsRecoveryKeyErrors[keyof SecretsRecoveryKeyErrors];
-
-export type SecretsRecoveryKeyResponses = {
-    /**
-     * OK
-     */
-    200: RecoveryKey;
-};
-
-export type SecretsRecoveryKeyResponse = SecretsRecoveryKeyResponses[keyof SecretsRecoveryKeyResponses];
 
 export type SecretsRedactionConfigData = {
     body?: never;

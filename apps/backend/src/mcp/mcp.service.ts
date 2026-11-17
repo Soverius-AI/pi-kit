@@ -59,7 +59,7 @@ export class McpService {
     }
     await this.threads.openSession(threadId);
     const trusted = this.sessions.isProjectTrusted(threadId);
-    const config = readMcpConfig({ agentDir, cwd: this.threads.cwdOf(threadId), projectTrusted: trusted });
+    const config = readMcpConfig({ agentDir, cwd: await this.threads.cwdOf(threadId), projectTrusted: trusted });
     const report = await this.status(threadId);
     return this.compose(config, report, trusted, threadId);
   }
@@ -69,7 +69,7 @@ export class McpService {
     if (scope === 'user') return userMcpConfigPath(await this.sessions.agentDir());
     if (!threadId) throw new BadRequestException('thread: the project’s mcp.json belongs to the folder of a thread.');
     await this.threads.openSession(threadId);
-    return projectMcpConfigPath(this.threads.cwdOf(threadId));
+    return projectMcpConfigPath(await this.threads.cwdOf(threadId));
   }
 
   async setEnabled(threadId: string, name: string, enabled: boolean): Promise<McpActionResult> {
@@ -293,7 +293,7 @@ export class McpService {
     await this.threads.openSession(threadId);
     const config = readMcpConfig({
       agentDir,
-      cwd: this.threads.cwdOf(threadId),
+      cwd: await this.threads.cwdOf(threadId),
       projectTrusted: this.sessions.isProjectTrusted(threadId),
     });
     const entry = config.servers.find((e) => e.name === name);

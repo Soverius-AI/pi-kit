@@ -1,4 +1,4 @@
-import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import type { ThreadSuggestion } from '@pi-kit/protocol';
 import { BgAgentsService } from '../bg-agents/bg-agents.service';
 import { AttendantRepository } from '../db/attendant.repository';
@@ -15,6 +15,7 @@ import { cleanFollowUp, followUpPrompt, followUpTarget } from './follow-up-text'
 /** One advisory prediction per finished conversation state, in the attendant's shared queue and budget. */
 @Injectable()
 export class FollowUpService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(FollowUpService.name);
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private readonly attempted = new Map<string, string>();
   private readonly revisions = new Map<string, number>();
@@ -34,20 +35,20 @@ export class FollowUpService implements OnModuleInit, OnModuleDestroy {
     private readonly trust: TrustService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     // Predictions saved by a previous backend may refer to stale agent state.
-    this.repo.expirePrompts();
+    await this.repo.expirePrompts();
     this.attendant.setPromptValidator((suggestion) => this.valid(suggestion));
     this.unsubscribe.push(
-      this.events.onRunChange((id, change) => {
-        this.invalidate(id);
-        if (change === 'end') this.schedule(id);
+      this.events.onRunChange(async (id, change) => {
+        await this.invalidate(id);
+        if (change === 'end') await this.schedule(id);
       }),
-      this.sessions.onTreeChanged((id) => this.invalidate(id)),
-      this.sessions.onDialogsChanged((id) => this.invalidate(id)),
-      this.agents.onChange((id) => {
-        this.invalidate(id);
-        this.schedule(id);
+      this.sessions.onTreeChanged(async (id) => await this.invalidate(id)),
+      this.sessions.onDialogsChanged(async (id) => await this.invalidate(id)),
+      this.agents.onChange(async (id) => {
+        await this.invalidate(id);
+        await this.schedule(id);
       }),
     );
   }
@@ -58,56 +59,58 @@ export class FollowUpService implements OnModuleInit, OnModuleDestroy {
     for (const off of this.unsubscribe) off();
   }
 
-  private invalidate(id: string): void {
+  private async invalidate(id: string): Promise<void> {
     this.revisions.set(id, (this.revisions.get(id) ?? 0) + 1);
     clearTimeout(this.timers.get(id));
     this.timers.delete(id);
-    this.repo.expirePrompts(id);
-    this.status.touch(id);
+    await this.repo.expirePrompts(id);
+    await this.status.touch(id);
   }
 
-  private schedule(id: string): void {
-    if (!this.enabled()) return;
+  private async schedule(id: string): Promise<void> {
+    if (!(await this.enabled())) return;
     clearTimeout(this.timers.get(id));
     const timer = setTimeout(() => {
       this.timers.delete(id);
-      this.attendant.enqueueTask(id, () => this.generate(id), 'prompt');
+      void this.attendant
+        .enqueueTask(id, () => this.generate(id), 'prompt')
+        .catch((error: unknown) => this.logger.warn(`Could not enqueue follow-up: ${String(error)}`));
     }, 1500);
     timer.unref();
     this.timers.set(id, timer);
   }
 
-  private enabled(): boolean {
-    const settings = this.attendant.settings();
+  private async enabled(): Promise<boolean> {
+    const settings = await this.attendant.settings();
     return !this.stopped && settings.enabled && settings.followUpSuggestions;
   }
 
   private async snapshot(id: string) {
     const revision = this.revisions.get(id) ?? 0;
-    const row = this.rows.get(id);
-    const run = this.events.lastRun(id);
+    const row = await this.rows.get(id);
+    const run = await this.events.lastRun(id);
     if (
-      !this.enabled() ||
+      !(await this.enabled()) ||
       !row ||
       row.archived ||
       !row.messageCount ||
-      !this.attendant.allowedIn(row.cwd) ||
-      this.meta.isVerificationThread(id) ||
-      this.meta.learningSource(id) ||
+      !(await this.attendant.allowedIn(row.cwd)) ||
+      (await this.meta.isVerificationThread(id)) ||
+      (await this.meta.learningSource(id)) ||
       run?.status !== 'finished'
     )
       return undefined;
-    if (this.sessions.pendingDialogs(id).length || this.agents.userQuestions(id).length) return undefined;
+    if (this.sessions.pendingDialogs(id).length || (await this.agents.userQuestions(id)).length) return undefined;
     if (this.sessions.has(id)) {
       const queue = this.sessions.queue(id);
       if (this.sessions.isStreaming(id) || queue.steering.length || queue.followUp.length) return undefined;
     }
-    const agents = this.agents.list(id);
+    const agents = await this.agents.list(id);
     // Never turn a pending delegation into an invitation to repeat or supersede it.
     if (agents.some((agent) => agent.status === 'active' || agent.status === 'blocked')) return undefined;
     const agentsAllowed =
       this.agents.state().enabled &&
-      !this.meta.listWorkspaces().find((w) => w.cwd === row.cwd)?.agentsOff &&
+      !(await this.meta.listWorkspaces()).find((w) => w.cwd === row.cwd)?.agentsOff &&
       (await this.trust.state(row.cwd)).status === 'trusted';
     const source = await this.threads.treeSource(id);
     if (revision !== (this.revisions.get(id) ?? 0)) return undefined;
@@ -128,7 +131,11 @@ export class FollowUpService implements OnModuleInit, OnModuleDestroy {
 
   async generate(id: string): Promise<void> {
     const before = await this.snapshot(id);
-    if (!before || this.attempted.get(id) === before.target || this.repo.hasSuggestion(id, 'prompt', before.target))
+    if (
+      !before ||
+      this.attempted.get(id) === before.target ||
+      (await this.repo.hasSuggestion(id, 'prompt', before.target))
+    )
       return;
     this.attempted.set(id, before.target);
     const result = await this.attendant.complete(
@@ -148,13 +155,13 @@ export class FollowUpService implements OnModuleInit, OnModuleDestroy {
     const after = await this.snapshot(id);
     if (!after || before.target !== after.target || before.revision !== after.revision) {
       // A debounced agent update may have arrived while this task already held the queue slot.
-      if (after && before.target !== after.target) this.schedule(id);
+      if (after && before.target !== after.target) await this.schedule(id);
       return;
     }
     const text = result.ok ? cleanFollowUp(result.text) : undefined;
     if (!text) return;
-    this.repo.expirePrompts(id);
-    this.repo.addSuggestion({ threadId: id, kind: 'prompt', target: before.target, text });
-    this.status.touch(id);
+    await this.repo.expirePrompts(id);
+    await this.repo.addSuggestion({ threadId: id, kind: 'prompt', target: before.target, text });
+    await this.status.touch(id);
   }
 }

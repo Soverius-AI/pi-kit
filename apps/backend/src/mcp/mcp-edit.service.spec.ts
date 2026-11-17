@@ -42,7 +42,7 @@ function world(): World {
     stats: () => ({ streaming: w.streaming }),
     reload: async () => void w.calls.push('reload'),
   };
-  const threads = { openSession: async () => undefined, cwdOf: () => cwd };
+  const threads = { openSession: async () => undefined, cwdOf: async () => cwd };
   const mcp = {
     filePath: async (scope: string) => (scope === 'user' ? w.user : w.project),
     overview: async () => overview(),
@@ -52,12 +52,7 @@ function world(): World {
       return { message: `Sign in to ${name}.`, url: 'https://auth.example/x', overview: overview() };
     },
   };
-  const secrets = new SecretsService(
-    store,
-    { dataDir: root } as never,
-    {} as never,
-    { getSetting: () => undefined } as never,
-  );
+  const secrets = new SecretsService(store, { dataDir: root } as never, { getSetting: () => undefined } as never);
   const trust = { folderTrusted: async () => w.trusted };
   w.service = new McpEditService(sessions as never, threads as never, mcp as never, secrets, trust as never);
   return w;

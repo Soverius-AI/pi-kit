@@ -27,7 +27,7 @@ class Fixture {
     } as never);
     const protection = {
       binding: () => ({ generation: 4 }),
-      assertCurrent: this.assertCurrent,
+      assertSessionCurrent: this.assertCurrent,
     } as unknown as ThreadProtectionService;
     const created = await ThreadProtectionExtension.create({} as PiModule, {
       threadId: 'one',
@@ -54,7 +54,7 @@ describe('ThreadProtectionExtension', () => {
     expect(tools).toEqual(ROUTED);
     expect(bash).toBe(f.bash);
     f.call('read');
-    expect(f.assertCurrent).toHaveBeenCalledWith('one', 4);
+    expect(f.assertCurrent).toHaveBeenCalledWith('one', 4, true);
   });
 
   it('refuses turns and tools once the generation is stale', async () => {

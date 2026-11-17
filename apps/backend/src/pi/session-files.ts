@@ -3,6 +3,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import type { PiSessionEntry } from '@pi-kit/pi-adapter';
 import { redact } from '@pi-kit/protocol';
 import { loadPi } from './load-pi';
+import { readOnlySession } from './read-only-session';
 
 /** A session file read through `SessionManager`: the active branch, root to leaf. */
 export interface PiSessionContents {
@@ -38,10 +39,10 @@ export interface ImportedMessage {
 /** Reads a session file without opening an `AgentSession` (no extensions, no MCP servers). */
 export async function readSession(path: string): Promise<PiSessionContents> {
   const pi = await loadPi();
-  const manager = pi.SessionManager.open(path);
+  const manager = await readOnlySession(pi, path);
   return {
     id: manager.getSessionId(),
-    path: manager.getSessionFile(),
+    path,
     cwd: manager.getCwd(),
     name: manager.getSessionName(),
     leafId: manager.getLeafId(),
@@ -52,9 +53,12 @@ export async function readSession(path: string): Promise<PiSessionContents> {
 
 /** `leafHint` stands in for the leaf the app last moved to; a session without a file (a draft) is empty. */
 export async function readTree(sessionPath: string, leafHint?: string): Promise<PiTreeSource> {
-  if (!existsSync(sessionPath)) return { entries: [], leafId: null, path: undefined };
   const pi = await loadPi();
-  const manager = pi.SessionManager.open(sessionPath);
+  const manager = await readOnlySession(pi, sessionPath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return undefined;
+    throw error;
+  });
+  if (!manager) return { entries: [], leafId: null, path: undefined };
   const leafId = leafHint && manager.getEntry(leafHint) ? leafHint : manager.getLeafId();
   return { entries: manager.getEntries() as unknown as PiSessionEntry[], leafId, path: sessionPath };
 }

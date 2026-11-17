@@ -1,18 +1,22 @@
 import type { ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import type { Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DATABASE_RESET_PENDING_FILE } from '@pi-kit/protocol';
 import type { RunningBackend } from './backend';
+import { DatabaseReset } from './database-reset';
 import { connectHostChannel, hostSocketPath, listenHostChannel } from './host-channel';
 import { HOST_ALREADY_RUNNING, HostClient, HostStartError } from './host-process';
 import { NOT_RUNNING, runCli, type CliContext } from './service-cli';
 import { FileWrappingKeys, HostSealing, instanceKeyFile, KeyringWrappingKeys } from './instance-key-sealing';
 import { hostConfigFromEnv, type LaunchedBackend, ServiceHost, type ServiceHostDeps } from './service-host';
 import type { ServiceManager } from './service-registration';
+import { WatchdogSettings } from './watchdog-settings';
+import { DEFAULT_WATCHDOG_OPTIONS } from './watchdog';
 
 const TOKEN = 'k'.repeat(64);
 
@@ -90,6 +94,195 @@ async function startHost(
 }
 
 describe('ServiceHost with a desktop on its socket', () => {
+  it('backs up over authenticated RPC before startup and refuses while running or stopping', async () => {
+    const { host, desktop, dataDir } = await startHost(fakeBackend(2000));
+    const { client } = await desktop();
+    await client.attach();
+    await writeFile(join(dataDir, 'pi-kit.sqlite'), 'original');
+    const backup = await client.backupDatabases();
+    expect(backup.files).toEqual(['pi-kit.sqlite']);
+    expect(backup.directory.startsWith(dataDir)).toBe(true);
+    await client.start();
+    await expect(client.backupDatabases()).rejects.toThrow('starting, running, or stopping');
+    void host.stop();
+    await expect(client.backupDatabases()).rejects.toThrow('starting, running, or stopping');
+  });
+
+  it('refuses reset during startup, then permits backup and retry after the failed child exits', async () => {
+    const backend = fakeBackend(2000);
+    let launches = 0;
+    const { desktop, dataDir } = await startHost(backend, true, () => ({
+      launch: async (spawnIt) => {
+        const running = spawnIt();
+        if (++launches === 1) {
+          await running.exited;
+          throw new Error('startup failure');
+        }
+        return { exited: running.exited, kill: running.stop, running, health: { status: 'ok' } };
+      },
+    }));
+    const { client } = await desktop();
+    await client.attach();
+    const start = client.start();
+    const failed = expect(start).rejects.toThrow('startup failure');
+    await vi.waitFor(() => expect(client.backendPid).toBe(2000));
+    await expect(client.backupDatabases()).rejects.toThrow('starting, running, or stopping');
+    backend.exit();
+    await failed;
+    await writeFile(join(dataDir, 'pi-kit.sqlite'), 'original');
+    expect((await client.backupDatabases()).files).toEqual(['pi-kit.sqlite']);
+    await expect(client.start()).resolves.toEqual({});
+    expect(launches).toBe(2);
+  });
+  it('refuses a still-live child even after launch has rejected', async () => {
+    const backend = fakeBackend(2000);
+    const { desktop } = await startHost(backend, true, () => ({
+      launch: async (spawnIt) => {
+        spawnIt();
+        throw new Error('health check failed before child exit');
+      },
+    }));
+    const { client } = await desktop();
+    await client.attach();
+    await expect(client.start()).rejects.toThrow('health check failed');
+    await expect(client.backupDatabases()).rejects.toThrow('starting, running, or stopping');
+    backend.exit();
+    await vi.waitFor(async () => expect((await client.backupDatabases()).files).toEqual([]));
+  });
+
+  it('refuses reset and restore from a connection that is not the attached desktop', async () => {
+    const { desktop, dataDir } = await startHost(fakeBackend(2000));
+    const { client: cli } = await desktop();
+    await writeFile(join(dataDir, 'pi-kit.sqlite'), 'original');
+    await expect(cli.backupDatabases()).rejects.toThrow('Only the attached desktop app');
+    await expect(cli.restoreDatabases()).rejects.toThrow('Only the attached desktop app');
+    const { client } = await desktop();
+    await client.attach();
+    await expect(cli.backupDatabases()).rejects.toThrow('Only the attached desktop app');
+    expect(await readFile(join(dataDir, 'pi-kit.sqlite'), 'utf8')).toBe('original');
+  });
+
+  it('restores an interrupted reset over RPC, then starts with the original files', async () => {
+    const { desktop, dataDir } = await startHost(fakeBackend(2000));
+    const { client } = await desktop();
+    await client.attach();
+    const directory = join(dataDir, 'database-backup-interrupted');
+    await mkdir(directory);
+    await writeFile(join(directory, 'pi-kit.sqlite'), 'original');
+    await writeFile(join(dataDir, 'bg-agents.sqlite'), 'not yet moved');
+    await writeFile(
+      join(dataDir, DATABASE_RESET_PENDING_FILE),
+      JSON.stringify({ version: 1, directory, files: ['pi-kit.sqlite', 'bg-agents.sqlite'] }),
+    );
+    expect(await client.restoreDatabases()).toEqual({ directory, files: ['pi-kit.sqlite'] });
+    expect(await readFile(join(dataDir, 'pi-kit.sqlite'), 'utf8')).toBe('original');
+    expect(await readFile(join(dataDir, 'bg-agents.sqlite'), 'utf8')).toBe('not yet moved');
+    await expect(readFile(join(dataDir, DATABASE_RESET_PENDING_FILE))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(client.start()).resolves.toEqual({ bootId: 'boot-1' });
+  });
+
+  it('clears the marker of a completed reset before starting, but keeps an incomplete one', async () => {
+    let launches = 0;
+    const { desktop, dataDir } = await startHost(fakeBackend(2000), true, () => ({
+      launch: async (spawnIt) => {
+        launches++;
+        const running = spawnIt();
+        return { exited: running.exited, kill: running.stop, running, health: { status: 'ok' } };
+      },
+    }));
+    const { client } = await desktop();
+    await client.attach();
+    const directory = join(dataDir, 'database-backup-done');
+    await mkdir(directory);
+    await writeFile(join(directory, 'pi-kit.sqlite'), 'original');
+    const marker = join(dataDir, DATABASE_RESET_PENDING_FILE);
+    await writeFile(marker, JSON.stringify({ version: 1, directory, files: ['pi-kit.sqlite'] }));
+    await writeFile(join(directory, 'backup.json'), JSON.stringify({ version: 1, completed: false }));
+    expect(DatabaseReset.clearCompleted(dataDir)).toBe(false);
+    await writeFile(join(directory, 'backup.json'), JSON.stringify({ version: 1, completed: true }));
+    await client.start();
+    expect(launches).toBe(1);
+    await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(join(directory, 'pi-kit.sqlite'), 'utf8')).toBe('original');
+  });
+
+  it('starts without watchdog polling and leaves a crashed backend down by default', async () => {
+    const backend = fakeBackend(2000);
+    const schedule = vi.fn(() => () => undefined);
+    const { host, path } = await startHost(backend, true, () => ({ schedule }));
+    const peer = await connectHostChannel(path, TOKEN);
+    cleanup.push(async () => peer.close());
+    await host.start();
+    expect(await peer.call('watchdog.status')).toEqual({ enabled: false, supported: true });
+    expect(schedule).not.toHaveBeenCalled();
+    backend.exit();
+    await vi.waitFor(async () => {
+      expect(await peer.call('status')).toMatchObject({ status: { state: 'failed' } });
+    });
+    expect(schedule).not.toHaveBeenCalled();
+    await expect(peer.call('backend')).rejects.toThrow('not running');
+  });
+
+  it('persists and applies authenticated watchdog commands without replacing the desktop', async () => {
+    const backend = fakeBackend(2000);
+    const schedule = vi.fn(() => () => undefined);
+    const { host, path, dataDir, desktop } = await startHost(backend, true, () => ({ schedule }));
+    const { client } = await desktop();
+    await client.attach();
+    await host.start();
+    const peer = await connectHostChannel(path, TOKEN);
+    cleanup.push(async () => peer.close());
+    expect(await peer.call('watchdog.set', true)).toEqual({ enabled: true, supported: true });
+    expect(WatchdogSettings.read(dataDir)).toBe(true);
+    expect(schedule).toHaveBeenCalledWith(expect.any(Function), DEFAULT_WATCHDOG_OPTIONS.pingIntervalMs);
+    expect(await peer.call('status')).toMatchObject({ desktopAttached: true });
+    expect(await peer.call('watchdog.set', false)).toEqual({ enabled: false, supported: true });
+    expect(WatchdogSettings.read(dataDir)).toBe(false);
+    await expect(peer.call('watchdog.set', 'true')).rejects.toThrow('Invalid watchdog');
+  });
+
+  it('reads an opt-in saved before the host starts', async () => {
+    const schedule = vi.fn(() => () => undefined);
+    const { host, path } = await startHost(fakeBackend(2000), true, (dataDir) => {
+      WatchdogSettings.write(dataDir, true);
+      return { schedule };
+    });
+    await host.start();
+    const peer = await connectHostChannel(path, TOKEN);
+    cleanup.push(async () => peer.close());
+    expect(await peer.call('watchdog.status')).toEqual({ enabled: true, supported: true });
+    expect(schedule).toHaveBeenCalledWith(expect.any(Function), DEFAULT_WATCHDOG_OPTIONS.pingIntervalMs);
+  });
+
+  it('answers watchdog preferences directly to a backend with no desktop attached', async () => {
+    const backend = fakeBackend(2000);
+    const { host, dataDir } = await startHost(backend);
+    await host.start();
+    backend.child.emit('message', { type: 'watchdog', id: 'w1' });
+    backend.child.emit('message', { type: 'watchdog', id: 'w2', enabled: true });
+    backend.child.emit('message', { type: 'watchdog', id: 'w3', enabled: 'yes' });
+    backend.child.emit('message', { type: 'backend-restart', id: 'r1' });
+    await vi.waitFor(() => expect(backend.child.received).toHaveLength(4));
+    expect(backend.child.received).toContainEqual({
+      type: 'desktop-answer',
+      id: 'w1',
+      result: { enabled: false, supported: true },
+    });
+    expect(backend.child.received).toContainEqual({
+      type: 'desktop-answer',
+      id: 'w2',
+      result: { enabled: true, supported: true },
+    });
+    expect(backend.child.received).toContainEqual({
+      type: 'desktop-answer',
+      id: 'w3',
+      error: 'Invalid watchdog preference.',
+      errorCode: 'failed',
+    });
+    expect(backend.child.received).toContainEqual({ type: 'desktop-answer', id: 'r1', result: {} });
+    expect(WatchdogSettings.read(dataDir)).toBe(true);
+  });
+
   it('hands the backend’s own startup failure to the desktop, so a broken database can be offered for reset', async () => {
     const backend = fakeBackend(2000);
     const { desktop } = await startHost(backend, false);

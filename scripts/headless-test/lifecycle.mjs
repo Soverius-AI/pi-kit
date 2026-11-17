@@ -79,6 +79,9 @@ await new Promise((resolve, reject) => {
 });
 report('unauthenticated local RPC rejected');
 
+// Crash recovery is opt-in; this suite explicitly enables the behavior it exercises.
+const watchdog = spawnSync('pi-kit', ['watchdog', 'enable'], { encoding: 'utf8', timeout: 15_000 });
+assert.equal(watchdog.status, 0, watchdog.stderr || watchdog.stdout);
 const backendBefore = status().backendPid;
 process.kill(backendBefore, 'SIGKILL');
 const recovered = await until('watchdog recovers backend', () => {

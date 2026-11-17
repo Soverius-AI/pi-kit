@@ -51,7 +51,7 @@ export class PeersService implements OnModuleDestroy {
     private readonly proofs: PeerProofs,
     private readonly sessions: PeerSessions,
   ) {
-    this.timer = setInterval(() => {
+    this.timer = setInterval(async () => {
       try {
         this.expire();
         void this.refresh().catch((error: unknown) =>
@@ -68,43 +68,49 @@ export class PeersService implements OnModuleDestroy {
     this.invitations.clear();
     this.requests.clear();
   }
-  private self(): PeerIdentity {
-    const key = this.peers.key(),
-      origin = this.peers.origin();
+  private async self(): Promise<PeerIdentity> {
+    const key = await this.peers.key(),
+      origin = await this.peers.origin();
     if (!key || !origin)
       throw new ServiceUnavailableException(
         'Enable private remote access and initialize this instance identity first.',
       );
-    return PeerIdentitySchema.parse({ ...this.instances.identity(), ...key, origin });
+    return PeerIdentitySchema.parse({ ...(await this.instances.identity()), ...key, origin });
   }
   private async enable(): Promise<void> {
-    if (!this.peers.origin())
+    if (!(await this.peers.origin()))
       throw new ServiceUnavailableException('Enable private remote access before pairing instances.');
     try {
-      const key: InstanceKeyInfo = await this.desktop.instanceKeyInfo(this.instances.instanceId, !this.peers.key());
+      const key: InstanceKeyInfo = await this.desktop.instanceKeyInfo(
+        this.instances.instanceId,
+        !(await this.peers.key()),
+      );
       const { calculateJwkThumbprint } = await import('jose');
       if ((await calculateJwkThumbprint(key.publicKey)) !== key.fingerprint) throw new Error('Invalid key.');
-      this.peers.bindKey(key);
+      await this.peers.bindKey(key);
     } catch {
       throw new ServiceUnavailableException(
         'The OS-protected instance key is unavailable. Unlock protected storage or restore the original key; no replacement or plaintext fallback was used.',
       );
     }
   }
-  metadata(): { identity: PeerIdentity; bootId: string } {
-    return { identity: this.self(), bootId: this.sessions.bootId };
+  async metadata(): Promise<{ identity: PeerIdentity; bootId: string }> {
+    return { identity: await this.self(), bootId: this.sessions.bootId };
   }
-  manager(deviceId?: string): PeerManager {
+  async manager(deviceId?: string): Promise<PeerManager> {
     this.expire();
     if (!deviceId)
       void this.refresh().catch((error: unknown) =>
         this.logger.warn(`Refreshing peers failed: ${error instanceof Error ? error.message : String(error)}`),
       );
-    const records = this.peers.list().filter((peer) => !deviceId || this.sessions.canDevice(deviceId, peer));
+    const records: PeerRecord[] = [];
+    for (const peer of await this.peers.list()) {
+      if (!deviceId || (await this.sessions.canDevice(deviceId, peer))) records.push(peer);
+    }
     return PeerManagerSchema.parse({
-      self: this.instances.identity(),
-      keyInitialized: !!this.peers.key(),
-      endpoint: this.peers.origin(),
+      self: await this.instances.identity(),
+      keyInitialized: !!(await this.peers.key()),
+      endpoint: await this.peers.origin(),
       peers: records.map((peer) => ({
         peerId: peer.identity.instanceId,
         pairId: peer.pairId,
@@ -138,7 +144,14 @@ export class PeersService implements OnModuleDestroy {
       value = PeerProofs.secret(),
       expiresAt = Date.now() + 5 * 60000;
     this.invitations.set(pairId, { secretHash: PeerProofs.digest(value), expiresAt });
-    const invitation = { kind: 'pi-kit-instance', version: 1, pairId, secret: value, identity: this.self(), expiresAt };
+    const invitation = {
+      kind: 'pi-kit-instance',
+      version: 1,
+      pairId,
+      secret: value,
+      identity: await this.self(),
+      expiresAt,
+    };
     return {
       invitation: 'PIKIT-INSTANCE-1.' + Buffer.from(JSON.stringify(invitation)).toString('base64url'),
       expiresAt,
@@ -150,15 +163,15 @@ export class PeersService implements OnModuleDestroy {
     const invitation = PeerInvitationSchema.parse(JSON.parse(Buffer.from(encoded.slice(17), 'base64url').toString()));
     if (invitation.expiresAt <= Date.now()) throw new BadRequestException('Invitation expired.');
     await this.enable();
-    const self = this.self();
+    const self = await this.self();
     if (invitation.identity.instanceId === self.instanceId)
       throw new BadRequestException('Choose another instance, not this one.');
     const metadata = await this.proofs.readIdentity(invitation.identity);
-    const previous = this.peers.get(metadata.instanceId);
+    const previous = await this.peers.get(metadata.instanceId);
     if (previous?.state === 'active') throw new BadRequestException('This instance is already paired.');
     if (previous && previous.state !== 'revoked' && previous.pairId !== invitation.pairId)
       throw new BadRequestException('Unpair the existing instance before pairing again.');
-    this.remember(metadata, invitation.pairId, allowRelay, false, 'pending', allowRelay, 'joiner');
+    await this.remember(metadata, invitation.pairId, allowRelay, false, 'pending', allowRelay, 'joiner');
     const proof = await this.proofs.sign({
       aud: metadata.instanceId,
       purpose: 'pair-request',
@@ -173,7 +186,7 @@ export class PeersService implements OnModuleDestroy {
       allowRelay,
       proof,
     });
-    await this.progress(this.peers.get(metadata.instanceId)!);
+    await this.progress((await this.peers.get(metadata.instanceId))!);
   }
   async request(value: unknown): Promise<unknown> {
     const input = PeerPairRequestSchema.parse(value);
@@ -191,7 +204,7 @@ export class PeersService implements OnModuleDestroy {
       input.proof,
       'pair-request',
       input.pairId,
-      PeerProofs.pairBinding(this.self(), input.identity, false, input.allowRelay),
+      PeerProofs.pairBinding(await this.self(), input.identity, false, input.allowRelay),
     );
     // Claim after verification, atomically: two concurrent requests cannot consume one invitation for different keys.
     this.expire();
@@ -218,13 +231,13 @@ export class PeersService implements OnModuleDestroy {
     this.requests.set(input.pairId, pending);
     return this.pendingStatus(pending);
   }
-  approvePair(pairId: string, allowRelay: boolean): void {
+  async approvePair(pairId: string, allowRelay: boolean): Promise<void> {
     this.expire();
     const pending = this.requests.get(pairId);
     if (!pending) throw new NotFoundException('Pairing request expired.');
-    if (this.peers.list().filter((peer) => peer.state !== 'revoked').length >= 20)
+    if ((await this.peers.list()).filter((peer) => peer.state !== 'revoked').length >= 20)
       throw new BadRequestException('Peer limit reached.');
-    this.remember(
+    await this.remember(
       pending.identity,
       pairId,
       allowRelay,
@@ -242,7 +255,7 @@ export class PeersService implements OnModuleDestroy {
   async status(pairId: string, proof: string): Promise<unknown> {
     this.expire();
     const pending = this.requests.get(pairId),
-      record = this.peers.byPair(pairId);
+      record = await this.peers.byPair(pairId);
     const identity = pending?.identity ?? record?.identity;
     if (!identity || record?.state === 'revoked') throw new NotFoundException('Pairing unavailable.');
     await this.proofs.verify(identity, proof, 'pair-status', pairId);
@@ -255,7 +268,7 @@ export class PeersService implements OnModuleDestroy {
       nonce: pairId,
       pairId,
       binding: PeerProofs.pairBinding(
-        this.self(),
+        await this.self(),
         identity,
         record.allowRelay,
         record.remoteAllowRelay,
@@ -271,7 +284,7 @@ export class PeersService implements OnModuleDestroy {
     };
   }
   async acknowledge(pairId: string, proof: string): Promise<{ paired: true }> {
-    const peer = this.peers.byPair(pairId);
+    const peer = await this.peers.byPair(pairId);
     if (!peer || !peer.confirmationCode || peer.role !== 'inviter' || peer.state === 'revoked')
       throw new ForbiddenException('Pairing unavailable.');
     await this.proofs.verify(
@@ -279,20 +292,26 @@ export class PeersService implements OnModuleDestroy {
       proof,
       'pair-ack',
       pairId,
-      PeerProofs.pairBinding(this.self(), peer.identity, peer.allowRelay, peer.remoteAllowRelay, peer.confirmationCode),
+      PeerProofs.pairBinding(
+        await this.self(),
+        peer.identity,
+        peer.allowRelay,
+        peer.remoteAllowRelay,
+        peer.confirmationCode,
+      ),
     );
-    this.peers.activate(peer.identity.instanceId, pairId);
+    await this.peers.activate(peer.identity.instanceId, pairId);
     return { paired: true };
   }
   async unpair(peerId: string): Promise<void> {
-    const peer = this.peers.get(peerId);
+    const peer = await this.peers.get(peerId);
     if (!peer) throw new NotFoundException('Unknown instance.');
-    this.peers.revoke(peerId, true);
+    await this.peers.revoke(peerId, true);
     this.sessions.abort(peerId);
-    await this.notify(this.peers.get(peerId)!);
+    await this.notify((await this.peers.get(peerId))!);
   }
   async remoteUnpair(pairId: string, proof: string): Promise<{ unpaired: true }> {
-    const peer = this.peers.byPair(pairId);
+    const peer = await this.peers.byPair(pairId);
     if (!peer) {
       const pending = this.requests.get(pairId);
       if (pending) {
@@ -302,13 +321,13 @@ export class PeersService implements OnModuleDestroy {
       return { unpaired: true }; // Idempotent acknowledgement: no grant for this pair exists.
     }
     await this.proofs.verify(peer.identity, proof, 'unpair', pairId);
-    this.peers.revoke(peer.identity.instanceId, false);
+    await this.peers.revoke(peer.identity.instanceId, false);
     this.sessions.abort(peer.identity.instanceId);
     return { unpaired: true };
   }
-  private remember(...args: Parameters<PeersRepository['remember']>): void {
+  private async remember(...args: Parameters<PeersRepository['remember']>): Promise<void> {
     try {
-      this.peers.remember(...args);
+      await this.peers.remember(...args);
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : 'Pairing unavailable.');
     }
@@ -319,7 +338,7 @@ export class PeersService implements OnModuleDestroy {
       purpose: 'pair-pending',
       nonce: pending.pairId,
       pairId: pending.pairId,
-      binding: PeerProofs.pairBinding(this.self(), pending.identity, false, pending.remoteRelay, pending.code),
+      binding: PeerProofs.pairBinding(await this.self(), pending.identity, false, pending.remoteRelay, pending.code),
     });
     return { status: 'pending', confirmationCode: pending.code, proof };
   }
@@ -338,7 +357,7 @@ export class PeersService implements OnModuleDestroy {
       );
     } catch (error) {
       if (error instanceof PeerHttpError && error.status === 404)
-        this.peers.forget(peer.identity.instanceId, peer.pairId);
+        await this.peers.forget(peer.identity.instanceId, peer.pairId);
       throw error;
     }
     if (status.status === 'pending') {
@@ -347,9 +366,9 @@ export class PeersService implements OnModuleDestroy {
         status.proof,
         'pair-pending',
         peer.pairId,
-        PeerProofs.pairBinding(peer.identity, this.self(), false, peer.allowRelay, status.confirmationCode),
+        PeerProofs.pairBinding(peer.identity, await this.self(), false, peer.allowRelay, status.confirmationCode),
       );
-      this.peers.confirmation(peer.identity.instanceId, peer.pairId, status.confirmationCode);
+      await this.peers.confirmation(peer.identity.instanceId, peer.pairId, status.confirmationCode);
       return;
     }
     if (
@@ -359,14 +378,14 @@ export class PeersService implements OnModuleDestroy {
       throw new ForbiddenException('Pairing permissions or confirmation changed.');
     const binding = PeerProofs.pairBinding(
       peer.identity,
-      this.self(),
+      await this.self(),
       status.allowRelay,
       peer.allowRelay,
       status.confirmationCode,
     );
     await this.proofs.verify(peer.identity, status.receipt, 'pair-confirm', peer.pairId, binding);
-    this.peers.confirmation(peer.identity.instanceId, peer.pairId, status.confirmationCode);
-    this.peers.remoteRelay(peer.identity.instanceId, peer.pairId, status.allowRelay);
+    await this.peers.confirmation(peer.identity.instanceId, peer.pairId, status.confirmationCode);
+    await this.peers.remoteRelay(peer.identity.instanceId, peer.pairId, status.allowRelay);
     const ack = await this.proofs.sign({
       aud: peer.identity.instanceId,
       purpose: 'pair-ack',
@@ -375,11 +394,11 @@ export class PeersService implements OnModuleDestroy {
       binding,
     });
     await this.network.json(peer.identity.origin, '/peer/pair/ack', { pairId: peer.pairId, proof: ack });
-    this.peers.activate(peer.identity.instanceId, peer.pairId);
+    await this.peers.activate(peer.identity.instanceId, peer.pairId);
   }
-  private refresh(): Promise<void> {
+  private async refresh(): Promise<void> {
     const started: Promise<void>[] = [];
-    for (const peer of this.peers.list()) {
+    for (const peer of await this.peers.list()) {
       const key = peer.identity.instanceId;
       if (
         this.refreshingPeers.has(key) ||
@@ -404,7 +423,7 @@ export class PeersService implements OnModuleDestroy {
         pairId: peer.pairId,
       });
       await this.network.json(peer.identity.origin, '/peer/unpair', { pairId: peer.pairId, proof });
-      this.peers.notified(peer.identity.instanceId, peer.pairId);
+      await this.peers.notified(peer.identity.instanceId, peer.pairId);
     } catch {
       /* Tombstone/notification remains durable for retry. Local access is already denied. */
     }

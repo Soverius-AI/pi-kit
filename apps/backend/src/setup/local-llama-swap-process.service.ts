@@ -51,18 +51,19 @@ export class LocalLlamaSwapProcessService implements OnModuleDestroy {
   }
 
   /** Where the managed process listens: `PI_KIT_LLAMA_SWAP_LISTEN` (the tests), else the saved choice, else llama-swap's own default. */
-  listen(): string {
-    const saved = this.meta.getSetting('local-runtime-listen');
+  async listen(): Promise<string> {
+    const saved = await this.meta.getSetting('local-runtime-listen');
     return process.env['PI_KIT_LLAMA_SWAP_LISTEN'] || (typeof saved === 'string' && saved ? saved : '127.0.0.1:8080');
   }
-  baseUrl(listen = this.listen()): string {
+  async baseUrl(listen?: string): Promise<string> {
+    listen ??= await this.listen();
     return `http://${listen}/v1`;
   }
   isRunning(): boolean {
     return !!this.active && !this.starting;
   }
-  autostart(): boolean {
-    return AutostartSchema.safeParse(this.meta.getSetting('local-runtime-autostart')).success;
+  async autostart(): Promise<boolean> {
+    return AutostartSchema.safeParse(await this.meta.getSetting('local-runtime-autostart')).success;
   }
 
   /** Rereads what Start depends on (cheap, bounded) so `status()` can stay synchronous. */
@@ -71,12 +72,12 @@ export class LocalLlamaSwapProcessService implements OnModuleDestroy {
     const configs = await this.swap.readConfigs().catch(() => []);
     this.configModels = configs.find((config) => config.selected)?.models.length ?? 0;
     if (!this.active && (!this.listenerBusy || Date.now() - this.listenerBusy.at > 5000))
-      this.listenerBusy = { at: Date.now(), busy: await answers(this.baseUrl()) };
+      this.listenerBusy = { at: Date.now(), busy: await answers(await this.baseUrl()) };
   }
 
-  status(): ManagedLlamaSwap {
+  async status(): Promise<ManagedLlamaSwap> {
     const configPath = this.active?.configPath ?? this.swap.status().engine.configPath;
-    const listen = this.active?.listen ?? this.listen();
+    const listen = this.active?.listen ?? (await this.listen());
     const state: ManagedLlamaSwap['state'] = this.active
       ? this.starting
         ? 'starting'
@@ -99,7 +100,7 @@ export class LocalLlamaSwapProcessService implements OnModuleDestroy {
       state,
       configPath,
       listen,
-      baseUrl: this.baseUrl(listen),
+      baseUrl: await this.baseUrl(listen),
       log: this.log,
       ...(this.active?.pid ? { pid: this.active.pid } : {}),
       ...(this.active ? { startedAt: this.active.startedAt } : {}),
@@ -127,8 +128,8 @@ export class LocalLlamaSwapProcessService implements OnModuleDestroy {
     }
     if (models.length === 0)
       throw new BadRequestException('The config has no models yet. Add one in Your models first.');
-    const listen = this.listen();
-    if (await answers(this.baseUrl(listen)))
+    const listen = await this.listen();
+    if (await answers(await this.baseUrl(listen)))
       throw new ConflictException(
         `Something already answers on ${listen}: use that server in the add-provider wizard, or stop it first.`,
       );
@@ -176,7 +177,7 @@ export class LocalLlamaSwapProcessService implements OnModuleDestroy {
       const deadline = Date.now() + READY_MS;
       while (Date.now() < deadline) {
         if (this.active !== active) throw new Error(this.error ?? 'llama-swap stopped before it answered.');
-        if (await answers(this.baseUrl(listen))) break;
+        if (await answers(await this.baseUrl(listen))) break;
         await delay(200);
       }
       if (this.active !== active) throw new Error(this.error ?? 'llama-swap stopped before it answered.');
@@ -192,10 +193,10 @@ export class LocalLlamaSwapProcessService implements OnModuleDestroy {
     this.starting = false;
     this.listenerBusy = undefined;
     if (input.autostart !== undefined)
-      this.meta.setSetting('local-runtime-autostart', input.autostart ? { configPath, listen } : null);
+      await this.meta.setSetting('local-runtime-autostart', input.autostart ? { configPath, listen } : null);
     this.logger.log(`llama-swap ${active.pid ?? ''} started with ${configPath} on ${listen}`);
     for (const listener of this.listeners) listener('running');
-    return this.status();
+    return await this.status();
   }
 
   /** Ends the process pi-kit started (SIGTERM, then SIGKILL after 5 s, the whole group) and forgets the autostart choice. */
@@ -208,25 +209,26 @@ export class LocalLlamaSwapProcessService implements OnModuleDestroy {
       await active.done;
       this.logger.log(`llama-swap ${active.pid ?? ''} stopped`);
     }
-    this.meta.setSetting('local-runtime-autostart', null);
-    return this.status();
+    await this.meta.setSetting('local-runtime-autostart', null);
+    return await this.status();
   }
 
   /** "Start llama-swap when pi-kit starts": the choice on its own, for the running process or the selected config. */
-  setAutostart(enabled: boolean): void {
+  async setAutostart(enabled: boolean): Promise<void> {
     const configPath = this.active?.configPath ?? this.swap.status().engine.configPath;
     if (enabled && !configPath) throw new BadRequestException('Choose a llama-swap config in Engines first.');
-    this.meta.setSetting(
+    await this.meta.setSetting(
       'local-runtime-autostart',
-      enabled ? { configPath, listen: this.active?.listen ?? this.listen() } : null,
+      enabled ? { configPath, listen: this.active?.listen ?? (await this.listen()) } : null,
     );
   }
 
   /** The saved choice "start llama-swap with pi-kit": started once the backend is up, when nothing else answers on the listener. */
   async startSaved(): Promise<void> {
-    const saved = AutostartSchema.safeParse(this.meta.getSetting('local-runtime-autostart'));
+    const saved = AutostartSchema.safeParse(await this.meta.getSetting('local-runtime-autostart'));
     if (!saved.success) {
-      if (this.meta.getSetting('local-runtime-autostart')) this.meta.setSetting('local-runtime-autostart', null);
+      if (await this.meta.getSetting('local-runtime-autostart'))
+        await this.meta.setSetting('local-runtime-autostart', null);
       return;
     }
     try {

@@ -25,9 +25,9 @@ export class OutcomesController {
   })
   @Responds(ThreadOutcomeSchema)
   @Fails({ 404: 'There is no such thread, or it has no outcome yet.' })
-  get(@Param('id') id: string): ThreadOutcome {
-    this.threads.assertExists(id);
-    const outcome = this.outcomes.get(id);
+  async get(@Param('id') id: string): Promise<ThreadOutcome> {
+    await this.threads.assertExists(id);
+    const outcome = await this.outcomes.get(id);
     if (!outcome) throw new NotFoundException('This thread has no outcome yet.');
     return outcome;
   }

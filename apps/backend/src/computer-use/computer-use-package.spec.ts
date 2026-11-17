@@ -33,7 +33,7 @@ function ship(dir: string): void {
 const settings = (): { packages?: unknown[] } =>
   existsSync(join(agent, 'settings.json')) ? JSON.parse(readFileSync(join(agent, 'settings.json'), 'utf8')) : {};
 
-beforeEach(() => {
+beforeEach(async () => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-cupkg-')));
   agent = join(base, 'agent');
   bundled = join(base, 'app', 'packages', 'pi-computer-use');
@@ -42,13 +42,13 @@ beforeEach(() => {
   process.env['PI_CODING_AGENT_DIR'] = agent;
   process.env['PI_KIT_COMPUTER_USE_PACKAGE_DIR'] = bundled;
   delete process.env['PI_KIT_COMPUTER_USE_PACKAGE'];
-  db = new DatabaseService({ dataDir: join(base, 'data') });
+  db = await DatabaseService.create({ dataDir: join(base, 'data') });
   pkg = new ComputerUsePackage(new MetaRepository(db));
   // A test runner's sandbox has no native `import()`; the package's own file is imported the runner's way.
   pkg.importer = <T>(url: string) => import(/* @vite-ignore */ url) as Promise<T>;
 });
-afterEach(() => {
-  db.onApplicationShutdown();
+afterEach(async () => {
+  await db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
   for (const [key, value] of [
     ['PI_CODING_AGENT_DIR', previous.agent],

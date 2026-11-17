@@ -34,8 +34,8 @@ export class PeerTransportController {
     private readonly sessions: PeerSessions,
   ) {}
   @Get('identity')
-  identity(): ReturnType<PeersService['metadata']> {
-    return this.peers.metadata();
+  async identity(): ReturnType<PeersService['metadata']> {
+    return await this.peers.metadata();
   }
   @Post('pair/request')
   @HttpCode(200)
@@ -61,10 +61,10 @@ export class PeerTransportController {
   }
   @Post('challenge')
   @HttpCode(200)
-  challenge(
+  async challenge(
     @Body({ schema: PeerChallengeRequestSchema }) body: z.infer<typeof PeerChallengeRequestSchema>,
   ): ReturnType<PeerSessions['challenge']> {
-    return this.sessions.challenge(body.peerId);
+    return await this.sessions.challenge(body.peerId);
   }
   @Post('session')
   @HttpCode(200)
@@ -75,8 +75,10 @@ export class PeerTransportController {
   }
   @Post('authorize')
   @HttpCode(200)
-  authorize(@Body({ schema: AuthorizeSchema }) body: z.infer<typeof AuthorizeSchema>): { allowed: boolean } {
-    this.sessions.authorize(body.token);
+  async authorize(
+    @Body({ schema: AuthorizeSchema }) body: z.infer<typeof AuthorizeSchema>,
+  ): Promise<{ allowed: boolean }> {
+    await this.sessions.authorize(body.token);
     return { allowed: isRemoteApiPath(body.path) && isReviewedRemoteApi(body.path, body.method) };
   }
 }

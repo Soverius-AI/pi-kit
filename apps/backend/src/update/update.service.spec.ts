@@ -78,3 +78,51 @@ describe('automatic pi-kit downloads', () => {
     expect(downloads()).toBe(1);
   });
 });
+
+describe('explicit backend restart', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+  it('waits for host authorization before exiting, independently of watchdog settings', async () => {
+    vi.useFakeTimers();
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    let authorize!: () => void;
+    const requestBackendRestart = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          authorize = resolve;
+        }),
+    );
+    const updates = service({ available: true, requestBackendRestart } as unknown as DesktopBridge);
+    const restarting = updates.restart();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(exit).not.toHaveBeenCalled();
+    authorize();
+    await restarting;
+    await vi.advanceTimersByTimeAsync(300);
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+  it('does not exit if the host rejects the request', async () => {
+    vi.useFakeTimers();
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    const updates = service({
+      available: true,
+      requestBackendRestart: () => Promise.reject(new Error('host failed')),
+    } as unknown as DesktopBridge);
+    await expect(updates.restart()).rejects.toThrow('host failed');
+    await vi.runAllTimersAsync();
+    expect(exit).not.toHaveBeenCalled();
+  });
+  it('preserves the explicit supervisor environment fallback', async () => {
+    vi.useFakeTimers();
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+    const updates = service({ available: false } as DesktopBridge);
+    vi.stubEnv('PI_KIT_ALLOW_RESTART', undefined);
+    await expect(updates.restart()).rejects.toThrow('Restart the backend yourself');
+    vi.stubEnv('PI_KIT_ALLOW_RESTART', '1');
+    await updates.restart();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(exit).toHaveBeenCalledWith(0);
+  });
+});

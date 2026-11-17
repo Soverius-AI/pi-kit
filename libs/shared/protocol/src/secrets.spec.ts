@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DB_KEY_ACCOUNT, isProviderAccount, keyStorageOf, parseResolver, resolverCommand } from './secrets';
+import { SecretsProtectionSchema, isProviderAccount, keyStorageOf, parseResolver, resolverCommand } from './secrets';
 
 describe('the command written into auth.json in place of a key', () => {
   it('is `security` on macOS, which ships with the system and finds the entry by service and account', () => {
@@ -70,8 +70,15 @@ describe('where an API key lives, from auth.json’s key field', () => {
     expect(keyStorageOf('abc')).toBe('auth.json');
   });
 
-  it('keeps the database key out of the provider namespace', () => {
-    expect(DB_KEY_ACCOUNT).toBe('pi-kit/db');
-    expect(isProviderAccount(DB_KEY_ACCOUNT)).toBe(false);
+  it('keeps reserved legacy accounts out of the provider namespace', () => {
+    expect(isProviderAccount('pi-kit/db')).toBe(false);
+  });
+});
+
+describe('disk protection report', () => {
+  it('reports OS disk encryption without database state or recovery keys', () => {
+    const report = { disk: { state: 'on', mechanism: 'FileVault', detail: 'Enabled' } };
+    expect(SecretsProtectionSchema.parse(report)).toEqual(report);
+    expect(Object.keys(SecretsProtectionSchema.shape)).toEqual(['disk']);
   });
 });

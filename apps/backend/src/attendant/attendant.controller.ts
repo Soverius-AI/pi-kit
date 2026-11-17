@@ -44,10 +44,10 @@ export class AttendantController {
     description: 'Changes the switch, the model, the triggers or the daily cost cap, and answers with the settings.',
   })
   @Responds(AttendantSettingsSchema)
-  patch(
+  async patch(
     @Body({ schema: PatchAttendantSettingsSchema }) body: z.infer<typeof PatchAttendantSettingsSchema>,
-  ): AttendantSettings {
-    return this.attendant.patch(body);
+  ): Promise<AttendantSettings> {
+    return await this.attendant.patch(body);
   }
 
   /** Look at one thread (or at the threads that changed) now; 409 while the attendant is off. Answers with how many were queued. */
@@ -59,8 +59,10 @@ export class AttendantController {
   })
   @Responds(AttendantRunResultSchema, { status: 201 })
   @Fails({ 404: 'There is no such thread.', 409: 'The attendant is off.' })
-  run(@Body({ schema: AttendantRunSchema }) body: z.infer<typeof AttendantRunSchema>): AttendantRunResult {
-    return { queued: this.attendant.run(body.threadId) };
+  async run(
+    @Body({ schema: AttendantRunSchema }) body: z.infer<typeof AttendantRunSchema>,
+  ): Promise<AttendantRunResult> {
+    return { queued: await this.attendant.run(body.threadId) };
   }
 
   @Post('suggestions/:id/accept')
@@ -83,7 +85,7 @@ export class AttendantController {
   @ApiParam(SUGGESTION_ID)
   @ApiNoContentResponse({ description: 'The suggestion is dropped.' })
   @Fails({ 404: 'The suggestion is not open.' })
-  dismiss(@Param('id', ParseIntPipe) id: number): void {
-    this.attendant.dismiss(id);
+  async dismiss(@Param('id', ParseIntPipe) id: number): Promise<void> {
+    await this.attendant.dismiss(id);
   }
 }

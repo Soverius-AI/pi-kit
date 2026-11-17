@@ -37,7 +37,7 @@ const write = (cwd: string, file: string, text: string): void => {
   writeFileSync(join(cwd, file), text);
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-where-')));
   project = join(base, 'proj');
   mkdirSync(project);
@@ -48,9 +48,9 @@ beforeEach(() => {
   git(project, 'commit', '-q', '-m', 'first');
   process.env['PI_KIT_WORKTREE_ROOT'] = join(base, 'worktrees');
   process.env['PI_KIT_GH'] = 'none';
-  db = new DatabaseService({ dataDir: join(base, 'data') });
+  db = await DatabaseService.create({ dataDir: join(base, 'data') });
   meta = new MetaRepository(db);
-  meta.touchWorkspace(project);
+  await meta.touchWorkspace(project);
   threads = new ThreadsRepository(db);
   terminals = { start: vi.fn(), write: vi.fn(), kill: vi.fn() };
   sessions = { has: () => false, isStreaming: () => false, dispose: vi.fn() };
@@ -68,8 +68,8 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
-  db.onApplicationShutdown();
+afterEach(async () => {
+  await db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
   if (oldRoot === undefined) delete process.env['PI_KIT_WORKTREE_ROOT'];
   else process.env['PI_KIT_WORKTREE_ROOT'] = oldRoot;
@@ -84,20 +84,20 @@ async function worktreeThread(
   title?: string,
 ): Promise<ThreadRow> {
   const facts = await service.create(project, { threadId: id, ...(title ? { title } : {}), request });
-  threads.insertDraft({
+  await threads.insertDraft({
     id,
     sessionPath: join(base, `${id}.jsonl`),
     cwd: facts.path,
     ...(title ? { title } : {}),
     worktree: facts,
   });
-  return threads.get(id) as ThreadRow;
+  return (await threads.get(id)) as ThreadRow;
 }
 
 /** A thread in the project folder. */
-function localThread(id: string, title?: string): ThreadRow {
-  threads.insertDraft({ id, sessionPath: join(base, `${id}.jsonl`), cwd: project, ...(title ? { title } : {}) });
-  return threads.get(id) as ThreadRow;
+async function localThread(id: string, title?: string): Promise<ThreadRow> {
+  await threads.insertDraft({ id, sessionPath: join(base, `${id}.jsonl`), cwd: project, ...(title ? { title } : {}) });
+  return (await threads.get(id)) as ThreadRow;
 }
 
 describe('the folder as the Where row shows it', () => {
@@ -164,7 +164,7 @@ describe('Local on another branch', () => {
     await expect(service.switchLocal(project, { branch: 'bad..name', create: true })).rejects.toThrow(
       /not a branch name/,
     );
-    meta.setWorktreeSettings(project, { allowSwitch: false });
+    await meta.setWorktreeSettings(project, { allowSwitch: false });
     git(project, 'branch', 'develop');
     await expect(service.switchLocal(project, { branch: 'develop' })).rejects.toThrow(/turned off for this project/);
     // Staying where it is needs no permission.
@@ -192,17 +192,17 @@ describe('Local on another branch', () => {
     expect(existsSync(join(project, 'untracked.txt'))).toBe(true);
   });
 
-  it("types a Local thread's setup script into the folder's own terminal, and nothing for none", () => {
-    meta.setWorktreeSettings(project, {
+  it("types a Local thread's setup script into the folder's own terminal, and nothing for none", async () => {
+    await meta.setWorktreeSettings(project, {
       scripts: [{ id: 'node', name: 'Node', command: 'npm ci', copy: ['.env.local'] }],
     });
-    service.runLocalSetup(project, null);
-    service.runLocalSetup(project, undefined);
+    await service.runLocalSetup(project, null);
+    await service.runLocalSetup(project, undefined);
     expect(terminals.write).not.toHaveBeenCalled();
-    service.runLocalSetup(project, 'node');
+    await service.runLocalSetup(project, 'node');
     expect(terminals.start).toHaveBeenCalledWith(project, expect.any(Number), expect.any(Number));
     expect(terminals.write).toHaveBeenCalledWith(project, 'npm ci\r');
-    expect(() => service.runLocalSetup(project, 'gone')).toThrow(/no setup script/);
+    await expect(service.runLocalSetup(project, 'gone')).rejects.toThrow(/no setup script/);
   });
 
   it('refuses while a merge waits in the folder', async () => {
@@ -226,7 +226,7 @@ describe('a new worktree from the Where row', () => {
     const plain = await service.create(project, { threadId: 'aaaaaaaa-1', request: { name: 'Fix the cramped row' } });
     expect(plain.branch).toBe('pi-kit/fix-the-cramped-row');
     expect(plain.path).toBe(join(base, 'worktrees', 'proj', 'fix-the-cramped-row'));
-    meta.setWorktreeSettings(project, { branchPrefix: 'wolf/' });
+    await meta.setWorktreeSettings(project, { branchPrefix: 'wolf/' });
     const prefixed = await service.create(project, {
       threadId: 'aaaaaaaa-2',
       request: { name: 'Fix the cramped row' },
@@ -248,7 +248,7 @@ describe('a new worktree from the Where row', () => {
   });
 
   it('is detached when the project says branches are detached and the request says nothing', async () => {
-    meta.setWorktreeSettings(project, { branchMode: 'detached' });
+    await meta.setWorktreeSettings(project, { branchMode: 'detached' });
     expect((await service.create(project, { threadId: 'bbbbbbbb-2', request: {} })).branch).toBeNull();
     expect((await service.create(project, { threadId: 'bbbbbbbb-3', request: { branch: 'typed/one' } })).branch).toBe(
       'typed/one',
@@ -302,10 +302,10 @@ describe('a new worktree from the Where row', () => {
 
   it("follows the project's carry rule: always carries, never does not", async () => {
     write(project, 'a.txt', 'changed\n');
-    meta.setWorktreeSettings(project, { carry: 'always' });
+    await meta.setWorktreeSettings(project, { carry: 'always' });
     const always = await service.create(project, { threadId: 'ffffffff-1', request: {} });
     expect(readFileSync(join(always.path, 'a.txt'), 'utf8')).toBe('changed\n');
-    meta.setWorktreeSettings(project, { carry: 'never' });
+    await meta.setWorktreeSettings(project, { carry: 'never' });
     const never = await service.create(project, { threadId: 'ffffffff-2', request: { carryChanges: true } });
     expect(readFileSync(join(never.path, 'a.txt'), 'utf8')).toBe('one\n');
   });
@@ -346,7 +346,7 @@ describe('a new worktree from the Where row', () => {
 
   it("copies a script's files and types its command; the first script is the default, null is none, a bad id is refused", async () => {
     write(project, '.env.local', 'SECRET=1\n');
-    meta.setWorktreeSettings(project, {
+    await meta.setWorktreeSettings(project, {
       scripts: [
         { id: 'node', name: 'Node', command: 'npm ci', copy: ['.env.local'] },
         { id: 'docs', name: 'Docs', command: 'make docs' },
@@ -366,55 +366,55 @@ describe('a new worktree from the Where row', () => {
     );
   });
 
-  it('suggests the script of the lockfile when nothing is configured, and the single setup command wins', () => {
+  it('suggests the script of the lockfile when nothing is configured, and the single setup command wins', async () => {
     writeFileSync(join(project, 'pnpm-lock.yaml'), '');
-    expect(service.settingsOf(project).setupScripts).toEqual([
+    expect((await service.settingsOf(project)).setupScripts).toEqual([
       { id: 'pnpm', name: 'pnpm', command: 'pnpm install --frozen-lockfile' },
     ]);
-    expect(service.settingsOf(project).setup).toBeNull();
-    meta.setWorktreeSettings(project, { setup: 'make setup' });
-    expect(service.settingsOf(project)).toMatchObject({
+    expect((await service.settingsOf(project)).setup).toBeNull();
+    await meta.setWorktreeSettings(project, { setup: 'make setup' });
+    expect(await service.settingsOf(project)).toMatchObject({
       setup: 'make setup',
       setupScripts: [{ id: 'setup', name: 'Setup', command: 'make setup' }],
     });
     // Blank removes it, and "none" stays none: the lockfile is not suggested again.
-    meta.setWorktreeSettings(project, { setup: '' });
-    expect(service.settingsOf(project)).toMatchObject({ setup: null, setupScripts: [] });
+    await meta.setWorktreeSettings(project, { setup: '' });
+    expect(await service.settingsOf(project)).toMatchObject({ setup: null, setupScripts: [] });
   });
 
-  it('says the script is only suggested until a list is saved', () => {
+  it('says the script is only suggested until a list is saved', async () => {
     writeFileSync(join(project, 'pnpm-lock.yaml'), '');
-    expect(service.settingsOf(project).setupSuggested).toBe(true);
-    meta.setWorktreeSettings(project, {
+    expect((await service.settingsOf(project)).setupSuggested).toBe(true);
+    await meta.setWorktreeSettings(project, {
       scripts: [{ id: 'pnpm', name: 'pnpm', command: 'pnpm install --frozen-lockfile' }],
     });
-    expect(service.settingsOf(project).setupSuggested).toBeUndefined();
-    meta.setWorktreeSettings(project, { scripts: [] });
-    expect(service.settingsOf(project)).toMatchObject({ setupScripts: [] });
-    expect(service.settingsOf(project).setupSuggested).toBeUndefined();
+    expect((await service.settingsOf(project)).setupSuggested).toBeUndefined();
+    await meta.setWorktreeSettings(project, { scripts: [] });
+    expect(await service.settingsOf(project)).toMatchObject({ setupScripts: [] });
+    expect((await service.settingsOf(project)).setupSuggested).toBeUndefined();
   });
 
   it('uses the defaults for every project where a project has no folder or start of its own, and a project overrides them', async () => {
-    expect(service.defaults()).toEqual({ root: null, defaultRoot: join(base, 'worktrees'), start: 'local' });
-    expect(service.patchDefaults({ root: join(base, 'all-worktrees'), start: 'worktree' })).toMatchObject({
+    expect(await service.defaults()).toEqual({ root: null, defaultRoot: join(base, 'worktrees'), start: 'local' });
+    expect(await service.patchDefaults({ root: join(base, 'all-worktrees'), start: 'worktree' })).toMatchObject({
       root: join(base, 'all-worktrees'),
       start: 'worktree',
     });
-    expect(service.settingsOf(project)).toMatchObject({
+    expect(await service.settingsOf(project)).toMatchObject({
       start: 'worktree',
       root: null,
       defaultRoot: join(base, 'all-worktrees'),
     });
     const facts = await service.create(project, { threadId: 'dd-1', request: {} });
     expect(facts.path.startsWith(join(base, 'all-worktrees'))).toBe(true);
-    meta.setWorktreeSettings(project, { start: 'ask', root: join(base, 'mine') });
-    expect(service.settingsOf(project)).toMatchObject({ start: 'ask', root: join(base, 'mine') });
+    await meta.setWorktreeSettings(project, { start: 'ask', root: join(base, 'mine') });
+    expect(await service.settingsOf(project)).toMatchObject({ start: 'ask', root: join(base, 'mine') });
     // blank puts the default back; a patch of one field leaves the other
-    expect(service.patchDefaults({ root: '  ' })).toMatchObject({ root: null, start: 'worktree' });
+    expect(await service.patchDefaults({ root: '  ' })).toMatchObject({ root: null, start: 'worktree' });
   });
 
-  it('has the defaults until a project says otherwise', () => {
-    expect(service.settingsOf(project)).toMatchObject({
+  it('has the defaults until a project says otherwise', async () => {
+    expect(await service.settingsOf(project)).toMatchObject({
       start: 'local',
       allowBranchSwitch: true,
       carryChanges: 'ask',
@@ -422,7 +422,7 @@ describe('a new worktree from the Where row', () => {
       branchPrefix: 'pi-kit/',
       removeFolder: 'ask',
     });
-    meta.setWorktreeSettings(project, {
+    await meta.setWorktreeSettings(project, {
       start: 'worktree',
       carry: 'never',
       branchPrefix: 'feat/',
@@ -430,7 +430,7 @@ describe('a new worktree from the Where row', () => {
       branchMode: 'detached',
       allowSwitch: false,
     });
-    expect(service.settingsOf(project)).toMatchObject({
+    expect(await service.settingsOf(project)).toMatchObject({
       start: 'worktree',
       allowBranchSwitch: false,
       carryChanges: 'never',
@@ -463,7 +463,7 @@ describe('hand off to local', () => {
     expect(existsSync(path)).toBe(false);
     expect(terminals.kill).toHaveBeenCalledWith(path);
     expect(sessions.dispose).toHaveBeenCalledWith(row.id);
-    const after = threads.get(row.id) as ThreadRow;
+    const after = (await threads.get(row.id)) as ThreadRow;
     expect(after).toMatchObject({ worktreePath: null, branch: null, baseBranch: null, cwd: project });
   });
 
@@ -479,7 +479,7 @@ describe('hand off to local', () => {
   });
 
   it("follows the project's rule: now removes without being asked", async () => {
-    meta.setWorktreeSettings(project, { remove: 'now' });
+    await meta.setWorktreeSettings(project, { remove: 'now' });
     const row = await worktreeThread('56565656-3', {}, 'Rule now');
     expect((await service.handoff(row, { to: 'local' })).removed).toBe(true);
   });
@@ -505,7 +505,7 @@ describe('hand off to local', () => {
     expect(existsSync(row.worktreePath as string)).toBe(true);
     expect(git(project, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('main');
     expect(readFileSync(join(row.worktreePath as string, 'a.txt'), 'utf8')).toBe('worktree edit\n');
-    expect((threads.get(row.id) as ThreadRow).worktreePath).toBe(row.worktreePath);
+    expect(((await threads.get(row.id)) as ThreadRow).worktreePath).toBe(row.worktreePath);
   });
 
   it('refuses while a run holds the thread, a merge waits in the worktree, or the thread has no worktree', async () => {
@@ -514,7 +514,7 @@ describe('hand off to local', () => {
     sessions.isStreaming = () => true;
     await expect(service.handoff(row, { to: 'local' })).rejects.toThrow(/Stop the run/);
     sessions.has = () => false;
-    await expect(service.handoff(localThread('90909090-3'), { to: 'local' })).rejects.toThrow(/already/);
+    await expect(service.handoff(await localThread('90909090-3'), { to: 'local' })).rejects.toThrow(/already/);
   });
 
   it('puts everything back when the changes cannot be applied in the folder', async () => {
@@ -529,11 +529,11 @@ describe('hand off to local', () => {
     expect(git(project, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('main');
     expect(git(path, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('pi-kit/rollback');
     expect(readFileSync(join(path, 'new.txt'), 'utf8')).toBe('from the worktree\n');
-    expect((threads.get(row.id) as ThreadRow).worktreePath).toBe(path);
+    expect(((await threads.get(row.id)) as ThreadRow).worktreePath).toBe(path);
   });
 
   it('sweeps a folder that was left for a week once it is due, and only when it is clean', async () => {
-    meta.setWorktreeSettings(project, { remove: 'after-7-days' });
+    await meta.setWorktreeSettings(project, { remove: 'after-7-days' });
     const row = await worktreeThread('a1a1a1a1-1', {}, 'Later');
     const path = row.worktreePath as string;
     await service.handoff(row, { to: 'local' });
@@ -551,12 +551,12 @@ describe('hand off to local', () => {
 describe('move into a worktree', () => {
   it("makes a worktree from the folder's branch and moves the uncommitted changes out of the folder, keeping a copy in the stash", async () => {
     git(project, 'checkout', '-q', '-b', 'develop');
-    const row = localThread('b2b2b2b2-1', 'Move me');
+    const row = await localThread('b2b2b2b2-1', 'Move me');
     write(project, 'a.txt', 'one\nwip\n');
     write(project, 'wip.txt', 'w\n');
     const result = await service.handoff(row, { to: 'worktree' });
     expect(result).toMatchObject({ to: 'worktree', branch: 'pi-kit/move-me', moved: 2, removed: false });
-    const after = threads.get(row.id) as ThreadRow;
+    const after = (await threads.get(row.id)) as ThreadRow;
     expect(after).toMatchObject({
       worktreePath: result.path,
       branch: 'pi-kit/move-me',
@@ -571,7 +571,7 @@ describe('move into a worktree', () => {
   });
 
   it('can leave the changes where they are, and can make the worktree detached', async () => {
-    const row = localThread('b2b2b2b2-2', 'Stay put');
+    const row = await localThread('b2b2b2b2-2', 'Stay put');
     write(project, 'a.txt', 'wip\n');
     const result = await service.handoff(row, { to: 'worktree', carryChanges: false, branch: null });
     expect(result).toMatchObject({ branch: null, moved: 0 });
@@ -585,10 +585,10 @@ describe('move into a worktree', () => {
   });
 
   it('round trips: out to a worktree and back, the changes where they started', async () => {
-    const row = localThread('b2b2b2b2-4', 'Round trip');
+    const row = await localThread('b2b2b2b2-4', 'Round trip');
     write(project, 'a.txt', 'one\nwip\n');
     await service.handoff(row, { to: 'worktree' });
-    const inTree = threads.get(row.id) as ThreadRow;
+    const inTree = (await threads.get(row.id)) as ThreadRow;
     const back = await service.handoff(inTree, { to: 'local', remove: true });
     expect(back.moved).toBe(1);
     expect(readFileSync(join(project, 'a.txt'), 'utf8')).toBe('one\nwip\n');
@@ -603,7 +603,7 @@ describe('a branch for a detached worktree', () => {
     await expect(service.createBranch(row, 'main')).rejects.toThrow(/exists already/);
     expect(await service.createBranch(row, 'pi-kit/now-named')).toEqual({ branch: 'pi-kit/now-named' });
     expect(git(row.worktreePath as string, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe('pi-kit/now-named');
-    const after = threads.get(row.id) as ThreadRow;
+    const after = (await threads.get(row.id)) as ThreadRow;
     expect(after.branch).toBe('pi-kit/now-named');
     expect(service.describe(after)).toMatchObject({ branch: 'pi-kit/now-named' });
     await expect(service.createBranch(after, 'other')).rejects.toThrow(/has a branch already/);

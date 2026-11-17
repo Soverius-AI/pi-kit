@@ -17,6 +17,9 @@ import {
 } from '@nestjs/common';
 import { ApiNoContentResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import {
+  type WatchdogSettings,
+  WatchdogSettingsSchema,
+  SetWatchdogSchema,
   type About,
   AboutSchema,
   CwdQuerySchema,
@@ -76,6 +79,7 @@ import { TrustService } from '../pi/trust.service';
 import { ThreadsService } from '../threads/threads.service';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
+import { DesktopBridge } from '../desktop/desktop-bridge';
 import { DiagnosticsService } from './diagnostics.service';
 
 const LOGIN_ID = {
@@ -101,7 +105,37 @@ export class SettingsController {
     private readonly resources: ResourcesService,
     private readonly diagnostics: DiagnosticsService,
     @Inject(CONFIG) private readonly backend: BackendConfig,
+    private readonly desktop: DesktopBridge,
   ) {}
+
+  @ApiTags('pi-settings')
+  @Get('watchdog')
+  @ApiOperation({
+    summary: 'Get watchdog settings',
+    description: 'Returns the owner opt-in to automatic backend recovery. Disabled by default.',
+  })
+  @Responds(WatchdogSettingsSchema)
+  watchdog(): Promise<WatchdogSettings> {
+    return this.desktop.watchdog();
+  }
+
+  @ApiTags('pi-settings')
+  @Put('watchdog')
+  @ApiOperation({
+    summary: 'Set watchdog settings',
+    description: 'Persists and applies automatic backend recovery independently of background-service lifetime.',
+  })
+  @Responds(WatchdogSettingsSchema)
+  @Fails({ 400: 'The service host is unavailable or could not save the setting.' })
+  async setWatchdog(
+    @Body({ schema: SetWatchdogSchema }) body: z.infer<typeof SetWatchdogSchema>,
+  ): Promise<WatchdogSettings> {
+    try {
+      return await this.desktop.watchdog(body.enabled);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : String(error));
+    }
+  }
 
   @Remote()
   @ApiTags('pi-settings')
@@ -115,7 +149,7 @@ export class SettingsController {
   async overview(@Query({ schema: CwdQuerySchema }) query: z.infer<typeof CwdQuerySchema>): Promise<SettingsOverview> {
     const cwd = query.cwd;
     const overview = await this.config.overview(cwd && existsSync(cwd) ? cwd : this.backend.defaultCwd);
-    return { ...overview, providers: this.withCredentialDates(overview.providers) };
+    return { ...overview, providers: await this.withCredentialDates(overview.providers) };
   }
 
   @Remote()
@@ -142,7 +176,7 @@ export class SettingsController {
   })
   @Responds(ProviderInfoSchema, { array: true })
   async providers(): Promise<ProviderInfo[]> {
-    return this.withCredentialDates(await this.config.providerList());
+    return await this.withCredentialDates(await this.config.providerList());
   }
 
   @Remote()
@@ -220,7 +254,7 @@ export class SettingsController {
   async startLogin(@Body({ schema: LoginStartSchema }) body: z.infer<typeof LoginStartSchema>): Promise<LoginStarted> {
     const { provider, type } = body;
     try {
-      return { id: (await this.config.startLogin(provider, type, () => this.recordSignIn(provider))).id };
+      return { id: (await this.config.startLogin(provider, type, async () => await this.recordSignIn(provider))).id };
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : String(error));
     }
@@ -304,7 +338,7 @@ export class SettingsController {
     const { provider } = body;
     try {
       await this.config.logout(provider);
-      this.forgetSignIn(provider);
+      await this.forgetSignIn(provider);
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : String(error));
     }
@@ -323,7 +357,7 @@ export class SettingsController {
   async removeProvider(@Body({ schema: LogoutSchema }) body: z.infer<typeof LogoutSchema>): Promise<void> {
     try {
       await this.config.removeProvider(body.provider);
-      this.forgetSignIn(body.provider);
+      await this.forgetSignIn(body.provider);
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : String(error));
     }
@@ -441,8 +475,8 @@ export class SettingsController {
       'Lists the folders pi saved a trust answer for, with whether each is a known project and still exists.',
   })
   @Responds(TrustListSchema)
-  trustList(): Promise<TrustList> {
-    return this.trust.list(this.meta.listWorkspaces().map((w) => w.cwd));
+  async trustList(): Promise<TrustList> {
+    return this.trust.list((await this.meta.listWorkspaces()).map((w) => w.cwd));
   }
 
   /** Forgets one saved answer (pi's `trust.json`); idle sessions of that folder close so they reopen under the new state. */
@@ -460,7 +494,7 @@ export class SettingsController {
   ): Promise<RevokeTrustResult> {
     const { path } = body;
     await this.trust.revoke(path);
-    const { closed, running } = this.applyTrustTo(path);
+    const { closed, running } = await this.applyTrustTo(path);
     return { ...(await this.trustList()), reopened: closed.length, running: running.length };
   }
 
@@ -477,8 +511,8 @@ export class SettingsController {
   })
   @Responds(TrustStateSchema)
   @Fails({ 404: 'The folder is not a known project.' })
-  trustState(@Param('id') id: string): Promise<TrustState> {
-    return this.trust.state(this.workspace(id));
+  async trustState(@Param('id') id: string): Promise<TrustState> {
+    return this.trust.state(await this.workspace(id));
   }
 
   @Remote()
@@ -497,16 +531,16 @@ export class SettingsController {
     @Param('id') id: string,
     @Body({ schema: TrustDecisionSchema }) body: z.infer<typeof TrustDecisionSchema>,
   ): Promise<TrustDecisionResult> {
-    const cwd = this.workspace(id);
+    const cwd = await this.workspace(id);
     const state = await this.trust.decide(cwd, body.decision);
     // Sessions that are open in this folder were opened under the old answer; the idle ones are closed so they reopen under the new one.
-    const { closed, running } = this.applyTrustTo(cwd);
+    const { closed, running } = await this.applyTrustTo(cwd);
     return { ...state, reopened: closed.length, running: running.length };
   }
 
   /** The project's folder and the worktrees of its threads, which inherit its answer. */
-  private applyTrustTo(cwd: string): { closed: string[]; running: string[] } {
-    const folders = [cwd, ...this.threads.worktreeFoldersOf(cwd)];
+  private async applyTrustTo(cwd: string): Promise<{ closed: string[]; running: string[] }> {
+    const folders = [cwd, ...(await this.threads.worktreeFoldersOf(cwd))];
     const results = folders.map((folder) => this.sessions.applyTrust(folder));
     return { closed: results.flatMap((r) => r.closed), running: results.flatMap((r) => r.running) };
   }
@@ -535,29 +569,29 @@ export class SettingsController {
     return this.threads.importFrom(file, cwd);
   }
 
-  private credentialDates(): Record<string, number> {
-    const value = this.meta.getSetting('credentialDates');
+  private async credentialDates(): Promise<Record<string, number>> {
+    const value = await this.meta.getSetting('credentialDates');
     return value && typeof value === 'object' ? (value as Record<string, number>) : {};
   }
 
   /** When pi-kit stored a credential (pi's auth.json has no date of its own); a credential added in the CLI has none. */
-  private withCredentialDates(providers: ProviderInfo[]): ProviderInfo[] {
-    const dates = this.credentialDates();
+  private async withCredentialDates(providers: ProviderInfo[]): Promise<ProviderInfo[]> {
+    const dates = await this.credentialDates();
     return providers.map((p) =>
       p.credential && dates[p.id] ? { ...p, credential: { ...p.credential, addedAt: dates[p.id] } } : p,
     );
   }
 
-  private recordSignIn(provider: string): void {
-    this.meta.setSetting('credentialDates', { ...this.credentialDates(), [provider]: Date.now() });
+  private async recordSignIn(provider: string): Promise<void> {
+    await this.meta.setSetting('credentialDates', { ...(await this.credentialDates()), [provider]: Date.now() });
   }
 
-  private forgetSignIn(provider: string): void {
-    const { [provider]: _removed, ...rest } = this.credentialDates();
-    this.meta.setSetting('credentialDates', rest);
+  private async forgetSignIn(provider: string): Promise<void> {
+    const { [provider]: _removed, ...rest } = await this.credentialDates();
+    await this.meta.setSetting('credentialDates', rest);
   }
 
-  private workspace(id: string): string {
-    return this.meta.requireWorkspace(id);
+  private async workspace(id: string): Promise<string> {
+    return await this.meta.requireWorkspace(id);
   }
 }

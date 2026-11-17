@@ -65,6 +65,9 @@ export class RunSnapshotsService implements OnModuleInit, OnModuleDestroy {
   private readonly starting = new Map<string, { done: Promise<void>; deadline: Promise<void> }>();
   /** The snapshot being taken after a run, by run: a read of the thread's changes waits for it. */
   private readonly ending = new Map<string, Promise<void>>();
+  /** Register end barriers before the first async repository read, so immediate readers cannot outrun them. */
+  private readonly endingThreads = new Map<string, Promise<void>>();
+  private readonly endingAgents = new Map<string, Promise<void>>();
   private readonly nows = new Map<ShadowRepo, { at: number; tree: Promise<string> }>();
   /** What changed between two stored trees never changes. */
   private readonly changed = new Map<string, Promise<FileChange[]>>();
@@ -143,10 +146,12 @@ export class RunSnapshotsService implements OnModuleInit, OnModuleDestroy {
     toNow = true,
   ): Promise<ThreadChange[]> {
     // Work that just ended may still be taking its end snapshot: what it changed is known once that is done.
-    const spans = this.spansOf(threadId);
+    await this.endingThreads.get(threadId);
+    await Promise.all(this.endingAgents.values());
+    const spans = await this.spansOf(threadId);
     await Promise.all(spans.flatMap((span) => this.ending.get(span.key) ?? []));
     const files = new Map<string, ThreadChange>();
-    for (const span of this.spansOf(threadId)) {
+    for (const span of await this.spansOf(threadId)) {
       if (!span.folder || !span.startTree || (folder !== undefined && span.folder !== folder)) continue;
       const shadow = await this.shadowOf(span);
       if (!shadow) continue;
@@ -167,8 +172,8 @@ export class RunSnapshotsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The thread's runs and the stretches of work of its background agents, oldest first. */
-  private spansOf(threadId: string): Span[] {
-    const runs = this.log.runsOf(threadId);
+  private async spansOf(threadId: string): Promise<Span[]> {
+    const runs = await this.log.runsOf(threadId);
     const ofRuns = runs.map((run, i): Span => ({
       ...run,
       key: run.runId,
@@ -179,7 +184,7 @@ export class RunSnapshotsService implements OnModuleInit, OnModuleDestroy {
       open: run.status === 'running',
       run: i + 1,
     }));
-    const ofAgents = (this.agentSpans?.ofThread(threadId) ?? []).map((span): Span => ({
+    const ofAgents = ((await this.agentSpans?.ofThread(threadId)) ?? []).map((span): Span => ({
       ...span,
       key: agentKey(span.id),
       endTree: span.endTree ?? undefined,
@@ -209,15 +214,16 @@ export class RunSnapshotsService implements OnModuleInit, OnModuleDestroy {
     const startedAt = Date.now();
     const capture = (async () => {
       // A follow-up right after the agent finished: its previous stretch may still be taking its end snapshot.
-      const previous = spans.open(agentId);
+      await this.endingAgents.get(agentId);
+      const previous = await spans.open(agentId);
       if (previous) await this.ending.get(agentKey(previous.id));
-      if (spans.open(agentId)) return;
+      if (await spans.open(agentId)) return;
       const shadow = await this.shadow(folder);
       if (!shadow) return;
       const tree = await this.fresh(shadow);
       if (deadline.passed())
         return this.logger.warn(`The snapshot of ${folder} took longer than agent ${agentId} waited for it.`);
-      spans.start({
+      await spans.start({
         agentId,
         threadId,
         folder,
@@ -233,19 +239,26 @@ export class RunSnapshotsService implements OnModuleInit, OnModuleDestroy {
   /** The agent stopped working (done, failed, stopped): the folder is snapshotted, and the panels are told what the agent changed. */
   agentEnded(agentId: string): void {
     const spans = this.agentSpans;
-    const span = spans?.open(agentId);
-    if (!spans || !span) return;
+    if (!spans) return;
+    const previous = this.endingAgents.get(agentId);
     const pending = (async () => {
-      const shadow = await this.shadowOf(span);
-      if (!shadow) return;
-      const end = await this.fresh(shadow);
-      spans.end(span.id, end, Date.now());
-      this.folderChanges.publish(
-        span.folder,
-        batchOf((await this.changesOf(shadow, span.startTree, end, true)).map((c) => c.path)),
-      );
+      await previous;
+      const span = await spans.open(agentId);
+      if (!span) return;
+      const capture = (async () => {
+        const shadow = await this.shadowOf(span);
+        if (!shadow) return;
+        const end = await this.fresh(shadow);
+        await spans.end(span.id, end, Date.now());
+        this.folderChanges.publish(
+          span.folder,
+          batchOf((await this.changesOf(shadow, span.startTree, end, true)).map((c) => c.path)),
+        );
+      })();
+      this.track(this.ending, agentKey(span.id), capture);
+      await capture;
     })().catch((error: unknown) => this.logger.warn(`Snapshot after agent ${agentId}: ${message(error)}`));
-    this.track(this.ending, agentKey(span.id), pending);
+    this.track(this.endingAgents, agentId, pending);
   }
 
   /** The folder was just changed by pi-kit itself (a revert): the next request captures it again. */
@@ -292,42 +305,43 @@ export class RunSnapshotsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private started(threadId: string): void {
-    const run = this.log.lastRun(threadId);
-    if (!run) return;
     // pi is already working (a turn it started by itself, not one we prompted): a capture now would already hold its first edits. The folder
     // as the thread's previous run left it is the "before" then.
     const already = !!this.sessions?.has(threadId) && this.sessions.isStreaming(threadId);
     const deadline = startDeadline();
-    const capture = async (folder: string): Promise<void> => {
-      const shadow = await this.shadow(folder);
-      if (already) {
-        // The previous run may still be taking its end snapshot, which is this run's "before".
-        const others = this.log.runsOf(threadId).filter((r) => r.runId !== run.runId);
-        await Promise.all(others.flatMap((r) => this.ending.get(r.runId) ?? []));
-        const previous = this.log
-          .runsOf(threadId)
-          .filter((r) => r.runId !== run.runId && r.folder === folder && r.endTree)
-          .at(-1);
-        this.log.setStartTree(run.runId, folder, previous?.endTree ?? null, shadow?.location);
-        return;
-      }
-      const tree = shadow ? await this.fresh(shadow) : null;
-      const late = deadline.passed();
-      if (late)
-        this.logger.warn(
-          `The snapshot of ${folder} took longer than the run waited for it: run ${run.runId} has no "before".`,
-        );
-      this.log.setStartTree(run.runId, folder, late ? null : tree, shadow?.location);
-    };
-    const failed = (error: unknown): void => this.logger.warn(`Snapshot before run ${run.runId}: ${message(error)}`);
-    const row = this.threads.get(threadId);
-    // A thread this request creates has no row yet: it appears while the run prepares the thread, before pi gets the prompt (`whenStarted` is
-    // asked then). It is snapshotted as soon as it is there.
-    const done = (
-      row
-        ? capture(workFolderOf(row))
-        : this.rowOf(threadId).then((found) => (found ? capture(workFolderOf(found)) : undefined))
-    ).catch(failed);
+    const done = (async () => {
+      const run = await this.log.lastRun(threadId);
+      if (!run) return;
+      const capture = async (folder: string): Promise<void> => {
+        const shadow = await this.shadow(folder);
+        if (already) {
+          // The previous run may still be taking its end snapshot, which is this run's "before".
+          const others = (await this.log.runsOf(threadId)).filter((r) => r.runId !== run.runId);
+          await Promise.all(others.flatMap((r) => this.ending.get(r.runId) ?? []));
+          const previous = (await this.log.runsOf(threadId))
+            .filter((r) => r.runId !== run.runId && r.folder === folder && r.endTree)
+            .at(-1);
+          await this.log.setStartTree(run.runId, folder, previous?.endTree ?? null, shadow?.location);
+          return;
+        }
+        const tree = shadow ? await this.fresh(shadow) : null;
+        const late = deadline.passed();
+        if (late)
+          this.logger.warn(
+            `The snapshot of ${folder} took longer than the run waited for it: run ${run.runId} has no "before".`,
+          );
+        await this.log.setStartTree(run.runId, folder, late ? null : tree, shadow?.location);
+      };
+      const failed = (error: unknown): void => this.logger.warn(`Snapshot before run ${run.runId}: ${message(error)}`);
+      const row = await this.threads.get(threadId);
+      // A thread this request creates has no row yet: it appears while the run prepares the thread, before pi gets the prompt (`whenStarted` is
+      // asked then). It is snapshotted as soon as it is there.
+      await (
+        row
+          ? capture(workFolderOf(row))
+          : this.rowOf(threadId).then((found) => (found ? capture(workFolderOf(found)) : undefined))
+      ).catch(failed);
+    })().catch((error: unknown) => this.logger.warn(`Snapshot before run of ${threadId}: ${message(error)}`));
     const entry = { done, deadline: deadline.reached };
     this.starting.set(threadId, entry);
     void done.finally(() => {
@@ -338,7 +352,7 @@ export class RunSnapshotsService implements OnModuleInit, OnModuleDestroy {
   /** The thread's row, once it exists (a thread the run itself creates); `undefined` after `START_WAIT_MS`. */
   private async rowOf(threadId: string): Promise<ThreadRow | undefined> {
     for (let waited = 0; waited < START_WAIT_MS; waited += ROW_POLL_MS) {
-      const row = this.threads.get(threadId);
+      const row = await this.threads.get(threadId);
       if (row) return row;
       await new Promise((resolve) => setTimeout(resolve, ROW_POLL_MS).unref());
     }
@@ -348,32 +362,40 @@ export class RunSnapshotsService implements OnModuleInit, OnModuleDestroy {
   /** Keeps `pending` under `runId` until it settles. */
   private track(map: Map<string, Promise<void>>, runId: string, pending: Promise<void>): void {
     map.set(runId, pending);
-    void pending.finally(() => {
+    const cleanup = (): void => {
       if (map.get(runId) === pending) map.delete(runId);
-    });
+    };
+    // Attaching finally to a rejecting capture would create an unobserved rejection.
+    void pending.then(cleanup, cleanup);
   }
 
   private ended(threadId: string): void {
-    const runId = this.log.lastRun(threadId)?.runId;
-    if (!runId) return;
     // This run's own start snapshot (the next run cannot start before this one ended): a turn that follows waits for this end, not the reverse.
     const started = this.starting.get(threadId)?.done;
+    const previous = this.endingThreads.get(threadId);
     const pending = (async () => {
-      await started;
-      const run = this.log.runsOf(threadId).find((r) => r.runId === runId);
-      if (!run?.folder) return;
-      const shadow = await this.shadow(run.folder);
-      if (!shadow) return this.folderChanges.publish(run.folder, allChanged());
-      const end = await this.fresh(shadow);
-      this.log.setEndTree(runId, end);
-      // Without a "before" the run's files are unknown: everything is read again.
-      if (!run.startTree) return this.folderChanges.publish(run.folder, allChanged());
-      this.folderChanges.publish(
-        run.folder,
-        batchOf((await this.changesOf(shadow, run.startTree, end, true)).map((c) => c.path)),
-      );
-    })().catch((error: unknown) => this.logger.warn(`Snapshot after run ${runId}: ${message(error)}`));
-    this.track(this.ending, runId, pending);
+      const runId = (await this.log.lastRun(threadId))?.runId;
+      if (!runId) return;
+      const capture = (async () => {
+        await previous;
+        await started;
+        const run = (await this.log.runsOf(threadId)).find((r) => r.runId === runId);
+        if (!run?.folder) return;
+        const shadow = await this.shadow(run.folder);
+        if (!shadow) return this.folderChanges.publish(run.folder, allChanged());
+        const end = await this.fresh(shadow);
+        await this.log.setEndTree(runId, end);
+        // Without a "before" the run's files are unknown: everything is read again.
+        if (!run.startTree) return this.folderChanges.publish(run.folder, allChanged());
+        this.folderChanges.publish(
+          run.folder,
+          batchOf((await this.changesOf(shadow, run.startTree, end, true)).map((c) => c.path)),
+        );
+      })();
+      this.track(this.ending, runId, capture);
+      await capture;
+    })().catch((error: unknown) => this.logger.warn(`Snapshot after run of ${threadId}: ${message(error)}`));
+    this.track(this.endingThreads, threadId, pending);
   }
 }
 

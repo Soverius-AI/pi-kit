@@ -15,10 +15,10 @@ export class LearningThreadsService {
     private readonly threads: ThreadsService,
   ) {}
 
-  open(sourceId: string): Promise<ThreadDetail> {
-    const source = this.rows.get(sourceId);
+  async open(sourceId: string): Promise<ThreadDetail> {
+    const source = await this.rows.get(sourceId);
     if (!source) throw new NotFoundException('There is no such source thread.');
-    if (this.meta.learningSource(sourceId) || this.meta.isVerificationThread(sourceId))
+    if ((await this.meta.learningSource(sourceId)) || (await this.meta.isVerificationThread(sourceId)))
       throw new ConflictException('Choose the original chat to learn from.');
     const pending = this.opening.get(sourceId);
     if (pending) return pending;
@@ -33,16 +33,15 @@ export class LearningThreadsService {
   }
 
   private async ensure(sourceId: string): Promise<ThreadDetail> {
-    const existing = Object.entries(this.meta.learningThreads()).find(
-      ([id, source]) => source === sourceId && this.rows.get(id),
-    );
-    if (existing) return this.threads.patch(existing[0], { archived: false });
-    const source = this.rows.get(sourceId);
+    for (const [id, source] of Object.entries(await this.meta.learningThreads())) {
+      if (source === sourceId && (await this.rows.get(id))) return this.threads.patch(id, { archived: false });
+    }
+    const source = await this.rows.get(sourceId);
     if (!source) throw new NotFoundException('There is no such source thread.');
     const title = `Learn: ${source.title || source.preview || 'Untitled chat'}`.slice(0, 200);
     return this.threads.create(source.cwd, title, undefined, undefined, {
       setup: 'skip',
-      onId: (id) => this.meta.markLearningThread(id, sourceId),
+      onId: async (id) => await this.meta.markLearningThread(id, sourceId),
     });
   }
 }

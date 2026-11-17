@@ -10,9 +10,8 @@ import { firstValueFrom, from, toArray } from 'rxjs';
 import { createModels } from '@earendil-works/pi-ai/models';
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai/providers/faux';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemorySecretStore } from '@pi-kit/secret-store';
-import { AGENT_LIVE_SYNC_RUN, DB_KEY_ACCOUNT } from '@pi-kit/protocol';
-import { isPlainDatabase } from '../db/encryption';
+import { AGENT_LIVE_SYNC_RUN } from '@pi-kit/protocol';
+import { isPlainDatabase } from '../db/database-file-guards';
 import { DatabaseService } from '../db/database.service';
 import { EventLogRepository } from '../db/event-log.repository';
 import { BgAgentRunner } from './bg-agent-runner';
@@ -24,7 +23,6 @@ import type { ProtectionBinding } from '../db/thread-protection.repository';
 import { SandboxPackage, type ThreadProtectionService } from '../pi/thread-protection.service';
 import { ThreadProtectionTesting } from '../pi/thread-protection.testing';
 
-const key = 'cd'.repeat(32);
 let dir: string;
 let project: string;
 let database: DatabaseService;
@@ -39,9 +37,9 @@ function faux(responses: Parameters<ReturnType<typeof fauxProvider>['setResponse
   provider.setResponses(responses);
   return { models, model: `${provider.getModel().provider}/${provider.getModel().id}`, provider };
 }
-const until = async (check: () => boolean, label: string, timeoutMs = 15_000): Promise<void> => {
+const until = async (check: () => boolean | Promise<boolean>, label: string, timeoutMs = 15_000): Promise<void> => {
   const deadline = Date.now() + timeoutMs;
-  while (!check()) {
+  while (!(await check())) {
     if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}`);
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
@@ -73,7 +71,7 @@ const make = (protection = ThreadProtectionTesting.bypass()): BgAgentsService =>
     database,
     agents,
     {
-      cwdOf: () => project,
+      cwdOf: async () => project,
       deliver: async (threadId, message) =>
         void delivered.push({ threadId, content: message.content, details: message.details }),
       allowed: async () => undefined,
@@ -87,13 +85,13 @@ const make = (protection = ThreadProtectionTesting.bypass()): BgAgentsService =>
   );
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'pk-bg-service-'));
   project = join(dir, 'project');
   rmSync(project, { recursive: true, force: true });
   writeFileSync(join(dir, 'README.md'), 'hello\n');
   project = dir;
-  database = new DatabaseService({ dataDir: dir }, { key });
+  database = await DatabaseService.create({ dataDir: dir });
   agents = new BgAgentsRepository(database);
   delivered.length = 0;
   service = make();
@@ -101,7 +99,7 @@ beforeEach(() => {
 afterEach(async () => {
   vi.restoreAllMocks();
   await service.close();
-  database.onApplicationShutdown();
+  await database.onApplicationShutdown();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -149,7 +147,7 @@ describe('BgAgentsService', () => {
       brief: 'Work.',
       model: first.model,
     });
-    await until(() => service.get(row.id)?.status === 'done', 'protected task done');
+    await until(async () => (await service.get(row.id))?.status === 'done', 'protected task done');
     expect(fixture.owner).toHaveBeenCalledWith(
       `agent:${row.id}`,
       project,
@@ -162,7 +160,7 @@ describe('BgAgentsService', () => {
     service = make(fixture.protection);
     await service.open(faux([fauxAssistantMessage('Second task done.')]).models);
     await service.send(row.id, 'More work.', 'followUp', 'second');
-    await until(() => fixture.owner.mock.calls.length > 0, 'saved owner binding');
+    await until(async () => fixture.owner.mock.calls.length > 0, 'saved owner binding');
     expect(fixture.owner).toHaveBeenCalledWith(
       `agent:${row.id}`,
       project,
@@ -182,13 +180,13 @@ describe('BgAgentsService', () => {
       brief: 'Work.',
       model: first.model,
     });
-    await until(() => service.get(row.id)?.status === 'done', 'bypass task done');
+    await until(async () => (await service.get(row.id))?.status === 'done', 'bypass task done');
     fixture.change('sandboxed');
     await service.close();
     service = make(fixture.protection);
     await service.open(faux([fauxAssistantMessage('Second task done.')]).models);
     await service.send(row.id, 'More work.', 'followUp', 'second');
-    await until(() => service.get(row.id)?.status === 'done', 'saved bypass task done');
+    await until(async () => (await service.get(row.id))?.status === 'done', 'saved bypass task done');
     expect(fixture.owner).not.toHaveBeenCalled();
   });
 
@@ -208,15 +206,15 @@ describe('BgAgentsService', () => {
       brief: 'Work.',
       model: first.model,
     });
-    await until(() => service.userQuestions('protected').length === 1, 'question waiting');
-    expect(fixture.setAgentGuard.mock.calls[0][0]('protected')).toBe(true);
+    await until(async () => (await service.userQuestions('protected')).length === 1, 'question waiting');
+    expect(await fixture.setAgentGuard.mock.calls[0][0]('protected')).toBe(true);
     await service.close();
     fixture.owner.mockClear();
     service = make(fixture.protection);
     await service.open(faux([]).models);
-    expect(service.get(row.id)?.status).toBe('blocked');
-    expect(() => service.resumeAgent(row.id)).toThrow(/cannot be replayed/);
-    expect(() => service.discardCleanup(row.id)).toThrow(/cannot be replayed/);
+    expect((await service.get(row.id))?.status).toBe('blocked');
+    await expect(service.resumeAgent(row.id)).rejects.toThrow(/cannot be replayed/);
+    await expect(service.discardCleanup(row.id)).rejects.toThrow(/cannot be replayed/);
     await expect(service.send(row.id, 'retry', 'steer', 'retry')).rejects.toThrow(/cannot be replayed/);
     expect(fixture.owner).not.toHaveBeenCalled();
     await service.stop(row.id);
@@ -232,62 +230,58 @@ describe('BgAgentsService', () => {
     await expect(
       service.spawn({ threadId: 'protected', name: 'one', role: 'worker', brief: 'Work.', model: first.model }),
     ).rejects.toThrow('The sandbox is unavailable.');
-    expect(fixture.setAgentGuard.mock.calls[0][0]('protected')).toBe(false);
+    expect(await fixture.setAgentGuard.mock.calls[0][0]('protected')).toBe(false);
     expect(fixture.release).toHaveBeenCalled();
   });
 
   it('keeps background agents available without a credential store', async () => {
     await service.close();
-    database.onApplicationShutdown();
+    await database.onApplicationShutdown();
     dir = mkdtempSync(join(tmpdir(), 'pk-bg-plain-')); // a data folder with a plaintext pi-kit.sqlite: no key
-    database = new DatabaseService({ dataDir: dir });
+    database = await DatabaseService.create({ dataDir: dir });
     agents = new BgAgentsRepository(database);
     service = make();
     const { models, model } = faux([fauxAssistantMessage('Completed without Keychain.')]);
     await service.open(models);
     expect(service.state().enabled).toBe(true);
     const row = await service.spawn({ threadId: 't1', name: 'worker', role: 'worker', brief: 'Do the task.', model });
-    await until(() => service.get(row.id)?.status === 'done', 'the plaintext agent to finish');
-    expect(service.list('t1').map((agent) => agent.id)).toContain(row.id);
+    await until(async () => (await service.get(row.id))?.status === 'done', 'the plaintext agent to finish');
+    expect((await service.list('t1')).map((agent) => agent.id)).toContain(row.id);
     await service.close();
     expect(readFileSync(join(dir, 'bg-agents.sqlite')).subarray(0, 16).toString('latin1')).toBe('SQLite format 3\0');
     await service.open(faux([]).models);
     expect(service.state().enabled).toBe(true);
-    expect(service.get(row.id)?.status).toBe('done');
+    expect((await service.get(row.id))?.status).toBe('done');
     expect(await service.conversationOf(row.id)).toBeDefined();
   });
 
-  it('encrypts plaintext durable conversations on the next enabled restart and retains encryption after opt-out', async () => {
+  it('preserves plaintext conversations across restarts', async () => {
     await service.close();
-    database.onApplicationShutdown();
+    await database.onApplicationShutdown();
     rmSync(dir, { recursive: true, force: true });
-    database = new DatabaseService({ dataDir: dir });
+    database = await DatabaseService.create({ dataDir: dir });
     agents = new BgAgentsRepository(database);
     service = make();
-    const store = new MemorySecretStore();
-    store.set(DB_KEY_ACCOUNT, key);
     const { models, model } = faux([fauxAssistantMessage('Retain this conversation across protection changes.')]);
     await service.open(models);
     const row = await service.spawn({ threadId: 't1', name: 'worker', role: 'worker', brief: 'Work.', model });
-    await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
+    await until(async () => (await service.get(row.id))?.status === 'done', 'the agent to finish');
     await service.close();
     expect(isPlainDatabase(join(dir, 'bg-agents.sqlite'))).toBe(true);
-    database.onApplicationShutdown();
+    await database.onApplicationShutdown();
 
-    for (const enabled of [true, false]) {
-      database = await DatabaseService.create({ dataDir: dir }, store, enabled);
-      expect(database.recoveryKey()).toBe(key);
+    for (const restart of [0, 1]) {
+      database = await DatabaseService.create({ dataDir: dir });
       agents = new BgAgentsRepository(database);
       service = make();
       await service.open(faux([]).models);
       expect(service.state().enabled).toBe(true);
-      expect(service.get(row.id)?.status).toBe('done');
+      expect((await service.get(row.id))?.status).toBe('done');
       const view = await (await service.conversationOf(row.id))!.context(BACKGROUND_CONTEXT);
       expect(JSON.stringify(view.entries)).toContain('Retain this conversation across protection changes.');
       await service.close();
-      expect(isPlainDatabase(join(dir, 'bg-agents.sqlite'))).toBe(false);
-      expect(store.get(DB_KEY_ACCOUNT)).toBe(key);
-      if (enabled) database.onApplicationShutdown();
+      expect(isPlainDatabase(join(dir, 'bg-agents.sqlite'))).toBe(true);
+      if (restart === 0) await database.onApplicationShutdown();
     }
   });
 
@@ -307,11 +301,11 @@ describe('BgAgentsService', () => {
       model,
     });
     expect(row).toMatchObject({ name: 'reviewer', permission: 'read-only', status: 'active', threadId: 't1' });
-    expect(service.list('t1').map((a) => a.id)).toEqual([row.id]);
+    expect((await service.list('t1')).map((a) => a.id)).toEqual([row.id]);
     // The write is the user's call: denied here.
-    await until(() => service.userQuestions('t1').length === 1, 'the block question');
-    await service.answerInterrupt(service.userQuestions('t1')[0].id, { value: 'Deny' });
-    await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
+    await until(async () => (await service.userQuestions('t1')).length === 1, 'the block question');
+    await service.answerInterrupt((await service.userQuestions('t1'))[0].id, { value: 'Deny' });
+    await until(async () => (await service.get(row.id))?.status === 'done', 'the agent to finish');
     expect(existsSync(join(dir, 'notes.md'))).toBe(false);
     const view = await (await service.conversationOf(row.id))!.context(BACKGROUND_CONTEXT);
     const system = view.entries.find((entry) => entry.kind === 'pi.system');
@@ -324,8 +318,8 @@ describe('BgAgentsService', () => {
     expect(results[0].content?.[0]?.text).toContain('read-only');
     expect(results[1].isError).toBeFalsy();
     expect(results[1].content?.[0]?.text).toContain('hello');
-    expect(service.get(row.id)).toMatchObject({ status: 'done', cleanup: null });
-    expect(service.get(row.id)?.finishedAt).toBeGreaterThan(0);
+    expect(await service.get(row.id)).toMatchObject({ status: 'done', cleanup: null });
+    expect((await service.get(row.id))?.finishedAt).toBeGreaterThan(0);
   });
 
   it('delivers a report to the thread once, answers agent_send and agent_wait, and a deleted thread takes its agents along', async () => {
@@ -345,27 +339,30 @@ describe('BgAgentsService', () => {
       details: { agentId: row.id, name: 'tester' },
     });
     expect((delivered[0].details as { reportId: string }).reportId).toBeTruthy();
-    expect(service.toAgent(service.get(row.id) as BgAgentRow)).toMatchObject({
+    expect(service.toAgent((await service.get(row.id)) as BgAgentRow)).toMatchObject({
       id: row.id,
       name: 'tester',
       status: 'done',
       report: 'Tests pass.',
       blocked: null,
     });
-    expect(Object.keys(service.toAgent(service.get(row.id) as BgAgentRow))).not.toContain('cleanup');
+    expect(Object.keys(service.toAgent((await service.get(row.id)) as BgAgentRow))).not.toContain('cleanup');
     // A follow-up that ends without a report is told to the main agent all the same: the old report answered the old task.
     await service.send(row.id, 'One more thing.', 'followUp', 'send:c9');
-    await until(() => delivered.length === 2 && service.get(row.id)?.status === 'done', 'the follow-up to finish');
+    await until(
+      async () => delivered.length === 2 && (await service.get(row.id))?.status === 'done',
+      'the follow-up to finish',
+    );
     expect(delivered[1]).toMatchObject({
       threadId: 't1',
       content: 'Agent "tester" ended without a report.',
       details: { agentId: row.id, name: 'tester', ref: expect.stringMatching(/^end:/) },
     });
     const log = new EventLogRepository(database);
-    expect(log.count(row.id)).toBeGreaterThan(0);
+    expect(await log.count(row.id)).toBeGreaterThan(0);
     await service.deleteThread('t1');
-    expect(service.list('t1')).toEqual([]);
-    expect(log.count(row.id)).toBe(0); // the transcript goes with the agent
+    expect(await service.list('t1')).toEqual([]);
+    expect(await log.count(row.id)).toBe(0); // the transcript goes with the agent
   });
 
   it('tells the main agent when a run fails, once, and not when the agent was stopped', async () => {
@@ -376,28 +373,31 @@ describe('BgAgentsService', () => {
     delivered.length = 0;
     const row = await service.spawn({ threadId: 't1', name: 'broken', role: 'tester', brief: 'Test.', model });
     expect(await service.wait(row.id)).toBe('failed');
-    await until(() => delivered.length === 1, 'the failure to reach the thread');
+    await until(async () => delivered.length === 1, 'the failure to reach the thread');
     expect(delivered[0]).toMatchObject({
       threadId: 't1',
       content: expect.stringMatching(/^Agent "broken" failed: /),
       details: { agentId: row.id, name: 'broken', ref: expect.stringMatching(/^end:/) },
     });
     // Its transcript replays to the live state it ended in: why the run ended without an answer, nothing in flight.
-    const replayed = () =>
-      activityAfter(new EventLogRepository(database).read(row.id).map((stored) => stored.event))?.docs['pi.live'];
-    await until(() => replayed()?.['runFailure'] !== undefined, 'the failure in the replayed live state');
-    expect(replayed()).toMatchObject({ runFailure: { reason: 'model_error' } });
-    expect(replayed()?.['run']).toBeUndefined();
+    const replayed = async () =>
+      activityAfter((await new EventLogRepository(database).read(row.id)).map((stored) => stored.event))?.docs[
+        'pi.live'
+      ];
+    await until(async () => (await replayed())?.['runFailure'] !== undefined, 'the failure in the replayed live state');
+    expect(await replayed()).toMatchObject({ runFailure: { reason: 'model_error' } });
+    expect((await replayed())?.['run']).toBeUndefined();
     // A change while it is idle is a sync run in its log: counted on the agent, and the thread's list told, so a transcript joins.
-    const syncs = service.toAgent(service.get(row.id)!).liveSyncs;
+    const syncs = service.toAgent((await service.get(row.id))!).liveSyncs;
     expect(syncs).toEqual(expect.any(Number));
     const told: string[] = [];
     const quiet = service.onChange((threadId) => void told.push(threadId));
     await (await service.conversationOf(row.id))!.configure({ maxTurns: 3 }, BACKGROUND_CONTEXT);
-    await until(() => service.toAgent(service.get(row.id)!).liveSyncs === syncs + 1, 'the sync run');
+    await until(async () => service.toAgent((await service.get(row.id))!).liveSyncs === syncs + 1, 'the sync run');
+    await until(async () => told.includes('t1'), 'the change listener');
     quiet();
     expect(told).toContain('t1');
-    const logged = new EventLogRepository(database).read(row.id).map((stored) => stored.event);
+    const logged = (await new EventLogRepository(database).read(row.id)).map((stored) => stored.event);
     const sync = logged
       .map(
         (event) =>
@@ -433,7 +433,7 @@ describe('BgAgentsService', () => {
       model: 'router/org/model-x',
     });
     expect(await service.wait(row.id)).toBe('done');
-    expect(service.get(row.id)).toMatchObject({ model: 'router/org/model-x', report: 'Ran on org/model-x.' });
+    expect(await service.get(row.id)).toMatchObject({ model: 'router/org/model-x', report: 'Ran on org/model-x.' });
   });
 
   it('tells the work watcher before an agent gets work in the thread’s folder, and when it stops, each time it works', async () => {
@@ -457,9 +457,9 @@ describe('BgAgentsService', () => {
       permission: 'edit',
       model,
     });
-    await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
+    await until(async () => (await service.get(row.id))?.status === 'done', 'the agent to finish');
     await service.send(row.id, 'More.', 'followUp', 'more-1');
-    await until(() => told.length === 4, 'the second stretch of work to end');
+    await until(async () => told.length === 4, 'the second stretch of work to end');
     expect(told).toEqual(['started t1, made.md not there', 'ended', 'started t1, made.md there', 'ended']);
   });
 
@@ -481,7 +481,7 @@ describe('BgAgentsService', () => {
       permission: 'edit',
       model,
     });
-    await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
+    await until(async () => (await service.get(row.id))?.status === 'done', 'the agent to finish');
     await expect(service.send(row.id, 'More.', 'followUp', 'more-1')).rejects.toThrow('stopped or deleted');
   });
 
@@ -499,12 +499,12 @@ describe('BgAgentsService', () => {
       permission: 'edit',
       model,
     });
-    await until(() => !!service.get(row.id)?.cleanup, 'the command to start');
+    await until(async () => !!(await service.get(row.id))?.cleanup, 'the command to start');
     const started = Date.now();
     await service.stop(row.id);
     await (await service.conversationOf(row.id))!.waitForIdle(BACKGROUND_CONTEXT);
     expect(Date.now() - started).toBeLessThan(10_000);
-    expect(service.get(row.id)).toMatchObject({ status: 'stopped' });
+    expect(await service.get(row.id)).toMatchObject({ status: 'stopped' });
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(delivered.filter((message) => (message.details as { agentId: string }).agentId === row.id)).toEqual([]); // stopped on purpose: nothing to tell
   });
@@ -525,7 +525,7 @@ describe('BgAgentsService', () => {
     const following = runner
       .connect({ threadId: row.id, agentId: 'pi-bg' } as never)
       .subscribe((event) => live.push(event as { type: string; content?: string }));
-    await until(() => delivered.length > 0, 'the question to reach the thread');
+    await until(async () => delivered.length > 0, 'the question to reach the thread');
     expect(delivered[0]).toMatchObject({
       threadId: 't1',
       content: expect.stringContaining('Question from agent "tester"'),
@@ -534,23 +534,26 @@ describe('BgAgentsService', () => {
     const { questionId } = delivered[0].details as { questionId: string; ref: string };
     expect((delivered[0].details as { ref: string }).ref).toBe(questionId);
     await until(
-      () => service.toAgent(service.get(row.id) as BgAgentRow).question?.id === questionId,
+      async () => service.toAgent((await service.get(row.id)) as BgAgentRow).question?.id === questionId,
       'the panel to show the question',
     );
-    expect(service.toAgent(service.get(row.id) as BgAgentRow).question).toMatchObject({
+    expect(service.toAgent((await service.get(row.id)) as BgAgentRow).question).toMatchObject({
       kind: 'main',
       choices: ['yes', 'no'],
       forwarded: false,
       expiresAt: null,
     });
-    expect(service.userQuestions('t1')).toEqual([]);
+    expect(await service.userQuestions('t1')).toEqual([]);
     await expect(service.answerInterrupt('agent-question:nope:x', { value: 'y' })).rejects.toThrow('no question');
     expect(await service.answerInterrupt('not-an-agent-question', { value: 'y' })).toBe(false);
     await service.reply(row.id, questionId, 'No, numbers only.');
     await expect(service.reply(row.id, questionId, 'Again?')).rejects.toThrow('already answered');
-    await until(() => service.get(row.id)?.status === 'done' && delivered.length === 2, 'the agent to finish');
+    await until(
+      async () => (await service.get(row.id))?.status === 'done' && delivered.length === 2,
+      'the agent to finish',
+    );
     expect(delivered[1].content).toBe('Agent "tester" ended without a report.'); // no receipt for the main agent's own answer
-    expect(service.toAgent(service.get(row.id) as BgAgentRow)).toMatchObject({
+    expect(service.toAgent((await service.get(row.id)) as BgAgentRow)).toMatchObject({
       question: null,
       answered: { question: 'Must mul accept bigint?', text: 'No, numbers only.', by: 'main' },
     });
@@ -560,9 +563,9 @@ describe('BgAgentsService', () => {
     };
     expect(result.content?.[0]?.text).toBe('Answered by main agent: No, numbers only.');
     // The agent's transcript (the `pi-bg` log the runner follows) carries the call and its result as they happened.
-    const logged = new EventLogRepository(database)
-      .read(row.id)
-      .map((stored) => stored.event as { type: string; toolCallName?: string; content?: string });
+    const logged = (await new EventLogRepository(database).read(row.id)).map(
+      (stored) => stored.event as { type: string; toolCallName?: string; content?: string },
+    );
     expect(logged.some((event) => event.type === 'TOOL_CALL_START' && event.toolCallName === 'ask')).toBe(true);
     expect(logged.find((event) => event.type === 'TOOL_CALL_RESULT')?.content).toContain('Answered by main agent');
     // What a client replays passes the AG-UI verifier, so the transcript does not break on it.
@@ -573,7 +576,7 @@ describe('BgAgentsService', () => {
       ),
     );
     await until(
-      () =>
+      async () =>
         live.some((event) => event.type === 'TOOL_CALL_RESULT' && !!event.content?.includes('Answered by main agent')),
       'the live follower to get the answer',
     );
@@ -592,7 +595,7 @@ describe('BgAgentsService', () => {
       .connect({ threadId: row.id, agentId: 'pi-bg' } as never)
       .subscribe((event) => live.push(event));
     await until(
-      () => service.get(row.id)?.status === 'done' && runner.liveOf(row.id) === undefined,
+      async () => (await service.get(row.id))?.status === 'done' && runner.liveOf(row.id) === undefined,
       'the agent to finish',
     );
     following.unsubscribe();
@@ -610,7 +613,7 @@ describe('BgAgentsService', () => {
     expect(patches.find((op) => op.path.startsWith('/timing/') && op.op !== 'remove')).toMatchObject({
       value: { startedAt: expect.any(Number) },
     });
-    const replay = new EventLogRepository(database).read(row.id).map((stored) => stored.event);
+    const replay = (await new EventLogRepository(database).read(row.id)).map((stored) => stored.event);
     for (const events of [live, replay]) {
       const activity = events.filter((event) => (event as { activityType?: string }).activityType === 'pi.agent_live');
       expect(activity[0]).toMatchObject({ type: EventType.ACTIVITY_SNAPSHOT, messageId: `agent-live:${row.id}` });
@@ -640,7 +643,7 @@ describe('BgAgentsService', () => {
       database,
       agents,
       {
-        cwdOf: () => project,
+        cwdOf: async () => project,
         deliver: async (_threadId, message) =>
           void (
             message.customType === 'pikit.agent-question' &&
@@ -657,8 +660,8 @@ describe('BgAgentsService', () => {
     );
     await service.open(models);
     const row = await service.spawn({ threadId: 't1', name: 'tester', role: 'tester', brief: 'Test.', model });
-    await until(() => service.get(row.id)?.status === 'done', 'the agent to finish', 20_000);
-    expect(service.toAgent(service.get(row.id) as BgAgentRow)).toMatchObject({
+    await until(async () => (await service.get(row.id))?.status === 'done', 'the agent to finish', 20_000);
+    expect(service.toAgent((await service.get(row.id)) as BgAgentRow)).toMatchObject({
       question: null,
       answered: { text: 'node:test', by: 'main' },
     });
@@ -678,11 +681,11 @@ describe('BgAgentsService', () => {
     await service.open(models);
     delivered.length = 0;
     const row = await service.spawn({ threadId: 't1', name: 'reviewer', role: 'reviewer', brief: 'Review.', model });
-    await until(() => delivered.length > 0, 'the main question');
+    await until(async () => delivered.length > 0, 'the main question');
     const first = (delivered[0].details as { questionId: string }).questionId;
     await service.forward(row.id, first, 'Your call.');
     await expect(service.reply(row.id, first, 'Yes')).rejects.toThrow('forwarded');
-    expect(service.userQuestions('t1')).toEqual([
+    expect(await service.userQuestions('t1')).toEqual([
       {
         id: `agent-question:${row.id}:${first}`,
         agentId: row.id,
@@ -695,26 +698,26 @@ describe('BgAgentsService', () => {
         },
       },
     ]);
-    expect(service.toAgent(service.get(row.id) as BgAgentRow).question).toMatchObject({
+    expect(service.toAgent((await service.get(row.id)) as BgAgentRow).question).toMatchObject({
       kind: 'user',
       forwarded: true,
       note: 'Your call.',
     });
     expect(await service.answerInterrupt(`agent-question:${row.id}:${first}`, { value: 'Yes' })).toBe(true);
-    await until(() => delivered.length === 2, 'the receipt');
+    await until(async () => delivered.length === 2, 'the receipt');
     expect(delivered[1]).toMatchObject({
       content: 'The user answered agent "reviewer"\'s question "Cover negative numbers too?": Yes',
       details: { agentId: row.id, name: 'reviewer', ref: `${first}/answer` },
     });
     // The second question goes to the user directly: no message to the main agent, a select dialog in the thread.
-    await until(() => service.userQuestions('t1').length === 1, 'the user question');
+    await until(async () => (await service.userQuestions('t1')).length === 1, 'the user question');
     expect(delivered).toHaveLength(2);
-    const [dialog] = service.userQuestions('t1');
+    const [dialog] = await service.userQuestions('t1');
     expect(dialog.request).toMatchObject({ method: 'select', options: ['Keep as is', 'Change it'], agent: 'reviewer' });
     await expect(service.reply(row.id, dialog.id.split(':')[2], 'Keep as is')).rejects.toThrow('for the user');
     await service.answer(row.id, dialog.id.split(':')[2], 'cancelled', null);
-    await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
-    expect(service.userQuestions('t1')).toEqual([]);
+    await until(async () => (await service.get(row.id))?.status === 'done', 'the agent to finish');
+    expect(await service.userQuestions('t1')).toEqual([]);
     expect(delivered[2].content).toContain('dismissed');
     const view = await (await service.conversationOf(row.id))!.context(BACKGROUND_CONTEXT);
     const results = view.entries
@@ -736,17 +739,17 @@ describe('BgAgentsService', () => {
     ]);
     await service.open(models);
     const row = await service.spawn({ threadId: 't1', name: 'docs', role: 'docs', brief: 'Ask.', model });
-    await until(() => service.userQuestions('t1').length === 1, 'the question');
+    await until(async () => (await service.userQuestions('t1')).length === 1, 'the question');
     await new Promise((resolve) => setTimeout(resolve, 1100));
-    expect(service.userQuestions('t1')).toHaveLength(1);
-    expect(service.userQuestions('t1')[0].request.expiresAt).toBeUndefined();
-    expect(service.toAgent(service.get(row.id)!).question?.expiresAt).toBeNull();
+    expect(await service.userQuestions('t1')).toHaveLength(1);
+    expect((await service.userQuestions('t1'))[0].request.expiresAt).toBeUndefined();
+    expect(service.toAgent((await service.get(row.id))!).question?.expiresAt).toBeNull();
     await service.close();
     await service.open(models);
-    await until(() => service.userQuestions('t1').length === 1, 'the recovered question');
-    await service.answerInterrupt(service.userQuestions('t1')[0].id, { value: 'My choice' });
+    await until(async () => (await service.userQuestions('t1')).length === 1, 'the recovered question');
+    await service.answerInterrupt((await service.userQuestions('t1'))[0].id, { value: 'My choice' });
     expect(await service.wait(row.id)).toBe('done');
-    expect(service.toAgent(service.get(row.id)!).answered).toMatchObject({ by: 'user', text: 'My choice' });
+    expect(service.toAgent((await service.get(row.id))!).answered).toMatchObject({ by: 'user', text: 'My choice' });
   });
 
   it('waits for completion without an expiry while the agent is still working', async () => {
@@ -764,7 +767,7 @@ describe('BgAgentsService', () => {
     ]);
     await service.open(models);
     const row = await service.spawn({ threadId: 't1', name: 'worker', role: 'work', brief: 'Work.', model });
-    await until(() => generating, 'the held provider request');
+    await until(async () => generating, 'the held provider request');
     let returned = false;
     const waiting = service.wait(row.id).then((status) => {
       returned = true;
@@ -812,7 +815,7 @@ describe('BgAgentsService', () => {
         new Promise((resolve) => setTimeout(() => resolve('still waiting'), 100)),
       ]);
       expect(outcome).toMatchObject({ error: expect.objectContaining({ message: 'Caller stopped waiting.' }) });
-      expect(service.get(row.id)?.status).toBe('active');
+      expect((await service.get(row.id))?.status).toBe('active');
     } finally {
       release();
       await waiting;
@@ -830,25 +833,28 @@ describe('BgAgentsService', () => {
     await service.open(models);
     delivered.length = 0;
     const row = await service.spawn({ threadId: 't1', name: 'worker', role: 'implement', brief: 'Ask first.', model });
-    await until(() => service.userQuestions('t1').length === 1, 'the user question');
-    const [dialog] = service.userQuestions('t1');
+    await until(async () => (await service.userQuestions('t1')).length === 1, 'the user question');
+    const [dialog] = await service.userQuestions('t1');
     const choices = ['First implementation', 'Second implementation'];
     const replies = await Promise.allSettled(choices.map((value) => service.answerInterrupt(dialog.id, { value })));
     expect(replies.filter((reply) => reply.status === 'fulfilled')).toHaveLength(1);
     const rejected = replies.find((reply) => reply.status === 'rejected');
     expect(rejected?.status === 'rejected' && String(rejected.reason)).toContain('already answered');
     const accepted = choices[replies.findIndex((reply) => reply.status === 'fulfilled')];
-    await until(() => service.get(row.id)?.status === 'done', 'the answered agent to finish');
-    expect(service.toAgent(service.get(row.id) as BgAgentRow).answered).toMatchObject({ by: 'user', text: accepted });
-    await until(() => delivered.length === 2, 'the end of the run to reach the thread');
+    await until(async () => (await service.get(row.id))?.status === 'done', 'the answered agent to finish');
+    expect(service.toAgent((await service.get(row.id)) as BgAgentRow).answered).toMatchObject({
+      by: 'user',
+      text: accepted,
+    });
+    await until(async () => delivered.length === 2, 'the end of the run to reach the thread');
     expect(delivered[0].content).toContain(`: ${accepted}`);
     expect(delivered[1].content).toBe('Agent "worker" ended without a report.');
     const log = new EventLogRepository(database);
     await until(
-      () => log.read(row.id).some((stored) => stored.event.type === 'TOOL_CALL_RESULT'),
+      async () => (await log.read(row.id)).some((stored) => stored.event.type === 'TOOL_CALL_RESULT'),
       'the durable tool result',
     );
-    const result = log.read(row.id).find((stored) => stored.event.type === 'TOOL_CALL_RESULT')?.event;
+    const result = (await log.read(row.id)).find((stored) => stored.event.type === 'TOOL_CALL_RESULT')?.event;
     expect(result && 'content' in result ? result.content : undefined).toBe(`Answered by the user: ${accepted}`);
   });
 
@@ -861,7 +867,7 @@ describe('BgAgentsService', () => {
       database,
       agents,
       {
-        cwdOf: () => project,
+        cwdOf: async () => project,
         deliver: async () => undefined,
         allowed: async () => 'Background agents are off for this project: switch them on in Settings › Projects.',
         isolate: async () => {
@@ -876,7 +882,7 @@ describe('BgAgentsService', () => {
     await expect(service.spawn({ threadId: 't1', name: 'a', role: 'r', brief: 'b', model })).rejects.toThrow(
       'switch them on',
     );
-    expect(service.list('t1')).toEqual([]);
+    expect(await service.list('t1')).toEqual([]);
   });
 
   it('lets more than four agents generate concurrently and records every request', async () => {
@@ -899,8 +905,10 @@ describe('BgAgentsService', () => {
         rows.push(
           await service.spawn({ threadId: 't1', name: `agent-${i}`, role: 'test', brief: 'Work concurrently.', model }),
         );
-      await until(() => generating === 5, 'all five model requests to start before any finishes', 5000);
-      expect(rows.map((row) => service.toAgent(service.get(row.id) as BgAgentRow).turns)).toEqual([1, 1, 1, 1, 1]);
+      await until(async () => generating === 5, 'all five model requests to start before any finishes', 5000);
+      expect(
+        await Promise.all(rows.map(async (row) => service.toAgent((await service.get(row.id)) as BgAgentRow).turns)),
+      ).toEqual([1, 1, 1, 1, 1]);
     } finally {
       release();
     }
@@ -916,9 +924,9 @@ describe('BgAgentsService', () => {
     ]);
     await service.open(models);
     const row = await service.spawn({ threadId: 't1', name: 'docs', role: 'docs', brief: 'Docs.', model });
-    await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
-    expect(service.userQuestions('t1')).toEqual([]);
-    expect(service.toAgent(service.get(row.id) as BgAgentRow)).toMatchObject({ turns: 4 });
+    await until(async () => (await service.get(row.id))?.status === 'done', 'the agent to finish');
+    expect(await service.userQuestions('t1')).toEqual([]);
+    expect(service.toAgent((await service.get(row.id)) as BgAgentRow)).toMatchObject({ turns: 4 });
   });
 
   it('turns a blocked action into a question: Deny keeps the file as it is, Allow once lets the call through, Allow all stops the asking', async () => {
@@ -931,10 +939,12 @@ describe('BgAgentsService', () => {
     ]);
     await service.open(models);
     const starts: string[] = [];
-    service.onToolStart((start) => starts.push(`${start.toolName} ${start.args['path']} in ${start.cwd}`));
+    service.onToolStart((start) => {
+      starts.push(`${start.toolName} ${start.args['path']} in ${start.cwd}`);
+    });
     const row = await service.spawn({ threadId: 't1', name: 'reviewer', role: 'reviewer', brief: 'Review.', model });
-    await until(() => service.userQuestions('t1').length === 1, 'the block question');
-    const first = service.userQuestions('t1')[0];
+    await until(async () => (await service.userQuestions('t1')).length === 1, 'the block question');
+    const first = (await service.userQuestions('t1'))[0];
     expect(first.request).toMatchObject({
       method: 'select',
       options: ['Allow once', 'Allow all', 'Deny'],
@@ -943,20 +953,22 @@ describe('BgAgentsService', () => {
     expect(first.request.title).toContain('wants to run write on notes.md');
     await service.answerInterrupt(first.id, { value: 'Deny' });
     await until(
-      () => service.userQuestions('t1').length === 1 && service.userQuestions('t1')[0].id !== first.id,
+      async () =>
+        (await service.userQuestions('t1')).length === 1 && (await service.userQuestions('t1'))[0].id !== first.id,
       'the second block question',
     );
     expect(existsSync(join(dir, 'notes.md'))).toBe(false);
-    await service.answerInterrupt(service.userQuestions('t1')[0].id, { value: 'Allow once' });
+    await service.answerInterrupt((await service.userQuestions('t1'))[0].id, { value: 'Allow once' });
     await until(
-      () => service.userQuestions('t1').length === 1 && readFileSync(join(dir, 'notes.md'), 'utf8') === 'second',
+      async () =>
+        (await service.userQuestions('t1')).length === 1 && readFileSync(join(dir, 'notes.md'), 'utf8') === 'second',
       'the third block question',
     );
     // "Allow all": the third write goes through, the fourth is not asked about, and the agent is `edit` from here on.
-    await service.answerInterrupt(service.userQuestions('t1')[0].id, { value: 'Allow all' });
-    await until(() => service.get(row.id)?.status === 'done', 'the agent to finish');
+    await service.answerInterrupt((await service.userQuestions('t1'))[0].id, { value: 'Allow all' });
+    await until(async () => (await service.get(row.id))?.status === 'done', 'the agent to finish');
     expect(readFileSync(join(dir, 'notes.md'), 'utf8')).toBe('fourth');
-    expect(service.get(row.id)?.permission).toBe('edit');
+    expect((await service.get(row.id))?.permission).toBe('edit');
     expect(starts).toEqual([`write notes.md in ${dir}`, `write notes.md in ${dir}`, `write notes.md in ${dir}`]);
     const view = await (await service.conversationOf(row.id))!.context(BACKGROUND_CONTEXT);
     const results = view.entries
@@ -992,7 +1004,8 @@ describe('BgAgentsService', () => {
       model,
     });
     await until(
-      () => service.get(sender.id)?.status === 'done' && service.get(recipient.id)?.status === 'done',
+      async () =>
+        (await service.get(sender.id))?.status === 'done' && (await service.get(recipient.id))?.status === 'done',
       'both to finish',
     );
     const view = await (await service.conversationOf(recipient.id))!.context(BACKGROUND_CONTEXT);
@@ -1000,11 +1013,11 @@ describe('BgAgentsService', () => {
       .filter((entry) => entry.kind === 'pi.user')
       .map((entry) => (entry.model?.[0] as { content?: unknown }).content);
     expect(inputs).toContain(`Message from agent "reviewer" (agent ${sender.id}): Cover greet too.`);
-    const logged = new EventLogRepository(database)
-      .read(recipient.id)
-      .map((stored) => stored.event as { type: string; name?: string });
+    const logged = (await new EventLogRepository(database).read(recipient.id)).map(
+      (stored) => stored.event as { type: string; name?: string },
+    );
     expect(logged.find((event) => event.type === 'SUBAGENT_STARTED')).toMatchObject({ name: 'reviewer' });
-    expect(service.toAgent(service.get(sender.id) as BgAgentRow)).toMatchObject({ turns: 2 });
+    expect(service.toAgent((await service.get(sender.id)) as BgAgentRow)).toMatchObject({ turns: 2 });
     // Another thread's agent is refused.
     const stranger = await service.spawn({ threadId: 't2', name: 'x', role: 'r', brief: 'b', model });
     await expect(
@@ -1015,9 +1028,11 @@ describe('BgAgentsService', () => {
   });
 
   it('survives a backend kill: the next backend takes the store over, holds the agent for its running command, and goes on when the user discards it', async () => {
+    const marker = join(dir, 'command-started');
+    const command = `printf started > '${marker.replaceAll("'", "'\\''")}'; sleep 5`;
     const worker = spawn(
       process.execPath,
-      [join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'killed-backend.mjs'), dir, key, 'sleep 5'],
+      [join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'killed-backend.mjs'), dir, command],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
     let out = '';
@@ -1042,16 +1057,16 @@ describe('BgAgentsService', () => {
     const { models } = faux([fauxAssistantMessage('Done after the restart.')]);
     await service.open(models);
     expect(JSON.parse(readFileSync(join(dir, LOCK_FILE), 'utf8'))).toMatchObject({ pid: process.pid, epoch: 2 });
-    expect(service.get(id)).toMatchObject({ status: 'blocked', cleanup: { command: 'sleep 5' } });
+    expect(await service.get(id)).toMatchObject({ status: 'blocked', cleanup: { command } });
     expect(service.holds.reasonOf(id)).toBe('cleanup');
     await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(service.get(id)?.status).toBe('blocked'); // held: no request went out
-    service.discardCleanup(id);
-    await until(() => service.get(id)?.status === 'done', 'the agent to finish after the restart');
+    expect((await service.get(id))?.status).toBe('blocked'); // held: no request went out
+    await service.discardCleanup(id);
+    await until(async () => (await service.get(id))?.status === 'done', 'the agent to finish after the restart');
     const view = await (await service.conversationOf(id))!.context(BACKGROUND_CONTEXT);
     const result = view.entries.find((entry) => entry.kind === 'pi.tool-result');
     expect(JSON.stringify(result?.data)).toContain('interrupted');
     expect(JSON.stringify(view.entries.at(-1)?.model)).toContain('Done after the restart.');
-    expect(service.get(id)).toMatchObject({ status: 'done', cleanup: null, ownerEpoch: 2 });
+    expect(await service.get(id)).toMatchObject({ status: 'done', cleanup: null, ownerEpoch: 2 });
   }, 60_000);
 });

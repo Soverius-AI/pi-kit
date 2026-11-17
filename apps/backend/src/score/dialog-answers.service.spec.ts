@@ -12,9 +12,9 @@ let signals: SignalsRepository;
 let service: DialogAnswersService;
 let answerListener: (threadId: string, answered: { request: unknown; answer: unknown }) => void;
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = realpathSync(mkdtempSync(join(tmpdir(), 'pk-answers-')));
-  db = new DatabaseService({ dataDir: dir });
+  db = await DatabaseService.create({ dataDir: dir });
   signals = new SignalsRepository(db);
   service = new DialogAnswersService(
     {
@@ -27,19 +27,19 @@ beforeEach(() => {
   );
   service.onModuleInit();
 });
-afterEach(() => {
+afterEach(async () => {
   service.onModuleDestroy();
-  db.onApplicationShutdown();
+  await db.onApplicationShutdown();
   rmSync(dir, { recursive: true, force: true });
 });
 
 describe('dialogs the person answered', () => {
-  it('are kept for the ledger', () => {
+  it('are kept for the ledger', async () => {
     answerListener('t1', {
       request: { method: 'confirm', title: 'Allow bash?' },
       answer: { status: 'resolved', confirmed: true },
     });
-    expect(signals.answers('t1')).toMatchObject([
+    expect(await signals.answers('t1')).toMatchObject([
       { method: 'confirm', title: 'Allow bash?', status: 'resolved', confirmed: true },
     ]);
   });

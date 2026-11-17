@@ -59,7 +59,7 @@ export class MeatProxyPackage extends PiKitPackage<ScoringModule> {
   private installed = false;
   private checkedAt = 0;
   private checking: Promise<boolean> | undefined;
-  private readonly changeListeners = new Set<(installed: boolean) => void>();
+  private readonly changeListeners = new Set<(installed: boolean) => void | Promise<void>>();
 
   constructor(meta: MetaRepository) {
     super(meta, {
@@ -87,14 +87,14 @@ export class MeatProxyPackage extends PiKitPackage<ScoringModule> {
     this.checking ??= this.installedDir()
       .then((dir) => dir !== undefined)
       .catch(() => false)
-      .then((now) => {
+      .then(async (now) => {
         this.checkedAt = Date.now();
         const changed = now !== this.installed;
         this.installed = now;
         if (changed)
           for (const listener of [...this.changeListeners]) {
             try {
-              listener(now);
+              await listener(now);
             } catch (error) {
               this.logger.warn(
                 `A listener of the meat-proxy package failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -110,7 +110,7 @@ export class MeatProxyPackage extends PiKitPackage<ScoringModule> {
   }
 
   /** Told when the package appears in or disappears from pi's settings. */
-  onInstalledChange(listener: (installed: boolean) => void): () => void {
+  onInstalledChange(listener: (installed: boolean) => void | Promise<void>): () => void {
     this.changeListeners.add(listener);
     return () => this.changeListeners.delete(listener);
   }

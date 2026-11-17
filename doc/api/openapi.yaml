@@ -3689,6 +3689,82 @@ paths:
       tags:
         - worktrees
       x-remote: true
+  /api/watchdog:
+    get:
+      description: Returns the owner opt-in to automatic backend recovery. Disabled by default.
+      operationId: Settings_watchdog
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  supported:
+                    type: boolean
+                required:
+                  - enabled
+                  - supported
+                additionalProperties: false
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Get watchdog settings
+      tags:
+        - pi-settings
+    put:
+      description: Persists and applies automatic backend recovery independently of background-service lifetime.
+      operationId: Settings_setWatchdog
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+              required:
+                - enabled
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  supported:
+                    type: boolean
+                required:
+                  - enabled
+                  - supported
+                additionalProperties: false
+        '400':
+          description: The service host is unavailable or could not save the setting.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Set watchdog settings
+      tags:
+        - pi-settings
   /api/pi-settings:
     get:
       description: Returns pi's settings, the providers with the state of their credentials, the models, the keybindings and pi's version, read for `cwd` (the default folder without it).
@@ -4463,7 +4539,7 @@ paths:
         - secrets
   /api/secrets/credential-storage:
     put:
-      description: Enables credential-store writes and database encryption on the next restart, or opts out of future writes and exports readable user-level credential references to private plaintext configuration files. Existing encrypted databases remain encrypted. Returns account names and failures only, never keys. Does not change OAuth tokens, project configuration or delete credential-store entries. Unreadable references remain until credentials are re-entered.
+      description: Enables credential-store writes, or opts out of future writes and exports readable user-level credential references to private plaintext configuration files. Returns account names and failures only, never keys. Does not change OAuth tokens, project configuration or delete credential-store entries. Unreadable references remain until credentials are re-entered.
       operationId: Secrets_credentialStorage
       parameters: []
       requestBody:
@@ -4604,7 +4680,7 @@ paths:
         - secrets
   /api/secrets/protection:
     get:
-      description: Returns whether the database is encrypted and whether the disk is.
+      description: Returns whether the operating system disk is encrypted.
       operationId: Secrets_protection
       parameters: []
       responses:
@@ -4621,33 +4697,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
       summary: Get how the data is protected
-      tags:
-        - secrets
-  /api/secrets/recovery-key:
-    post:
-      description: Returns the key that recovers the database, once, so the person can write it down. A second call is refused.
-      operationId: Secrets_recoveryKey
-      parameters: []
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RecoveryKey'
-        '401':
-          description: The bearer token is missing or wrong.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '409':
-          description: The recovery key was shown already, or there is none.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-      summary: Show the recovery key
       tags:
         - secrets
   /api/redaction:
@@ -6410,7 +6459,7 @@ paths:
         - update
   /api/update/restart:
     post:
-      description: Ends the backend, and the watchdog starts it again with the newer pi. Settings and the toast call this after an update.
+      description: Requests one explicit backend restart with the newer pi, even when automatic watchdog recovery is off. Settings and the toast call this after an update.
       operationId: Update_restart
       parameters: []
       responses:
@@ -11399,25 +11448,6 @@ components:
       required:
         - enabled
       additionalProperties: false
-    DatabaseProtection:
-      type: object
-      properties:
-        state:
-          type: string
-          enum:
-            - encrypted
-            - plain
-        path:
-          type: string
-        reason:
-          type: string
-        recoveryKeyShown:
-          type: boolean
-      required:
-        - state
-        - path
-        - recoveryKeyShown
-      additionalProperties: false
     DeleteSkill:
       type: object
       properties:
@@ -16094,14 +16124,6 @@ components:
         - message
         - ms
       additionalProperties: false
-    RecoveryKey:
-      type: object
-      properties:
-        key:
-          type: string
-      required:
-        - key
-      additionalProperties: false
     RedactionState:
       type: object
       properties:
@@ -16473,12 +16495,9 @@ components:
     SecretsProtection:
       type: object
       properties:
-        database:
-          $ref: '#/components/schemas/DatabaseProtection'
         disk:
           $ref: '#/components/schemas/DiskEncryption'
       required:
-        - database
         - disk
       additionalProperties: false
     SecretsStatus:

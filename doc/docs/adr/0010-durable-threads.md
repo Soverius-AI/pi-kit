@@ -3,6 +3,8 @@
 Status: Accepted
 Date: 2026-10-15
 
+> Runtime storage update: [ADR-0037](0037-async-sqlite.md) supersedes the driver and database-encryption details below. The async backend uses AppThreat SQLite, creates private plaintext databases and refuses encrypted profiles without modifying their originals. Credential storage remains separate.
+
 ## Context
 
 `PiAgentRunner` replaces `InMemoryAgentRunner` under CopilotKit's runtime, the thread list lives in SQLite next to

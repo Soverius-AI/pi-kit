@@ -59,8 +59,10 @@ export class ThreadsController {
       'Lists the threads of one project folder, or of every project without `workspace`. Archived threads come with `archived=1`.',
   })
   @Responds(ThreadSummarySchema, { array: true })
-  list(@Query({ schema: ListThreadsQuerySchema }) query: z.infer<typeof ListThreadsQuerySchema>): ThreadSummary[] {
-    return this.threads.list({
+  async list(
+    @Query({ schema: ListThreadsQuerySchema }) query: z.infer<typeof ListThreadsQuerySchema>,
+  ): Promise<ThreadSummary[]> {
+    return await this.threads.list({
       workspace: query.workspace || undefined,
       includeArchived: query.archived === '1' || query.archived === 'true',
     });
@@ -80,7 +82,7 @@ export class ThreadsController {
       '`list` when threads or projects were added, removed, renamed or reordered, and a `ping` every 20 seconds.',
   })
   @Streams(ThreadsEventSchema, 'The stream stays open until the client closes it.')
-  events(@Res() res: Response): void {
+  async events(@Res() res: Response): Promise<void> {
     res
       .status(200)
       .set({ 'Content-Type': 'application/x-ndjson', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
@@ -88,14 +90,33 @@ export class ThreadsController {
     const send = (event: ThreadsEvent): void => {
       if (!res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
     };
-    // Subscribe before the snapshot is read: a change in between is sent twice rather than lost.
-    const leave = this.status.subscribe(send);
-    send({ type: 'snapshot', states: this.status.snapshot() });
-    const ping = setInterval(() => send({ type: 'ping' }), STATUS_PING_MS);
+    // Buffer changes during the asynchronous snapshot: the first line is always a snapshot,
+    // and no update that raced with its reads is lost or sent ahead of it.
+    const buffered: ThreadsEvent[] = [];
+    let ready = false;
+    let closed = false;
+    const leave = this.status.subscribe((event) => {
+      if (!ready) buffered.push(event);
+      else send(event);
+    });
+    let ping: ReturnType<typeof setInterval> | undefined;
     res.on('close', () => {
-      clearInterval(ping);
+      closed = true;
+      if (ping) clearInterval(ping);
       leave();
     });
+    try {
+      const states = await this.status.snapshot();
+      if (closed) return;
+      send({ type: 'snapshot', states });
+      for (const event of buffered) send(event);
+      ready = true;
+      ping = setInterval(() => send({ type: 'ping' }), STATUS_PING_MS);
+    } catch (error) {
+      leave();
+      if (!closed) res.end();
+      throw error;
+    }
   }
 
   @Remote()
@@ -110,8 +131,8 @@ export class ThreadsController {
     400: 'The folder is not an existing absolute path, or a worktree cannot be made from it (no git repository, no commits, no base branch), or a branch name is not one.',
     409: 'git could not create the worktree, or the folder cannot switch branch (uncommitted files, a branch a worktree holds, switching turned off).',
   })
-  create(@Body({ schema: CreateThreadSchema }) body: z.infer<typeof CreateThreadSchema>): Promise<ThreadDetail> {
-    return this.threads.create(body.cwd, body.title, body.worktree, body.local);
+  async create(@Body({ schema: CreateThreadSchema }) body: z.infer<typeof CreateThreadSchema>): Promise<ThreadDetail> {
+    return await this.threads.create(body.cwd, body.title, body.worktree, body.local);
   }
 
   /** Says where a thread without a message runs: the folder on another branch, or a new worktree (the Where row of the new-thread page). */
@@ -130,11 +151,11 @@ export class ThreadsController {
     404: NO_THREAD,
     409: 'The thread has begun, or the folder cannot switch branch, or git could not make the worktree.',
   })
-  place(
+  async place(
     @Param('id') id: string,
     @Body({ schema: ThreadPlacementSchema }) body: z.infer<typeof ThreadPlacementSchema>,
   ): Promise<ThreadDetail> {
-    return this.threads.place(id, body);
+    return await this.threads.place(id, body);
   }
 
   @Remote()
@@ -143,8 +164,8 @@ export class ThreadsController {
   @ApiParam(THREAD_ID)
   @Responds(ThreadDetailSchema)
   @Fails({ 404: NO_THREAD })
-  get(@Param('id') id: string): ThreadDetail {
-    return this.threads.open(id);
+  async get(@Param('id') id: string): Promise<ThreadDetail> {
+    return await this.threads.open(id);
   }
 
   @Remote()
@@ -156,8 +177,8 @@ export class ThreadsController {
   @ApiParam(THREAD_ID)
   @Responds(ThreadProtectionSchema)
   @Fails({ 404: NO_THREAD })
-  getProtection(@Param('id') id: string): ThreadProtection {
-    return this.threads.protectionOf(id);
+  async getProtection(@Param('id') id: string): Promise<ThreadProtection> {
+    return await this.threads.protectionOf(id);
   }
 
   @Put('threads/:id/protection')
@@ -176,7 +197,7 @@ export class ThreadsController {
     @Param('id') id: string,
     @Body({ schema: SetThreadProtectionSchema }) body: z.infer<typeof SetThreadProtectionSchema>,
   ): Promise<ThreadProtection> {
-    return this.threads.setProtection(id, body);
+    return await this.threads.setProtection(id, body);
   }
 
   /** The user looked at the thread: clears its unread dot and "cli" badge. */
@@ -190,8 +211,8 @@ export class ThreadsController {
   @ApiParam(THREAD_ID)
   @ApiNoContentResponse({ description: 'The thread is marked as seen.' })
   @Fails({ 404: NO_THREAD })
-  seen(@Param('id') id: string): void {
-    this.threads.markSeen(id);
+  async seen(@Param('id') id: string): Promise<void> {
+    await this.threads.markSeen(id);
   }
 
   @Remote()
@@ -204,11 +225,11 @@ export class ThreadsController {
   @ApiParam(THREAD_ID)
   @Responds(ThreadDetailSchema)
   @Fails({ 404: NO_THREAD, 409: 'Archiving cannot remove the worktree while it holds uncommitted changes.' })
-  patch(
+  async patch(
     @Param('id') id: string,
     @Body({ schema: PatchThreadSchema }) body: z.infer<typeof PatchThreadSchema>,
   ): Promise<ThreadDetail> {
-    return this.threads.patch(id, body);
+    return await this.threads.patch(id, body);
   }
 
   /** Deletes the thread. `?worktree=remove` also removes its worktree (409 while it holds uncommitted changes), `?worktree=force` whatever it holds; the default keeps it. */
@@ -243,11 +264,11 @@ export class ThreadsController {
   @ApiParam(THREAD_ID)
   @Responds(ThreadDetailSchema, { status: 201 })
   @Fails({ 404: NO_THREAD, 409: 'The thread has no messages to fork yet.' })
-  fork(
+  async fork(
     @Param('id') id: string,
     @Body({ schema: ForkThreadSchema }) body: z.infer<typeof ForkThreadSchema>,
   ): Promise<ThreadDetail> {
-    return this.threads.fork(id, body);
+    return await this.threads.fork(id, body);
   }
 
   @Remote()
@@ -259,11 +280,11 @@ export class ThreadsController {
   @ApiParam(THREAD_ID)
   @Responds(ThreadDetailSchema, { status: 201 })
   @Fails({ 404: 'There is no such thread or entry.', 409: 'The thread has no messages to clone yet.' })
-  clone(
+  async clone(
     @Param('id') id: string,
     @Body({ schema: CloneThreadSchema }) body: z.infer<typeof CloneThreadSchema>,
   ): Promise<ThreadDetail> {
-    return this.threads.clone(id, body.entryId);
+    return await this.threads.clone(id, body.entryId);
   }
 
   /** The thumbs up / down the user gave to assistant messages of the thread. */
@@ -276,9 +297,9 @@ export class ThreadsController {
   @ApiParam(THREAD_ID)
   @Responds(FeedbackEntrySchema, { array: true })
   @Fails({ 404: NO_THREAD })
-  listFeedback(@Param('id') id: string): FeedbackEntry[] {
-    this.threads.assertExists(id);
-    return this.feedback.list(id);
+  async listFeedback(@Param('id') id: string): Promise<FeedbackEntry[]> {
+    await this.threads.assertExists(id);
+    return await this.feedback.list(id);
   }
 
   /** Sets, changes or (`rating: null`) clears one message's rating; answers with the thread's ratings. */
@@ -292,12 +313,12 @@ export class ThreadsController {
   @ApiParam(THREAD_ID)
   @Responds(FeedbackEntrySchema, { array: true })
   @Fails({ 404: NO_THREAD })
-  putFeedback(
+  async putFeedback(
     @Param('id') id: string,
     @Body({ schema: PutFeedbackSchema }) body: z.infer<typeof PutFeedbackSchema>,
-  ): FeedbackEntry[] {
-    this.threads.assertExists(id);
-    this.feedback.set(id, body.messageId, body.rating);
-    return this.feedback.list(id);
+  ): Promise<FeedbackEntry[]> {
+    await this.threads.assertExists(id);
+    await this.feedback.set(id, body.messageId, body.rating);
+    return await this.feedback.list(id);
   }
 }

@@ -19,8 +19,8 @@ export class SignalsRepository {
 
   // ---- dialog answers
 
-  noteAnswer(threadId: string, at: number, answer: TranscriptAnswer): void {
-    this.db
+  async noteAnswer(threadId: string, at: number, answer: TranscriptAnswer): Promise<void> {
+    await this.db
       .prepare(
         'INSERT INTO thread_dialog_answers (thread_id, at, method, title, status, confirmed, value) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
@@ -36,12 +36,12 @@ export class SignalsRepository {
   }
 
   /** The answers the person gave in the thread, oldest first. */
-  answers(threadId: string): StoredAnswer[] {
-    const rows = this.db
+  async answers(threadId: string): Promise<StoredAnswer[]> {
+    const rows = (await this.db
       .prepare(
         'SELECT at, method, title, status, confirmed, value FROM thread_dialog_answers WHERE thread_id = ? ORDER BY at, id',
       )
-      .all(threadId) as {
+      .all(threadId)) as {
       at: number;
       method: TranscriptAnswer['method'];
       title: string;

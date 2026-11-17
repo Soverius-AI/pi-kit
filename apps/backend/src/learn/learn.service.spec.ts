@@ -71,22 +71,22 @@ const analysis = {
       : { ok: false as const, skip: text.startsWith('SKIP'), reason: text },
 };
 
-function addThread(id: string): void {
+async function addThread(id: string): Promise<void> {
   const path = join(base, `${id}.jsonl`);
   writeFileSync(path, '{}\n');
-  rows.insertDraft({ id, sessionPath: path, cwd: project, baseCommit: BASE });
+  await rows.insertDraft({ id, sessionPath: path, cwd: project, baseCommit: BASE });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-learn-')));
   project = join(base, 'project');
   agent = join(base, 'agent');
   mkdirSync(project);
   mkdirSync(agent);
   process.env['PI_CODING_AGENT_DIR'] = agent;
-  db = new DatabaseService({ dataDir: join(base, 'data') });
+  db = await DatabaseService.create({ dataDir: join(base, 'data') });
   meta = new MetaRepository(db);
-  meta.touchWorkspace(project);
+  await meta.touchWorkspace(project);
   rows = new ThreadsRepository(db);
   drafts = new SkillDraftsRepository(db);
   attendantRows = new AttendantRepository(db);
@@ -137,8 +137,8 @@ beforeEach(() => {
     attendant as never,
     rows,
     {
-      assertExists: (id: string) => {
-        if (!rows.get(id)) throw new Error('missing');
+      assertExists: async (id: string) => {
+        if (!(await rows.get(id))) throw new Error('missing');
       },
       treeSource: async () => ({ entries: [], leafId: null, path: undefined }),
     } as never,
@@ -183,12 +183,12 @@ beforeEach(() => {
     truncated: false,
     redactions: 0,
   }));
-  addThread('thread-1');
-  addThread('thread-2');
+  await addThread('thread-1');
+  await addThread('thread-2');
 });
 
-afterEach(() => {
-  db.onApplicationShutdown();
+afterEach(async () => {
+  await db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
   if (previousAgentDir === undefined) delete process.env['PI_CODING_AGENT_DIR'];
   else process.env['PI_CODING_AGENT_DIR'] = previousAgentDir;
@@ -198,7 +198,7 @@ const skillsIn = (folder: string): string[] => (existsSync(folder) ? readdirSync
 
 describe('asking for a draft', () => {
   it('refuses to learn recursively from a learning workspace', async () => {
-    meta.markLearningThread('thread-2', 'thread-1');
+    await meta.markLearningThread('thread-2', 'thread-1');
     await expect(service.request('thread-2')).rejects.toThrow('Choose the original chat');
     expect(completions).toEqual([]);
   });
@@ -226,7 +226,7 @@ describe('asking for a draft', () => {
 
   it('opens a learn suggestion for the sidebar chip, with the skill’s name', async () => {
     const { draft } = await service.request('thread-1');
-    expect(attendantRows.openSuggestions('thread-1')).toEqual([
+    expect(await attendantRows.openSuggestions('thread-1')).toEqual([
       expect.objectContaining({ kind: 'learn', target: draft!.id, text: 'add-a-migration' }),
     ]);
   });
@@ -263,11 +263,11 @@ describe('asking for a draft', () => {
       const results = await Promise.all([first, second]);
       const manual = results[attendantFirst ? 1 : 0] as Awaited<ReturnType<LearnService['request']>>;
       expect(manual.status).toBe('drafted');
-      expect(manual.draft?.id).toBe(drafts.forThread('thread-1')?.id);
+      expect(manual.draft?.id).toBe((await drafts.forThread('thread-1'))?.id);
       expect(results[attendantFirst ? 0 : 1]).toBe('drafted');
-      expect(drafts.pending()).toHaveLength(1);
+      expect(await drafts.pending()).toHaveLength(1);
       expect(completions).toHaveLength(1);
-      expect(attendantRows.openSuggestions('thread-1')).toHaveLength(1);
+      expect(await attendantRows.openSuggestions('thread-1')).toHaveLength(1);
     },
   );
 
@@ -284,7 +284,7 @@ describe('asking for a draft', () => {
     expect(asked).toEqual({ status: 'consent', model: 'fake/canned', message: consentSentence('fake/canned') });
     expect(asked.message).toContain('sends the thread’s transcript');
     expect(completions).toHaveLength(0);
-    expect(drafts.forThread('thread-1')).toBeUndefined();
+    expect(await drafts.forThread('thread-1')).toBeUndefined();
 
     const agreed = await service.request('thread-1', { consent: true });
     expect(agreed.status).toBe('drafted');
@@ -297,7 +297,7 @@ describe('asking for a draft', () => {
   });
 
   it('refuses a thread that has no messages', async () => {
-    addThread('empty');
+    await addThread('empty');
     await expect(service.request('empty')).rejects.toThrow(/no messages yet/);
     expect(completions).toHaveLength(0);
   });
@@ -305,7 +305,7 @@ describe('asking for a draft', () => {
   it('fails with the reason when the model’s answer is not a skill, and keeps nothing', async () => {
     reply = () => ({ ok: true, text: 'I do not know', model: 'fake/canned', inputTokens: 1, outputTokens: 1, cost: 0 });
     await expect(service.request('thread-1')).rejects.toThrow(/not a skill/);
-    expect(drafts.forThread('thread-1')).toBeUndefined();
+    expect(await drafts.forThread('thread-1')).toBeUndefined();
     reply = () => ({
       ok: true,
       text: 'SKIP: too specific',
@@ -326,7 +326,7 @@ describe('asking for a draft', () => {
 describe('the attendant drafting by itself after an outcome', () => {
   it('drafts a thread that looks worth it', async () => {
     expect(await service.autoDraft('thread-1')).toBe('drafted');
-    expect(drafts.forThread('thread-1')).toMatchObject({ madeBy: 'attendant', state: 'pending' });
+    expect(await drafts.forThread('thread-1')).toMatchObject({ madeBy: 'attendant', state: 'pending' });
   });
 
   it('leaves a thread that is too small alone, without a model call, and says so once', async () => {
@@ -334,7 +334,7 @@ describe('the attendant drafting by itself after an outcome', () => {
     expect(await service.autoDraft('thread-1')).toBe('not-worth');
     expect(await service.autoDraft('thread-1')).toBe('not-worth');
     expect(completions).toHaveLength(0);
-    expect(drafts.forThread('thread-1')).toBeUndefined();
+    expect(await drafts.forThread('thread-1')).toBeUndefined();
     const note = (service as unknown as { attendant: { note: ReturnType<typeof vi.fn> } }).attendant.note;
     expect(note).toHaveBeenCalledTimes(1);
     expect(note.mock.calls[0][2]).toMatch(/Only 3 tool calls/);
@@ -361,7 +361,7 @@ describe('the attendant drafting by itself after an outcome', () => {
 
   it('does not draft a thread again after a discard', async () => {
     const { draft } = await service.request('thread-1');
-    service.discard(draft!.id);
+    await service.discard(draft!.id);
     expect(await service.autoDraft('thread-1')).toBe('skipped');
     expect(completions).toHaveLength(1);
   });
@@ -370,12 +370,12 @@ describe('the attendant drafting by itself after an outcome', () => {
 describe('the draft’s state machine: pending, then approved or discarded; a discard can be reopened', () => {
   it('discard writes nothing, records the decision and closes the suggestion', async () => {
     const { draft } = await service.request('thread-1');
-    const discarded = service.discard(draft!.id);
+    const discarded = await service.discard(draft!.id);
     expect(discarded).toMatchObject({ state: 'discarded', path: null });
     expect(discarded.decidedAt).toBeGreaterThan(0);
     expect(existsSync(join(project, '.pi'))).toBe(false);
     expect(skillsIn(join(agent, 'skills'))).toEqual([]);
-    expect(attendantRows.openSuggestions('thread-1')).toEqual([]);
+    expect(await attendantRows.openSuggestions('thread-1')).toEqual([]);
     // The thread is not drafted again: asking returns the discarded draft and the model is not asked.
     expect((await service.request('thread-1')).draft).toMatchObject({ id: draft!.id, state: 'discarded' });
     expect(completions).toHaveLength(1);
@@ -383,30 +383,30 @@ describe('the draft’s state machine: pending, then approved or discarded; a di
 
   it('reopen makes it pending again with a suggestion; approving then works', async () => {
     const { draft } = await service.request('thread-1');
-    service.discard(draft!.id);
-    const reopened = service.reopen(draft!.id);
+    await service.discard(draft!.id);
+    const reopened = await service.reopen(draft!.id);
     expect(reopened).toMatchObject({ state: 'pending', decidedAt: null });
-    expect(attendantRows.openSuggestions('thread-1')).toHaveLength(1);
+    expect(await attendantRows.openSuggestions('thread-1')).toHaveLength(1);
     const approved = await service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text });
     expect(approved.draft.state).toBe('approved');
   });
 
   it('refuses transitions that do not exist', async () => {
     const { draft } = await service.request('thread-1');
-    expect(() => service.reopen(draft!.id)).toThrow(/open already/);
-    service.discard(draft!.id);
-    expect(() => service.discard(draft!.id)).toThrow(/discarded already/);
+    await expect((async () => await service.reopen(draft!.id))()).rejects.toThrow(/open already/);
+    await service.discard(draft!.id);
+    await expect((async () => await service.discard(draft!.id))()).rejects.toThrow(/discarded already/);
     await expect(
       service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text }),
     ).rejects.toThrow(/discarded/);
-    service.reopen(draft!.id);
+    await service.reopen(draft!.id);
     await service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text });
-    expect(() => service.reopen(draft!.id)).toThrow(/approved/);
-    expect(() => service.discard(draft!.id)).toThrow(/approved/);
+    await expect((async () => await service.reopen(draft!.id))()).rejects.toThrow(/approved/);
+    await expect((async () => await service.discard(draft!.id))()).rejects.toThrow(/approved/);
     await expect(service.approve(draft!.id, { name: 'other', scope: 'project', text: draft!.text })).rejects.toThrow(
       /approved already/,
     );
-    expect(() => service.discard('nope')).toThrow(/no such draft/);
+    await expect((async () => await service.discard('nope'))()).rejects.toThrow(/no such draft/);
   });
 });
 
@@ -431,7 +431,7 @@ describe('approve is the only writer of a skills folder', () => {
       scope: 'project',
       verification: { requested: true, state: 'not-run' },
     });
-    expect(attendantRows.openSuggestions('thread-1')).toEqual([]);
+    expect(await attendantRows.openSuggestions('thread-1')).toEqual([]);
     expect(reloaded).toContain('thread-1');
     expect(touched.at(-1)).toBe('thread-1');
   });
@@ -466,7 +466,7 @@ describe('approve is the only writer of a skills folder', () => {
     expect(existsSync(join(project, '.pi'))).toBe(false);
     expect(existsSync(join(base, 'escape'))).toBe(false);
     expect(skillsIn(join(agent, 'skills'))).toEqual([]);
-    expect(drafts.get(draft!.id)?.state).toBe('pending');
+    expect((await drafts.get(draft!.id))?.state).toBe('pending');
   });
 
   it('asks for another name when the folder is taken, and does not overwrite it', async () => {
@@ -477,7 +477,7 @@ describe('approve is the only writer of a skills folder', () => {
       service.approve(draft!.id, { name: 'add-a-migration', scope: 'project', text: draft!.text }),
     ).rejects.toThrow(/already exists.*Choose another name/);
     expect(readFileSync(join(project, '.pi', 'skills', 'add-a-migration', 'SKILL.md'), 'utf8')).toBe('mine');
-    expect(drafts.get(draft!.id)?.state).toBe('pending');
+    expect((await drafts.get(draft!.id))?.state).toBe('pending');
     const ok = await service.approve(draft!.id, { name: 'add-a-migration-2', scope: 'project', text: draft!.text });
     expect(ok.draft.state).toBe('approved');
   });
@@ -591,28 +591,28 @@ describe('the learn suggestion after an outcome', () => {
 
   it('proposes learning from a merged thread: a pending draft and the learn suggestion for the sidebar chip', async () => {
     outcomeListener?.('thread-1', 'merged', true);
-    await vi.waitFor(() =>
-      expect(drafts.forThread('thread-1')).toMatchObject({
+    await vi.waitFor(async () =>
+      expect(await drafts.forThread('thread-1')).toMatchObject({
         state: 'pending',
         madeBy: 'attendant',
         name: 'add-a-migration',
       }),
     );
-    expect(attendantRows.openSuggestions('thread-1')).toEqual([
+    expect(await attendantRows.openSuggestions('thread-1')).toEqual([
       expect.objectContaining({ kind: 'learn', text: 'add-a-migration' }),
     ]);
-    expect(attendantRows.openSuggestions('thread-2')).toEqual([]);
+    expect(await attendantRows.openSuggestions('thread-2')).toEqual([]);
   });
 
   it('does not draft a thread again after the person discarded its draft, however often an outcome lands', async () => {
     const { draft } = await service.request('thread-1');
-    service.discard(draft!.id);
+    await service.discard(draft!.id);
     outcomeListener?.('thread-1', 'merged', false);
     outcomeListener?.('thread-1', 'pr', false);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(completions).toHaveLength(1);
-    expect(drafts.forThread('thread-1')).toMatchObject({ id: draft!.id, state: 'discarded' });
-    expect(attendantRows.openSuggestions('thread-1')).toEqual([]);
+    expect(await drafts.forThread('thread-1')).toMatchObject({ id: draft!.id, state: 'discarded' });
+    expect(await attendantRows.openSuggestions('thread-1')).toEqual([]);
   });
 
   it('does not draft while a draft is pending, approved, or the attendant is off, or for a replay thread', async () => {
@@ -623,11 +623,11 @@ describe('the learn suggestion after an outcome', () => {
     settings.enabled = false;
     outcomeListener?.('thread-2', 'merged', true);
     settings.enabled = true;
-    meta.markVerificationThread('thread-2', 'some-draft');
+    await meta.markVerificationThread('thread-2', 'some-draft');
     outcomeListener?.('thread-2', 'merged', true);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(completions).toHaveLength(1);
-    expect(drafts.forThread('thread-2')).toBeUndefined();
+    expect(await drafts.forThread('thread-2')).toBeUndefined();
   });
 });
 
@@ -683,7 +683,7 @@ describe('an approved skill after the fact: edit, retire, restore', () => {
       files: { reproduced: 2, expected: 2, extra: 0 },
       hunks: { matched: 2, expected: 2, actual: 2 },
     };
-    drafts.setVerification(id, verification);
+    await drafts.setVerification(id, verification);
     expect(verifiedResultOfText((await service.saveApproved(id, { text })).text)).toBe('pass');
     const edited = await service.saveApproved(id, { text: text.replace('2. Run the tests', '2. Run the tests twice') });
     expect(verifiedResultOfText(edited.text)).toBeUndefined();
@@ -692,9 +692,9 @@ describe('an approved skill after the fact: edit, retire, restore', () => {
 
   it('refuses to save while a replay runs, when the file is gone, and for a skill that is not approved', async () => {
     const text = readFileSync(skillFile(), 'utf8');
-    drafts.setVerification(id, { state: 'running' });
+    await drafts.setVerification(id, { state: 'running' });
     await expect(service.saveApproved(id, { text })).rejects.toThrow(/being verified/);
-    drafts.setVerification(id, null);
+    await drafts.setVerification(id, null);
     const second = await service.request('thread-2');
     await expect(service.saveApproved(second.draft!.id, { text })).rejects.toThrow(/not an approved skill/);
     rmSync(join(project, '.pi', 'skills', 'add-a-migration'), { recursive: true });
@@ -705,7 +705,7 @@ describe('an approved skill after the fact: edit, retire, restore', () => {
     const before = readFileSync(skillFile(), 'utf8');
     const retired = await service.retire(id);
     expect(retired.state).toBe('approved');
-    expect(drafts.retiredAt(id)).toBeGreaterThan(0);
+    expect(await drafts.retiredAt(id)).toBeGreaterThan(0);
     expect(existsSync(skillFile())).toBe(false);
     expect(readFileSync(retiredFile(), 'utf8')).toBe(before);
     expect(reloaded).toContain('thread-1');
@@ -736,7 +736,7 @@ describe('an approved skill after the fact: edit, retire, restore', () => {
     listed = [];
     reloaded.length = 0;
     await service.unretire(id);
-    expect(drafts.retiredAt(id)).toBeNull();
+    expect(await drafts.retiredAt(id)).toBeNull();
     expect(existsSync(skillFile())).toBe(true);
     expect(existsSync(retiredFile())).toBe(false);
     expect(reloaded).toContain('thread-1');
@@ -749,14 +749,14 @@ describe('an approved skill after the fact: edit, retire, restore', () => {
     );
     await expect(service.retire(id)).rejects.toThrow(/not where pi-kit wrote it/);
     expect(existsSync(skillFile())).toBe(true);
-    expect(drafts.retiredAt(id)).toBeNull();
+    expect(await drafts.retiredAt(id)).toBeNull();
   });
 
   it('syncApprovedText brings a hand edit of the file into the draft, for a replay', async () => {
     const edited = readFileSync(skillFile(), 'utf8').replace('2. Run the tests', '2. Run the tests by hand');
     writeFileSync(skillFile(), edited);
-    expect(service.syncApprovedText(id).text).toBe(edited);
-    expect(drafts.get(id)?.text).toBe(edited);
+    expect((await service.syncApprovedText(id)).text).toBe(edited);
+    expect((await drafts.get(id))?.text).toBe(edited);
   });
 });
 
@@ -775,7 +775,7 @@ describe('verification and the approval', () => {
 
   it('states the replay in the written file, but only a replay of exactly this text', async () => {
     const { draft } = await service.request('thread-1');
-    drafts.setVerification(draft!.id, finished(draft!.text));
+    await drafts.setVerification(draft!.id, finished(draft!.text));
     const approved = await service.approve(draft!.id, {
       name: 'add-a-migration',
       scope: 'project',
@@ -789,7 +789,7 @@ describe('verification and the approval', () => {
 
   it('writes verified: null for a text that was edited after the replay', async () => {
     const { draft } = await service.request('thread-1');
-    drafts.setVerification(draft!.id, finished(draft!.text));
+    await drafts.setVerification(draft!.id, finished(draft!.text));
     const approved = await service.approve(draft!.id, {
       name: 'add-a-migration',
       scope: 'project',
@@ -807,7 +807,10 @@ describe('verification and the approval', () => {
     expect(readFileSync(approved.path, 'utf8')).not.toContain('9/9');
 
     const second = await service.request('thread-2');
-    drafts.setVerification(second.draft!.id, finished(second.draft!.text, { state: 'running', result: undefined }));
+    await drafts.setVerification(
+      second.draft!.id,
+      finished(second.draft!.text, { state: 'running', result: undefined }),
+    );
     const other = await service.approve(second.draft!.id, {
       name: 'second-skill',
       scope: 'user',
@@ -818,7 +821,7 @@ describe('verification and the approval', () => {
 
   it('the Verify first wish is added to a record that exists, and not in its place', async () => {
     const { draft } = await service.request('thread-1');
-    drafts.setVerification(draft!.id, finished(draft!.text, { result: 'partial' }));
+    await drafts.setVerification(draft!.id, finished(draft!.text, { result: 'partial' }));
     const approved = await service.approve(draft!.id, {
       name: 'add-a-migration',
       scope: 'project',
@@ -837,7 +840,7 @@ describe('verification and the approval', () => {
   });
 
   it('draws nothing from a replay thread, which has nothing to teach', async () => {
-    meta.markVerificationThread('thread-1', 'some-draft');
+    await meta.markVerificationThread('thread-1', 'some-draft');
     await expect(service.request('thread-1')).rejects.toThrow(/replayed a skill/);
     expect(completions).toHaveLength(0);
   });
@@ -875,7 +878,7 @@ describe('the plugin API (doc/docs/plugins.md)', () => {
       ok: true,
       outcome: { kind: 'merged', base: BASE, head: HEAD },
     });
-    addThread('thread-3');
+    await addThread('thread-3');
     expect(await service.plugin('thread-3', PLUGIN_CHANNELS.outcome, { requestId: 'r' })).toMatchObject({
       ok: true,
       outcome: null,
@@ -952,10 +955,10 @@ describe('the plugin API (doc/docs/plugins.md)', () => {
       service.useVerifier({
         start: async (id, body) => {
           started.push({ id, ...(body?.prompt ? { prompt: body.prompt } : {}) });
-          return drafts.get(id) as SkillDraft;
+          return (await drafts.get(id)) as SkillDraft;
         },
         whenDone: async (id) => {
-          drafts.setVerification(id, done);
+          await drafts.setVerification(id, done);
           return done;
         },
       });
@@ -981,7 +984,7 @@ describe('the plugin API (doc/docs/plugins.md)', () => {
       expect(
         await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r', start: false }),
       ).toMatchObject({ ok: true, verification: null });
-      drafts.setVerification(draft!.id, done);
+      await drafts.setVerification(draft!.id, done);
       expect(
         await service.plugin('thread-1', PLUGIN_CHANNELS.verified, { requestId: 'r', start: false }),
       ).toMatchObject({ ok: true, verification: { result: 'pass' } });

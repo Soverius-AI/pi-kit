@@ -24,7 +24,8 @@ part of the backend or exposing its loopback token to browsers.
   authentication. Status calls do not attach a desktop or disclose the backend token. An attached desktop receives the
   backend connection and answers desktop-only requests; detached requests receive explicit fallback answers.
 - **Lifetime is an owner choice.** `app` hosts end with the desktop, `login` hosts belong to the OS registration, and
-  `serve` hosts run under `pi-kit serve` in a terminal or another supervisor. The host's watchdog restarts the backend;
+  `serve` hosts run under `pi-kit serve` in a terminal or another supervisor. The host's watchdog restarts the backend only with owner opt-in (default off, persisted in `<dataDir>/watchdog.json`);
+  Settings › General and `pi-kit watchdog enable|disable|status` manage it independently of service lifetime. Explicit update restarts work even when off;
   the OS registration or Windows supervisor restarts the host after failure. Settings › General › Background and
   `pi-kit service install`, `uninstall`, `start`, `stop`, `restart`, `status` and `logs` share service specifications.
   The CLI refuses to stop an app-owned host; a non-running status exits with code 3.

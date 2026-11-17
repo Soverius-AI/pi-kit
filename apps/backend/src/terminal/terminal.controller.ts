@@ -42,12 +42,12 @@ export class TerminalController {
   })
   @Responds(TerminalInfoSchema)
   @Fails({ 404: NO_FOLDER })
-  start(
+  async start(
     @Param('id') id: string,
     @Body({ schema: TerminalStartSchema }) body: z.infer<typeof TerminalStartSchema>,
-  ): TerminalInfo {
-    const cwd = this.meta.requireWorkspace(id);
-    return this.terminals.start(cwd, body.cols, body.rows);
+  ): Promise<TerminalInfo> {
+    const cwd = await this.meta.requireWorkspace(id);
+    return await this.terminals.start(cwd, body.cols, body.rows);
   }
 
   @Remote()
@@ -59,8 +59,10 @@ export class TerminalController {
   })
   @Streams(TerminalEventSchema, 'The stream ends when the shell exits or the client closes it.')
   @Fails({ 404: NO_FOLDER })
-  stream(@Param('id') id: string, @Res() res: Response): void {
-    const cwd = this.meta.requireWorkspace(id);
+  async stream(@Param('id') id: string, @Res() res: Response): Promise<void> {
+    const cwd = await this.meta.requireWorkspace(id);
+    // A client gone during the lookup already fired `close`; subscribing now would leak the listener and keepalive.
+    if (res.destroyed) return;
     res.status(200);
     res.setHeader('Content-Type', 'application/x-ndjson');
     res.setHeader('Cache-Control', 'no-cache');
@@ -87,11 +89,12 @@ export class TerminalController {
   @ApiOperation({ summary: 'Send keystrokes', description: "Writes keystrokes to the project's terminal." })
   @ApiNoContentResponse({ description: 'The input is written.' })
   @Fails({ 404: NO_TERMINAL })
-  input(
+  async input(
     @Param('id') id: string,
     @Body({ schema: TerminalInputSchema }) body: z.infer<typeof TerminalInputSchema>,
-  ): void {
-    if (!this.terminals.write(this.meta.requireWorkspace(id), body.data)) throw new NotFoundException(NO_TERMINAL);
+  ): Promise<void> {
+    if (!this.terminals.write(await this.meta.requireWorkspace(id), body.data))
+      throw new NotFoundException(NO_TERMINAL);
   }
 
   @Remote()
@@ -100,11 +103,11 @@ export class TerminalController {
   @ApiOperation({ summary: 'Resize the terminal', description: "Sets the columns and rows of the project's terminal." })
   @ApiNoContentResponse({ description: 'The terminal is resized.' })
   @Fails({ 404: NO_TERMINAL })
-  resize(
+  async resize(
     @Param('id') id: string,
     @Body({ schema: TerminalResizeSchema }) body: z.infer<typeof TerminalResizeSchema>,
-  ): void {
-    if (!this.terminals.resize(this.meta.requireWorkspace(id), body.cols, body.rows))
+  ): Promise<void> {
+    if (!this.terminals.resize(await this.meta.requireWorkspace(id), body.cols, body.rows))
       throw new NotFoundException(NO_TERMINAL);
   }
 
@@ -114,7 +117,7 @@ export class TerminalController {
   @ApiOperation({ summary: 'Stop the terminal', description: "Ends the shell of the project's terminal." })
   @ApiNoContentResponse({ description: 'The terminal is stopped, or none was running.' })
   @Fails({ 404: NO_FOLDER })
-  kill(@Param('id') id: string): void {
-    this.terminals.kill(this.meta.requireWorkspace(id));
+  async kill(@Param('id') id: string): Promise<void> {
+    this.terminals.kill(await this.meta.requireWorkspace(id));
   }
 }

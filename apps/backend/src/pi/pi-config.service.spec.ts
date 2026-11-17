@@ -359,15 +359,10 @@ describe('an API key through the sign-in, with a credential store', () => {
     process.env['PI_OFFLINE'] = '1';
     writeFileSync(join(agent, 'auth.json'), '{}', { mode: 0o600 });
     const settings = new Map<string, unknown>();
-    const secrets = new SecretsService(
-      store,
-      { dataDir: scratch() },
-      { protection: {}, recoveryKey: () => undefined } as never,
-      {
-        getSetting: (k: string) => settings.get(k),
-        setSetting: (k: string, v: unknown) => void settings.set(k, v),
-      } as never,
-    );
+    const secrets = new SecretsService(store, { dataDir: scratch() }, {
+      getSetting: (k: string) => settings.get(k),
+      setSetting: (k: string, v: unknown) => void settings.set(k, v),
+    } as never);
     // Keep SDK resolver execution inside this fixture, even when a machine helper is on PATH.
     secrets.ensureLauncher();
     return { agent, service: new PiConfigService({} as PiSessionService, secrets), secrets };

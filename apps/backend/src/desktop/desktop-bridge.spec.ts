@@ -16,6 +16,44 @@ describe('DesktopBridge', () => {
     delete process.env['PI_KIT_DESKTOP'];
   });
 
+  it('reports watchdog unsupported without a host and rejects changes', async () => {
+    delete process.env['PI_KIT_DESKTOP'];
+    const bridge = createBridge();
+    expect(await bridge.watchdog()).toEqual({ enabled: false, supported: false });
+    await expect(bridge.watchdog(true)).rejects.toThrow('service host');
+  });
+
+  it('gets and sets watchdog state and requests an independent explicit restart', async () => {
+    process.env['PI_KIT_DESKTOP'] = '1';
+    const sent: { type: string; id: string; enabled?: boolean }[] = [];
+    process.send = ((message: (typeof sent)[number]) => {
+      sent.push(message);
+      queueMicrotask(() =>
+        process.emit(
+          'message',
+          {
+            type: 'desktop-answer',
+            id: message.id,
+            result: message.type === 'watchdog' ? { enabled: message.enabled ?? false, supported: true } : {},
+          } as never,
+          undefined as never,
+        ),
+      );
+      return true;
+    }) as never;
+    const bridge = createBridge();
+    expect(await bridge.watchdog()).toEqual({ enabled: false, supported: true });
+    expect(await bridge.watchdog(true)).toEqual({ enabled: true, supported: true });
+    expect(await bridge.watchdog(false)).toEqual({ enabled: false, supported: true });
+    await bridge.requestBackendRestart();
+    expect(sent.map(({ type, enabled }) => [type, enabled])).toEqual([
+      ['watchdog', undefined],
+      ['watchdog', true],
+      ['watchdog', false],
+      ['backend-restart', undefined],
+    ]);
+  });
+
   it('answers "not opened" with a reason when the backend was not started by the desktop app (dev:web, even with a fork channel)', async () => {
     process.send = vi.fn() as never; // the Nx dev server forks the backend with a channel, but no Electron is on the other end
     const bridge = createBridge();

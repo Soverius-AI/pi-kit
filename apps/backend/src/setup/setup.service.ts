@@ -55,22 +55,22 @@ export class SetupService {
         providers.length > 0 &&
         agent.exists &&
         (agent.auth.length > 0 || agent.hasModelsJson || agent.sessionCount > 0),
-      ...this.onboardingState(),
+      ...(await this.onboardingState()),
       autoOpenOff: process.env['PI_KIT_SKIP_ONBOARDING'] === '1',
       ...(proxy ? { proxy } : {}),
     };
   }
 
-  private onboardingState(): { onboarding?: OnboardingState } {
-    const value = this.meta.getSetting('onboarding') as Partial<OnboardingState> | undefined;
+  private async onboardingState(): Promise<{ onboarding?: OnboardingState }> {
+    const value = (await this.meta.getSetting('onboarding')) as Partial<OnboardingState> | undefined;
     return value && (value.state === 'completed' || value.state === 'skipped') && typeof value.at === 'number'
       ? { onboarding: { state: value.state, at: value.at } }
       : {};
   }
 
-  setState(state: OnboardingState['state']): OnboardingState {
+  async setState(state: OnboardingState['state']): Promise<OnboardingState> {
     const value: OnboardingState = { state, at: Date.now() };
-    this.meta.setSetting('onboarding', value);
+    await this.meta.setSetting('onboarding', value);
     return value;
   }
 

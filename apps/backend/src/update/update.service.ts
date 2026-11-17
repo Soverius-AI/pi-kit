@@ -550,9 +550,10 @@ export class UpdateService implements OnApplicationBootstrap, OnModuleDestroy {
   }
 
   /** "Restart to use …": the process ends, the watchdog starts it again on the same port and token, and the threads replay. */
-  restart(): void {
+  async restart(): Promise<void> {
     if (!this.canRestart)
       throw new ConflictException('Restart the backend yourself to use the new pi (pnpm run dev:web).');
+    if (this.desktop.available) await this.desktop.requestBackendRestart();
     this.log('Restarting the backend.');
     setTimeout(() => process.exit(0), 300);
   }

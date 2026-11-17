@@ -118,22 +118,24 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     private readonly tree: TreeService,
   ) {}
 
-  onModuleInit(): void {
-    this.events.onRunChange((threadId, change) => {
-      if (change !== 'end' || !this.settings().enabled || !this.settings().when.onEnd) return;
+  async onModuleInit(): Promise<void> {
+    this.events.onRunChange(async (threadId, change) => {
+      if (change !== 'end' || !(await this.settings()).enabled || !(await this.settings()).when.onEnd) return;
       const timer = setTimeout(() => {
         this.timers.delete(timer);
-        this.enqueue(threadId, 'end');
+        void this.enqueue(threadId, 'end').catch((error: unknown) =>
+          this.logger.warn(`Could not enqueue attendant work: ${String(error)}`),
+        );
       }, END_DELAY_MS);
       timer.unref();
       this.timers.add(timer);
     });
-    this.sessions.onDialogsChanged((threadId) => {
-      const settings = this.settings();
+    this.sessions.onDialogsChanged(async (threadId) => {
+      const settings = await this.settings();
       if (settings.enabled && settings.when.onInterrupt && this.sessions.pendingDialogs(threadId).length > 0)
-        this.enqueue(threadId, 'interrupt');
+        await this.enqueue(threadId, 'interrupt');
     });
-    this.schedule();
+    await this.schedule();
   }
 
   onModuleDestroy(): void {
@@ -145,8 +147,8 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
 
   // ---- settings and status
 
-  settings(): AttendantSettings {
-    const saved = this.meta.getSetting(SETTINGS_KEY) as Partial<AttendantSettings> | undefined;
+  async settings(): Promise<AttendantSettings> {
+    const saved = (await this.meta.getSetting(SETTINGS_KEY)) as Partial<AttendantSettings> | undefined;
     const merged = {
       ...DEFAULT_ATTENDANT_SETTINGS,
       ...saved,
@@ -156,8 +158,8 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     return parsed.success ? parsed.data : DEFAULT_ATTENDANT_SETTINGS;
   }
 
-  patch(patch: PatchAttendantSettings): AttendantSettings {
-    const before = this.settings();
+  async patch(patch: PatchAttendantSettings): Promise<AttendantSettings> {
+    const before = await this.settings();
     const next: AttendantSettings = {
       ...before,
       ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
@@ -166,8 +168,8 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
       ...(patch.dailyCostCap !== undefined ? { dailyCostCap: patch.dailyCostCap } : {}),
       when: { ...before.when, ...patch.when },
     };
-    this.meta.setSetting(SETTINGS_KEY, next);
-    this.schedule();
+    await this.meta.setSetting(SETTINGS_KEY, next);
+    await this.schedule();
     // Switched off: what is queued is dropped and every request in flight on the attendant's own initiative is aborted, so not one more model call is made on it.
     // A person's request (`complete` with initiative `person`) goes on: they asked for it, and the switch is about what the attendant does by itself.
     if (!next.enabled) {
@@ -176,17 +178,17 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
         if (initiative === 'attendant') controller.abort('off' satisfies AbortReason);
     }
     if (!next.enabled || !next.followUpSuggestions) {
-      this.repo.expirePrompts();
-      this.status.touchAll();
+      await this.repo.expirePrompts();
+      await this.status.touchAll();
     }
     // Switching it on takes a first look at the threads that most need one.
-    if (next.enabled && !before.enabled) this.sweep();
+    if (next.enabled && !before.enabled) await this.sweep();
     return next;
   }
 
   async statusReport(): Promise<AttendantStatus> {
-    const settings = this.settings();
-    const today = this.repo.usageSince(startOfDay());
+    const settings = await this.settings();
+    const today = await this.repo.usageSince(startOfDay());
     let active: ModelChoice | undefined;
     try {
       active = await this.model.resolve(settings);
@@ -197,53 +199,55 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
       settings,
       calls: this.model.calls,
       today,
-      capReached: this.capReached(settings),
+      capReached: await this.capReached(settings),
       queued: this.queue.length + (this.working ? 1 : 0),
       activeModel: active ? labelOf(active) : null,
-      actions: this.repo.actions(100),
+      actions: await this.repo.actions(100),
     };
   }
 
   // ---- scheduling
 
   /** The sweep timer follows the settings: on while the attendant is on and `everyMinutes` is set. */
-  private schedule(): void {
+  private async schedule(): Promise<void> {
     clearInterval(this.sweepTimer);
     this.sweepTimer = undefined;
-    const settings = this.settings();
+    const settings = await this.settings();
     if (this.stopped || !settings.enabled || settings.when.everyMinutes <= 0) return;
-    this.sweepTimer = setInterval(() => this.sweep(), settings.when.everyMinutes * 60_000);
+    this.sweepTimer = setInterval(() => {
+      void this.sweep().catch((error: unknown) => this.logger.warn(`Attendant sweep failed: ${String(error)}`));
+    }, settings.when.everyMinutes * 60_000);
     this.sweepTimer.unref();
   }
 
   /** Looks at the most recent threads whose file changed since the attendant last went over them. */
-  sweep(limit = SWEEP_LIMIT): number {
-    if (!this.settings().enabled) return 0;
+  async sweep(limit = SWEEP_LIMIT): Promise<number> {
+    if (!(await this.settings()).enabled) return 0;
     let queued = 0;
-    const rows = this.threadRows.all().sort((a, b) => b.updatedAt - a.updatedAt);
+    const rows = (await this.threadRows.all()).sort((a, b) => b.updatedAt - a.updatedAt);
     for (const row of rows) {
       if (queued >= limit) break;
       if (
         row.archived ||
         row.messageCount === 0 ||
-        !this.projectAllowed(row.cwd) ||
-        this.meta.isVerificationThread(row.id)
+        !(await this.projectAllowed(row.cwd)) ||
+        (await this.meta.isVerificationThread(row.id))
       )
         continue;
-      if (this.repo.meta(row.id)?.lookedFor === sessionMtime(row.sessionPath)) continue;
-      this.enqueue(row.id, 'sweep');
+      if ((await this.repo.meta(row.id))?.lookedFor === sessionMtime(row.sessionPath)) continue;
+      await this.enqueue(row.id, 'sweep');
       queued += 1;
     }
     return queued;
   }
 
   /** `POST /api/attendant/run`: now, for one thread or for the sweep's selection; refused while the attendant is off. */
-  run(threadId?: string): number {
-    if (!this.settings().enabled) throw new ConflictException('The attendant is off.');
-    if (!threadId) return this.sweep();
-    const row = this.threadRows.get(threadId);
+  async run(threadId?: string): Promise<number> {
+    if (!(await this.settings()).enabled) throw new ConflictException('The attendant is off.');
+    if (!threadId) return await this.sweep();
+    const row = await this.threadRows.get(threadId);
     if (!row) throw new NotFoundException(`Thread ${threadId} not found.`);
-    this.enqueue(threadId, 'manual');
+    await this.enqueue(threadId, 'manual');
     return 1;
   }
 
@@ -251,22 +255,22 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
    * Work another service wants done in the attendant's line (drafting a skill after an outcome): it waits behind the job in flight, ahead of the sweep, and is dropped
    * when the attendant is off or the thread's project opted out. One task per thread and kind (`key`: `learn` by default, the Meat Proxy Score uses `score`) at a time.
    */
-  enqueueTask(threadId: string, task: () => Promise<void>, key = 'learn'): boolean {
-    const row = this.threadRows.get(threadId);
-    if (this.stopped || !this.settings().enabled || !row || !this.projectAllowed(row.cwd)) return false;
+  async enqueueTask(threadId: string, task: () => Promise<void>, key = 'learn'): Promise<boolean> {
+    const row = await this.threadRows.get(threadId);
+    if (this.stopped || !(await this.settings()).enabled || !row || !(await this.projectAllowed(row.cwd))) return false;
     if (
       (this.runningTask === threadId && this.runningKey === key) ||
       this.queue.some((job) => job.task && job.threadId === threadId && (job.key ?? 'learn') === key)
     )
       return false;
     this.insert({ threadId, reason: 'learn', task, key });
-    void this.drain();
+    void this.drain().catch((error: unknown) => this.logger.warn(`Attendant queue failed: ${String(error)}`));
     return true;
   }
 
   /** `provider/id` of the model a request would go to now, or `null` when none is available. */
   async modelLabel(): Promise<string | null> {
-    const choice = await this.model.resolve(this.settings()).catch(() => undefined);
+    const choice = await this.model.resolve(await this.settings()).catch(() => undefined);
     return choice ? labelOf(choice) : null;
   }
 
@@ -288,7 +292,7 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
       signal?: AbortSignal;
     },
   ): Promise<Completion> {
-    const settings = this.settings();
+    const settings = await this.settings();
     if (options.initiative === 'attendant' && !settings.enabled)
       return { ok: false, code: 'off', error: 'The attendant is off.' };
     if (this.stopped || options.signal?.aborted) return CANCELLED;
@@ -298,8 +302,8 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     this.inFlight.set(controller, options.initiative);
     let choice: ModelChoice | undefined;
     try {
-      if (this.capReached(settings)) {
-        this.logCapReached(settings, row);
+      if (await this.capReached(settings)) {
+        await this.logCapReached(settings, row);
         return {
           ok: false,
           code: 'cap',
@@ -308,7 +312,7 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
       }
       choice = await this.model.resolve(settings).catch(() => undefined);
       if (!choice) {
-        this.record(options.kind, 'skipped', row, 'No model is available for the attendant.');
+        await this.record(options.kind, 'skipped', row, 'No model is available for the attendant.');
         return {
           ok: false,
           code: 'no-model',
@@ -320,7 +324,7 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
       const reply = await this.model.ask(prompt, choice, controller.signal);
       if (controller.signal.aborted) return abortedCompletion(controller.signal);
       const line = options.describe(reply.text);
-      this.record(options.kind, line.status, row, line.text, {
+      await this.record(options.kind, line.status, row, line.text, {
         model: reply.model,
         inputTokens: reply.inputTokens,
         outputTokens: reply.outputTokens,
@@ -337,7 +341,7 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       if (controller.signal.aborted) return abortedCompletion(controller.signal);
       const message = error instanceof Error ? error.message : String(error);
-      this.record(options.kind, 'error', row, message, choice ? { model: labelOf(choice) } : {});
+      await this.record(options.kind, 'error', row, message, choice ? { model: labelOf(choice) } : {});
       return { ok: false, code: 'failed', error: message };
     } finally {
       options.signal?.removeEventListener('abort', cancel);
@@ -346,19 +350,19 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** A line in the activity list for something another service decided not to do or did (no model call). */
-  note(
+  async note(
     kind: AttendantKind,
     row: ThreadRow,
     text: string,
     status: 'done' | 'skipped' | 'error' = 'skipped',
     usage: { model?: string; inputTokens?: number; outputTokens?: number; cost?: number } = {},
-  ): void {
-    this.record(kind, status, row, text, usage);
+  ): Promise<void> {
+    await this.record(kind, status, row, text, usage);
   }
 
   /** The project (a folder) lets the attendant act: Settings › Attendant, per-project switch. */
-  allowedIn(cwd: string): boolean {
-    return this.projectAllowed(cwd);
+  async allowedIn(cwd: string): Promise<boolean> {
+    return await this.projectAllowed(cwd);
   }
 
   /**
@@ -366,8 +370,8 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
    * thread you just finished wait behind ten others); a thread that is queued already is not queued twice, and a sweep job that gets a better reason
    * moves forward.
    */
-  enqueue(threadId: string, reason: Reason): void {
-    if (this.stopped || !this.settings().enabled) return;
+  async enqueue(threadId: string, reason: Reason): Promise<void> {
+    if (this.stopped || !(await this.settings()).enabled) return;
     const waiting = this.queue.findIndex((job) => job.threadId === threadId && !job.task);
     if (waiting >= 0) {
       if (reason === 'sweep') return;
@@ -378,7 +382,7 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     } else {
       this.insert({ threadId, reason });
     }
-    void this.drain();
+    void this.drain().catch((error: unknown) => this.logger.warn(`Attendant queue failed: ${String(error)}`));
   }
 
   private insert(job: Job): void {
@@ -409,7 +413,7 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           this.logger.warn(`The attendant failed on thread ${job.threadId}: ${message}`);
-          this.record('summary', 'error', this.threadRows.get(job.threadId), message);
+          await this.record('summary', 'error', await this.threadRows.get(job.threadId), message);
         }
       }
     } finally {
@@ -425,36 +429,36 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
   // ---- one thread
 
   async process(threadId: string, reason: Reason): Promise<void> {
-    const settings = this.settings();
+    const settings = await this.settings();
     if (!settings.enabled) return;
-    const row = this.threadRows.get(threadId);
+    const row = await this.threadRows.get(threadId);
     // A verification run is pi-kit's own scratch thread: it is neither named, summarised nor looked at.
     if (
       !row ||
       row.archived ||
-      !this.projectAllowed(row.cwd) ||
-      this.meta.isVerificationThread(threadId) ||
-      this.meta.learningSource(threadId)
+      !(await this.projectAllowed(row.cwd)) ||
+      (await this.meta.isVerificationThread(threadId)) ||
+      (await this.meta.learningSource(threadId))
     )
       return;
     if (row.messageCount === 0 && reason !== 'interrupt') return;
     // The title is written into the session file; a thread in the middle of a run is looked at when the run ends.
-    if (reason !== 'interrupt' && this.events.lastRun(threadId)?.status === 'running') return;
-    if (this.capReached(settings)) return this.logCapReached(settings, row);
+    if (reason !== 'interrupt' && (await this.events.lastRun(threadId))?.status === 'running') return;
+    if (await this.capReached(settings)) return await this.logCapReached(settings, row);
     const choice = await this.model.resolve(settings);
-    if (!choice) return void this.record('summary', 'skipped', row, 'No model is available for the attendant.');
+    if (!choice) return void (await this.record('summary', 'skipped', row, 'No model is available for the attendant.'));
 
     const source = await this.threads.treeSource(threadId);
     const digest = digestOf(source.entries, source.leafId);
     const dialogs = this.sessions.pendingDialogs(threadId);
     const question = dialogs[0]?.request.title;
     const startMtime = sessionMtime(row.sessionPath);
-    const meta = this.repo.meta(threadId);
+    const meta = await this.repo.meta(threadId);
 
     // 1. a name for a thread that has none
     if (row.title === null && digest.answered) {
       const title = await this.ask('title', row, titlePrompt(digest), choice, cleanTitle);
-      if (title && this.threadRows.get(threadId)?.title === null) {
+      if (title && (await this.threadRows.get(threadId))?.title === null) {
         await this.threads.patch(threadId, { title });
       }
     }
@@ -466,8 +470,8 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     ) {
       const summary = await this.ask('summary', row, summaryPrompt(digest, question), choice, cleanSummary);
       if (summary) {
-        this.repo.setSummary(threadId, summary, sessionMtime(row.sessionPath));
-        this.status.touch(threadId);
+        await this.repo.setSummary(threadId, summary, sessionMtime(row.sessionPath));
+        await this.status.touch(threadId);
       }
     }
 
@@ -477,8 +481,8 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     // 4. answers to mechanical questions
     await this.draftAnswers(row, digest, choice);
 
-    this.repo.markLooked(threadId, sessionMtime(row.sessionPath));
-    this.status.touch(threadId);
+    await this.repo.markLooked(threadId, sessionMtime(row.sessionPath));
+    await this.status.touch(threadId);
   }
 
   private async proposeLabels(
@@ -493,7 +497,7 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     for (const point of tree.rows) {
       if (made >= LABELS_PER_PASS) break;
       if (point.kind !== 'turn' || point.childCount < 2 || point.label || !point.onActivePath) continue;
-      if (this.repo.hasSuggestion(row.id, 'label', point.id)) continue;
+      if (await this.repo.hasSuggestion(row.id, 'label', point.id)) continue;
       const branches = tree.rows.filter((r) => r.parentId === point.id && r.kind === 'turn').map((r) => r.preview);
       const label = await this.ask(
         'label',
@@ -501,8 +505,8 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
         labelPrompt({ preview: point.preview, branches }),
         choice,
         cleanLabel,
-        (text) =>
-          this.repo.addSuggestion({
+        async (text) =>
+          await this.repo.addSuggestion({
             threadId: row.id,
             kind: 'label',
             target: point.id,
@@ -512,29 +516,35 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
       );
       if (label) made += 1;
     }
-    if (made > 0) this.status.touch(row.id);
+    if (made > 0) await this.status.touch(row.id);
   }
 
   private async draftAnswers(row: ThreadRow, digest: ThreadDigest, choice: ModelChoice): Promise<void> {
     for (const dialog of this.sessions.pendingDialogs(row.id)) {
       const options = answerOptions(dialog.request);
       if (!options) continue;
-      if (this.repo.openSuggestions(row.id).some((s) => s.kind === 'answer' && s.target === dialog.id)) continue;
+      if ((await this.repo.openSuggestions(row.id)).some((s) => s.kind === 'answer' && s.target === dialog.id))
+        continue;
       const reply = await this.call('draft', row, draftPrompt(dialog.request, options, digest), choice);
       if (!reply) continue;
       const picked = parseChoice(reply.reply.text, options);
       if (picked) {
-        this.repo.addSuggestion({
+        await this.repo.addSuggestion({
           threadId: row.id,
           kind: 'answer',
           target: dialog.id,
           text: picked,
           reason: `Suggested for “${dialog.request.title}”. Your choice.`,
         });
-        this.finish(reply, 'draft', row, `Suggested “${picked}” for “${dialog.request.title}”`);
-        this.status.touch(row.id);
+        await this.finish(reply, 'draft', row, `Suggested “${picked}” for “${dialog.request.title}”`);
+        await this.status.touch(row.id);
       } else {
-        this.finish(reply, 'draft', row, `No draft for “${dialog.request.title}”: not a routine question, left to you`);
+        await this.finish(
+          reply,
+          'draft',
+          row,
+          `No draft for “${dialog.request.title}”: not a routine question, left to you`,
+        );
       }
     }
   }
@@ -543,13 +553,13 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
 
   /** The user accepted a suggestion. A label is applied (the thread must be idle); an answer was given by the user in the approval, this only closes it. */
   async accept(id: number): Promise<void> {
-    const suggestion = this.repo.suggestion(id);
+    const suggestion = await this.repo.suggestion(id);
     if (!suggestion || suggestion.state !== 'open') throw new NotFoundException(`Suggestion ${id} is not open.`);
     // A drafted skill is settled by its review (approve or discard), never by this route.
     if (suggestion.kind === 'learn') throw new ConflictException('Read the drafted skill and approve or discard it.');
     if (suggestion.kind === 'prompt' && !(await this.promptValidator?.(suggestion))) {
-      this.repo.setSuggestionState(id, 'dismissed');
-      this.status.touch(suggestion.threadId);
+      await this.repo.setSuggestionState(id, 'dismissed');
+      await this.status.touch(suggestion.threadId);
       throw new ConflictException('This follow-up no longer matches the conversation.');
     }
     if (suggestion.kind === 'label') {
@@ -559,15 +569,15 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
         throw new ConflictException(error instanceof Error ? error.message : String(error));
       }
     }
-    this.repo.setSuggestionState(id, 'accepted');
-    this.status.touch(suggestion.threadId);
+    await this.repo.setSuggestionState(id, 'accepted');
+    await this.status.touch(suggestion.threadId);
   }
 
-  dismiss(id: number): void {
-    const suggestion = this.repo.suggestion(id);
+  async dismiss(id: number): Promise<void> {
+    const suggestion = await this.repo.suggestion(id);
     if (!suggestion || suggestion.state !== 'open') throw new NotFoundException(`Suggestion ${id} is not open.`);
-    this.repo.setSuggestionState(id, 'dismissed');
-    this.status.touch(suggestion.threadId);
+    await this.repo.setSuggestionState(id, 'dismissed');
+    await this.status.touch(suggestion.threadId);
   }
 
   // ---- model calls
@@ -579,17 +589,17 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     prompt: Prompt,
     choice: ModelChoice,
     clean: (text: string) => string | undefined,
-    onResult?: (text: string) => void,
+    onResult?: (text: string) => unknown | Promise<unknown>,
   ): Promise<string | undefined> {
     const reply = await this.call(kind, row, prompt, choice);
     if (!reply) return undefined;
     const text = clean(reply.reply.text);
     if (!text) {
-      this.finish(reply, kind, row, 'The model’s answer was not usable.', 'error');
+      await this.finish(reply, kind, row, 'The model’s answer was not usable.', 'error');
       return undefined;
     }
-    onResult?.(text);
-    this.finish(reply, kind, row, text);
+    await onResult?.(text);
+    await this.finish(reply, kind, row, text);
     return text;
   }
 
@@ -600,10 +610,10 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     prompt: Prompt,
     choice: ModelChoice,
   ): Promise<{ reply: ModelReply } | undefined> {
-    const settings = this.settings();
+    const settings = await this.settings();
     if (this.stopped || !settings.enabled) return undefined;
-    if (this.capReached(settings)) {
-      this.logCapReached(settings, row);
+    if (await this.capReached(settings)) {
+      await this.logCapReached(settings, row);
       return undefined;
     }
     const controller = new AbortController();
@@ -613,7 +623,7 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       // Aborted because it was switched off (or the backend is quitting): not an error worth listing.
       if (controller.signal.aborted) return undefined;
-      this.record(kind, 'error', row, error instanceof Error ? error.message : String(error), {
+      await this.record(kind, 'error', row, error instanceof Error ? error.message : String(error), {
         model: labelOf(choice),
       });
       return undefined;
@@ -622,15 +632,15 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private finish(
+  private async finish(
     result: { reply: ModelReply },
     kind: AttendantKind,
     row: ThreadRow,
     text: string,
     status: 'done' | 'error' = 'done',
-  ): void {
+  ): Promise<void> {
     const { reply } = result;
-    this.record(kind, status, row, text, {
+    await this.record(kind, status, row, text, {
       model: reply.model,
       inputTokens: reply.inputTokens,
       outputTokens: reply.outputTokens,
@@ -638,14 +648,14 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private record(
+  private async record(
     kind: AttendantKind,
     status: 'done' | 'skipped' | 'error',
     row: ThreadRow | undefined,
     text: string,
     usage: { model?: string; inputTokens?: number; outputTokens?: number; cost?: number } = {},
-  ): void {
-    this.repo.addAction({
+  ): Promise<void> {
+    await this.repo.addAction({
       kind,
       status,
       threadId: row?.id ?? null,
@@ -657,19 +667,20 @@ export class AttendantService implements OnModuleInit, OnModuleDestroy {
 
   // ---- limits
 
-  private projectAllowed(cwd: string): boolean {
-    return !this.meta.listWorkspaces().find((w) => w.cwd === cwd)?.attendantOff;
+  private async projectAllowed(cwd: string): Promise<boolean> {
+    return !(await this.meta.listWorkspaces()).find((w) => w.cwd === cwd)?.attendantOff;
   }
 
-  capReached(settings: AttendantSettings = this.settings()): boolean {
-    return settings.dailyCostCap !== null && this.repo.usageSince(startOfDay()).cost >= settings.dailyCostCap;
+  async capReached(settings?: AttendantSettings): Promise<boolean> {
+    settings ??= await this.settings();
+    return settings.dailyCostCap !== null && (await this.repo.usageSince(startOfDay())).cost >= settings.dailyCostCap;
   }
 
-  private logCapReached(settings: AttendantSettings, row: ThreadRow | undefined): void {
+  private async logCapReached(settings: AttendantSettings, row: ThreadRow | undefined): Promise<void> {
     const day = new Date().toDateString();
     if (this.capLoggedDay === day) return;
     this.capLoggedDay = day;
-    this.record(
+    await this.record(
       'summary',
       'skipped',
       row,

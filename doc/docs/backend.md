@@ -41,8 +41,8 @@ Three facts about the folders that are easy to get wrong:
 - **A folder is a module.** `<domain>.module.ts` lists the folder's controllers and providers, imports the modules it
   needs and exports only the services another module injects. `app/app.module.ts` imports every feature module; that
   list is the one place a new domain is registered. Four modules are `@Global()`: config,
-  the secret store, the secrets policy and the desktop bridge, because the database needs the store before any
-  module initialises and every service may need the config.
+  the secret store, the secrets policy and the desktop bridge; every service may need the config or desktop capabilities.
+  The database provider awaits opening, migrations and identity hydration before consumers are constructed.
 - **Domains reach each other through exports.** `bg-agents` injects `ThreadsService`, `learn` injects `AguiService`,
   `score` injects `LearnService`. The import graph has no cycle and no `forwardRef`. The few cross-folder imports
   that are not a service are pure helpers: `worktree/worktree-git.ts` and `worktree-paths.ts`, `threads/session-files.ts`,
@@ -178,23 +178,26 @@ and `session-ui.ts` binds the extension UI before use. Application listener poli
 are implementation owners in the existing folder, without additional Nest modules or dependency-injection layers.
 
 **`db/`: SQLite.** `DatabaseService` owns the one connection (`pi-kit.sqlite` in the data folder), in WAL mode, and
-applies the SQL files of `db/migrations/` in name order at construction, each once, all in one `BEGIN IMMEDIATE`
+applies the SQL files of `db/migrations/` in name order during awaited startup, each once, all in one `BEGIN IMMEDIATE`
 transaction (two processes opening a fresh file do not both create the tables), recorded in `schema_migrations` with a
 hash of the SQL (comments and spacing left out). `0001_init.sql` is followed by migrations for run snapshots, agent spans, instance identity and reciprocal peers.
+Database operations use AppThreat's `@appthreat/sqlite3` through the Promise-only `AsyncSqlite` façade, not a synchronous driver wrapped in `async`. One queue owns each connection and an awaited transaction owns it through commit or rollback. Await every query and repository call; put read/check/write guards and write/read return snapshots in one transaction, and await each SQL operation in loops. `DatabaseService.durable()` fences FULL-synchronous commits for security-sensitive writes. The local `instanceId` remains a synchronous immutable getter after startup hydration.
+
+Fresh `pi-kit.sqlite` and `bg-agents.sqlite` files are private plaintext storage, independent of provider credential-store settings. Encrypted or unrecognized existing profile databases and pending encryption-transition artifacts are refused before opening; originals are retained, never automatically reset or decrypted. Drizzle supplies schema declarations and row types, not a runtime connection.
+
+Unsupported encrypted/unrecognized or damaged databases offer one native confirmation: **Quit** (default and Escape) or **Delete and recreate database**. Choosing the latter explicitly authorizes a fresh start; an automatic private, timestamped backup precedes replacement. There is no second confirmation or success dialog; the dialog ends with the backend's error as **Details**. Only the service host may perform the operation, only for the attached desktop app, while the backend is fully stopped and not starting. It archives both databases, WAL/SHM/journal sidecars, legacy `.plaintext` / `.encrypted` / `.encrypting` / `.decrypting` artifacts and sealed instance identity. Credentials, stored keys, UI and other settings, and pi session files remain in place. Database metadata, identity and pairing reset; old database contents are not migrated.
+
+A root `database-reset-pending.json` marker fences backup/reset; the backend refuses to open either database while it exists. When the backup had completed, the host clears the marker on the next start. Otherwise the desktop offers **Restore original files** (default) or **Quit**: restore moves back every file that has no different copy in the profile, names any conflict and keeps the marker until all are resolved. Retrying reset cannot bypass the marker. Failures never automatically reset the profile. Compatible plaintext upgrades run normal schema migrations without a prompt.
+
+No database keys are read, and no legacy driver or alias, recovery helper, key-file import, key export, in-app migration or decryption tooling is shipped. Actual data-preserving encrypted conversion requires a compatible previous build and original key offline, with validation before using plaintext files ([ADR-0037](adr/0037-async-sqlite.md)).
+
 A database that recorded a missing migration or a different SQL hash is refused and retained; the error advises using
-the matching app version or restoring a compatible backup, not deleting the database. `MaintenanceRepository` prunes what grows with use
+the matching app version or restoring a compatible backup. The desktop shows it Quit-only, with no reset offer. `MaintenanceRepository` prunes what grows with use
 once a day: attendant activity after 90 days, finished runs but each thread's newest, settled follow-up prompts but each
 thread's newest, terminal screens of folders that are gone or unopened for 30 days, and replay logs whose thread or
 background agent is gone. Deleting a thread is one transaction in `ThreadsRepository.delete`, used by both the Delete
 action and the pass that finds a session file gone; background agents follow through `ThreadsService.onDeleted`.
-Whether the file is encrypted follows the storage preference (Settings › Advanced, kept in `<data dir>/security.json`):
-with credential storage on, it is encrypted at rest (`better-sqlite3-multiple-ciphers`) with a random key kept in
-the store as `pi-kit/db` ([ADR-0019](adr/0019-secrets-at-rest.md)); a fresh macOS profile starts plain. A file that
-is already encrypted stays encrypted and needs its original key; nothing is decrypted or replaced on failure.
-
-`EventLogRepository` uses Drizzle on `DatabaseService.orm`, which shares the same connection.
-SQLite generates replay event IDs; IDs increase within each thread and may have gaps when other threads write.
-The SQL migrations, not Drizzle, own the schema.
+`EventLogRepository` uses the same async connection. SQLite generates replay event IDs; IDs increase within each thread and may have gaps when other threads write. SQL migrations own the schema; Drizzle schema declarations supply row types rather than a synchronous runtime connection.
 
 `DbModule` provides and exports the app repositories below. It also provides `MaintenanceRepository` for scheduled
 cleanup without exporting it. `BgAgentsRepository` is provided by its own domain module:
@@ -221,8 +224,7 @@ cleanup without exporting it. `BgAgentsRepository` is provided by its own domain
 patterns of [ADR-0019](adr/0019-secrets-at-rest.md).
 
 **`secrets/`: the credential store.** `SecretStoreModule` selects the store at startup and exports it as the
-`SECRET_STORE` token: on macOS the Keychain store only when credential storage was turned on or encrypted data
-exists (a fresh profile never touches Keychain), elsewhere the OS keyring when there is one; `PI_KIT_SECRET_STORE`
+`SECRET_STORE` token: on macOS the Keychain store only when credential storage was turned on (a fresh profile never touches Keychain), elsewhere the OS keyring when there is one; `PI_KIT_SECRET_STORE`
 (`macos`, `legacy`, `memory`, `file:<path>`, `none`) overrides it. `SecretsModule` holds the policy: with a store, API
 keys go to it and pi's `auth.json` gets the command that prints them (`pi-kit-secret`, `apps/secret-cli`), the
 launcher is written to the data folder, and existing plaintext keys move only through the explicit move action in
@@ -248,7 +250,7 @@ What each folder owns, its HTTP surface, and what is particular about it. The ro
 | `agui` | CopilotKit's runtime route and `PiAgentRunner`, the durable runner behind it: `run()` takes the thread's lock and appends every AG-UI event to `thread_events`; `connect()` replays the log from a cursor and follows the live run. `thread-hydration.ts` builds the current pi state from the log on the server; `log-compactor.ts` compacts a run after it ends. | `ALL copilotkit/*`, `GET genui-sandbox/frame.html` | A run belongs to the thread, not the request: closing the window does not stop it ([ADR-0010](adr/0010-durable-threads.md), [ADR-0032](adr/0032-thread-hydration-and-virtual-transcript.md)). `AguiService.runHeadless` starts a run with no browser (skill verification). |
 | `threads` | The thread list as a cache of pi's session files plus pi-kit's own flags, kept honest by `reconcile()` every 30 s; the status stream every client keeps open; projects; the app's own settings; the worktree routes; outcomes (the base commit a thread started from and whether it was merged, committed or became a PR). | `threads`, `threads/events` (stream), `threads/:id/*`, `workspaces`, `settings`, `threads/:id/worktree/*`, `threads/:id/outcome` | `ThreadStatusService` computes every thread's state (running, waiting, unread, context share) from subscriptions and pushes `snapshot`, `state`, `gone`, `list` lines ([ADR-0015](adr/0015-projects-and-thread-state.md)). |
 | `session` | The REST face of an open session: the command list, models and thinking level, compaction, reload, export, stats, the context piece by piece, `!shell` commands as a stream, `@file` search, the Files panel tree and the folder's live refresh stream, file operations inside a workspace. | `threads/:id/commands|stats|context|usage|model|compact|reload|export|bash`, `models`, `workspaces/:id/files|tree|watch|fs/*`, `threads/:id/queue/*`, `threads/:id/complete|composer` | Everything that is conversation stays in AG-UI; this folder is what the composer needs beside it. `safe-path.ts` keeps every path inside the workspace. |
-| `bg-agents` | Background agents of a thread on pi-durable: one harness per backend on `bg-agents.sqlite` (protected like the app database) behind a cross-process owner lock with fencing epochs, the index table, the `pi-bg` AG-UI agent whose events land in the same log as the threads', the `agent_*` tools every main session carries, questions routed to the user, holds after a crash and a crash-loop limit. | `threads/:id/agents`, `threads/:id/agents/:agent/message|answer|resume|stop`, `DELETE threads/:id/agents/:agent` | Only five adapter files (`bg-agents.service.ts`, `agent-questions.ts`, `durable-storage.ts`, `agent-extension.ts`, `agent-events.ts`) and their specs may import pi-durable or chord; a lint rule enforces it ([ADR-0033](adr/0033-durable-background-agents.md)). The service disables itself and logs a warning when the store cannot be opened, and the backend still starts. |
+| `bg-agents` | Background agents of a thread on pi-durable: one harness per backend on `bg-agents.sqlite` (private plaintext, like the app database) behind a cross-process owner lock with fencing epochs, the index table, the `pi-bg` AG-UI agent whose events land in the same log as the threads', the `agent_*` tools every main session carries, questions routed to the user, holds after a crash and a crash-loop limit. | `threads/:id/agents`, `threads/:id/agents/:agent/message|answer|resume|stop`, `DELETE threads/:id/agents/:agent` | Only five adapter files (`bg-agents.service.ts`, `agent-questions.ts`, `durable-storage.ts`, `agent-extension.ts`, `agent-events.ts`) and their specs may import pi-durable or chord; a lint rule enforces it ([ADR-0033](adr/0033-durable-background-agents.md)). The service disables itself and logs a warning when the store cannot be opened, and the backend still starts. |
 | `changes` | The Changes panel and review mode, all from git: "This thread" compares the folder now with the snapshot from before the run that first changed each file (`snapshots`), "Working tree" is `git diff HEAD`, "Outcome" the thread's commits; review comments, revert and stage; the git status that decorates the Files panel. A folder outside git gets a note and `workspaces/:id/git-init` (`WorkspaceStatusController`). | `threads/:id/changes`, `threads/:id/changes/:file`, `threads/:id/revert|stage`, `threads/:id/review-comments`, `workspaces/:id/status` | `touched.ts` reads which files pi edited in which message from the session, pure. |
 | `coordination` | File leases recorded at `edit`/`write` tool starts, and the "other agents in this workspace" section every session is given, with notices for files another thread changed. | `threads/:id/coordination` | Soft: it blocks nothing ([ADR-0020](adr/0020-worktrees-and-coordination.md)). Leases expire after 30 minutes and are pruned on a timer. |
 | `worktree` | A git worktree per thread: create, sync with the base, merge back (merge commit or pull request), hand off, remove; the proposed commit message and a setup script guessed from the lockfile. | (in `threads`) | File changes wait for the thread's run to end. pi only sees a different cwd. |
@@ -256,7 +258,7 @@ What each folder owns, its HTTP surface, and what is particular about it. The ro
 | `mcp` | The MCP panel: a session's servers, their tools and MCP Apps, the `mcp.json` editor, add/change/remove a server, reconnect, sign-in; the connector catalog that turns a click into an `mcp.json` entry with its token in the credential store; the MCP App sandbox proxy page. | `mcp`, `mcp/servers/:name/*`, `mcp/file`, `connectors/*`, `mcp-sandbox/proxy.html` | Status is read from pi's own `/mcp` command text, parsed by `mcp-status.ts`, which a test pins to pi's format. `mcp-tap.ts` wraps the transports to record tools and resource metadata ([ADR-0018](adr/0018-connectors.md)). |
 | `skills`, `packages`, `computer-use` | The person's own skill folders and their `SKILL.md`; pi packages in Settings (list, install, update, remove, search, the Add a package wizard); the opt-in computer-use package and macOS permissions. | `skills`, `skills/file`, `packages/*`, `computer-use/*` | `packages` never runs a package's code. The three bundled packages (`learn`, `meat-proxy`, `computer-use`) are installed into pi's settings once, on first start, by `PiKitPackage`. |
 | `browser` | The browser artifact the desktop app keeps per thread, read and driven through `DesktopBridge`; the `pi_browser` tool in `pi/browser-extension.ts` uses the same service. | `threads/:id/browser`, `threads/:id/browser/action` | Requires an attached Electron desktop through the service host ([ADR-0029](adr/0029-browser-artifacts.md)). |
-| `settings`, `secrets` (routes) | pi's settings, provider sign-in as a replayable stream, logout, key validation, keybindings, the resource inventory, trust decisions, session import, diagnostics; the secret store's status, credential storage choice, moving keys, the recovery key, redaction settings. | `pi-settings`, `auth/*`, `providers/*`, `pi-keybindings`, `resources`, `trust`, `workspaces/:id/trust`, `import`, `diagnostics`, `about`, `secrets/*`, `redaction` | The controllers are thin over `PiConfigService`, `TrustService`, `SecretsService`; `DiagnosticsService` is the read-only object the bug-report dialog shows, with nothing secret in it. |
+| `settings`, `secrets` (routes) | pi's settings, provider sign-in as a replayable stream, logout, key validation, keybindings, the resource inventory, trust decisions, session import, diagnostics; the secret store's status, credential storage choice, moving provider keys, disk-encryption status, redaction settings. | `pi-settings`, `auth/*`, `providers/*`, `pi-keybindings`, `resources`, `trust`, `workspaces/:id/trust`, `import`, `diagnostics`, `about`, `secrets/*`, `redaction` | The controllers are thin over `PiConfigService`, `TrustService`, `SecretsService`; `DiagnosticsService` is the read-only object the bug-report dialog shows, with nothing secret in it. |
 | `setup` | First-run onboarding: detect what is installed, record how onboarding ended, test and save a local model server, the LiteLLM connection, and the local runtime wizard (`LocalRuntimeModule`): hardware, the GGUF catalogue pinned by revision and SHA, cancellable downloads, llama-swap config, process, doctor and repair, one setup job at a time. | `setup`, `setup/*`, `setup/litellm/*`, `setup/local-runtime/*` | The largest folder by routes. `LocalLlamaSwapProcessService` owns only the process it started, never one it found ([ADR-0030](adr/0030-guided-local-model-runtime.md)). |
 | `update` | Updates from inside the app: one background job (`pi update --all`, `--models`), a check every six hours, the managed releases and pinning, the restart; the app's own update goes through Electron main. | `update/*`, `update/events` (stream) | Output goes to listeners and to `update.log` ([ADR-0023](adr/0023-pi-updates-in-app.md)). |
 | `attendant` | The attendant agent: names threads, keeps one-line summaries, proposes labels for fork points, drafts answers to mechanical questions. Always loaded, idle until turned on. | `attendant`, `attendant/settings|run`, `attendant/suggestions/:id/accept|dismiss` | `AttendantModelPort` is the seam a test replaces; the real one makes a separate no-tools session per request under a cost cap ([ADR-0016](adr/0016-the-attendant-agent.md)). |
@@ -289,7 +291,7 @@ What each folder owns, its HTTP surface, and what is particular about it. The ro
 5. **Use it in the renderer** through the generated operation, from a store in a `data` library; never through a
    hand-written fetch ([Repository structure](structure.md#generated-http-api-and-configuration-adr-0027)).
 6. **Test the service**, not the route: a `*.spec.ts` next to the service that constructs it with `new` and the
-   repositories it needs on a temporary database (`new DatabaseService({ dataDir })` on an `mkdtemp` folder, as
+   repositories it needs on a temporary database (`await DatabaseService.create({ dataDir })` on an `mkdtemp` folder, as
    `threads/threads.service.spec.ts` does). The request path is covered once, by `contract/contract.spec.ts`.
 
 ### Add a domain
@@ -312,7 +314,8 @@ What each folder owns, its HTTP surface, and what is particular about it. The ro
    between them, and methods that are single statements or one transaction. Text a person typed goes through `redact()`
    before it is stored (`threads.repository.ts` is the example).
 3. Provide and export it in `DbModule`. Nothing else is needed; `DatabaseService` is already open when the
-   repository's constructor runs, so prepared statements can be made there.
+   repository's constructor runs. Constructors may create statement handles but must not issue queries. Await
+   repository methods and `db.onApplicationShutdown()` before deleting a test's temporary directory.
 
 ### Add a stream
 
@@ -372,7 +375,7 @@ Mark sensitive schema fields explicitly; this is not a blanket guarantee that ar
 `PI_KIT_ORIGIN` (CORS, comma separated), `PI_KIT_CWD`, `PI_KIT_DATA_DIR`, `PI_KIT_PARENT_PID` and `NODE_ENV`. The
 other `PI_KIT_*` variables are read where they matter; examples include `PI_KIT_HOME` (a scratch
 home for pi), `PI_KIT_PI_DIR` (which pi to load), `PI_KIT_SECRET_STORE` (which credential store, scratch ones in
-tests), `PI_KIT_DB_KEY` (a recovery key), `PI_KIT_WORKTREE_ROOT` (where worktrees go), `PI_KIT_RECONCILE_MS`, `PI_KIT_TRANSCRIBE_ENGINE`, `PI_KIT_TRUSTED_CWDS` (ignored
+tests), `PI_KIT_WORKTREE_ROOT` (where worktrees go), `PI_KIT_RECONCILE_MS`, `PI_KIT_TRANSCRIBE_ENGINE`, `PI_KIT_TRUSTED_CWDS` (ignored
 in production), and the `PI_KIT_*_PACKAGE=off` switches that skip a bundled package. `PI_KIT_DESKTOP=1` is set by the service host when spawning the backend so the desktop bridge opens its IPC channel.
 The host relays desktop requests to an attached Electron client or returns an unavailable answer.
 
@@ -388,7 +391,7 @@ factory parameters match `inject`, injectable provided tokens, route parameter n
 written `void this.reconcile()` with a comment that says why.
 
 **Build.** One CommonJS esbuild bundle (`nx build backend`, target `node24`) with the native packages external
-(`better-sqlite3-multiple-ciphers`, `node-pty`, `@napi-rs/keyring`, `keychain-store`); `apps/backend-runtime`
+(`@appthreat/sqlite3`, `node-pty`, `@napi-rs/keyring`, `keychain-store`); `apps/backend-runtime`
 provisions those per platform for the packaged app. Nest 12's packages are ESM and are loaded through Node's
 `require(esm)`; pi is loaded with a dynamic `import()`. The second entry of the bundle,
 `openapi.js`, writes the document ([ADR-0022](adr/0022-latest-dependencies.md)).

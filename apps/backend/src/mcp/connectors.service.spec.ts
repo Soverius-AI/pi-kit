@@ -55,7 +55,7 @@ function world(options: { store?: SecretStore } = {}): World {
       return { messages: [{ text: `Signed out of MCP server "x".`, level: 'info' }], finished: true };
     },
   };
-  const threads = { openSession: async () => undefined, cwdOf: () => cwd };
+  const threads = { openSession: async () => undefined, cwdOf: async () => cwd };
   const mcp = {
     login: async (_thread: string, name: string) => {
       w.calls.push(`login ${name}`);
@@ -69,12 +69,7 @@ function world(options: { store?: SecretStore } = {}): World {
     forgetSignIn: (_thread: string, name: string) => void w.calls.push(`forget ${name}`),
   };
   // The real policy over the in-memory store: what goes into a file is decided there.
-  const secrets = new SecretsService(
-    store,
-    { dataDir: root } as never,
-    {} as never,
-    { getSetting: () => undefined } as never,
-  );
+  const secrets = new SecretsService(store, { dataDir: root } as never, { getSetting: () => undefined } as never);
   w.secrets = secrets;
   const trust = { folderTrusted: async () => w.trusted };
   w.service = new ConnectorsService(sessions as never, threads as never, mcp as never, secrets, trust as never);

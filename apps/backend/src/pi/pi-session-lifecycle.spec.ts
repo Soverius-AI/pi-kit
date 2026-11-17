@@ -161,6 +161,29 @@ it('starts no sandbox for an opener whose thread was closed while pi loaded', as
   }
 });
 
+it('rejects an opener whose thread was closed while its final protection check read SQLite', async () => {
+  const base = mkdtempSync(join(tmpdir(), 'pk-session-final-check-'));
+  vi.stubEnv('PI_CODING_AGENT_DIR', base);
+  vi.stubEnv('PI_OFFLINE', '1');
+  const protection = ThreadProtectionTesting.bypass();
+  const sessions = new PiSessionService(
+    new TrustService(),
+    new PiPluginService(),
+    { refreshCatalog: async () => undefined } as unknown as LiteLlmService,
+    protection,
+  );
+  const id = randomUUID();
+  vi.spyOn(protection, 'assertGeneration').mockImplementation(async () => sessions.dispose(id));
+  try {
+    await expect(sessions.open(id, { cwd: base })).rejects.toThrow('closed or changed its protection');
+    expect(sessions.has(id)).toBe(false);
+  } finally {
+    vi.restoreAllMocks();
+    sessions.onModuleDestroy();
+    rmSync(base, { recursive: true, force: true });
+  }
+}, 15_000);
+
 describe('open session ownership', () => {
   let base: string;
   let sessions: PiSessionService;

@@ -5,7 +5,6 @@ import {
   secretsInstall,
   secretsMove,
   secretsProtection,
-  secretsRecoveryKey,
   secretsRetry,
   secretsStatus,
 } from '@pi-kit/api';
@@ -31,7 +30,6 @@ describe('SecretsStore', () => {
     protection: vi.fn(),
     moveKeys: vi.fn(),
     installCli: vi.fn(),
-    recoveryKey: vi.fn(),
     retry: vi.fn(),
     storage: vi.fn(),
   };
@@ -54,7 +52,6 @@ describe('SecretsStore', () => {
           [secretsProtection, api.protection, () => []],
           [secretsMove, api.moveKeys, () => []],
           [secretsInstall, api.installCli, () => []],
-          [secretsRecoveryKey, api.recoveryKey, () => []],
           [secretsRetry, api.retry, () => []],
           [secretsCredentialStorage, api.storage, (o) => [o.body?.['enabled']]],
         ]),
@@ -73,6 +70,23 @@ describe('SecretsStore', () => {
     expect(store.status()?.credentialsEnabled).toBe(false);
     expect(settings.providersChanged).toHaveBeenCalledOnce();
     expect(store.storageBusy()).toBe(false);
+  });
+
+  it('reads OS disk encryption independently of credential storage', async () => {
+    const protection = { disk: { state: 'on', mechanism: 'FileVault', detail: 'Enabled' } };
+    api.protection.mockResolvedValueOnce(protection);
+    const store = make();
+    await store.loadProtection();
+    expect(store.protection()).toEqual(protection);
+    expect(api.protection).toHaveBeenCalledOnce();
+  });
+
+  it('reports a disk encryption check failure', async () => {
+    api.protection.mockRejectedValueOnce(new Error('Offline'));
+    const store = make();
+    await store.loadProtection();
+    expect(store.protection()).toBeUndefined();
+    expect(TestBed.inject(ToastStore).items()[0].text).toContain('Could not read disk encryption status');
   });
 
   it('reads where secrets can be kept and which keys could move there', async () => {
@@ -127,23 +141,6 @@ describe('SecretsStore', () => {
     await store.moveKeys();
     expect(store.moving()).toBe(false);
     expect(toasts.items()[0].text).toMatch(/no credential store/);
-  });
-
-  it('holds the recovery key only until its dialog closes, and says when it was shown before', async () => {
-    api.recoveryKey.mockResolvedValueOnce({ key: 'a'.repeat(64) });
-    api.protection.mockResolvedValueOnce({
-      database: { state: 'encrypted', path: '/d', recoveryKeyShown: true },
-      disk: { state: 'on', mechanism: 'FileVault', detail: '' },
-    });
-    const store = make();
-    await store.showRecoveryKey();
-    expect(store.recoveryKey()).toBe('a'.repeat(64));
-    store.closeRecoveryKey();
-    expect(store.recoveryKey()).toBeUndefined();
-    api.recoveryKey.mockRejectedValueOnce(new Error('The recovery key was shown once already and is not shown again.'));
-    await store.showRecoveryKey();
-    expect(store.recoveryKey()).toBeUndefined();
-    expect(TestBed.inject(ToastStore).items().at(-1)?.text).toMatch(/not shown again/);
   });
 
   it('installs pi-kit-secret on PATH on a click and reports where', async () => {

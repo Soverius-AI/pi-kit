@@ -41,11 +41,11 @@ export class QueueController {
   })
   @Responds(QueueSnapshotSchema)
   @Fails({ 409: STALE })
-  promote(
+  async promote(
     @Param('id') id: string,
     @Body({ schema: QueueTargetSchema }) body: z.infer<typeof QueueTargetSchema>,
   ): Promise<QueueSnapshot> {
-    return this.guard(() => this.sessions.promoteQueued(id, body));
+    return await this.guard(async () => await this.sessions.promoteQueued(id, body));
   }
 
   @Remote()
@@ -57,11 +57,11 @@ export class QueueController {
   })
   @Responds(QueueSnapshotSchema)
   @Fails({ 409: STALE })
-  remove(
+  async remove(
     @Param('id') id: string,
     @Body({ schema: QueueTargetSchema }) body: z.infer<typeof QueueTargetSchema>,
   ): Promise<QueueSnapshot> {
-    return this.guard(() => this.sessions.removeQueued(id, body));
+    return await this.guard(async () => await this.sessions.removeQueued(id, body));
   }
 
   /** Every queued text in one message, joined by blank lines, in delivery order. */
@@ -74,8 +74,8 @@ export class QueueController {
       'Joins every queued text into one message, separated by blank lines in delivery order, and answers with the queue.',
   })
   @Responds(QueueSnapshotSchema)
-  merge(@Param('id') id: string): Promise<QueueSnapshot> {
-    return this.guard(() => this.sessions.mergeQueued(id));
+  async merge(@Param('id') id: string): Promise<QueueSnapshot> {
+    return await this.guard(async () => await this.sessions.mergeQueued(id));
   }
 
   @Remote()
@@ -86,8 +86,8 @@ export class QueueController {
     description: 'Drops every queued message, and answers with the empty queue.',
   })
   @Responds(QueueSnapshotSchema)
-  clear(@Param('id') id: string): Promise<QueueSnapshot> {
-    return this.guard(() => this.sessions.clearQueued(id));
+  async clear(@Param('id') id: string): Promise<QueueSnapshot> {
+    return await this.guard(async () => await this.sessions.clearQueued(id));
   }
 
   private async guard<T>(run: () => Promise<T>): Promise<T> {

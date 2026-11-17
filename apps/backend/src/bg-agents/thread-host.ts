@@ -20,7 +20,7 @@ export interface ReportMessage {
  */
 export const THREAD_HOST = Symbol('THREAD_HOST');
 export interface ThreadHost {
-  cwdOf(threadId: string): string;
+  cwdOf(threadId: string): Promise<string>;
   /** Hands the main agent a message, which starts a turn (a steer while it runs); resolves once handed over, not when the turn ends. */
   deliver(threadId: string, message: ReportMessage): Promise<void>;
   /** Why background agents may not run in the thread's project (the folder is not trusted, or the project switched them off); undefined when they may. */

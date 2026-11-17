@@ -10,7 +10,7 @@
 //   1. writes a scratch pi agent folder whose only model is a tiny OpenAI-compatible server this script runs (or E2E_MODEL_URL, the llama-swap the e2e uses),
 //   2. launches the app with PI_KIT_SMOKE=1, PI_CODING_AGENT_DIR, PI_KIT_DATA_DIR and a file secret store in the temp folder,
 //   3. waits for smoke.json (the main process writes it once the backend is healthy and <pk-root> has drawn), then asserts /api/health (401 without the token),
-//   4. loads the app's own native modules with the app binary as Node (better-sqlite3-multiple-ciphers, @napi-rs/keyring, node-pty, a pty spawn on macOS),
+//   4. loads the app's own native modules with the app binary as Node (@appthreat/sqlite3, @napi-rs/keyring, node-pty, a pty spawn on macOS),
 //   5. installs an extension through host npm from a loopback registry, then creates a thread and sends one prompt through the real runtime,
 // and, with the built-in fake model, has the main agent spawn one background agent and waits for it to finish,
 //   6. quits the app the way a user would (SIGTERM = Cmd+Q on macOS/Linux, `taskkill` = closing the window on Windows) and asserts a clean exit and no backend left.

@@ -2,7 +2,7 @@
 // Resources/renderer, where the service host finds its web app as it does in the server tarball.
 //
 // electron-builder's `extraResources` would do it, but it never copies a folder named node_modules, and the backend
-// needs its node_modules (the native loaders and binaries of better-sqlite3-multiple-ciphers, @napi-rs/keyring, node-pty and the rest). The hook runs before code signing, so
+// needs its node_modules (the native loaders and binaries of @appthreat/sqlite3, @napi-rs/keyring, node-pty and the rest). The hook runs before code signing, so
 // every Mach-O file in there (the .node files and node-pty's spawn-helper) is signed with the app.
 //
 // One electron-builder run can build several architectures (the two Windows ones share one latest.yml), so the backend is picked per

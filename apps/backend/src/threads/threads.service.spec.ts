@@ -13,7 +13,7 @@ import * as external from './external-sessions';
 import * as files from '../pi/session-files';
 import { SessionIndex } from '../pi/session-index';
 
-vi.mock('../pi/load-pi', () => ({ loadPi: () => import('@earendil-works/pi-coding-agent') }));
+vi.mock('../pi/load-pi', () => ({ loadPi: async () => await import('@earendil-works/pi-coding-agent') }));
 
 let base: string;
 let project: string;
@@ -23,13 +23,13 @@ let rows: ThreadsRepository;
 let meta: MetaRepository;
 let service: ThreadsService;
 
-beforeEach(() => {
+beforeEach(async () => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-threads-')));
   project = join(base, 'project');
   scratch = join(base, 'scratch');
   mkdirSync(project);
   mkdirSync(scratch);
-  db = new DatabaseService({ dataDir: join(base, 'data') });
+  db = await DatabaseService.create({ dataDir: join(base, 'data') });
   rows = new ThreadsRepository(db);
   meta = new MetaRepository(db);
   const sessionPath = (name: string): string => {
@@ -37,8 +37,8 @@ beforeEach(() => {
     writeFileSync(path, '{}\n');
     return path;
   };
-  rows.insertDraft({ id: 'plain', sessionPath: sessionPath('plain'), cwd: project, baseCommit: null });
-  rows.insertDraft({
+  await rows.insertDraft({ id: 'plain', sessionPath: sessionPath('plain'), cwd: project, baseCommit: null });
+  await rows.insertDraft({
     id: 'replay',
     sessionPath: sessionPath('replay'),
     cwd: scratch,
@@ -63,9 +63,9 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
-  db.onApplicationShutdown();
+  await db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
 });
 
@@ -74,7 +74,7 @@ describe('external imports', () => {
   let snapshot: external.ExternalSnapshot;
   let imports: ExternalImportsService;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     snapshot = {
       key: external.fingerprint('source'),
       source: 'claude-code',
@@ -124,7 +124,7 @@ describe('external imports', () => {
     expect(concurrent.id).toBe(first.id);
     expect((await imports.importSession(project, request)).id).toBe(first.id);
     expect(writeHistory).toHaveBeenCalledTimes(1);
-    expect(rows.get(first.id)?.parentSessionPath).toBeNull();
+    expect((await rows.get(first.id))?.parentSessionPath).toBeNull();
     expect((await imports.discover(project)).sessions[0]).toMatchObject({
       status: 'imported',
       importedThreadId: first.id,
@@ -146,7 +146,7 @@ describe('external imports', () => {
     expect(writeHistory).toHaveBeenCalledTimes(1);
     const second = await imports.importSession(project, { key: snapshot.key, fingerprint: snapshot.fingerprint });
     expect(second.id).not.toBe(first.id);
-    expect(rows.get(first.id)).toBeDefined();
+    expect(await rows.get(first.id)).toBeDefined();
     expect((await imports.importSession(project, { key: snapshot.key, fingerprint: previous })).id).toBe(first.id);
     expect(writeHistory).toHaveBeenCalledTimes(2);
   });
@@ -154,7 +154,7 @@ describe('external imports', () => {
   it('offers a deleted copy as new and recreates it on request', async () => {
     const request = { key: snapshot.key, fingerprint: snapshot.fingerprint };
     const first = await imports.importSession(project, request);
-    rows.delete(first.id);
+    await rows.delete(first.id);
     expect((await imports.discover(project)).sessions[0].status).toBe('new');
     const original = snapshot;
     snapshot = { ...snapshot, fingerprint: external.fingerprint('continued') };
@@ -172,15 +172,15 @@ describe('external imports', () => {
       messages: [...snapshot.messages, { role: 'assistant', text: 'More source work', timestamp: 2 }],
     };
     const second = await imports.importSession(project, { key: snapshot.key, fingerprint: snapshot.fingerprint });
-    const owners = () =>
-      Object.values(meta.getSetting('imports') as Record<string, Record<string, string>>).flatMap((versions) =>
+    const owners = async () =>
+      Object.values((await meta.getSetting('imports')) as Record<string, Record<string, string>>).flatMap((versions) =>
         Object.values(versions),
       );
-    expect(new Set(owners())).toEqual(new Set([first.id, second.id]));
+    expect(new Set(await owners())).toEqual(new Set([first.id, second.id]));
     await service.remove(first.id);
-    expect(new Set(owners())).toEqual(new Set([second.id]));
+    expect(new Set(await owners())).toEqual(new Set([second.id]));
     await service.remove(second.id);
-    expect(meta.allSettings()).not.toHaveProperty('imports');
+    expect(await meta.allSettings()).not.toHaveProperty('imports');
   });
 
   it('answers a Codex source that changed or cannot be read with a conflict', async () => {
@@ -202,23 +202,23 @@ describe('external imports', () => {
   });
 
   it('adopts a real pi file even when reconciliation indexes it before adoption completes', async () => {
-    rows.delete('plain');
-    rows.delete('replay');
+    await rows.delete('plain');
+    await rows.delete('replay');
     const index = new SessionIndex(() => join(base, 'pi'));
-    const importHistory = (
+    const importHistory = async (
       cwd: string,
       title: string,
       messages: external.ImportedMessage[],
       origin: Record<string, unknown>,
-    ) => files.importHistory(cwd, title, messages, origin, join(base, 'pi', 'project'));
+    ) => await files.importHistory(cwd, title, messages, origin, join(base, 'pi', 'project'));
     service = new ThreadsService(
       rows,
       {} as never,
       meta,
       {
-        scanSessions: () => index.scan(),
+        scanSessions: async () => await index.scan(),
         has: () => false,
-        treeSource: (_id: string, path: string) => files.readSession(path),
+        treeSource: async (_id: string, path: string) => await files.readSession(path),
         modelWindow: async () => undefined,
       } as never,
       { stateOf: () => ({ activity: 'idle', lastRun: null }), listChanged: vi.fn(), touchAll: vi.fn() } as never,
@@ -236,8 +236,8 @@ describe('external imports', () => {
     imports = new ExternalImportsService(service, meta, { importHistory } as never);
     const request = { key: snapshot.key, fingerprint: snapshot.fingerprint };
     const imported = await imports.importSession(project, request);
-    expect(rows.all()).toHaveLength(1);
-    expect(rows.get(imported.id)).toMatchObject({
+    expect(await rows.all()).toHaveLength(1);
+    expect(await rows.get(imported.id)).toMatchObject({
       title: 'Original chat',
       messageCount: 1,
       parentSessionPath: null,
@@ -288,7 +288,7 @@ it('admits no run while or after a thread is deleted, and keeps it Sandboxed and
 
 describe('prepareRun and a verification thread', () => {
   it('lets a verification thread run while its scratch worktree is there, in the worktree', async () => {
-    meta.markVerificationThread('replay', 'draft-1');
+    await meta.markVerificationThread('replay', 'draft-1');
     const target = await service.prepareRun('replay', project);
     expect(target.cwd).toBe(scratch);
     // The replay's session lives in the scratch worktree itself, so pi's cwd needs no forcing (`inWorktree` says the session is elsewhere).
@@ -296,23 +296,23 @@ describe('prepareRun and a verification thread', () => {
   });
 
   it('refuses to run a verification thread whose worktree is gone: it would fall back to the project’s folder', async () => {
-    meta.markVerificationThread('replay', 'draft-1');
-    rows.clearWorktree('replay');
+    await meta.markVerificationThread('replay', 'draft-1');
+    await rows.clearWorktree('replay');
     await expect(service.prepareRun('replay', project)).rejects.toThrow(/cannot run again/);
     rmSync(scratch, { recursive: true, force: true });
     await expect(service.prepareRun('replay', project)).rejects.toThrow(/cannot run again/);
   });
 
   it('still opens it to read: the record can be looked at', async () => {
-    meta.markVerificationThread('replay', 'draft-1');
-    rows.clearWorktree('replay');
+    await meta.markVerificationThread('replay', 'draft-1');
+    await rows.clearWorktree('replay');
     await expect(service.prepareRun('replay', project, { open: true })).resolves.toMatchObject({
       sessionPath: expect.any(String),
     });
   });
 
   it('does not touch any other thread: a worktree thread whose worktree was deleted carries on in the project, as says', async () => {
-    rows.clearWorktree('replay');
+    await rows.clearWorktree('replay');
     await expect(service.prepareRun('replay', project)).resolves.toMatchObject({ cwd: project });
     await expect(service.prepareRun('plain', project)).resolves.toMatchObject({ cwd: project });
   });
@@ -329,7 +329,7 @@ describe('session opening', () => {
   let open: ReturnType<typeof vi.fn>;
   let release: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     protection = ThreadProtectionTesting.bypass();
     refreshBase = vi.fn(async () => undefined);
     open = vi.fn(async () => ({ threadId: 'plain' }));
@@ -357,7 +357,7 @@ describe('session opening', () => {
     });
     const first = service.openSession('plain');
     const second = service.openSession('plain');
-    expect(refreshBase).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(refreshBase).toHaveBeenCalledTimes(1));
     expect(open).not.toHaveBeenCalled();
     preparation.resolve();
     await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
@@ -417,19 +417,20 @@ describe('session opening', () => {
     await service.remove('plain');
     opening.resolve();
     expect((await result)[0]).toMatchObject({ status: 'rejected' });
-    expect(rows.get('plain')).toBeUndefined();
+    expect(await rows.get('plain')).toBeUndefined();
   });
 
   it('admits every joiner and rejects a protection generation change during preparation', async () => {
     const preparation = deferred();
     refreshBase.mockImplementation(() => preparation.promise);
     const attempts = Promise.allSettled([service.openSession('plain'), service.openSession('plain')]);
+    await vi.waitFor(() => expect(refreshBase).toHaveBeenCalledTimes(1));
     const admission = vi.spyOn(protection, 'assertAdmitted').mockImplementation(() => {
       throw new ConflictException('changing protection');
     });
     await expect(service.openSession('plain')).rejects.toThrow('changing protection');
     admission.mockRestore();
-    vi.spyOn(protection, 'binding').mockReturnValue({
+    vi.spyOn(protection, 'binding').mockResolvedValue({
       version: 1,
       mode: 'bypass',
       generation: 1,
@@ -444,5 +445,107 @@ describe('session opening', () => {
     });
     await expect(service.openSession('plain')).rejects.toThrow('changing protection');
     expect(open).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('reconcile timing diagnostics', () => {
+  it.each([
+    [50, false],
+    [1500, true],
+  ] as const)('keeps an unchanged %i ms pass quiet unless slow', async (elapsed, shouldLog) => {
+    const { Logger } = await import('@nestjs/common');
+    const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const debug = vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+    let now = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const timed = new ThreadsService(
+      { all: () => [] } as never,
+      {} as never,
+      {} as never,
+      { scanSessions: async () => ({ all: [], changed: [], read: 0 }) } as never,
+      {
+        touchAll: () => {
+          now = elapsed;
+        },
+      } as never,
+      { sweep: async () => undefined } as never,
+      { estimateBases: async () => undefined } as never,
+      { defaultCwd: project } as never,
+      ThreadProtectionTesting.bypass(),
+    );
+    try {
+      await timed.reconcile();
+      expect(log).toHaveBeenCalledTimes(shouldLog ? 1 : 0);
+      if (shouldLog) expect(log).toHaveBeenCalledWith(expect.stringContaining('status 1500 ms; read 0'));
+    } finally {
+      clock.mockRestore();
+      debug.mockRestore();
+      log.mockRestore();
+    }
+  });
+
+  it('logs completion only after measuring and status push, with all phase durations', async () => {
+    const { Logger } = await import('@nestjs/common');
+    const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const debug = vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
+    let now = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    let finishMeasure!: () => void;
+    const status = {
+      listChanged: vi.fn(),
+      touchAll: vi.fn(() => {
+        now = 75;
+        expect(log).not.toHaveBeenCalled();
+      }),
+    };
+    const timed = new ThreadsService(
+      {
+        all: () => {
+          now = 30;
+          return [];
+        },
+      } as never,
+      {} as never,
+      {} as never,
+      {
+        scanSessions: async () => {
+          now = 10;
+          return { all: [], changed: [], read: 1 };
+        },
+      } as never,
+      status as never,
+      { sweep: async () => undefined } as never,
+      { estimateBases: async () => undefined } as never,
+      { defaultCwd: project } as never,
+      ThreadProtectionTesting.bypass(),
+    );
+    const measure = vi
+      .spyOn(timed as unknown as { refreshForkCountsAndContexts(): Promise<void> }, 'refreshForkCountsAndContexts')
+      .mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishMeasure = resolve;
+          }),
+      );
+    try {
+      const pending = timed.reconcile();
+      await vi.waitFor(() => expect(measure).toHaveBeenCalledOnce());
+      expect(log).not.toHaveBeenCalled();
+      expect(debug).toHaveBeenCalledWith('Reconcile upsert end (20 ms); measure begin');
+      now = 70;
+      finishMeasure();
+      await pending;
+      expect(status.touchAll).toHaveBeenCalledOnce();
+      expect(log).toHaveBeenCalledWith(
+        'Reconciled 0 sessions in 75 ms (scan 10, upsert 20, measure 40, status 5 ms; read 1, +0, -0)',
+      );
+      expect(debug).toHaveBeenCalledWith('Reconcile status end (5 ms); complete (75 ms)');
+    } finally {
+      finishMeasure?.();
+      measure.mockRestore();
+      clock.mockRestore();
+      debug.mockRestore();
+      log.mockRestore();
+    }
   });
 });

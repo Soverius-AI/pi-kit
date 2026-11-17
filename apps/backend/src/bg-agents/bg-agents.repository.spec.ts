@@ -8,13 +8,13 @@ import { BgAgentsRepository } from './bg-agents.repository';
 let dir: string;
 let database: DatabaseService;
 let agents: BgAgentsRepository;
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'pk-bg-repo-'));
-  database = new DatabaseService({ dataDir: dir });
+  database = await DatabaseService.create({ dataDir: dir });
   agents = new BgAgentsRepository(database);
 });
-afterEach(() => {
-  database.onApplicationShutdown();
+afterEach(async () => {
+  await database.onApplicationShutdown();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -32,12 +32,12 @@ const row = (id: string, threadId = 't1') => ({
 });
 
 describe('BgAgentsRepository', () => {
-  it('keeps the agents of a thread in order, with their intents and failures as JSON', () => {
-    agents.insert(row('2'), 1);
-    agents.insert(row('1'), 1);
-    agents.insert(row('3', 't2'), 1);
-    expect(agents.byThread('t1').map((a) => a.id)).toEqual(['1', '2']);
-    expect(agents.get('1')).toMatchObject({
+  it('keeps the agents of a thread in order, with their intents and failures as JSON', async () => {
+    await agents.insert(row('2'), 1);
+    await agents.insert(row('1'), 1);
+    await agents.insert(row('3', 't2'), 1);
+    expect((await agents.byThread('t1')).map((a) => a.id)).toEqual(['1', '2']);
+    expect(await agents.get('1')).toMatchObject({
       name: 'agent 1',
       status: 'active',
       cost: 0,
@@ -46,37 +46,37 @@ describe('BgAgentsRepository', () => {
       ownerEpoch: 1,
     });
     expect(
-      agents.update('1', 1, {
+      await agents.update('1', 1, {
         cleanup: { callId: 'c', command: 'sleep 9', startedAt: 5 },
         failures: [1, 2],
         submissionId: '42',
       }),
     ).toBe(true);
-    expect(agents.get('1')).toMatchObject({
+    expect(await agents.get('1')).toMatchObject({
       cleanup: { callId: 'c', command: 'sleep 9', startedAt: 5 },
       failures: [1, 2],
       submissionId: '42',
     });
     expect(
-      agents.update('1', 1, { cleanup: null, status: 'done', finishedAt: 9, cost: 0.5, report: 'All good.' }),
+      await agents.update('1', 1, { cleanup: null, status: 'done', finishedAt: 9, cost: 0.5, report: 'All good.' }),
     ).toBe(true);
-    expect(agents.get('1')).toMatchObject({
+    expect(await agents.get('1')).toMatchObject({
       cleanup: null,
       status: 'done',
       finishedAt: 9,
       cost: 0.5,
       report: 'All good.',
     });
-    expect(agents.unfinished().map((a) => a.id)).toEqual(['2', '3']);
-    agents.remove('2');
-    expect(agents.get('2')).toBeUndefined();
+    expect((await agents.unfinished()).map((a) => a.id)).toEqual(['2', '3']);
+    await agents.remove('2');
+    expect(await agents.get('2')).toBeUndefined();
   });
 
-  it('drops a write of an older owner once a newer one wrote the row', () => {
-    agents.insert(row('1'), 1);
-    expect(agents.update('1', 2, { status: 'blocked' })).toBe(true);
-    expect(agents.update('1', 1, { status: 'done' })).toBe(false);
-    expect(agents.get('1')).toMatchObject({ status: 'blocked', ownerEpoch: 2 });
-    expect(agents.update('1', 2, {})).toBe(true);
+  it('drops a write of an older owner once a newer one wrote the row', async () => {
+    await agents.insert(row('1'), 1);
+    expect(await agents.update('1', 2, { status: 'blocked' })).toBe(true);
+    expect(await agents.update('1', 1, { status: 'done' })).toBe(false);
+    expect(await agents.get('1')).toMatchObject({ status: 'blocked', ownerEpoch: 2 });
+    expect(await agents.update('1', 2, {})).toBe(true);
   });
 });

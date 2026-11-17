@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TerminalEvent } from '@pi-kit/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { TerminalReplayRepository } from '../db/terminal-replay.repository';
 import { defaultShell, shellEnvironment, TerminalService } from './terminal.service';
 
 describe('shellEnvironment', () => {
@@ -44,7 +45,7 @@ describe('defaultShell', () => {
 describe.skipIf(process.platform === 'win32')('TerminalService (a real pseudo-terminal)', () => {
   const service = new TerminalService();
   const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'pk-term-')));
-  afterEach(() => service.onModuleDestroy());
+  afterEach(async () => await service.onModuleDestroy());
 
   const collect = () => {
     const events: TerminalEvent[] = [];
@@ -59,13 +60,13 @@ describe.skipIf(process.platform === 'win32')('TerminalService (a real pseudo-te
   };
 
   it('runs a command in the workspace folder, keeps one terminal per workspace and replays the output to a late client', async () => {
-    const first = service.start(cwd, 80, 24);
+    const first = await service.start(cwd, 80, 24);
     expect(first).toMatchObject({ cwd, cols: 80, rows: 24, created: true });
     const live = collect();
     service.write(cwd, 'echo "hello $((6*7))"; pwd\r');
     expect(await live.until('hello 42')).toContain('hello 42');
 
-    const again = service.start(cwd, 100, 30);
+    const again = await service.start(cwd, 100, 30);
     expect(again).toMatchObject({ pid: first.pid, created: false, cols: 100 });
     expect(service.has(cwd)).toBe(true);
 
@@ -75,14 +76,37 @@ describe.skipIf(process.platform === 'win32')('TerminalService (a real pseudo-te
   }, 40_000);
 
   it('reports the shell ending and starts a fresh terminal afterwards', async () => {
-    service.start(cwd, 80, 24);
+    await service.start(cwd, 80, 24);
     const live = collect();
     service.write(cwd, 'exit 3\r');
     for (let i = 0; i < 300 && !live.events.some((e) => e.type === 'exit'); i++)
       await new Promise((r) => setTimeout(r, 50));
     expect(live.events.find((e) => e.type === 'exit')).toMatchObject({ type: 'exit', exitCode: 3 });
     expect(service.has(cwd)).toBe(false);
-    expect(service.start(cwd, 80, 24).created).toBe(true);
+    expect((await service.start(cwd, 80, 24)).created).toBe(true);
     expect(service.write('/nowhere', 'x')).toBe(false);
+  }, 15_000);
+
+  it('starts a fresh terminal while the exited one is still saving its last screen', async () => {
+    let hold = true;
+    const held: Array<() => void> = [];
+    const replay = {
+      get: async () => undefined,
+      set: () => (hold ? new Promise<void>((resolve) => held.push(resolve)) : Promise.resolve()),
+    } as unknown as TerminalReplayRepository;
+    const slow = new TerminalService(replay);
+    try {
+      const first = await slow.start(cwd, 80, 24);
+      slow.kill(cwd);
+      for (let i = 0; i < 100 && slow.has(cwd); i++) await new Promise((r) => setTimeout(r, 50));
+      expect(slow.has(cwd)).toBe(false);
+      const second = await slow.start(cwd, 80, 24);
+      expect(second).toMatchObject({ created: true });
+      expect(second.pid).not.toBe(first.pid);
+    } finally {
+      hold = false;
+      for (const resolve of held) resolve();
+      await slow.onModuleDestroy();
+    }
   }, 15_000);
 });

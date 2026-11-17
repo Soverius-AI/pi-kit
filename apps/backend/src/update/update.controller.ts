@@ -78,12 +78,12 @@ export class UpdateController {
   @ApiOperation({
     summary: 'Restart the backend',
     description:
-      'Ends the backend, and the watchdog starts it again with the newer pi. Settings and the toast call this after an update.',
+      'Requests one explicit backend restart with the newer pi, even when automatic watchdog recovery is off. Settings and the toast call this after an update.',
   })
   @Responds(RestartingSchema, { status: 201 })
   @Fails({ 409: 'Nothing restarts the backend here: restart it yourself.' })
-  restart(): Restarting {
-    this.updates.restart();
+  async restart(): Promise<Restarting> {
+    await this.updates.restart();
     return { restarting: true };
   }
 

@@ -4,7 +4,13 @@ import { PkShimmer, PkTabs, PkTabPanel, PkTip } from '@pi-kit/design-system';
 import { PkVersions } from './versions-block';
 import { PkSetting } from '@pi-kit/settings/api';
 import { ViewPrefs } from '@pi-kit/data-access';
-import { BackgroundServiceStore, PiSettingsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/data';
+import {
+  BackgroundServiceStore,
+  PiSettingsStore,
+  SecretsStore,
+  SettingsStore,
+  WatchdogStore,
+} from '@pi-kit/settings/data';
 
 /** Settings › General: what pi does when a conversation gets long and when a provider fails, how queued messages are delivered, whether pi-kit keeps running in the background, and the versions. */
 @Component({
@@ -15,7 +21,7 @@ import { BackgroundServiceStore, PiSettingsStore, SecretsStore, SettingsStore } 
     @if (store.settings(); as settings) {
       <div class="flex flex-col gap-5" data-testid="section-general">
         <pk-tabs [label]="'shared.catalog.general' | transloco" [(value)]="tab">
-          @if (dialog.shows('language', 'auto-compaction', 'background-service', 'unattended-keys')) {
+          @if (dialog.shows('language', 'auto-compaction', 'background-service', 'unattended-keys', 'watchdog')) {
             <pk-tab-panel value="preferences" [label]="'settings.sectionTabs.preferences' | transloco">
               <div class="flex flex-col gap-5">
                 @if (dialog.shows('language')) {
@@ -65,6 +71,38 @@ import { BackgroundServiceStore, PiSettingsStore, SecretsStore, SettingsStore } 
                         [checked]="settings.autoCompaction"
                         (change)="store.patch({ autoCompaction: $any($event.target).checked })"
                       />
+                    </div>
+                  </section>
+                }
+                @if (dialog.shows('watchdog')) {
+                  <section class="pk-group" [attr.aria-label]="'settings.watchdog.heading' | transloco">
+                    <header>
+                      <div>
+                        <h4>{{ 'settings.watchdog.heading' | transloco }}</h4>
+                      </div>
+                    </header>
+                    <div pkSetting="watchdog">
+                      <input
+                        type="checkbox"
+                        class="toggle toggle-primary"
+                        data-testid="watchdog"
+                        aria-labelledby="lbl-watchdog"
+                        aria-describedby="hint-watchdog"
+                        [checked]="watchdog.status()?.enabled ?? false"
+                        [disabled]="!watchdog.status()?.supported || watchdog.busy()"
+                        (change)="switchWatchdog($any($event.target))"
+                      />
+                      @if (watchdog.status()?.supported === false) {
+                        <div sub class="t-xs muted">{{ 'settings.watchdog.unsupported' | transloco }}</div>
+                      }
+                      @if (watchdog.error(); as error) {
+                        <div sub>
+                          <div class="text-error" role="alert">{{ error }}</div>
+                          <button type="button" class="btn btn-xs" (click)="watchdog.load()">
+                            {{ 'settings.language.retry' | transloco }}
+                          </button>
+                        </div>
+                      }
                     </div>
                   </section>
                 }
@@ -223,9 +261,11 @@ export class GeneralSection {
   protected readonly prefs = inject(ViewPrefs);
   protected readonly language = inject(Language);
   protected readonly background = inject(BackgroundServiceStore);
+  protected readonly watchdog = inject(WatchdogStore);
   protected readonly secrets = inject(SecretsStore);
 
   constructor() {
+    void this.watchdog.load();
     void this.background.load();
     void this.secrets.loadStatus();
   }
@@ -234,6 +274,11 @@ export class GeneralSection {
   protected async switchBackground(input: HTMLInputElement): Promise<void> {
     await this.background.setEnabled(input.checked);
     if (!this.background.busy()) input.checked = !!this.background.status()?.enabled;
+  }
+
+  protected async switchWatchdog(input: HTMLInputElement): Promise<void> {
+    await this.watchdog.setEnabled(input.checked);
+    input.checked = this.watchdog.status()?.enabled ?? false;
   }
 
   protected async switchUnattended(input: HTMLInputElement): Promise<void> {

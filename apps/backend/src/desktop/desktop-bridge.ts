@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import {
+  WatchdogSettingsSchema,
+  type WatchdogSettings,
   BrowserOperationError,
   type BrowserFailureCode,
   type BrowserAction,
@@ -92,6 +94,19 @@ export class DesktopBridge implements OnModuleDestroy {
     const proof = await this.exchange<unknown>('instance-key', { keyRequest: { action: 'sign', instanceId, claims } });
     if (typeof proof !== 'string' || proof.length > 16384) throw new Error('Invalid instance proof.');
     return proof;
+  }
+
+  async watchdog(enabled?: boolean): Promise<WatchdogSettings> {
+    if (!this.available) {
+      if (enabled !== undefined) throw new Error('The watchdog requires a service host.');
+      return { enabled: false, supported: false };
+    }
+    return WatchdogSettingsSchema.parse(await this.exchange('watchdog', enabled === undefined ? {} : { enabled }));
+  }
+
+  async requestBackendRestart(): Promise<void> {
+    if (!this.available) throw new Error('Backend restart requires a service host.');
+    await this.exchange('backend-restart', {});
   }
 
   appUpdate(action: AppUpdateAction): Promise<AppUpdateResult> {

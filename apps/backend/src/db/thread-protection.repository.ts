@@ -23,10 +23,10 @@ export class ThreadProtectionRepository {
   }
 
   /** `undefined`: the thread was never given a mode (Bypass). */
-  binding(threadId: string): ProtectionBinding | undefined {
-    const row = this.db
+  async binding(threadId: string): Promise<ProtectionBinding | undefined> {
+    const row = (await this.db
       .prepare('SELECT mode, generation, windows_accepted FROM thread_protection WHERE thread_id = ?')
-      .get(threadId) as { mode: ProtectionBinding['mode']; generation: number; windows_accepted: number } | undefined;
+      .get(threadId)) as { mode: ProtectionBinding['mode']; generation: number; windows_accepted: number } | undefined;
     return row
       ? {
           version: 1,
@@ -37,8 +37,8 @@ export class ThreadProtectionRepository {
       : undefined;
   }
 
-  setBinding(threadId: string, binding: ProtectionBinding): void {
-    this.db
+  async setBinding(threadId: string, binding: ProtectionBinding): Promise<void> {
+    await this.db
       .prepare(
         `INSERT INTO thread_protection (thread_id, mode, generation, windows_accepted) VALUES (?, ?, ?, ?)
          ON CONFLICT (thread_id) DO UPDATE SET mode = excluded.mode, generation = excluded.generation, windows_accepted = excluded.windows_accepted`,
@@ -46,18 +46,18 @@ export class ThreadProtectionRepository {
       .run(threadId, binding.mode, binding.generation, binding.experimentalWindowsAccepted ? 1 : 0);
   }
 
-  deleteBinding(threadId: string): void {
-    this.db.prepare('DELETE FROM thread_protection WHERE thread_id = ?').run(threadId);
+  async deleteBinding(threadId: string): Promise<void> {
+    await this.db.prepare('DELETE FROM thread_protection WHERE thread_id = ?').run(threadId);
   }
 
-  ownerState(ownerId: string): SandboxOwnerState | undefined {
-    const row = this.db.prepare('SELECT state FROM sandbox_owners WHERE owner_id = ?').get(ownerId) as
+  async ownerState(ownerId: string): Promise<SandboxOwnerState | undefined> {
+    const row = (await this.db.prepare('SELECT state FROM sandbox_owners WHERE owner_id = ?').get(ownerId)) as
       { state: SandboxOwnerState } | undefined;
     return row?.state;
   }
 
-  setOwnerState(ownerId: string, state: SandboxOwnerState): void {
-    this.db
+  async setOwnerState(ownerId: string, state: SandboxOwnerState): Promise<void> {
+    await this.db
       .prepare(
         'INSERT INTO sandbox_owners (owner_id, state) VALUES (?, ?) ON CONFLICT (owner_id) DO UPDATE SET state = excluded.state',
       )
@@ -65,7 +65,7 @@ export class ThreadProtectionRepository {
   }
 
   /** The owner confirmed its shutdown, or the person confirmed its recovery. */
-  clearOwner(ownerId: string): void {
-    this.db.prepare('DELETE FROM sandbox_owners WHERE owner_id = ?').run(ownerId);
+  async clearOwner(ownerId: string): Promise<void> {
+    await this.db.prepare('DELETE FROM sandbox_owners WHERE owner_id = ?').run(ownerId);
   }
 }

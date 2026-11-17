@@ -68,7 +68,8 @@ export class ThreadProtectionService implements OnModuleDestroy {
   private readonly releasing = new Map<string, Promise<void>>();
   private readonly failedCleanup = new Map<string, string>();
   private readonly changing = new Set<string>();
-  private agentGuard: ((threadId: string) => boolean) | undefined;
+  private readonly admittedBindings = new Map<string, ProtectionBinding>();
+  private agentGuard: ((threadId: string) => boolean | Promise<boolean>) | undefined;
 
   constructor(
     private readonly store: ThreadProtectionRepository,
@@ -76,18 +77,20 @@ export class ThreadProtectionService implements OnModuleDestroy {
   ) {}
 
   /** The background agents tell whether a thread has agents at work; their mode is fixed when they start. */
-  setAgentGuard(guard: (threadId: string) => boolean): void {
+  setAgentGuard(guard: (threadId: string) => boolean | Promise<boolean>): void {
     this.agentGuard = guard;
   }
 
-  binding(threadId: string): ProtectionBinding {
-    return this.store.binding(threadId) ?? { ...ThreadProtectionService.BYPASS };
+  async binding(threadId: string): Promise<ProtectionBinding> {
+    const binding = (await this.store.binding(threadId)) ?? { ...ThreadProtectionService.BYPASS };
+    this.admittedBindings.set(threadId, binding);
+    return binding;
   }
 
-  status(threadId: string): ThreadProtection {
-    const binding = this.binding(threadId);
+  async status(threadId: string): Promise<ThreadProtection> {
+    const binding = await this.binding(threadId);
     const owner = this.owners.get(`thread:${threadId}`);
-    const held = this.recoveryReason(threadId);
+    const held = await this.recoveryReason(threadId);
     const unavailable =
       owner?.error ??
       (owner?.client && owner.client.state !== 'active' ? (owner.client.reason ?? 'The sandbox stopped.') : undefined);
@@ -101,38 +104,55 @@ export class ThreadProtectionService implements OnModuleDestroy {
     };
   }
 
-  assertAdmitted(threadId: string): void {
+  async assertAdmitted(threadId: string): Promise<void> {
     if (this.changing.has(threadId))
       throw new ConflictException('This thread is changing its protection. Try again when that is done.');
-    const held = this.recoveryReason(threadId);
+    const held = await this.recoveryReason(threadId);
     if (held) throw new ConflictException(`${held} Confirm its recovery in the protection control to go on.`);
   }
 
   /** The session was opened for this generation; a mode change since then disposes it. */
-  assertGeneration(threadId: string, generation: number): void {
-    this.assertAdmitted(threadId);
-    if (this.binding(threadId).generation !== generation)
+  async assertGeneration(threadId: string, generation: number): Promise<void> {
+    await this.assertAdmitted(threadId);
+    if ((await this.binding(threadId)).generation !== generation)
       throw new ConflictException('The thread’s protection changed. Reopen the thread before running tools.');
   }
 
   /** Before every sandboxed tool call. */
-  assertCurrent(threadId: string, generation: number): void {
-    this.assertGeneration(threadId, generation);
+  async assertCurrent(threadId: string, generation: number): Promise<void> {
+    await this.assertGeneration(threadId, generation);
     const owner = this.owners.get(`thread:${threadId}`);
     if (owner?.client?.state !== 'active')
       throw new ConflictException(owner?.error ?? owner?.client?.reason ?? 'The sandbox is unavailable.');
   }
 
-  assertHostCapability(threadId: string, capability: string): void {
-    this.assertAdmitted(threadId);
-    if (this.binding(threadId).mode === 'sandboxed')
+  async assertHostCapability(threadId: string, capability: string): Promise<void> {
+    await this.assertAdmitted(threadId);
+    if ((await this.binding(threadId)).mode === 'sandboxed')
       throw new ForbiddenException(`${capability} is unavailable in a sandboxed thread.`);
+  }
+
+  /** SDK transport/tool admission hooks are synchronous. Only an already awaited session admission may use this cache. */
+  assertSessionCurrent(threadId: string, generation: number, sandboxed: boolean): void {
+    const binding = this.admittedBindings.get(threadId);
+    if (
+      !binding ||
+      binding.generation !== generation ||
+      this.changing.has(threadId) ||
+      this.failedCleanup.has(`thread:${threadId}`)
+    )
+      throw new ConflictException('The thread’s protection changed. Reopen the thread before running tools.');
+    if (sandboxed) {
+      const owner = this.owners.get(`thread:${threadId}`);
+      if (owner?.client?.state !== 'active') throw new ConflictException(owner?.error ?? 'The sandbox is unavailable.');
+    } else if (binding.mode === 'sandboxed')
+      throw new ForbiddenException('Host capabilities are unavailable in a sandboxed thread.');
   }
 
   /** The thread's sandbox, started if needed; `undefined` in Bypass. */
   async prepare(threadId: string, cwd: string): Promise<SandboxClient | undefined> {
-    this.assertAdmitted(threadId);
-    const binding = this.binding(threadId);
+    await this.assertAdmitted(threadId);
+    const binding = await this.binding(threadId);
     return binding.mode === 'sandboxed' ? this.owner(`thread:${threadId}`, cwd, binding) : undefined;
   }
 
@@ -150,7 +170,7 @@ export class ThreadProtectionService implements OnModuleDestroy {
       if (existing.key !== key) throw new Error('The sandbox owner changed without stopping first.');
       return existing.ready;
     }
-    const held = this.failedCleanup.get(ownerId) ?? (this.store.ownerState(ownerId) ? HELD : undefined);
+    const held = this.failedCleanup.get(ownerId) ?? ((await this.store.ownerState(ownerId)) ? HELD : undefined);
     if (held) throw new Error(held);
     const owner: Owner = { key, ready: this.start(ownerId, cwd, binding, (client) => (owner.client = client)) };
     owner.ready = owner.ready.catch((error: unknown) => {
@@ -167,11 +187,11 @@ export class ThreadProtectionService implements OnModuleDestroy {
   async set(threadId: string, cwd: string, input: SetThreadProtection, dispose: () => void): Promise<ThreadProtection> {
     if (this.changing.has(threadId))
       throw new ConflictException('This thread is changing its protection. Try again when that is done.');
-    const previous = this.binding(threadId);
-    const held = this.recoveryReason(threadId);
+    const previous = await this.binding(threadId);
+    const held = await this.recoveryReason(threadId);
     if (held && input.confirmRecovery !== true)
       throw new ConflictException(`${held} Confirm that it stopped before changing the protection.`);
-    if (this.agentGuard?.(threadId))
+    if (await this.agentGuard?.(threadId))
       throw new ConflictException('Stop this thread’s background agents before changing its protection.');
     if (input.mode === 'bypass' && previous.mode === 'sandboxed' && input.confirmBypass !== true)
       throw new ConflictException('Switching to Bypass needs a confirmation that tools then run on the host.');
@@ -192,18 +212,19 @@ export class ThreadProtectionService implements OnModuleDestroy {
         generation: previous.generation + 1,
         experimentalWindowsAccepted: windowsAccepted,
       };
-      this.store.setBinding(threadId, next);
+      await this.store.setBinding(threadId, next);
+      this.admittedBindings.set(threadId, next);
       if (next.mode === 'sandboxed') await this.owner(ownerId, cwd, next).catch(() => undefined);
-      return this.status(threadId);
+      return await this.status(threadId);
     } finally {
       this.changing.delete(threadId);
     }
   }
 
   /** A fork, clone or import starts in its source's mode, with its own sandbox. */
-  copy(sourceId: string, targetId: string): void {
-    const source = this.store.binding(sourceId);
-    if (source) this.store.setBinding(targetId, { ...source, generation: 0 });
+  async copy(sourceId: string, targetId: string): Promise<void> {
+    const source = await this.store.binding(sourceId);
+    if (source) await this.store.setBinding(targetId, { ...source, generation: 0 });
   }
 
   /** Stops the owner's sandbox; a shutdown that is not confirmed holds the owner for recovery. */
@@ -224,26 +245,27 @@ export class ThreadProtectionService implements OnModuleDestroy {
       await owner.client?.close();
     } catch (error) {
       this.failedCleanup.set(ownerId, ThreadProtectionService.messageOf(error));
-      this.store.setOwnerState(ownerId, 'recovery-required');
+      await this.store.setOwnerState(ownerId, 'recovery-required');
       throw error;
     }
     const failed = this.failedCleanup.get(ownerId);
     if (failed && !owner.client) throw new ConflictException(failed);
     this.failedCleanup.delete(ownerId);
-    this.store.clearOwner(ownerId);
+    await this.store.clearOwner(ownerId);
     if (this.owners.get(ownerId) === owner) this.owners.delete(ownerId);
   }
 
   /** The owner is gone for good (a removed agent): its sandbox stops and nothing is kept for it. */
   async forget(ownerId: string): Promise<void> {
     await this.release(ownerId);
-    this.store.clearOwner(ownerId);
+    await this.store.clearOwner(ownerId);
   }
 
   /** The thread is deleted: its sandbox stops and its mode goes with it. */
   async forgetThread(threadId: string): Promise<void> {
     await this.forget(`thread:${threadId}`);
-    this.store.deleteBinding(threadId);
+    await this.store.deleteBinding(threadId);
+    this.admittedBindings.delete(threadId);
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -257,7 +279,7 @@ export class ThreadProtectionService implements OnModuleDestroy {
     started: (client: SandboxClient) => void,
   ): Promise<SandboxClient> {
     const { Sandbox } = await SandboxPackage.load('core');
-    this.store.setOwnerState(ownerId, 'starting');
+    await this.store.setOwnerState(ownerId, 'starting');
     let client: SandboxClient | undefined;
     try {
       client = await Sandbox.create({
@@ -267,7 +289,7 @@ export class ThreadProtectionService implements OnModuleDestroy {
       });
       started(client);
       if (client.state !== 'active') throw new Error(client.reason ?? 'The sandbox did not start.');
-      this.store.setOwnerState(ownerId, 'active');
+      await this.store.setOwnerState(ownerId, 'active');
       return client;
     } catch (error) {
       const confirmed = client
@@ -276,10 +298,10 @@ export class ThreadProtectionService implements OnModuleDestroy {
             () => false,
           )
         : (error as Partial<SandboxError>).cleanupConfirmed === true;
-      if (confirmed) this.store.clearOwner(ownerId);
+      if (confirmed) await this.store.clearOwner(ownerId);
       else {
         this.failedCleanup.set(ownerId, 'The sandbox failed to start and did not confirm its cleanup.');
-        this.store.setOwnerState(ownerId, 'recovery-required');
+        await this.store.setOwnerState(ownerId, 'recovery-required');
       }
       throw error;
     }
@@ -294,14 +316,14 @@ export class ThreadProtectionService implements OnModuleDestroy {
       .catch(() => undefined);
     this.owners.delete(ownerId);
     this.failedCleanup.delete(ownerId);
-    this.store.clearOwner(ownerId);
+    await this.store.clearOwner(ownerId);
   }
 
-  private recoveryReason(threadId: string): string | undefined {
+  private async recoveryReason(threadId: string): Promise<string | undefined> {
     const ownerId = `thread:${threadId}`;
     return (
       this.failedCleanup.get(ownerId) ??
-      (!this.owners.has(ownerId) && this.store.ownerState(ownerId) ? HELD : undefined)
+      (!this.owners.has(ownerId) && (await this.store.ownerState(ownerId)) ? HELD : undefined)
     );
   }
 

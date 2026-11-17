@@ -2,6 +2,7 @@ import { createReadStream } from 'node:fs';
 import { readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { setImmediate as yieldToIo } from 'node:timers/promises';
 import { userMessageText } from '@pi-kit/pi-adapter';
 
 /** What the sidebar needs to know about one session file. Times are epoch milliseconds. */
@@ -44,6 +45,7 @@ const READ_CONCURRENCY = 6;
  */
 export class SessionIndex {
   private readonly cache = new Map<string, Cached>();
+  private scanning: Promise<ScanResult> | undefined;
 
   private readonly sessionsDir: () => string;
 
@@ -55,7 +57,12 @@ export class SessionIndex {
     return this.cache.size;
   }
 
-  async scan(): Promise<ScanResult> {
+  scan(): Promise<ScanResult> {
+    // List requests and the periodic reconcile share one scan, including its filesystem work.
+    return (this.scanning ??= this.runScan().finally(() => (this.scanning = undefined)));
+  }
+
+  private async runScan(): Promise<ScanResult> {
     const dir = this.sessionsDir();
     const paths = await listJsonl(dir);
     const stats = await mapLimit(paths, STAT_CONCURRENCY, async (path) => {
@@ -73,7 +80,7 @@ export class SessionIndex {
     });
     const changed: SessionSummary[] = [];
     await mapLimit(stale, READ_CONCURRENCY, async (s) => {
-      const summary = await summarize(s.path, new Date(s.mtimeMs));
+      const summary = await summarize(s.path, new Date(s.mtimeMs), s.size);
       if (!summary) {
         this.cache.delete(s.path);
         return;
@@ -107,15 +114,25 @@ async function listJsonl(sessionsDir: string): Promise<string[]> {
 }
 
 /** A port of pi's `buildSessionInfo` (session-manager.js), without the full text it builds for pi's own search (and with the first message as typed: `/skill:name` for an expanded skill). */
-export async function summarize(path: string, mtime: Date): Promise<SessionSummary | undefined> {
+export async function summarize(path: string, mtime: Date, size?: number): Promise<SessionSummary | undefined> {
   let header: { id: string; cwd?: unknown; parentSession?: string; timestamp?: string } | undefined;
   let messageCount = 0;
   let firstMessage = '';
   let name: string | undefined;
   let lastActivity: number | undefined;
   try {
-    const lines = createInterface({ input: createReadStream(path, { encoding: 'utf8' }), crlfDelay: Infinity });
+    if (size === 0) return undefined;
+    // A busy session may keep growing while we scan. Read only the size this pass statted.
+    const lines = createInterface({
+      input: createReadStream(path, { encoding: 'utf8', ...(size === undefined ? {} : { end: size - 1 }) }),
+      crlfDelay: Infinity,
+    });
+    let budgetStarted = performance.now();
     for await (const line of lines) {
+      if (performance.now() - budgetStarted >= 8) {
+        await yieldToIo();
+        budgetStarted = performance.now();
+      }
       const entry = parseLine(line);
       if (!entry) continue;
       if (!header) {

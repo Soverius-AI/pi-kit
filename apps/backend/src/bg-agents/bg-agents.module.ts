@@ -31,8 +31,8 @@ const threadHost = (
   cwdOf: (id) => threads.cwdOf(id),
   allowed: async (id) => {
     // The thread's project, not the folder pi runs in: a thread in a worktree works outside the project's folder and still belongs to it.
-    const projectCwd = threads.projectOf(id);
-    const project = threads.workspaces().find((w) => w.cwd === projectCwd);
+    const projectCwd = await threads.projectOf(id);
+    const project = (await threads.workspaces()).find((w) => w.cwd === projectCwd);
     // The same answer the main session runs under: a folder with no pi resources is trusted for nothing and needs no dialog, so agents may run there too.
     if ((await trust.state(projectCwd)).status !== 'trusted')
       return 'Background agents are off: this folder is not trusted (Settings › Projects).';
@@ -41,7 +41,7 @@ const threadHost = (
     return undefined;
   },
   isolate: async (id, agentId, name) => {
-    const projectCwd = threads.projectOf(id);
+    const projectCwd = await threads.projectOf(id);
     const facts = await worktrees.create(projectCwd, {
       threadId: `${id}-${agentId}`,
       title: `agent-${name}`,
@@ -107,12 +107,12 @@ export class BgAgentsModule implements OnModuleInit {
       ended: (agentId) => this.snapshots.agentEnded(agentId),
     });
     this.status.setAgentQuestions((threadId) => this.agents.userQuestions(threadId));
-    this.agents.onChange((threadId) => {
+    this.agents.onChange(async (threadId) => {
       this.status.pushAgents(
         threadId,
-        this.agents.list(threadId).map((row) => this.agents.toAgent(row)),
+        (await this.agents.list(threadId)).map((row) => this.agents.toAgent(row)),
       );
-      this.status.touch(threadId);
+      await this.status.touch(threadId);
     });
   }
 }

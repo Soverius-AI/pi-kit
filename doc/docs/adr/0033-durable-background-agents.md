@@ -3,6 +3,8 @@
 Status: Accepted
 Date: 2026-10-21
 
+> Runtime storage update: [ADR-0037](0037-async-sqlite.md) supersedes the driver and database-encryption details below. The async backend uses AppThreat SQLite, creates private plaintext databases and refuses encrypted profiles without modifying their originals. Credential storage remains separate.
+
 ## Context
 
 A thread runs one pi session. Long side tasks (a test sweep, a review, a docs update, a refactor of another module) either block that session or are lost when the app quits.

@@ -3,6 +3,8 @@
 Status: Accepted
 Date: 2026-10-16
 
+> Runtime storage update: [ADR-0037](0037-async-sqlite.md) supersedes the driver and database-encryption details below. The async backend uses AppThreat SQLite, creates private plaintext databases and refuses encrypted profiles without modifying their originals. Credential storage remains separate.
+
 ## Context
 
 The first spike held CopilotKit back because the newer Angular package needs a newer Angular major than the workspace

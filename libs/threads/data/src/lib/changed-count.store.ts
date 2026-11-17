@@ -64,10 +64,14 @@ export const ChangedCountStore = signalStore(
           .map((t) => t.id)
           .join(),
       );
+      // ClockStore ticks every second. Keep the bucket in a computed so unchanged
+      // buckets do not invalidate the effect (and turn the ten-second poll into a
+      // request every second after the settle delay).
+      const refreshTick = computed(() => Math.floor(clock.now() / store._policy.changesRefreshMs));
       effect(() => {
         const folder = threads.folder();
         running();
-        Math.floor(clock.now() / store._policy.changesRefreshMs);
+        refreshTick();
         untracked(() => store.refresh(folder));
       });
       // Every change the folder's stream reports, each one.

@@ -41,7 +41,7 @@ export class ComposerController {
     @Body({ schema: CompleteRequestSchema }) body: z.infer<typeof CompleteRequestSchema>,
   ): Promise<CompleteResponse> {
     await this.threads.openSession(id);
-    return this.sessions.complete(id, body.text, body.cursor);
+    return await this.sessions.complete(id, body.text, body.cursor);
   }
 
   /**

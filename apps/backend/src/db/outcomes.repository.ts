@@ -61,22 +61,25 @@ export class OutcomesRepository {
     return this.database.db;
   }
 
-  get(threadId: string): OutcomeRow | undefined {
-    const row = this.db.prepare('SELECT * FROM thread_outcomes WHERE thread_id = ?').get(threadId) as
+  async get(threadId: string): Promise<OutcomeRow | undefined> {
+    const row = (await this.db.prepare('SELECT * FROM thread_outcomes WHERE thread_id = ?').get(threadId)) as
       RawOutcome | undefined;
     return row && toRow(row);
   }
 
   /** Every thread's outcome, for a pass over the thread list. */
-  all(): Map<string, OutcomeRow> {
+  async all(): Promise<Map<string, OutcomeRow>> {
     return new Map(
-      (this.db.prepare('SELECT * FROM thread_outcomes').all() as RawOutcome[]).map((r) => [r.thread_id, toRow(r)]),
+      ((await this.db.prepare('SELECT * FROM thread_outcomes').all()) as RawOutcome[]).map((r) => [
+        r.thread_id,
+        toRow(r),
+      ]),
     );
   }
 
   /** Writes the thread's outcome, replacing the one it had. The scores and labels kept there survive a replacement of the rest. */
-  put(row: Omit<OutcomeRow, 'scores' | 'hunkLabels'>): void {
-    this.db
+  async put(row: Omit<OutcomeRow, 'scores' | 'hunkLabels'>): Promise<void> {
+    await this.db
       .prepare(
         `INSERT INTO thread_outcomes (thread_id, kind, base_commit, head_commit, merge_commit, pr_url, at, files)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -98,7 +101,7 @@ export class OutcomesRepository {
   // ---- what the score service annotates: dedicated setters, so `put` never has to know about them
 
   /** Stores the labels and the scores of a thread's outcome; `undefined` leaves a column alone, `null` clears it. Returns false when the thread has no outcome. */
-  setAnnotations(threadId: string, annotations: { hunkLabels?: unknown; scores?: unknown }): boolean {
+  async setAnnotations(threadId: string, annotations: { hunkLabels?: unknown; scores?: unknown }): Promise<boolean> {
     const sets: string[] = [];
     const values: (string | null)[] = [];
     if (annotations.hunkLabels !== undefined) {
@@ -109,10 +112,13 @@ export class OutcomesRepository {
       sets.push('scores = ?');
       values.push(annotations.scores === null ? null : JSON.stringify(annotations.scores));
     }
-    if (sets.length === 0) return this.get(threadId) !== undefined;
+    if (sets.length === 0) return (await this.get(threadId)) !== undefined;
     return (
-      this.db.prepare(`UPDATE thread_outcomes SET ${sets.join(', ')} WHERE thread_id = ?`).run(...values, threadId)
-        .changes > 0
+      (
+        await this.db
+          .prepare(`UPDATE thread_outcomes SET ${sets.join(', ')} WHERE thread_id = ?`)
+          .run(...values, threadId)
+      ).changes > 0
     );
   }
 }

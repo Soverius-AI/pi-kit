@@ -33,6 +33,8 @@ export interface WatchdogHost {
 }
 
 export interface WatchdogOptions {
+  /** Opt-in crash recovery and liveness checks. Starting/stopping and explicit restarts still work when off. */
+  enabled: boolean;
   baseDelayMs: number;
   maxDelayMs: number;
   /** Consecutive failures after which the watchdog gives up. */
@@ -46,6 +48,7 @@ export interface WatchdogOptions {
 }
 
 export const DEFAULT_WATCHDOG_OPTIONS: WatchdogOptions = {
+  enabled: false,
   baseDelayMs: 500,
   maxDelayMs: 15_000,
   maxFailures: 5,
@@ -86,11 +89,42 @@ export class BackendWatchdog {
   private sawFailure = false;
   /** Bumped by every launch so a late answer from an older one is ignored. */
   private generation = 0;
+  private pingGeneration = 0;
+  private enabled: boolean;
+  /** A user-requested update restart is allowed once, even with automatic recovery off. */
+  private restartRequested = false;
 
   constructor(
     private readonly host: WatchdogHost,
     private readonly options: WatchdogOptions = DEFAULT_WATCHDOG_OPTIONS,
-  ) {}
+  ) {
+    this.enabled = options.enabled;
+  }
+
+  /** Apply the preference without killing a healthy backend or restarting the host. */
+  setEnabled(enabled: boolean): void {
+    if (enabled === this.enabled) return;
+    this.enabled = enabled;
+    this.pingGeneration += 1;
+    this.cancelPing?.();
+    this.cancelPing = undefined;
+    this.missedPings = 0;
+    if (enabled) {
+      if (this.state === 'running') this.armPing(this.generation);
+      else if (this.state === 'failed') this.retry();
+    } else if (this.state === 'restarting' && !this.restartRequested) {
+      this.cancelTimer?.();
+      this.cancelTimer = undefined;
+      this.state = 'failed';
+      this.emit({ reason: 'Automatic backend recovery is disabled.' });
+    }
+  }
+
+  /** The host acknowledges this before an update ends the backend; it is not automatic crash recovery. */
+  restartOnExit(): void {
+    if (this.state !== 'running') throw new Error('The backend is not running.');
+    this.restartRequested = true;
+  }
 
   get status(): WatchdogStatus {
     return { state: this.state, restarts: this.restarts };
@@ -104,6 +138,7 @@ export class BackendWatchdog {
   /** Gives up for good: no more restarts, the running backend is killed. */
   stop(): void {
     this.state = 'stopped';
+    this.restartRequested = false;
     this.generation += 1;
     this.cancelTimer?.();
     this.cancelTimer = undefined;
@@ -123,6 +158,7 @@ export class BackendWatchdog {
   }
 
   private begin(): void {
+    this.restartRequested = false;
     this.state = 'starting';
     this.emit();
     const generation = ++this.generation;
@@ -170,17 +206,18 @@ export class BackendWatchdog {
     const uptime = this.startedAt === undefined || until === undefined ? 0 : until - this.startedAt;
     this.startedAt = undefined;
     this.answeredAt = undefined;
-    if (uptime >= this.options.stableAfterMs) this.failures = 0;
-    this.failures += 1;
+    if (uptime >= this.options.stableAfterMs || this.restartRequested) this.failures = 0;
+    if (!this.restartRequested) this.failures += 1;
     this.sawFailure = true;
-    if (this.failures > this.options.maxFailures) {
+    if (!this.restartRequested && (!this.enabled || this.failures > this.options.maxFailures)) {
       this.state = 'failed';
       this.emit({ reason });
       return;
     }
-    const delayMs = Math.min(this.options.maxDelayMs, this.options.baseDelayMs * 2 ** (this.failures - 1));
+    const attempt = Math.max(1, this.failures);
+    const delayMs = Math.min(this.options.maxDelayMs, this.options.baseDelayMs * 2 ** (attempt - 1));
     this.state = 'restarting';
-    this.emit({ reason, attempt: this.failures, delayMs });
+    this.emit({ reason, attempt, delayMs });
     this.cancelTimer = this.host.schedule(() => {
       this.cancelTimer = undefined;
       if (this.state === 'restarting') this.begin();
@@ -188,18 +225,26 @@ export class BackendWatchdog {
   }
 
   private armPing(generation: number): void {
-    if (this.options.pingIntervalMs <= 0) return;
+    if (!this.enabled || this.options.pingIntervalMs <= 0) return;
+    const pingGeneration = this.pingGeneration;
     this.cancelPing = this.host.schedule(() => {
-      if (generation !== this.generation || this.state !== 'running') return;
+      this.cancelPing = undefined;
+      if (!this.enabled || generation !== this.generation || this.state !== 'running') return;
       void this.host.ping().then(
-        (ok) => this.pinged(generation, ok),
-        () => this.pinged(generation, false),
+        (ok) => this.pinged(generation, pingGeneration, ok),
+        () => this.pinged(generation, pingGeneration, false),
       );
     }, this.options.pingIntervalMs);
   }
 
-  private pinged(generation: number, ok: boolean): void {
-    if (generation !== this.generation || this.state !== 'running') return;
+  private pinged(generation: number, pingGeneration: number, ok: boolean): void {
+    if (
+      !this.enabled ||
+      pingGeneration !== this.pingGeneration ||
+      generation !== this.generation ||
+      this.state !== 'running'
+    )
+      return;
     this.missedPings = ok ? 0 : this.missedPings + 1;
     if (ok) this.answeredAt = this.host.now();
     if (this.missedPings >= this.options.pingFailuresToKill) {

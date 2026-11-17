@@ -33,11 +33,11 @@ export class WorkspaceStatusController {
   })
   @Responds(WorkspaceStatusSchema)
   @Fails({ 404: 'The folder is not a known project.' })
-  status(
+  async status(
     @Param('id') id: string,
     @Query({ schema: WorkspaceStatusQuerySchema }) query: z.infer<typeof WorkspaceStatusQuerySchema>,
   ): Promise<WorkspaceStatus> {
-    return this.changes.fileStatus(this.meta.requireWorkspace(id), query.thread || undefined);
+    return await this.changes.fileStatus(await this.meta.requireWorkspace(id), query.thread || undefined);
   }
 
   /** Diffs and the live refresh are built from git: a folder without a repository gets one when the person asks. */
@@ -51,7 +51,7 @@ export class WorkspaceStatusController {
   @Responds(GitInitResultSchema)
   @Fails({ 404: 'The folder is not a known project.' })
   async initGit(@Param('id') id: string): Promise<GitInitResult> {
-    const cwd = this.meta.requireWorkspace(id);
+    const cwd = await this.meta.requireWorkspace(id);
     if (!(await isWorkTree(cwd))) await git(cwd, ['init'], { timeout: 0 });
     return { git: true };
   }

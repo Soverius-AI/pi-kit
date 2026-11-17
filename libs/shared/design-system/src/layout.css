@@ -102,7 +102,11 @@
   border-bottom: 1px solid var(--color-base-300);
   min-width: 0;
 }
+.pk-header-title {
+  min-width: 0;
+}
 .pk-header-actions {
+  flex-shrink: 0;
   min-width: 0;
 }
 .pk-crumbs {

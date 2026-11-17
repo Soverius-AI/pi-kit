@@ -49,10 +49,10 @@ export class SetupController {
     description: 'Records that the person finished the onboarding or left it, so it does not open by itself again.',
   })
   @Responds(OnboardingStateSchema)
-  state(
+  async state(
     @Body({ schema: OnboardingStateRequestSchema }) body: z.infer<typeof OnboardingStateRequestSchema>,
-  ): OnboardingState {
-    return this.setup.setState(body.state);
+  ): Promise<OnboardingState> {
+    return await this.setup.setState(body.state);
   }
 
   @Post('local/test')

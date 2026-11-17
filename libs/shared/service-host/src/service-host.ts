@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { InstanceKeyRequestSchema } from '@pi-kit/protocol';
 import type { BackendEndpoint, Health, RunningBackend, SpawnOptions } from './backend';
 import type { HostLevel } from './discovery';
+import { DatabaseReset } from './database-reset';
 import { RpcError, type RpcPeer } from './host-channel';
 import {
   type DesktopAnswer,
@@ -22,6 +23,7 @@ import { MigratingSealing } from './instance-key-sealing';
 import type { OwnerAccess } from './owner-gateway';
 import type { RemoteAccess } from './remote-access';
 import { BackendActivity, type SleepGuard } from './sleep-guard';
+import { WatchdogSettings } from './watchdog-settings';
 import {
   BackendWatchdog,
   DEFAULT_WATCHDOG_OPTIONS,
@@ -124,16 +126,17 @@ export class ServiceHost {
   private startupFailure: StartupFailure | undefined;
   private status: WatchdogStatus = { state: 'starting', restarts: 0 };
   private desktop: RpcPeer | undefined;
-  private readonly keys: InstanceKeyStore;
+  private keys: InstanceKeyStore;
   private activity: BackendActivity | undefined;
+  private watchdogEnabled: boolean;
 
   constructor(
     private readonly config: HostConfig,
     private readonly deps: ServiceHostDeps,
     private readonly watchdogOptions: WatchdogOptions = DEFAULT_WATCHDOG_OPTIONS,
   ) {
-    const sealing = deps.hostSealing ? new MigratingSealing(deps.hostSealing, this.sealing) : this.sealing;
-    this.keys = new InstanceKeyStore(() => InstanceKeyStore.file(config.dataDir), sealing);
+    this.watchdogEnabled = WatchdogSettings.read(config.dataDir);
+    this.keys = this.keyStore();
   }
 
   /** The backend's address, for phone access; fixed once `open()` resolved. */
@@ -186,14 +189,32 @@ export class ServiceHost {
     });
     // What `attach` answers too, without becoming the desktop: for the `pi-kit` command's backend calls.
     peer.handle('backend', (): BackendEndpoint => {
-      if (!this.endpoint || !this.watchdog) throw new RpcError('The backend is not running.');
+      if (!this.endpoint || !this.current || this.status.state !== 'running')
+        throw new RpcError('The backend is not running.');
       return { ...this.endpoint };
+    });
+    peer.handle('watchdog.status', () => this.watchdogSettings());
+    peer.handle('watchdog.set', (enabled) => {
+      if (typeof enabled !== 'boolean') throw new RpcError('Invalid watchdog preference.');
+      return this.setWatchdog(enabled);
     });
     peer.handle('owner.link', () => {
       if (!this.deps.owner) throw new RpcError('This pi-kit has no browser access.');
       return this.deps.owner.link();
     });
     peer.handle('owner.revoke', () => this.deps.owner?.revokeAll());
+    for (const [method, operation] of [
+      ['database.reset', DatabaseReset.backup],
+      ['database.restore', DatabaseReset.restore],
+    ] as const)
+      peer.handle(method, () => {
+        if (this.desktop !== peer) throw new RpcError('Only the attached desktop app can reset or restore databases.');
+        if (this.starting || this.watchdog || this.backends.size !== 0 || this.stopping)
+          throw new RpcError('Cannot change databases while the backend is starting, running, or stopping.');
+        const result = operation(this.config.dataDir);
+        this.keys = this.keyStore();
+        return result;
+      });
     peer.handle('start', () => this.start());
     peer.handle('retry', () => this.watchdog?.retry());
     peer.handle('stop', () => void this.stop());
@@ -243,6 +264,8 @@ export class ServiceHost {
   private async firstStart(): Promise<{ bootId?: string }> {
     const endpoint = this.endpoint;
     if (!endpoint || this.stopping) throw new RpcError('The service host is not running.');
+    if (DatabaseReset.clearCompleted(this.config.dataDir))
+      this.deps.log('database reset: the backup had completed; cleared its leftover marker');
     this.startupFailure = undefined;
     let first: LaunchedBackend;
     try {
@@ -272,7 +295,7 @@ export class ServiceHost {
           this.desktop?.emit('status', status);
         },
       },
-      this.watchdogOptions,
+      { ...this.watchdogOptions, enabled: this.watchdogEnabled },
     );
     this.watchdog.start();
     const guard = this.deps.sleepGuard;
@@ -299,7 +322,10 @@ export class ServiceHost {
     this.backends.set(generation, running);
     this.current = running;
     running.child.on('message', (message: unknown) => this.fromBackend(generation, message));
-    void running.exited.then(() => this.backends.delete(generation));
+    void running.exited.then(() => {
+      this.backends.delete(generation);
+      if (this.current === running) this.current = undefined;
+    });
     this.deps.log(`backend started, pid ${running.child.pid}, ${running.url}`);
     this.desktop?.emit('spawned', { pid: running.child.pid });
     return running;
@@ -321,6 +347,22 @@ export class ServiceHost {
   private async answer(generation: number, value: unknown): Promise<DesktopAnswer> {
     const message = fields(value);
     if (message?.['type'] === 'instance-key') return this.instanceKey(generation, message['keyRequest']);
+    if (message?.['type'] === 'watchdog' || message?.['type'] === 'backend-restart') {
+      if (generation !== this.generation || this.stopping)
+        return { error: 'The service host is stopping.', errorCode: 'unavailable' };
+      try {
+        if (message['type'] === 'backend-restart') {
+          if (!this.watchdog) throw new Error('The backend is not running.');
+          this.watchdog.restartOnExit();
+          return { result: {} };
+        }
+        const enabled = message['enabled'];
+        if (enabled !== undefined && typeof enabled !== 'boolean') throw new Error('Invalid watchdog preference.');
+        return { result: enabled === undefined ? this.watchdogSettings() : this.setWatchdog(enabled) };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error), errorCode: 'failed' };
+      }
+    }
     const desktop = this.desktop;
     if (desktop) {
       try {
@@ -330,6 +372,19 @@ export class ServiceHost {
       }
     }
     return detachedAnswer(value);
+  }
+
+  private watchdogSettings(): { enabled: boolean; supported: true } {
+    return { enabled: this.watchdogEnabled, supported: true };
+  }
+
+  private setWatchdog(enabled: boolean): { enabled: boolean; supported: true } {
+    if (this.stopping) throw new RpcError('The service host is stopping.');
+    WatchdogSettings.write(this.config.dataDir, enabled);
+    this.watchdogEnabled = enabled;
+    this.watchdog?.setEnabled(enabled);
+    this.deps.log(`backend watchdog ${enabled ? 'enabled' : 'disabled'}`);
+    return this.watchdogSettings();
   }
 
   private async instanceKey(generation: number, request: unknown): Promise<DesktopAnswer> {
@@ -346,6 +401,11 @@ export class ServiceHost {
       this.deps.log(`instance key unavailable (${error instanceof InstanceKeyError ? error.code : 'failed'})`);
       return error instanceof InstanceKeyError ? { ...KEY_UNAVAILABLE, error: error.message } : KEY_UNAVAILABLE;
     }
+  }
+
+  private keyStore(): InstanceKeyStore {
+    const sealing = this.deps.hostSealing ? new MigratingSealing(this.deps.hostSealing, this.sealing) : this.sealing;
+    return new InstanceKeyStore(() => InstanceKeyStore.file(this.config.dataDir), sealing);
   }
 
   /** The desktop's safeStorage: the seal of keys made before the host sealed its own, and the fallback where the host cannot seal. */

@@ -66,8 +66,8 @@ export const AGENT_EXTENSION = 'pikit.agent';
 export interface AgentHost {
   holds: Holds;
   cleanup: {
-    begin(agentId: string, intent: CleanupIntent): void;
-    end(agentId: string, callId: string): void;
+    begin(agentId: string, intent: CleanupIntent): Promise<void>;
+    end(agentId: string, callId: string): Promise<void>;
   };
   /** Delivers the agent's report to its thread's main agent; `reportId` makes a retry after a crash find the same report. */
   report(agentId: string, reportId: string, text: string): Promise<void>;
@@ -85,12 +85,12 @@ export interface AgentHost {
   /** The user answered "Allow all": the agent is `edit` from now on, so nothing of its own folder is asked about again. */
   allowAll(agentId: string): Promise<void>;
   /** A tool call is about to run in the agent's folder: the Changes baseline and the coordination lease take it from here. */
-  toolStarting(agentId: string, call: Pick<ToolHookCall, 'name' | 'arguments'>): void;
+  toolStarting(agentId: string, call: Pick<ToolHookCall, 'name' | 'arguments'>): Promise<void>;
   /** Records usage and the turn count before every model request. */
   beforeRequest(agentId: string): Promise<void>;
   /** `agent_send` between agents of one thread; `agent_list` of the same thread. */
   sendFrom(fromId: string, toId: string, text: string, mode: 'steer' | 'followUp', requestId: string): Promise<void>;
-  listFor(agentId: string): { agentId: string; name: string; role: string; status: string }[];
+  listFor(agentId: string): Promise<{ agentId: string; name: string; role: string; status: string }[]>;
 }
 
 /** How a message from another agent is shown to the recipient: data from a named agent, never a user's instruction. */
@@ -232,7 +232,7 @@ export function createAgentExtension(host: AgentHost): Extension {
         description: 'The other background agents of your thread, with their ids, roles and status.',
         parameters: obj({}, { open: true }),
         execute: async (_args, api) => ({
-          output: [{ type: 'text', text: JSON.stringify(host.listFor(String(api.conversationId))) }],
+          output: [{ type: 'text', text: JSON.stringify(await host.listFor(String(api.conversationId))) }],
           details: {},
         }),
       }),
@@ -285,13 +285,13 @@ export function createAgentExtension(host: AgentHost): Extension {
             if (answer === 'Allow all') await host.allowAll(id);
             else if (answer !== 'Allow once') return { block: `${block} The user did not allow it.` };
           }
-          host.toolStarting(id, call);
+          await host.toolStarting(id, call);
           if (call.name === 'bash')
-            host.cleanup.begin(id, cleanupIntent(call.id, call.arguments as Record<string, unknown>));
+            await host.cleanup.begin(id, cleanupIntent(call.id, call.arguments as Record<string, unknown>));
           return undefined;
         },
-        afterTool: (call, _result, api) => {
-          if (call.name === 'bash') host.cleanup.end(String(api.conversationId), call.id);
+        afterTool: async (call, _result, api) => {
+          if (call.name === 'bash') await host.cleanup.end(String(api.conversationId), call.id);
           return undefined;
         },
       }),

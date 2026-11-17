@@ -29,8 +29,8 @@ export class AgentSpansRepository {
     return this.database.db;
   }
 
-  start(span: Omit<AgentSpanRow, 'id' | 'endTree' | 'endedAt'>): void {
-    this.db
+  async start(span: Omit<AgentSpanRow, 'id' | 'endTree' | 'endedAt'>): Promise<void> {
+    await this.db
       .prepare(
         'INSERT INTO agent_spans (agent_id, thread_id, folder, shadow_dir, shadow_prefix, start_tree, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
       )
@@ -38,20 +38,20 @@ export class AgentSpansRepository {
   }
 
   /** The agent's stretch of work that has not ended. */
-  open(agentId: string): AgentSpanRow | undefined {
-    return this.db
+  async open(agentId: string): Promise<AgentSpanRow | undefined> {
+    return (await this.db
       .prepare(`SELECT ${COLUMNS} FROM agent_spans WHERE agent_id = ? AND end_tree IS NULL ORDER BY id DESC LIMIT 1`)
-      .get(agentId) as AgentSpanRow | undefined;
+      .get(agentId)) as AgentSpanRow | undefined;
   }
 
-  end(id: number, tree: string, at: number): void {
-    this.db.prepare('UPDATE agent_spans SET end_tree = ?, ended_at = ? WHERE id = ?').run(tree, at, id);
+  async end(id: number, tree: string, at: number): Promise<void> {
+    await this.db.prepare('UPDATE agent_spans SET end_tree = ?, ended_at = ? WHERE id = ?').run(tree, at, id);
   }
 
   /** The thread's stretches of agent work, oldest first. */
-  ofThread(threadId: string): AgentSpanRow[] {
-    return this.db
+  async ofThread(threadId: string): Promise<AgentSpanRow[]> {
+    return (await this.db
       .prepare(`SELECT ${COLUMNS} FROM agent_spans WHERE thread_id = ? ORDER BY started_at, id`)
-      .all(threadId) as AgentSpanRow[];
+      .all(threadId)) as AgentSpanRow[];
   }
 }

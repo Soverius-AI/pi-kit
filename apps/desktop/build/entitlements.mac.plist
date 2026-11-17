@@ -7,7 +7,7 @@
     <true/>
     <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
     <true/>
-    <!-- The backend loads better-sqlite3-multiple-ciphers, @napi-rs/keyring and node-pty (.node files) and node-pty forks spawn-helper; with library validation on,
+    <!-- The backend loads @appthreat/sqlite3, @napi-rs/keyring and node-pty (.node files) and node-pty forks spawn-helper; with library validation on,
          every one of them would have to carry the same Team ID. electron-builder signs them, but Node's dlopen of a prebuilt
          binary is the case Apple's docs name for this entitlement. -->
     <key>com.apple.security.cs.disable-library-validation</key>

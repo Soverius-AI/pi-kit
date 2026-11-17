@@ -197,7 +197,6 @@
         "outputPath": "dist/apps/backend-runtime-natives/node_modules",
         "main": "node_modules/@napi-rs/keyring/index.js",
         "additionalEntryPoints": [
-          "node_modules/better-sqlite3-multiple-ciphers/lib/index.js",
           "node_modules/node-pty/lib/index.js",
           "node_modules/node-pty/lib/conpty_console_list_agent.js",
           "node_modules/node-pty/lib/worker/conoutSocketWorker.js"
@@ -216,14 +215,24 @@
             "output": "@napi-rs/keyring"
           },
           {
-            "input": "node_modules/better-sqlite3-multiple-ciphers",
-            "glob": "{package.json,LICENSE,prebuilds/*.node}",
-            "output": "better-sqlite3-multiple-ciphers"
-          },
-          {
             "input": "node_modules/node-pty",
             "glob": "{package.json,LICENSE,prebuilds/**/*.{node,dll,exe},prebuilds/**/spawn-helper,build/Release/*.node,build/Release/spawn-helper}",
             "output": "node-pty"
+          },
+          {
+            "input": "node_modules/@appthreat/sqlite3",
+            "glob": "{package.json,LICENSE*,lib/**/*,prebuilds/**/*}",
+            "output": "@appthreat/sqlite3"
+          },
+          {
+            "input": "node_modules/node-gyp-build",
+            "glob": "{package.json,LICENSE*,*.js}",
+            "output": "node-gyp-build"
+          },
+          {
+            "input": "node_modules/node-addon-api",
+            "glob": "**/*",
+            "output": "node-addon-api"
           }
         ],
         "includeIgnoredAssetFiles": true

@@ -58,3 +58,4 @@ Date: YYYY-MM-DD
 | [0034](0034-backend-domain-folders-four-roles.md) | Backend folders are one module per domain with four roles |
 | [0035](0035-remote-access-over-the-tailnet.md) | Remote access over the user's tailnet, with paired devices and reciprocal instances |
 | [0036](0036-always-on-service.md) | A shared service host: the backend outlives the window |
+| [0037](0037-async-sqlite.md) | Promise-only SQLite off the JavaScript event loop |

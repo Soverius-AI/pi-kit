@@ -3,6 +3,8 @@
 Status: Accepted
 Date: 2026-10-15
 
+> Runtime storage update: [ADR-0037](0037-async-sqlite.md) supersedes the driver and database-encryption details below. The async backend uses AppThreat SQLite, creates private plaintext databases and refuses encrypted profiles without modifying their originals. Credential storage remains separate.
+
 ## Context
 
 pi persists every session as a JSONL tree under `~/.pi/agent/sessions/--<cwd>--/<ts>_<id>.jsonl`

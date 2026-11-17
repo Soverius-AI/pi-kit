@@ -3,6 +3,8 @@
 Status: Accepted
 Date: 2026-10-17
 
+> Runtime storage update: [ADR-0037](0037-async-sqlite.md) supersedes the native SQLite dependency and build-approval details below. The legacy encryption-capable driver has been removed; current app and background-agent databases use asynchronous AppThreat SQLite and private plaintext files, independent of credential storage.
+
 ## Context
 
 The repository is an Nx monorepo; desktop development is orchestrated by `scripts/dev.mjs`. The Electron build tool, how

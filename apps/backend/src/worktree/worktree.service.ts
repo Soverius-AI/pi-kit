@@ -75,7 +75,7 @@ export class WorktreeService {
     private readonly outcomes: OutcomesService,
   ) {
     // A worktree folder inherits the project's trust answer (the trust service checks that the resources are the same).
-    this.trust.useWorktrees((path) => this.threads.worktreeAt(path)?.cwd);
+    this.trust.useWorktrees(async (path) => (await this.threads.worktreeAt(path))?.cwd);
   }
 
   // ---- settings
@@ -84,10 +84,10 @@ export class WorktreeService {
   private static readonly DEFAULTS_KEY = 'worktree.defaults';
 
   /** The defaults for every project: where worktrees go and where a new thread starts when a project says nothing. */
-  defaults(): WorktreeDefaults {
+  async defaults(): Promise<WorktreeDefaults> {
     const saved =
-      (this.meta.getSetting(WorktreeService.DEFAULTS_KEY) as { root?: string | null; start?: StartMode } | undefined) ??
-      {};
+      ((await this.meta.getSetting(WorktreeService.DEFAULTS_KEY)) as
+        { root?: string | null; start?: StartMode } | undefined) ?? {};
     return {
       root: saved.root?.trim() ? saved.root.trim() : null,
       defaultRoot: resolveRoot({}),
@@ -95,20 +95,20 @@ export class WorktreeService {
     };
   }
 
-  patchDefaults(patch: PatchWorktreeDefaults): WorktreeDefaults {
-    const now = this.defaults();
+  async patchDefaults(patch: PatchWorktreeDefaults): Promise<WorktreeDefaults> {
+    const now = await this.defaults();
     const next = {
       root: patch.root === undefined ? now.root : patch.root?.trim() ? patch.root.trim() : null,
       start: patch.start ?? now.start,
     };
-    this.meta.setSetting(WorktreeService.DEFAULTS_KEY, next);
-    return this.defaults();
+    await this.meta.setSetting(WorktreeService.DEFAULTS_KEY, next);
+    return await this.defaults();
   }
 
   /** A project's worktree settings, what a new thread or worktree would use. `git` is whether the folder is inside a work tree. */
-  settingsOf(projectCwd: string): WorktreeSettings {
-    const row = this.meta.listWorkspaces().find((w) => w.cwd === projectCwd);
-    const defaults = this.defaults();
+  async settingsOf(projectCwd: string): Promise<WorktreeSettings> {
+    const row = (await this.meta.listWorkspaces()).find((w) => w.cwd === projectCwd);
+    const defaults = await this.defaults();
     const scripts = effectiveScripts({ saved: row?.scripts ?? null, detect: () => detectSetupScriptIn(projectCwd) });
     return {
       root: row?.worktreeRoot ?? null,
@@ -145,7 +145,7 @@ export class WorktreeService {
       wt.remoteBranches(cwd),
       wt.hasRemote(cwd),
     ]);
-    const rows = this.threads.all();
+    const rows = await this.threads.all();
     return {
       git: true,
       branch: head?.branch ?? null,
@@ -177,7 +177,7 @@ export class WorktreeService {
       throw new BadRequestException('A branch switch needs a git repository. This folder is not one.');
     const current = await wt.branchOf(projectCwd);
     if (!wanted || (!local.create && wanted === current)) return current;
-    const settings = this.settingsOf(projectCwd);
+    const settings = await this.settingsOf(projectCwd);
     if (!settings.allowBranchSwitch)
       throw new ConflictException(
         'Switching branches is turned off for this project (Settings › Projects › New threads).',
@@ -230,7 +230,7 @@ export class WorktreeService {
       throw new BadRequestException(
         'This repository has no commits yet, so there is nothing to make a worktree from. Commit once first.',
       );
-    const settings = this.settingsOf(projectCwd);
+    const settings = await this.settingsOf(projectCwd);
     const requested = resolveBase({
       requested: request.base,
       setting: settings.base,
@@ -262,7 +262,7 @@ export class WorktreeService {
       settings.carryChanges === 'never' ? false : (request.carryChanges ?? settings.carryChanges === 'always');
     // Read before anything is added, from the folder, without touching its index or files.
     const carried = carry ? await wt.workingTreePatch(projectCwd) : undefined;
-    const root = resolveRoot({ setting: settings.root ?? this.defaults().root, projectCwd });
+    const root = resolveRoot({ setting: settings.root ?? (await this.defaults()).root, projectCwd });
     const names = worktreeNames({
       ...(request.name ? { name: request.name } : {}),
       ...(options.title ? { title: options.title } : {}),
@@ -299,13 +299,16 @@ export class WorktreeService {
       `Worktree ${branch ?? '(detached)'} (from ${requested}) created at ${real}${carried?.files.length ? `, carrying ${carried.files.length} changed files` : ''}`,
     );
     // A verification run runs the setup itself and waits for it, so the checks it repeats have what they need: it asks for `skip` here.
-    if (script && options.setup !== 'skip') this.runSetup(real, script, projectCwd);
+    if (script && options.setup !== 'skip') await this.runSetup(real, script, projectCwd);
     return facts;
   }
 
   /** The folder a project's thread worktrees go into (the project's setting, `PI_KIT_WORKTREE_ROOT`, or the default). */
-  rootOf(projectCwd: string): string {
-    return resolveRoot({ setting: this.settingsOf(projectCwd).root ?? this.defaults().root, projectCwd });
+  async rootOf(projectCwd: string): Promise<string> {
+    return resolveRoot({
+      setting: (await this.settingsOf(projectCwd)).root ?? (await this.defaults()).root,
+      projectCwd,
+    });
   }
 
   private async freeSlug(
@@ -328,18 +331,18 @@ export class WorktreeService {
   }
 
   /** A Local thread's setup script: its command is typed into the folder's own terminal. `id` null or absent runs nothing. */
-  runLocalSetup(projectCwd: string, id: string | null | undefined): void {
+  async runLocalSetup(projectCwd: string, id: string | null | undefined): Promise<void> {
     if (!id) return;
-    const script = pickScript(this.settingsOf(projectCwd).setupScripts, id);
-    if (script) this.runSetup(projectCwd, script, projectCwd);
+    const script = pickScript((await this.settingsOf(projectCwd)).setupScripts, id);
+    if (script) await this.runSetup(projectCwd, script, projectCwd);
   }
 
   /** The script's files are copied from the project, then its command goes to the new folder's terminal, so its output is where the person looks for it. The shell reads it as soon as it is up. */
-  private runSetup(path: string, script: SetupScript, projectCwd: string): void {
+  private async runSetup(path: string, script: SetupScript, projectCwd: string): Promise<void> {
     try {
       if (path !== projectCwd) copyScriptFiles(script, projectCwd, path);
       if (!script.command.trim()) return;
-      this.terminals.start(path, 120, 30);
+      await this.terminals.start(path, 120, 30);
       this.terminals.write(path, `${script.command}\r`);
     } catch (error) {
       this.logger.warn(
@@ -384,7 +387,7 @@ export class WorktreeService {
         remote: false,
         gh: false,
         sharedWith: 0,
-        removeFolder: this.settingsOf(row.cwd).removeFolder,
+        removeFolder: (await this.settingsOf(row.cwd)).removeFolder,
       };
     }
     const [dirty, counts, conflicts, operation, projectBranch, projectDirty, remote] = await Promise.all([
@@ -410,8 +413,8 @@ export class WorktreeService {
       projectDirty,
       remote,
       gh: ghAvailable(),
-      sharedWith: this.threads.all().filter((t) => t.id !== row.id && t.worktreePath === path).length,
-      removeFolder: this.settingsOf(row.cwd).removeFolder,
+      sharedWith: (await this.threads.all()).filter((t) => t.id !== row.id && t.worktreePath === path).length,
+      removeFolder: (await this.settingsOf(row.cwd)).removeFolder,
     };
   }
 
@@ -449,7 +452,7 @@ export class WorktreeService {
       identity: true,
     });
     if (result.ok) {
-      this.status.touch(row.id);
+      await this.status.touch(row.id);
       return {
         status: 'synced',
         fetched,
@@ -475,7 +478,7 @@ export class WorktreeService {
     const operation = await wt.operationInProgress(path);
     if (!operation) return;
     await wt.out(path, operation === 'merge' ? ['merge', '--abort'] : ['rebase', '--abort']);
-    this.status.touch(row.id);
+    await this.status.touch(row.id);
   }
 
   // ---- merge back
@@ -531,7 +534,7 @@ export class WorktreeService {
       await this.remove(row, { force: false }, result.status === 'merged' ? (named ?? undefined) : undefined);
       result = { ...result, removed: true };
     }
-    this.status.touch(row.id);
+    await this.status.touch(row.id);
     return result;
   }
 
@@ -629,7 +632,7 @@ export class WorktreeService {
    */
   async handoff(row: ThreadRow, request: WorktreeHandoffRequest): Promise<WorktreeHandoffResult> {
     this.requireIdle(row);
-    return request.to === 'local' ? this.handOffToLocal(row, request) : this.moveIntoWorktree(row, request);
+    return request.to === 'local' ? await this.handOffToLocal(row, request) : await this.moveIntoWorktree(row, request);
   }
 
   private async handOffToLocal(row: ThreadRow, request: WorktreeHandoffRequest): Promise<WorktreeHandoffResult> {
@@ -637,7 +640,7 @@ export class WorktreeService {
     const path = this.requireWorktree(row);
     const project = row.cwd;
     if (!existsSync(project)) throw new ConflictException(`The project folder ${project} is gone.`);
-    if (this.threads.all().some((t) => t.id !== row.id && t.worktreePath === path))
+    if ((await this.threads.all()).some((t) => t.id !== row.id && t.worktreePath === path))
       throw new ConflictException('Another thread runs in this worktree too, so it cannot be handed off.');
     if (await wt.operationInProgress(path))
       throw new ConflictException(
@@ -671,7 +674,7 @@ export class WorktreeService {
         `git could not move the worktree's work into the folder: ${error instanceof Error ? error.message : String(error)}`.trim(),
       );
     }
-    const policy = this.settingsOf(project).removeFolder;
+    const policy = (await this.settingsOf(project)).removeFolder;
     const remove = request.remove ?? policy === 'now';
     this.sessions.dispose(row.id);
     let removed = false;
@@ -686,11 +689,11 @@ export class WorktreeService {
         );
       }
     } else if (policy === 'after-7-days') {
-      this.scheduleSweep(path, project);
+      await this.scheduleSweep(path, project);
     }
-    this.threads.clearWorktreeFully(row.id);
+    await this.threads.clearWorktreeFully(row.id);
     this.status.listChanged();
-    this.status.touch(row.id);
+    await this.status.touch(row.id);
     const where = branch ? `on ${branch}` : `at ${commit.slice(0, 7)} (detached)`;
     this.logger.log(
       `Thread ${row.id} handed off from ${path} to ${project} ${where}, ${carried.files.length} changed files${removed ? ', worktree removed' : ''}`,
@@ -741,9 +744,9 @@ export class WorktreeService {
       }
     }
     this.sessions.dispose(row.id);
-    this.threads.setWorktree(row.id, facts);
+    await this.threads.setWorktree(row.id, facts);
     this.status.listChanged();
-    this.status.touch(row.id);
+    await this.status.touch(row.id);
     this.logger.log(`Thread ${row.id} moved from ${project} into the worktree ${facts.path}, ${moved} changed files`);
     return {
       to: 'worktree',
@@ -766,18 +769,19 @@ export class WorktreeService {
     if (await wt.branchExists(path, name))
       throw new ConflictException(`The branch ${name} exists already. Pick another name.`);
     await wt.out(path, ['switch', '-c', name]);
-    this.threads.setBranch(row.id, name);
+    await this.threads.setBranch(row.id, name);
     this.status.listChanged();
-    this.status.touch(row.id);
+    await this.status.touch(row.id);
     return { branch: name };
   }
 
   // ---- folders that stay for a while (Remove the folder: after 7 days)
 
   /** A worktree folder that outlived its thread (a hand off) is removed once it is a week old and still clean. */
-  private scheduleSweep(path: string, project: string, days = 7): void {
-    const list = (this.meta.getSetting(SWEEP_KEY) as { path: string; project: string; at: number }[] | undefined) ?? [];
-    this.meta.setSetting(SWEEP_KEY, [
+  private async scheduleSweep(path: string, project: string, days = 7): Promise<void> {
+    const list =
+      ((await this.meta.getSetting(SWEEP_KEY)) as { path: string; project: string; at: number }[] | undefined) ?? [];
+    await this.meta.setSetting(SWEEP_KEY, [
       ...list.filter((e) => e.path !== path),
       { path, project, at: Date.now() + days * 86_400_000 },
     ]);
@@ -785,12 +789,13 @@ export class WorktreeService {
 
   /** Removes the folders whose time has come, if they are clean and no thread uses them; the others are looked at again next time. */
   async sweep(now = Date.now()): Promise<string[]> {
-    const list = (this.meta.getSetting(SWEEP_KEY) as { path: string; project: string; at: number }[] | undefined) ?? [];
+    const list =
+      ((await this.meta.getSetting(SWEEP_KEY)) as { path: string; project: string; at: number }[] | undefined) ?? [];
     if (list.length === 0) return [];
     const removed: string[] = [];
     const keep: typeof list = [];
     for (const entry of list) {
-      if (!existsSync(entry.path) || this.threads.all().some((t) => t.worktreePath === entry.path)) continue;
+      if (!existsSync(entry.path) || (await this.threads.all()).some((t) => t.worktreePath === entry.path)) continue;
       if (entry.at > now) {
         keep.push(entry);
         continue;
@@ -807,7 +812,7 @@ export class WorktreeService {
         this.logger.warn(`Could not remove ${entry.path}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    this.meta.setSetting(SWEEP_KEY, keep);
+    await this.meta.setSetting(SWEEP_KEY, keep);
     return removed;
   }
 
@@ -828,7 +833,7 @@ export class WorktreeService {
           throw new ConflictException(
             `The worktree has ${dirty} uncommitted ${dirty === 1 ? 'change' : 'changes'}. Merge them back, keep the worktree, or remove it anyway.`,
           );
-        const shared = this.threads.all().filter((t) => t.id !== row.id && t.worktreePath === path).length;
+        const shared = (await this.threads.all()).filter((t) => t.id !== row.id && t.worktreePath === path).length;
         if (shared > 0)
           throw new ConflictException('Another thread runs in this worktree too. Keep it, or remove it anyway.');
       }
@@ -843,9 +848,9 @@ export class WorktreeService {
       }
     }
     // Every thread that ran there carries on in the project's folder.
-    for (const thread of this.threads.all().filter((t) => t.worktreePath === path)) {
+    for (const thread of (await this.threads.all()).filter((t) => t.worktreePath === path)) {
       this.sessions.dispose(thread.id);
-      this.threads.clearWorktree(thread.id);
+      await this.threads.clearWorktree(thread.id);
     }
     this.status.listChanged();
     this.logger.log(`Worktree ${path} removed`);

@@ -49,8 +49,8 @@ export class LearnController {
   })
   @Responds(ThreadDetailSchema)
   @Fails({ 404: 'The source chat is gone.', 409: 'Choose an original chat, not a learning or verification workspace.' })
-  workspace(@Param('id') id: string): Promise<ThreadDetail> {
-    return this.learningThreads.open(id);
+  async workspace(@Param('id') id: string): Promise<ThreadDetail> {
+    return await this.learningThreads.open(id);
   }
 
   @Get('threads/:id/skill-draft')
@@ -62,8 +62,8 @@ export class LearnController {
   })
   @Responds(SkillDraftSchema)
   @Fails({ 404: 'There is no such thread, or no draft was made for it.' })
-  forThread(@Param('id') id: string): SkillDraft {
-    return this.learn.forThread(id);
+  async forThread(@Param('id') id: string): Promise<SkillDraft> {
+    return await this.learn.forThread(id);
   }
 
   @Post('threads/:id/skill-draft')
@@ -93,8 +93,8 @@ export class LearnController {
     description: 'Returns every draft that waits for the person to approve or discard it, newest first.',
   })
   @Responds(SkillDraftSchema, { array: true })
-  pending(): SkillDraft[] {
-    return this.learn.pending();
+  async pending(): Promise<SkillDraft[]> {
+    return await this.learn.pending();
   }
 
   @Post('skill-drafts/:id/approve')
@@ -163,8 +163,8 @@ export class LearnController {
   })
   @Responds(SkillDraftSchema)
   @Fails({ 404: 'There is no such draft.', 409: 'The draft is not being verified.' })
-  stop(@Param('id') id: string): SkillDraft {
-    return this.verify.stop(id);
+  async stop(@Param('id') id: string): Promise<SkillDraft> {
+    return await this.verify.stop(id);
   }
 
   @Post('skill-drafts/:id/discard')
@@ -176,8 +176,8 @@ export class LearnController {
   })
   @Responds(SkillDraftSchema)
   @Fails({ 404: 'There is no such draft.', 409: 'The draft is not pending.' })
-  discard(@Param('id') id: string): SkillDraft {
-    return this.learn.discard(id);
+  async discard(@Param('id') id: string): Promise<SkillDraft> {
+    return await this.learn.discard(id);
   }
 
   @Post('skill-drafts/:id/reopen')
@@ -189,7 +189,7 @@ export class LearnController {
   })
   @Responds(SkillDraftSchema)
   @Fails({ 404: 'There is no such draft.', 409: 'The draft is not discarded.' })
-  reopen(@Param('id') id: string): SkillDraft {
-    return this.learn.reopen(id);
+  async reopen(@Param('id') id: string): Promise<SkillDraft> {
+    return await this.learn.reopen(id);
   }
 }

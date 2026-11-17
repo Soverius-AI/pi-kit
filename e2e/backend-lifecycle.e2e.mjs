@@ -1,12 +1,11 @@
-// Real process and encrypted storage proof: parent loss must flush the terminal's pending replay through Nest hooks.
+// Real process and storage proof: parent loss must flush the terminal's pending replay through Nest hooks.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import Database from 'better-sqlite3-multiple-ciphers';
+import sqlite3 from '@appthreat/sqlite3';
 import { createWorld, root } from './support/env.mjs';
 
 test('parent loss flushes unsaved terminal replay before the backend exits', async () => {
@@ -47,16 +46,12 @@ test('parent loss flushes unsaved terminal replay before the backend exits', asy
     });
     assert.ok(response.ok, `${path}: ${response.status} ${await response.text()}`);
   };
-  const replay = () => {
-    const key = JSON.parse(readFileSync(world.env.PI_KIT_SECRET_STORE.slice(5), 'utf8'))['pi-kit/db'];
-    assert.match(key, /^[0-9a-f]{64}$/);
-    const db = new Database(join(world.data, 'pi-kit.sqlite'), { readonly: true, fileMustExist: true });
+  const replay = async () => {
+    const db = await sqlite3.open(join(world.data, 'pi-kit.sqlite'), sqlite3.OPEN_READONLY);
     try {
-      db.pragma("cipher='chacha20'");
-      db.pragma(`key="x'${key}'"`);
-      return db.prepare('SELECT data FROM terminal_replay WHERE cwd = ?').get(world.project)?.data ?? '';
+      return (await db.get('SELECT data FROM terminal_replay WHERE cwd = ?', [world.project]))?.data ?? '';
     } finally {
-      db.close();
+      await db.close();
     }
   };
   try {
@@ -85,7 +80,7 @@ test('parent loss flushes unsaved terminal replay before the backend exits', asy
       output += Buffer.from(chunk.value).toString();
     }
     assert.equal(
-      replay().includes(marker),
+      (await replay()).includes(marker),
       false,
       'the replay is still pending; an ordinary debounce save cannot satisfy this test',
     );
@@ -97,7 +92,7 @@ test('parent loss flushes unsaved terminal replay before the backend exits', asy
       `Backend did not finish its normal shutdown: ${code}/${signal}\n${log}`,
     );
     assert.match(log, /requesting Nest shutdown/);
-    assert.ok(replay().includes(marker), `The pending terminal screen was not flushed.\n${log}`);
+    assert.ok((await replay()).includes(marker), `The pending terminal screen was not flushed.\n${log}`);
   } finally {
     streamAbort.abort();
     parent.kill('SIGKILL');

@@ -171,7 +171,7 @@ export class McpEditService {
         'Open a thread in the folder first: “This project” writes that folder’s .pi/mcp.json.',
       );
     await this.threads.openSession(threadId);
-    const cwd = this.threads.cwdOf(threadId);
+    const cwd = await this.threads.cwdOf(threadId);
     if (!(await this.trust.folderTrusted(cwd)))
       throw new ConflictException(
         'This folder is not trusted yet, so pi would not read its .pi/mcp.json. Trust the folder first.',

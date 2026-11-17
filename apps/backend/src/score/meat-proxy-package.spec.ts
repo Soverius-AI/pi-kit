@@ -57,7 +57,7 @@ const settings = (): { packages?: unknown[] } =>
 /** pi writes a package folder relative to its agent folder when it can; the entries as absolute paths. */
 const folders = (): string[] => (settings().packages ?? []).map((p) => resolve(agent, String(p)));
 
-beforeEach(() => {
+beforeEach(async () => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-meatpkg-')));
   agent = join(base, 'agent');
   meatDir = join(base, 'app', 'packages', 'pi-kit-meat-proxy');
@@ -70,14 +70,14 @@ beforeEach(() => {
   process.env['PI_KIT_LEARN_PACKAGE_DIR'] = learnDir;
   delete process.env['PI_KIT_MEAT_PROXY_PACKAGE'];
   delete process.env['PI_KIT_LEARN_PACKAGE'];
-  db = new DatabaseService({ dataDir: join(base, 'data') });
+  db = await DatabaseService.create({ dataDir: join(base, 'data') });
   meta = new MetaRepository(db);
   pkg = new MeatProxyPackage(meta);
   // A test runner's sandbox has no native `import()`; the package's own file is imported the runner's way.
   pkg.importer = <T>(url: string) => import(/* @vite-ignore */ url) as Promise<T>;
 });
-afterEach(() => {
-  db.onApplicationShutdown();
+afterEach(async () => {
+  await db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
   for (const key of keys) {
     if (previous[key] === undefined) delete process.env[key];
@@ -198,7 +198,7 @@ describe('the meat-proxy package ships with the app and is installed into pi onc
 describe('whether the package is installed decides whether anything of it is drawn', () => {
   it('follows pi’s settings: installed, then removed, then installed again; listeners hear every change', async () => {
     const heard: boolean[] = [];
-    pkg.onInstalledChange((now) => heard.push(now));
+    pkg.onInstalledChange((now) => void heard.push(now));
     expect(await pkg.refresh()).toBe(false);
     await pkg.ensureInstalled();
     expect(await pkg.refresh()).toBe(true);

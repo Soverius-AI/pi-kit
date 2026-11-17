@@ -87,6 +87,7 @@ const settle = async () => {
 
 const options = (patch: Partial<WatchdogOptions> = {}): WatchdogOptions => ({
   ...DEFAULT_WATCHDOG_OPTIONS,
+  enabled: true,
   pingIntervalMs: 0,
   ...patch,
 });
@@ -99,6 +100,110 @@ async function started(host: FakeHost, patch: Partial<WatchdogOptions> = {}): Pr
 }
 
 describe('BackendWatchdog', () => {
+  it('defaults to no health polling and no automatic crash recovery', async () => {
+    const host = new FakeHost();
+    const dog = new BackendWatchdog(host);
+    dog.start();
+    await settle();
+    await host.advance(60_000);
+    expect(host.pings).toBe(0);
+    expect(host.launches).toBe(1);
+    host.current?.die(1);
+    await settle();
+    expect(dog.status.state).toBe('failed');
+    await host.advance(60_000);
+    expect(host.launches).toBe(1);
+  });
+
+  it('enables polling live and disables it without killing the running backend', async () => {
+    const host = new FakeHost();
+    const dog = await started(host, { enabled: false, pingIntervalMs: 1000 });
+    dog.setEnabled(true);
+    await host.advance(1000);
+    expect(host.pings).toBe(1);
+    dog.setEnabled(false);
+    await host.advance(60_000);
+    expect(host.pings).toBe(1);
+    expect(host.current?.killed).toBe(false);
+    host.current?.die(1);
+    await settle();
+    expect(dog.status.state).toBe('failed');
+    dog.setEnabled(true);
+    await settle();
+    expect(host.launches).toBe(2);
+    expect(dog.status.state).toBe('running');
+  });
+
+  it('disabling recovery cancels a pending automatic restart', async () => {
+    const host = new FakeHost();
+    const dog = await started(host);
+    host.current?.die(1);
+    await settle();
+    dog.setEnabled(false);
+    await host.advance(60_000);
+    expect(host.launches).toBe(1);
+    expect(dog.status.state).toBe('failed');
+  });
+
+  it('ignores an in-flight ping from before the setting was switched off and on', async () => {
+    const host = new FakeHost();
+    let finish!: (ok: boolean) => void;
+    host.ping = () => new Promise((resolve) => (finish = resolve));
+    const dog = await started(host, { pingIntervalMs: 1000, pingFailuresToKill: 1 });
+    await host.advance(1000);
+    dog.setEnabled(false);
+    dog.setEnabled(true);
+    finish(false);
+    await settle();
+    expect(host.current?.killed).toBe(false);
+  });
+
+  it('permits an explicit update restart once with automatic recovery off', async () => {
+    const host = new FakeHost();
+    const dog = await started(host, { enabled: false, pingIntervalMs: 1000 });
+    dog.restartOnExit();
+    host.current?.die(0);
+    await settle();
+    await host.advance(500);
+    expect(host.launches).toBe(2);
+    expect(dog.status).toEqual({ state: 'running', restarts: 1 });
+    expect(host.pings).toBe(0);
+    host.current?.die(1);
+    await settle();
+    await host.advance(60_000);
+    expect(host.launches).toBe(2);
+    expect(dog.status.state).toBe('failed');
+  });
+
+  it('an acknowledged update restart does not exhaust the crash recovery budget', async () => {
+    const host = new FakeHost();
+    const dog = await started(host, { baseDelayMs: 10, maxFailures: 1 });
+    host.current?.die(1);
+    await settle();
+    await host.advance(10);
+    dog.restartOnExit();
+    host.current?.die(0);
+    await settle();
+    expect(dog.status.state).toBe('restarting');
+    await host.advance(10);
+    expect(host.launches).toBe(3);
+    expect(dog.status.state).toBe('running');
+    host.current?.die(1);
+    await settle();
+    expect(host.statuses.at(-1)).toMatchObject({ state: 'restarting', attempt: 1, delayMs: 10 });
+  });
+
+  it('manual retry still works when automatic recovery is disabled', async () => {
+    const host = new FakeHost();
+    const dog = await started(host, { enabled: false });
+    host.current?.die(1);
+    await settle();
+    dog.retry();
+    await settle();
+    expect(host.launches).toBe(2);
+    expect(dog.status.state).toBe('running');
+  });
+
   it('goes starting -> running when the backend comes up', async () => {
     const host = new FakeHost();
     const dog = await started(host);
@@ -106,9 +211,9 @@ describe('BackendWatchdog', () => {
     expect(dog.status).toEqual({ state: 'running', restarts: 0 });
   });
 
-  it('checks every 30 seconds by default and logs when three failed checks cause a termination', async () => {
+  it('when enabled, checks every 30 seconds and logs when three failed checks cause a termination', async () => {
     const host = new FakeHost();
-    const dog = new BackendWatchdog(host);
+    const dog = new BackendWatchdog(host, { ...DEFAULT_WATCHDOG_OPTIONS, enabled: true });
     dog.start();
     await settle();
     const backend = host.current;
@@ -130,9 +235,9 @@ describe('BackendWatchdog', () => {
     });
   });
 
-  it('does not kill a slow backend that recovers before the third default health check', async () => {
+  it('does not kill a slow backend that recovers before the third enabled health check', async () => {
     const host = new FakeHost();
-    const dog = new BackendWatchdog(host);
+    const dog = new BackendWatchdog(host, { ...DEFAULT_WATCHDOG_OPTIONS, enabled: true });
     dog.start();
     await settle();
     host.pingAnswer = false;
@@ -144,9 +249,9 @@ describe('BackendWatchdog', () => {
     expect(dog.status.state).toBe('running');
   });
 
-  it('still restarts an actual process exit without waiting for the 30-second health interval', async () => {
+  it('when enabled, still restarts an actual process exit without waiting for the 30-second health interval', async () => {
     const host = new FakeHost();
-    const dog = new BackendWatchdog(host);
+    const dog = new BackendWatchdog(host, { ...DEFAULT_WATCHDOG_OPTIONS, enabled: true });
     dog.start();
     await settle();
     host.current?.die(1);
@@ -292,7 +397,7 @@ describe('BackendWatchdog', () => {
 
   it('regression: a backend that hangs after every start ends in failed instead of restarting forever', async () => {
     const host = new FakeHost();
-    await started(host, { ...DEFAULT_WATCHDOG_OPTIONS, baseDelayMs: 10, maxFailures: 2 });
+    await started(host, { ...DEFAULT_WATCHDOG_OPTIONS, enabled: true, baseDelayMs: 10, maxFailures: 2 });
     host.pingAnswer = false;
     for (let i = 0; i < 3; i++) await host.advance(DEFAULT_WATCHDOG_OPTIONS.pingIntervalMs * 3 + 100);
     expect(host.statuses.filter((s) => s.state === 'restarting').map((s) => s.attempt)).toEqual([1, 2]);

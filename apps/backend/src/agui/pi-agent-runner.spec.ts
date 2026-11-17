@@ -44,6 +44,9 @@ const entries: PiSessionEntry[] = [
 class FakeSessions {
   leaf: string | null = 'a1';
   streaming = false;
+  async abort() {
+    return undefined;
+  }
   dialogs: PendingDialog[] = [];
   has() {
     return true;
@@ -68,9 +71,9 @@ class FakeSessions {
   register(registration: ComposerRegistration): void {
     this.unattached?.('t1', { kind: 'composer', registration });
   }
-  moveTo(leaf: string): void {
+  async moveTo(leaf: string): Promise<void> {
     this.leaf = leaf;
-    this.listener?.('t1');
+    await this.listener?.('t1');
   }
   branch() {
     const byId = new Map(entries.map((e) => [e.id, e]));
@@ -93,23 +96,23 @@ class FakeSessions {
   }
 }
 
-describe('PiAgentRunner.publishBranch (a leaf change outside a run)', () => {
+describe('PiAgentRunner.publishBranch (a leaf change outside a run)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'pk-runner-'));
-  const database = new DatabaseService({ dataDir: dir });
+  const database = await DatabaseService.create({ dataDir: dir });
   const log = new EventLogRepository(database);
   const threads = new ThreadsRepository(database);
   const sessions = new FakeSessions();
   const sessionFile = join(dir, 'session.jsonl');
   writeFileSync(sessionFile, '{}\n');
-  threads.insertDraft({ id: 't1', sessionPath: sessionFile, cwd: dir });
+  await threads.insertDraft({ id: 't1', sessionPath: sessionFile, cwd: dir });
   const runner = new PiAgentRunner(log, threads, sessions as unknown as PiSessionService);
-  runner.onModuleInit();
+  await runner.onModuleInit();
 
-  afterEach(() => undefined);
+  afterEach(async () => undefined);
 
-  it('writes a run with a snapshot of the new branch and a pi.tree signal into the replay log', () => {
-    sessions.moveTo('a2');
-    const events = log.read('t1').map((s) => s.event);
+  it('writes a run with a snapshot of the new branch and a pi.tree signal into the replay log', async () => {
+    await sessions.moveTo('a2');
+    const events = (await log.read('t1')).map((s) => s.event);
     expect(events.map((e) => e.type)).toEqual([
       EventType.RUN_STARTED,
       EventType.MESSAGES_SNAPSHOT,
@@ -120,12 +123,12 @@ describe('PiAgentRunner.publishBranch (a leaf change outside a run)', () => {
     expect(snapshot.messages.map((m) => m.id)).toEqual(['u1', 'a1', 'u2', 'a2']);
     expect(events[2]).toMatchObject({ name: 'pi.tree', value: { leafId: 'a2', changed: ['a2'] } });
     // It is not a run: nothing holds the thread's lock.
-    expect(log.lastRun('t1')).toBeUndefined();
+    expect(await log.lastRun('t1')).toBeUndefined();
   });
 
-  it('replaces the earlier snapshot when the leaf moves again, so the log does not pile up snapshots', () => {
-    sessions.moveTo('a1');
-    const snapshots = log.read('t1').filter((s) => s.event.type === EventType.MESSAGES_SNAPSHOT);
+  it('replaces the earlier snapshot when the leaf moves again, so the log does not pile up snapshots', async () => {
+    await sessions.moveTo('a1');
+    const snapshots = (await log.read('t1')).filter((s) => s.event.type === EventType.MESSAGES_SNAPSHOT);
     expect(snapshots).toHaveLength(1);
     expect((snapshots[0].event as unknown as { messages: { id: string }[] }).messages.map((m) => m.id)).toEqual([
       'u1',
@@ -133,26 +136,26 @@ describe('PiAgentRunner.publishBranch (a leaf change outside a run)', () => {
     ]);
   });
 
-  it('records the leaf, the fork count and a valid log in the thread row', () => {
-    sessions.moveTo('a2');
-    const row = threads.get('t1');
+  it('records the leaf, the fork count and a valid log in the thread row', async () => {
+    await sessions.moveTo('a2');
+    const row = await threads.get('t1');
     expect(row).toMatchObject({ leafId: 'a2', forkCount: 1 });
     expect(row?.leafMtime).not.toBeNull();
     expect(row?.logMtime).toBe(row?.leafMtime);
   });
 });
 
-describe('PiAgentRunner.publishUiEvent (toolbar registrations outside a run)', () => {
+describe('PiAgentRunner.publishUiEvent (toolbar registrations outside a run)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'pk-runner-composer-'));
-  const database = new DatabaseService({ dataDir: dir });
+  const database = await DatabaseService.create({ dataDir: dir });
   const log = new EventLogRepository(database);
   const threads = new ThreadsRepository(database);
   const sessions = new FakeSessions();
   const sessionFile = join(dir, 'session.jsonl');
   writeFileSync(sessionFile, '{}\n');
-  threads.insertDraft({ id: 't1', sessionPath: sessionFile, cwd: dir });
+  await threads.insertDraft({ id: 't1', sessionPath: sessionFile, cwd: dir });
   const runner = new PiAgentRunner(log, threads, sessions as unknown as PiSessionService);
-  runner.onModuleInit();
+  await runner.onModuleInit();
 
   const hello: ComposerRegistration = { op: 'action', id: 'hello', label: 'Say hello', text: '/hello ' };
 
@@ -161,9 +164,9 @@ describe('PiAgentRunner.publishUiEvent (toolbar registrations outside a run)', (
   it('writes registrations that arrive together into one small run of their own, as pi.composer custom events', async () => {
     sessions.register(hello);
     sessions.register({ op: 'suggestion', id: 'ask', title: 'Ask', text: 'apple' });
-    expect(log.read('t1')).toHaveLength(0);
+    expect(await log.read('t1')).toHaveLength(0);
     await tick();
-    const events = log.read('t1').map((s) => s.event);
+    const events = (await log.read('t1')).map((s) => s.event);
     expect(events.map((e) => e.type)).toEqual([
       EventType.RUN_STARTED,
       EventType.CUSTOM,
@@ -172,25 +175,25 @@ describe('PiAgentRunner.publishUiEvent (toolbar registrations outside a run)', (
     ]);
     expect(events[1]).toMatchObject({ name: 'pi.composer', value: hello });
     expect(events[2]).toMatchObject({ name: 'pi.composer', value: { id: 'ask' } });
-    expect(log.lastRun('t1')).toBeUndefined();
+    expect(await log.lastRun('t1')).toBeUndefined();
   });
 
   it('does not write the same registration again, but writes a changed one and a removal', async () => {
     sessions.register(hello);
     await tick();
-    expect(log.read('t1')).toHaveLength(4);
+    expect(await log.read('t1')).toHaveLength(4);
     sessions.register({ ...hello, label: 'Greet' });
     await tick();
-    expect(log.read('t1')).toHaveLength(7);
+    expect(await log.read('t1')).toHaveLength(7);
     sessions.register({ op: 'remove', id: 'hello' });
     sessions.register({ op: 'remove', id: 'hello' });
     await tick();
-    expect(log.read('t1')).toHaveLength(10);
-    expect([...runner.composerState('t1').keys()]).toEqual(['ask']);
+    expect(await log.read('t1')).toHaveLength(10);
+    expect([...(await runner.composerState('t1')).keys()]).toEqual(['ask']);
   });
 });
 
-describe('PiAgentRunner.followTurn (a turn pi started by itself)', () => {
+describe('PiAgentRunner.followTurn (a turn pi started by itself)', async () => {
   /** An open session whose events a test emits by hand; `startTurn` is what pi does when an extension starts a turn in an idle thread. */
   class TurnSessions extends FakeSessions {
     private turnStarted: ((threadId: string) => void) | undefined;
@@ -238,17 +241,17 @@ describe('PiAgentRunner.followTurn (a turn pi started by itself)', () => {
     }
   }
 
-  function setup() {
+  async function setup() {
     const dir = mkdtempSync(join(tmpdir(), 'pk-runner-turn-'));
-    const database = new DatabaseService({ dataDir: dir });
+    const database = await DatabaseService.create({ dataDir: dir });
     const log = new EventLogRepository(database);
     const threads = new ThreadsRepository(database);
     const sessionFile = join(dir, 'session.jsonl');
     writeFileSync(sessionFile, '{}\n');
-    threads.insertDraft({ id: 't1', sessionPath: sessionFile, cwd: dir });
+    await threads.insertDraft({ id: 't1', sessionPath: sessionFile, cwd: dir });
     const sessions = new TurnSessions();
     const runner = new PiAgentRunner(log, threads, sessions as unknown as PiSessionService);
-    runner.onModuleInit();
+    await runner.onModuleInit();
     const agent = new PiAgent(sessions as unknown as PiSessionService, {
       defaultCwd: dir,
       threads: {} as never,
@@ -261,11 +264,12 @@ describe('PiAgentRunner.followTurn (a turn pi started by itself)', () => {
   const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 10));
 
   it('opens a run of its own that streams the turn live, is replayed by connect() and releases the lock when pi settles', async () => {
-    const { database, log, sessions, runner } = setup();
+    const { database, log, sessions, runner } = await setup();
     try {
       sessions.startTurn();
-      await flush();
-      expect(log.lastRun('t1')).toMatchObject({ status: 'running' });
+      await vi.waitFor(async () =>
+        expect(await log.lastRun('t1')).toMatchObject({ runId: expect.stringMatching(/^turn-/), status: 'running' }),
+      );
       expect(await runner.isRunning({ threadId: 't1' } as never)).toBe(true);
       const live = firstValueFrom(
         runner.connect({ threadId: 't1', agent: {} as never, headers: {} } as never).pipe(toArray()),
@@ -289,7 +293,7 @@ describe('PiAgentRunner.followTurn (a turn pi started by itself)', () => {
       sessions.emit({ type: 'agent_settled', aborted: false });
       await flush();
       const events = await live;
-      const runs = log.read('t1').map((row) => row.runId);
+      const runs = (await log.read('t1')).map((row) => row.runId);
       expect(new Set(runs).size).toBe(1);
       expect(runs[0]).toMatch(/^turn-/);
       expect(events.map((e) => e.type)).toEqual(
@@ -301,15 +305,15 @@ describe('PiAgentRunner.followTurn (a turn pi started by itself)', () => {
           .filter((e) => e.type === EventType.TEXT_MESSAGE_START)
           .map((e) => (e as unknown as { role: string }).role),
       ).toEqual(['user', 'assistant']);
-      expect(log.lastRun('t1')).toMatchObject({ status: 'finished' });
+      expect(await log.lastRun('t1')).toMatchObject({ status: 'finished' });
       expect(await runner.isRunning({ threadId: 't1' } as never)).toBe(false);
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
     }
   });
 
   it('follows a turn that starts while the previous run is still ending, once that run is over', async () => {
-    const { database, log, sessions, runner } = setup();
+    const { database, log, sessions, runner } = await setup();
     try {
       // Run r1 is ending (its agent has not sent the terminal yet) when pi starts the next turn by itself.
       let finishR1: () => void = () => undefined;
@@ -336,30 +340,33 @@ describe('PiAgentRunner.followTurn (a turn pi started by itself)', () => {
         } as never)
         .subscribe({ error: () => undefined });
       sessions.startTurn();
-      await flush();
-      expect(new Set(log.read('t1').map((row) => row.runId))).toEqual(new Set(['r1']));
+      await vi.waitFor(async () =>
+        expect(new Set((await log.read('t1')).map((row) => row.runId))).toEqual(new Set(['r1'])),
+      );
       finishR1();
-      await flush();
       // pi is still in the turn: it gets a run of its own, which streams it and ends when pi settles.
-      expect(log.lastRun('t1')).toMatchObject({ status: 'running' });
+      await vi.waitFor(async () =>
+        expect(await log.lastRun('t1')).toMatchObject({ runId: expect.stringMatching(/^turn-/), status: 'running' }),
+      );
       sessions.emit({ type: 'message_start', message: { role: 'assistant', provider: 'p', model: 'm' } });
       sessions.emit({
         type: 'message_end',
         message: { role: 'assistant', stopReason: 'stop', content: [{ type: 'text', text: 'Forwarded to you.' }] },
       });
       sessions.emit({ type: 'agent_settled', aborted: false });
-      await flush();
-      const runs = [...new Set(log.read('t1').map((row) => row.runId))];
+      await vi.waitFor(async () =>
+        expect(await log.lastRun('t1')).toMatchObject({ runId: expect.stringMatching(/^turn-/), status: 'finished' }),
+      );
+      const runs = [...new Set((await log.read('t1')).map((row) => row.runId))];
       expect(runs).toHaveLength(2);
       expect(runs[1]).toMatch(/^turn-/);
-      expect(log.lastRun('t1')).toMatchObject({ status: 'finished' });
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
     }
   });
 
   it('does not follow afterwards a turn the run itself carried to the end', async () => {
-    const { database, log, sessions, runner } = setup();
+    const { database, log, sessions, runner } = await setup();
     try {
       let finishR1: () => void = () => undefined;
       const agent = {
@@ -388,14 +395,14 @@ describe('PiAgentRunner.followTurn (a turn pi started by itself)', () => {
       sessions.emit({ type: 'agent_settled', aborted: false });
       finishR1();
       await flush();
-      expect([...new Set(log.read('t1').map((row) => row.runId))]).toEqual(['r1']);
+      expect([...new Set((await log.read('t1')).map((row) => row.runId))]).toEqual(['r1']);
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
     }
   });
 
   it('leaves a thread alone while one of its own runs is going', async () => {
-    const { database, log, sessions, runner } = setup();
+    const { database, log, sessions, runner } = await setup();
     try {
       const agent = {
         run: () =>
@@ -409,24 +416,25 @@ describe('PiAgentRunner.followTurn (a turn pi started by itself)', () => {
         input: { threadId: 't1', runId: 'r1', messages: [], tools: [], state: {}, context: [] },
       } as never);
       sessions.startTurn();
+      await vi.waitFor(async () => expect(await log.lastRun('t1')).toMatchObject({ runId: 'r1' }));
       await flush();
-      expect(log.read('t1').map((row) => row.runId)).toEqual(['r1']);
+      expect((await log.read('t1')).map((row) => row.runId)).toEqual(['r1']);
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
     }
   });
 });
 
-describe('PiAgentRunner event order with asynchronous middleware', () => {
+describe('PiAgentRunner event order with asynchronous middleware', async () => {
   it('holds extension registrations until RUN_STARTED reaches the runner', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pk-runner-order-'));
-    const database = new DatabaseService({ dataDir: dir });
+    const database = await DatabaseService.create({ dataDir: dir });
     const log = new EventLogRepository(database);
     const threads = new ThreadsRepository(database);
     const sessions = new FakeSessions();
-    threads.insertDraft({ id: 't1', sessionPath: join(dir, 'missing.jsonl'), cwd: dir });
+    await threads.insertDraft({ id: 't1', sessionPath: join(dir, 'missing.jsonl'), cwd: dir });
     const runner = new PiAgentRunner(log, threads, sessions as unknown as PiSessionService);
-    runner.onModuleInit();
+    await runner.onModuleInit();
     try {
       const agent = {
         run: () =>
@@ -451,23 +459,23 @@ describe('PiAgentRunner event order with asynchronous middleware', () => {
       );
       expect(events[0]).toMatchObject({ type: EventType.RUN_STARTED });
       expect(events[1]).toMatchObject({ type: EventType.CUSTOM, name: 'pi.composer', value: { id: 'early' } });
-      expect(log.read('t1')[0].event.type).toBe(EventType.RUN_STARTED);
+      expect((await log.read('t1'))[0].event.type).toBe(EventType.RUN_STARTED);
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
     }
   });
 });
 
-describe('PiAgentRunner: the snapshot before a prompt', () => {
-  const setup = () => {
+describe('PiAgentRunner: the snapshot before a prompt', async () => {
+  const setup = async () => {
     const dir = mkdtempSync(join(tmpdir(), 'pk-runner-snapshot-'));
-    const database = new DatabaseService({ dataDir: dir });
+    const database = await DatabaseService.create({ dataDir: dir });
     const log = new EventLogRepository(database);
     const threads = new ThreadsRepository(database);
     const sessions = new FakeSessions();
     // pi has no prompt yet: its abort has nothing to stop.
     Object.assign(sessions, { has: () => true, isStreaming: () => false, abort: async () => undefined });
-    threads.insertDraft({ id: 't1', sessionPath: join(dir, 'missing.jsonl'), cwd: dir });
+    await threads.insertDraft({ id: 't1', sessionPath: join(dir, 'missing.jsonl'), cwd: dir });
     let taken!: () => void;
     const snapshot = new Promise<void>((resolve) => (taken = resolve));
     const runner = new PiAgentRunner(
@@ -498,15 +506,15 @@ describe('PiAgentRunner: the snapshot before a prompt', () => {
           });
         }),
     });
-    const close = () => {
-      database.onApplicationShutdown();
+    const close = async () => {
+      await database.onApplicationShutdown();
       rmSync(dir, { recursive: true, force: true });
     };
     return { log, runner, input, taken, sessions, given, agent, close };
   };
 
   it('hands pi the prompt only once the snapshot of the folder is taken', async () => {
-    const { runner, input, taken, given, agent, close } = setup();
+    const { runner, input, taken, given, agent, close } = await setup();
     try {
       const done = firstValueFrom(
         runner.run({ threadId: 't1', agent: agent('r1') as never, input: input('r1') }).pipe(toArray()),
@@ -517,12 +525,12 @@ describe('PiAgentRunner: the snapshot before a prompt', () => {
       expect((await done).at(-1)).toMatchObject({ type: EventType.RUN_FINISHED });
       expect(given).toEqual(['r1']);
     } finally {
-      close();
+      await close();
     }
   });
 
   it('never hands pi the prompt when Stop comes during the wait, and ends the run as stopped', async () => {
-    const { log, runner, input, taken, given, agent, close } = setup();
+    const { log, runner, input, taken, given, agent, close } = await setup();
     try {
       const done = firstValueFrom(
         runner.run({ threadId: 't1', agent: agent('r1') as never, input: input('r1') }).pipe(toArray()),
@@ -532,14 +540,14 @@ describe('PiAgentRunner: the snapshot before a prompt', () => {
       const events = await done;
       expect(given).toEqual([]);
       expect(events.at(-1)).toMatchObject({ type: EventType.RUN_FINISHED, result: { aborted: true } });
-      expect(log.lastRun('t1')?.status).toBe('aborted');
+      expect((await log.lastRun('t1'))?.status).toBe('aborted');
     } finally {
-      close();
+      await close();
     }
   });
 
   it('sends a follow-up written during the wait after the prompt it follows, not before it', async () => {
-    const { runner, input, taken, given, agent, close } = setup();
+    const { runner, input, taken, given, agent, close } = await setup();
     try {
       const first = firstValueFrom(
         runner.run({ threadId: 't1', agent: agent('r1') as never, input: input('r1') }).pipe(toArray()),
@@ -555,12 +563,12 @@ describe('PiAgentRunner: the snapshot before a prompt', () => {
       await Promise.all([first, second]);
       expect(given).toEqual(['r1', 'r2']);
     } finally {
-      close();
+      await close();
     }
   });
 
   it('holds a follow-up until pi works on the prompt before it, however long that prompt takes to start', async () => {
-    const { runner, input, taken, sessions, close } = setup();
+    const { runner, input, taken, sessions, close } = await setup();
     try {
       let streaming = false;
       Object.assign(sessions, { isStreaming: () => streaming });
@@ -600,12 +608,12 @@ describe('PiAgentRunner: the snapshot before a prompt', () => {
       await queued;
       expect(order).toEqual(['prompt-started', 'prompt-given', 'follow-up']);
     } finally {
-      close();
+      await close();
     }
   });
 
   it('makes a follow-up a run of its own when the run it waited for ended without pi working', async () => {
-    const { log, runner, input, taken, given, agent, close } = setup();
+    const { log, runner, input, taken, given, agent, close } = await setup();
     try {
       // The prompt fails while the run prepares the thread: pi never works on it.
       const failed = new Subject<BaseEvent>();
@@ -624,20 +632,21 @@ describe('PiAgentRunner: the snapshot before a prompt', () => {
           .run({ threadId: 't1', agent: agent('r2') as never, input: input('r2', { streamingBehavior: 'followUp' }) })
           .pipe(toArray()),
       );
+      await vi.waitFor(() => expect(failed.observed).toBe(true));
       failed.next({ type: EventType.RUN_ERROR, message: 'no model' } as BaseEvent);
       failed.complete();
       await first;
       taken();
       await queued;
       expect(given).toEqual(['r2']);
-      expect(log.runsOf('t1').map((r) => r.runId)).toEqual(['r1', 'r2']);
+      expect((await log.runsOf('t1')).map((r) => r.runId)).toEqual(['r1', 'r2']);
     } finally {
-      close();
+      await close();
     }
   });
 
   it('drops a follow-up queued behind a run that was stopped before pi got its prompt', async () => {
-    const { runner, input, taken, given, agent, close } = setup();
+    const { runner, input, taken, given, agent, close } = await setup();
     try {
       const first = firstValueFrom(
         runner.run({ threadId: 't1', agent: agent('r1') as never, input: input('r1') }).pipe(toArray()),
@@ -653,20 +662,20 @@ describe('PiAgentRunner: the snapshot before a prompt', () => {
       expect((await queued).at(-1)).toMatchObject({ type: EventType.RUN_FINISHED, result: { aborted: true } });
       expect(given).toEqual([]);
     } finally {
-      close();
+      await close();
     }
   });
 });
 
-describe('PiAgentRunner replay compaction', () => {
-  function setup() {
+describe('PiAgentRunner replay compaction', async () => {
+  async function setup() {
     const dir = mkdtempSync(join(tmpdir(), 'pk-runner-replay-'));
-    const database = new DatabaseService({ dataDir: dir });
+    const database = await DatabaseService.create({ dataDir: dir });
     const log = new EventLogRepository(database);
     const threads = new ThreadsRepository(database);
     const sessionFile = join(dir, 'session.jsonl');
     writeFileSync(sessionFile, '{}\n');
-    threads.insertDraft({ id: 't1', sessionPath: sessionFile, cwd: dir });
+    await threads.insertDraft({ id: 't1', sessionPath: sessionFile, cwd: dir });
     const sessions = new FakeSessions();
     const runner = new PiAgentRunner(log, threads, sessions as unknown as PiSessionService);
     const input = { threadId: 't1', runId: 'r1', messages: [], tools: [], state: {}, context: [] };
@@ -681,18 +690,30 @@ describe('PiAgentRunner replay compaction', () => {
   }
 
   it('compacts argument chunks when a real run finishes and delivers its snapshot once', async () => {
-    const { database, log, runner, input, events } = setup();
+    const { database, log, runner, input, events } = await setup();
     try {
-      const agent = { run: () => of(...events) };
+      const agent = {
+        run: () =>
+          new Observable<BaseEvent>((subscriber) => {
+            void (async () => {
+              for (const event of [...events.slice(0, 152), ...events.slice(-2)]) {
+                if (subscriber.closed) return;
+                subscriber.next(event);
+                await new Promise((resolve) => setTimeout(resolve, 1));
+              }
+              subscriber.complete();
+            })();
+          }),
+      };
       const live = await firstValueFrom(runner.run({ threadId: 't1', agent: agent as never, input }).pipe(toArray()));
       expect(live.filter((e) => e.type === EventType.MESSAGES_SNAPSHOT)).toHaveLength(1);
-      const stored = log.read('t1').map((s) => s.event);
+      const stored = (await log.read('t1')).map((s) => s.event);
       expect(stored.filter((e) => e.type === EventType.MESSAGES_SNAPSHOT)).toHaveLength(1);
       expect(stored.filter((e) => e.type === EventType.TOOL_CALL_ARGS)).toHaveLength(0);
       expect(stored.at(-1)?.type).toBe(EventType.RUN_FINISHED);
-      expect(log.lastRun('t1')?.status).toBe('finished');
+      expect((await log.lastRun('t1'))?.status).toBe('finished');
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
       rmSync(dirname(database.path), { recursive: true, force: true });
     }
   });
@@ -700,7 +721,7 @@ describe('PiAgentRunner replay compaction', () => {
   it.each(['dialog', 'streaming'])(
     'keeps a live %s prompt’s question and tool state across reconnects, even with a stale file timestamp',
     async (owner) => {
-      const { database, log, threads, runner, sessionFile, sessions } = setup();
+      const { database, log, threads, runner, sessionFile, sessions } = await setup();
       try {
         sessions.streaming = owner === 'streaming';
         const dialogs: PendingDialog[] = [
@@ -725,32 +746,32 @@ describe('PiAgentRunner replay compaction', () => {
           interruptFinished('t1', 'r1', dialogs),
         ] as BaseEvent[];
         let lastSeq = 0;
-        for (const event of events) lastSeq = log.append('t1', 'r1', event);
-        threads.setLogMtime('t1', (sessionMtime(sessionFile) ?? 1) - 1);
+        for (const event of events) lastSeq = await log.append('t1', 'r1', event);
+        await threads.setLogMtime('t1', (sessionMtime(sessionFile) ?? 1) - 1);
         const cursor = log.cursor('t1', lastSeq);
         for (let visit = 0; visit < 2; visit++) {
           const replay = await firstValueFrom(runner.connect({ threadId: 't1' }).pipe(toArray()));
           expect(replay.slice(1)).toMatchObject(events);
           expect(replay.at(-1)).toMatchObject({ outcome: { type: 'interrupt', interrupts: [{ id: 'question' }] } });
           expect(sessions.readSession).not.toHaveBeenCalled();
-          expect(log.resolveCursor('t1', cursor)).toBeDefined();
+          expect(await log.resolveCursor('t1', cursor)).toBeDefined();
         }
-        runner.publishBranch('t1');
-        expect(log.read('t1').map((stored) => stored.event)).toEqual(events);
+        await runner.publishBranch('t1');
+        expect((await log.read('t1')).map((stored) => stored.event)).toEqual(events);
       } finally {
-        database.onApplicationShutdown();
+        await database.onApplicationShutdown();
         rmSync(dirname(database.path), { recursive: true, force: true });
       }
     },
   );
 
   it('holds toolbar changes while suspended, then delivers them inside the resumed run', async () => {
-    const { database, log, runner, input, sessions } = setup();
+    const { database, log, runner, input, sessions } = await setup();
     try {
-      runner.onModuleInit();
+      await runner.onModuleInit();
       sessions.dialogs = [{ id: 'question', request: { method: 'input', title: 'Continue?' } }];
       const terminal = interruptFinished('t1', 'r1', sessions.dialogs);
-      log.append('t1', 'r1', terminal);
+      await log.append('t1', 'r1', terminal);
       sessions.register({ op: 'action', id: 'later', label: 'Later', text: '/later' });
       const replay = await firstValueFrom(runner.connect({ threadId: 't1' }).pipe(toArray()));
       expect(replay.slice(1)).toMatchObject([terminal]);
@@ -770,38 +791,37 @@ describe('PiAgentRunner replay compaction', () => {
         { type: EventType.CUSTOM, name: 'pi.composer', value: { id: 'later' } },
       ]);
       expect(
-        log
-          .read('t1')
+        (await log.read('t1'))
           .filter((stored) => stored.event.type === EventType.RUN_STARTED)
           .map((stored) => stored.runId),
       ).toEqual([runId]);
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
       rmSync(dirname(database.path), { recursive: true, force: true });
     }
   });
 
   it('rechecks prompt ownership after an asynchronous session read before replacing its event log', async () => {
-    const { database, log, threads, runner, sessionFile, sessions } = setup();
+    const { database, log, threads, runner, sessionFile, sessions } = await setup();
     try {
-      threads.setLogMtime('t1', (sessionMtime(sessionFile) ?? 1) - 1);
+      await threads.setLogMtime('t1', (sessionMtime(sessionFile) ?? 1) - 1);
       sessions.readSession.mockImplementationOnce(async () => {
         sessions.streaming = true;
         sessions.dialogs = [{ id: 'question', request: { method: 'input', title: 'Continue?' } }];
-        log.append('t1', 'r1', interruptFinished('t1', 'r1', sessions.dialogs));
+        await log.append('t1', 'r1', interruptFinished('t1', 'r1', sessions.dialogs));
         return { entries: [] };
       });
       const replay = await firstValueFrom(runner.connect({ threadId: 't1' }).pipe(toArray()));
       expect(replay.at(-1)).toMatchObject({ outcome: { type: 'interrupt' } });
       expect(replay.some((event) => event.type === EventType.MESSAGES_SNAPSHOT)).toBe(false);
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
       rmSync(dirname(database.path), { recursive: true, force: true });
     }
   });
 
   it('records the session checkpoint at an interrupt without replacing its streamed history', async () => {
-    const { database, log, threads, runner, input, sessionFile, sessions } = setup();
+    const { database, log, threads, runner, input, sessionFile, sessions } = await setup();
     try {
       sessions.dialogs = [{ id: 'question', request: { method: 'input', title: 'Continue?' } }];
       const events = [
@@ -811,72 +831,80 @@ describe('PiAgentRunner replay compaction', () => {
       await firstValueFrom(
         runner.run({ threadId: 't1', agent: { run: () => of(...events) } as never, input }).pipe(toArray()),
       );
-      expect(threads.get('t1')?.logMtime).toBe(sessionMtime(sessionFile));
-      expect(log.read('t1').map((stored) => stored.event)).toEqual(expect.arrayContaining([events[1]]));
-      expect(log.read('t1').some((stored) => stored.event.type === EventType.MESSAGES_SNAPSHOT)).toBe(false);
+      expect((await threads.get('t1'))?.logMtime).toBe(sessionMtime(sessionFile));
+      expect((await log.read('t1')).map((stored) => stored.event)).toEqual(expect.arrayContaining([events[1]]));
+      expect((await log.read('t1')).some((stored) => stored.event.type === EventType.MESSAGES_SNAPSHOT)).toBe(false);
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
       rmSync(dirname(database.path), { recursive: true, force: true });
     }
   });
 
   it('repairs an oversized legacy log on connect, including deltas before its previous snapshot', async () => {
-    const { database, log, threads, runner, events, sessionFile } = setup();
+    const { database, log, threads, runner, events, sessionFile } = await setup();
     try {
-      for (const e of events.slice(0, -1)) log.append('t1', 'r1', e);
+      for (const e of events.slice(0, -1)) await log.append('t1', 'r1', e);
       // The duplicate snapshot has already been deleted by the old incremental pass; its deltas survived.
-      log.append('t1', 'r1', {
+      await log.append('t1', 'r1', {
         type: EventType.MESSAGES_SNAPSHOT,
         messages: [{ id: 'u1', role: 'user', content: 'one' }],
       } as BaseEvent);
-      log.append('t1', 'r1', events[events.length - 1]);
-      log.append('t1', 'r2', { type: EventType.RUN_STARTED, threadId: 't1', runId: 'r2' } as BaseEvent);
-      log.append('t1', 'r2', {
+      await log.append('t1', 'r1', events[events.length - 1]);
+      await log.append('t1', 'r2', { type: EventType.RUN_STARTED, threadId: 't1', runId: 'r2' } as BaseEvent);
+      await log.append('t1', 'r2', {
         type: EventType.MESSAGES_SNAPSHOT,
         messages: [{ id: 'u2', role: 'user', content: 'two' }],
       } as BaseEvent);
-      log.append('t1', 'r2', { type: EventType.RUN_FINISHED, threadId: 't1', runId: 'r2' } as BaseEvent);
-      threads.setLogMtime('t1', sessionMtime(sessionFile));
+      await log.append('t1', 'r2', { type: EventType.RUN_FINISHED, threadId: 't1', runId: 'r2' } as BaseEvent);
+      await threads.setLogMtime('t1', sessionMtime(sessionFile));
       const replay = await firstValueFrom(runner.connect({ threadId: 't1' } as never).pipe(toArray()));
       expect(replay.filter((e) => e.type === EventType.TOOL_CALL_ARGS)).toHaveLength(0);
       expect(replay.filter((e) => e.type === EventType.MESSAGES_SNAPSHOT)).toMatchObject([
         { type: EventType.MESSAGES_SNAPSHOT, messages: [{ id: 'u2', role: 'user', content: 'two' }] },
       ]);
-      expect(log.count('t1')).toBeLessThan(10);
+      expect(await log.count('t1')).toBeLessThan(10);
       expect(replay.at(-1)?.type).toBe(EventType.RUN_FINISHED);
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
       rmSync(dirname(database.path), { recursive: true, force: true });
     }
   });
 
   it('sends only new events for a retained cursor, and no history when nothing changed', async () => {
-    const { database, log, threads, runner, sessionFile } = setup();
+    const { database, log, threads, runner, sessionFile } = await setup();
     try {
-      threads.setLogMtime('t1', sessionMtime(sessionFile));
-      const first = log.append('t1', 'r1', { type: EventType.RUN_STARTED, threadId: 't1', runId: 'r1' } as BaseEvent);
+      await threads.setLogMtime('t1', sessionMtime(sessionFile));
+      const first = await log.append('t1', 'r1', {
+        type: EventType.RUN_STARTED,
+        threadId: 't1',
+        runId: 'r1',
+      } as BaseEvent);
       const cursor = log.cursor('t1', first);
       const connect = () =>
         firstValueFrom(
           runner.connect({ threadId: 't1', headers: { 'x-pi-kit-replay-cursor': cursor } }).pipe(toArray()),
         );
       expect(await connect()).toEqual([{ type: EventType.CUSTOM, name: 'pi.replay', value: { reset: false } }]);
-      log.append('t1', 'r1', { type: EventType.TEXT_MESSAGE_START, messageId: 'a1', role: 'assistant' } as BaseEvent);
+      await log.append('t1', 'r1', {
+        type: EventType.TEXT_MESSAGE_START,
+        messageId: 'a1',
+        role: 'assistant',
+      } as BaseEvent);
       const delta = await connect();
       expect(delta.map((e) => e.type)).toEqual([EventType.CUSTOM, EventType.TEXT_MESSAGE_START]);
       expect(delta[1].metadata?.['piKitReplayCursor']).toBe(log.cursor('t1', first + 1));
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
       rmSync(dirname(database.path), { recursive: true, force: true });
     }
   });
 
   it('hydrates a cold client once without changing or compacting its AG-UI log', async () => {
-    const { database, log, threads, runner, sessionFile, events } = setup();
+    const { database, log, threads, runner, sessionFile, events } = await setup();
     try {
-      threads.setLogMtime('t1', sessionMtime(sessionFile));
-      for (const event of events) log.append('t1', 'r1', event);
-      const before = log.read('t1');
+      await threads.setLogMtime('t1', sessionMtime(sessionFile));
+      for (const event of events) await log.append('t1', 'r1', event);
+      const before = await log.read('t1');
       const response = await firstValueFrom(
         runner.connect({ threadId: 't1', headers: { 'x-pi-kit-hydrate': '1' } }).pipe(toArray()),
       );
@@ -887,7 +915,7 @@ describe('PiAgentRunner replay compaction', () => {
           messages: [{ id: 'a1', toolCalls: [{ id: 'c1', function: { arguments: 'x'.repeat(3000) } }] }],
         },
       });
-      expect(log.read('t1')).toEqual(before);
+      expect(await log.read('t1')).toEqual(before);
       const cursor = response[2].metadata?.['piKitReplayCursor'] as string;
       const unchanged = await firstValueFrom(
         runner
@@ -904,16 +932,17 @@ describe('PiAgentRunner replay compaction', () => {
         { type: EventType.CUSTOM, name: 'pi.replay', value: { reset: false, running: false } },
       ]);
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
       rmSync(dirname(database.path), { recursive: true, force: true });
     }
   });
 
   it('joins the live AG-UI stream exactly after hydration, keeping partial arguments intact', async () => {
-    const { database, log, runner, input } = setup();
+    const { database, log, runner, input } = await setup();
     const source = new Subject<BaseEvent>();
     const live: BaseEvent[] = [];
     const running = runner.run({ threadId: 't1', input, agent: { run: () => source } as never }).subscribe();
+    await vi.waitFor(() => expect(source.observed).toBe(true));
     source.next({ type: EventType.RUN_STARTED, threadId: 't1', runId: 'r1' } as BaseEvent);
     source.next({
       type: EventType.TOOL_CALL_START,
@@ -926,57 +955,58 @@ describe('PiAgentRunner replay compaction', () => {
       .connect({ threadId: 't1', headers: { 'x-pi-kit-hydrate': '1' } })
       .subscribe((e) => live.push(e));
     try {
-      await new Promise((resolve) => setImmediate(resolve));
+      await vi.waitFor(() => expect(live[2]).toBeDefined());
       expect(live[2]).toMatchObject({
         name: 'pi.thread.hydrate',
         value: { messages: [{ toolCalls: [{ function: { arguments: '{"path":"a"' } }] }] },
       });
       expect(live.filter((e) => e.type === EventType.TOOL_CALL_ARGS)).toHaveLength(0);
       source.next({ type: EventType.TOOL_CALL_ARGS, toolCallId: 'c1', delta: '}' } as BaseEvent);
-      expect(live.filter((e) => e.type === EventType.TOOL_CALL_ARGS)).toHaveLength(1);
+      await vi.waitFor(() => expect(live.filter((e) => e.type === EventType.TOOL_CALL_ARGS)).toHaveLength(1));
       expect(live.at(-1)).toMatchObject({ delta: '}' });
-      const seq = log.resolveCursor('t1', live[2].metadata?.['piKitReplayCursor'] as string);
-      expect(log.readAfter('t1', seq as number).map((e) => e.event)).toEqual([
+      const seq = await log.resolveCursor('t1', live[2].metadata?.['piKitReplayCursor'] as string);
+      expect((await log.readAfter('t1', seq as number)).map((e) => e.event)).toEqual([
         { type: EventType.TOOL_CALL_ARGS, toolCallId: 'c1', delta: '}' },
       ]);
     } finally {
       connection.unsubscribe();
       source.next({ type: EventType.RUN_FINISHED, threadId: 't1', runId: 'r1' } as BaseEvent);
       running.unsubscribe();
-      database.onApplicationShutdown();
+      await runner.onModuleDestroy();
+      await database.onApplicationShutdown();
       rmSync(dirname(database.path), { recursive: true, force: true });
     }
   });
 
   it('resets a cached transcript if its log was rebuilt or its cursor row was compacted away', async () => {
-    const { database, log, threads, runner, sessionFile } = setup();
+    const { database, log, threads, runner, sessionFile } = await setup();
     try {
-      threads.setLogMtime('t1', sessionMtime(sessionFile));
+      await threads.setLogMtime('t1', sessionMtime(sessionFile));
       const event = { type: EventType.RUN_STARTED, threadId: 't1', runId: 'r1' } as BaseEvent;
-      const seq = log.append('t1', 'r1', event);
+      const seq = await log.append('t1', 'r1', event);
       const cursor = log.cursor('t1', seq);
-      log.clear('t1');
-      log.append('t1', 'r1', event); // Same numeric seq, different log generation.
+      await log.clear('t1');
+      await log.append('t1', 'r1', event); // Same numeric seq, different log generation.
       const replay = await firstValueFrom(
         runner.connect({ threadId: 't1', headers: { 'x-pi-kit-replay-cursor': cursor } }).pipe(toArray()),
       );
       expect(replay[0]).toMatchObject({ value: { reset: true } });
       const current = log.cursor('t1', seq);
-      log.deleteSeqs('t1', [seq]);
-      expect(log.resolveCursor('t1', current)).toBeUndefined();
-      expect(new EventLogRepository(database).resolveCursor('t1', current)).toBeUndefined();
+      await log.deleteSeqs('t1', [seq]);
+      expect(await log.resolveCursor('t1', current)).toBeUndefined();
+      expect(await new EventLogRepository(database).resolveCursor('t1', current)).toBeUndefined();
     } finally {
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
       rmSync(dirname(database.path), { recursive: true, force: true });
     }
   });
 });
 
-describe('PiAgentRunner with a resume pi cannot take', () => {
+describe('PiAgentRunner with a resume pi cannot take', async () => {
   /** An open session that waits on real extension dialogs, as a run that ended in an interrupt leaves it. */
   class DialogSessions extends FakeSessions {
     readonly ui = new UiBridge();
-    abort = vi.fn(async () => undefined);
+    override abort = vi.fn(async () => undefined);
     override pendingDialogs(_threadId?: string, onlyNew?: boolean) {
       return this.ui.list(onlyNew);
     }
@@ -1004,14 +1034,14 @@ describe('PiAgentRunner with a resume pi cannot take', () => {
   }
 
   /** Thread t1 suspended at a select: run r1 asked "Range?" and its log ends in that interrupt, as `PiAgent` leaves it. */
-  function setup(withDialog = true) {
+  async function setup(withDialog = true) {
     const dir = mkdtempSync(join(tmpdir(), 'pk-runner-resume-'));
-    const database = new DatabaseService({ dataDir: dir });
+    const database = await DatabaseService.create({ dataDir: dir });
     const log = new EventLogRepository(database);
     const threads = new ThreadsRepository(database);
     const sessionFile = join(dir, 'session.jsonl');
     writeFileSync(sessionFile, '{}\n');
-    threads.insertDraft({ id: 't1', sessionPath: sessionFile, cwd: dir });
+    await threads.insertDraft({ id: 't1', sessionPath: sessionFile, cwd: dir });
     const sessions = new DialogSessions();
     const runner = new PiAgentRunner(log, threads, sessions as unknown as PiSessionService);
     const carry = new Map([['t1', createMapContext({ threadId: 't1', runId: 'r1' })]]);
@@ -1024,10 +1054,10 @@ describe('PiAgentRunner with a resume pi cannot take', () => {
     const answer = withDialog ? sessions.ui.select('Range?', ['Week', 'Month']) : undefined;
     const dialogs = sessions.ui.list();
     sessions.ui.markReported(dialogs.map((d) => d.id));
-    log.beginRun('t1', 'r1');
-    log.append('t1', 'r1', { type: EventType.RUN_STARTED, threadId: 't1', runId: 'r1' } as BaseEvent);
-    log.append('t1', 'r1', interruptFinished('t1', 'r1', dialogs));
-    log.endRun('r1', 'finished');
+    await log.beginRun('t1', 'r1');
+    await log.append('t1', 'r1', { type: EventType.RUN_STARTED, threadId: 't1', runId: 'r1' } as BaseEvent);
+    await log.append('t1', 'r1', interruptFinished('t1', 'r1', dialogs));
+    await log.endRun('r1', 'finished');
     const resume = (runId: string, value: string, ids = dialogs.map((d) => d.id)) =>
       firstValueFrom(
         runner
@@ -1050,18 +1080,18 @@ describe('PiAgentRunner with a resume pi cannot take', () => {
       firstValueFrom(
         runner.connect({ threadId: 't1', headers: { [THREAD_HYDRATION_HEADER]: '1' } } as never).pipe(toArray()),
       );
-    const close = () => {
+    const close = async () => {
       sessions.ui.cancelAll();
-      database.onApplicationShutdown();
+      await database.onApplicationShutdown();
       rmSync(dir, { recursive: true, force: true });
     };
     return { log, sessions, dialogs, answer, resume, hydrate, close };
   }
-  const snapshots = (log: EventLogRepository) =>
-    log.read('t1').filter((row) => row.event.type === EventType.MESSAGES_SNAPSHOT);
+  const snapshots = async (log: EventLogRepository) =>
+    (await log.read('t1')).filter((row) => row.event.type === EventType.MESSAGES_SNAPSHOT);
 
   it('keeps the thread suspended at the interrupt when the answer is not an option, and says why', async () => {
-    const { log, sessions, dialogs, resume, hydrate, close } = setup();
+    const { log, sessions, dialogs, resume, hydrate, close } = await setup();
     try {
       const events = await resume('r2', 'Year');
       expect(events).toContainEqual(
@@ -1077,54 +1107,54 @@ describe('PiAgentRunner with a resume pi cannot take', () => {
         outcome: { type: 'interrupt', interrupts: [{ id: dialogs[0].id }] },
       });
       expect(sessions.ui.size).toBe(1);
-      expect(snapshots(log)).toHaveLength(0);
-      expect(log.lastRun('t1')).toMatchObject({ runId: 'r2', status: 'finished' });
+      expect(await snapshots(log)).toHaveLength(0);
+      expect(await log.lastRun('t1')).toMatchObject({ runId: 'r2', status: 'finished' });
       const replay = await hydrate();
       expect(replay.at(-1)).toMatchObject({
         type: EventType.RUN_FINISHED,
         outcome: { type: 'interrupt', interrupts: [{ id: dialogs[0].id }] },
       });
     } finally {
-      close();
+      await close();
     }
   });
 
   it('still takes a valid answer after a refused one', async () => {
-    const { log, answer, resume, close } = setup();
+    const { log, answer, resume, close } = await setup();
     try {
       await resume('r2', 'Year');
       const events = await resume('r3', 'Month');
       expect(events.at(-1)).toMatchObject({ type: EventType.RUN_FINISHED, runId: 'r3', outcome: { type: 'success' } });
       expect(await answer).toBe('Month');
-      expect(snapshots(log)).toHaveLength(1);
-      expect(log.lastRun('t1')).toMatchObject({ runId: 'r3', status: 'finished' });
+      expect(await snapshots(log)).toHaveLength(1);
+      expect(await log.lastRun('t1')).toMatchObject({ runId: 'r3', status: 'finished' });
     } finally {
-      close();
+      await close();
     }
   });
 
   it('fails a resume that cannot apply when pi waits on nothing any more', async () => {
-    const { log, resume, close } = setup(false);
+    const { log, resume, close } = await setup(false);
     try {
       const events = await resume('r2', 'Month', ['gone', 'gone']);
       expect(events.at(-1)).toMatchObject({ type: EventType.RUN_ERROR, code: 'invalid_resume' });
       expect(
         events.some((event) => event.type === EventType.CUSTOM && (event as { name?: string }).name === 'pi.notify'),
       ).toBe(false);
-      expect(log.lastRun('t1')).toMatchObject({ runId: 'r2', status: 'error' });
+      expect(await log.lastRun('t1')).toMatchObject({ runId: 'r2', status: 'error' });
     } finally {
-      close();
+      await close();
     }
   });
 });
 
-describe('composerChanges', () => {
+describe('composerChanges', async () => {
   const state = new Map<string, ComposerRegistration>([['a', { op: 'suggestion', id: 'a', title: 'Ask', text: 'hi' }]]);
-  it('is false for the same registration or a removal of an unknown id', () => {
+  it('is false for the same registration or a removal of an unknown id', async () => {
     expect(composerChanges(state, { op: 'suggestion', id: 'a', title: 'Ask', text: 'hi' })).toBe(false);
     expect(composerChanges(state, { op: 'remove', id: 'zzz' })).toBe(false);
   });
-  it('is true for a new, a changed and a removed id', () => {
+  it('is true for a new, a changed and a removed id', async () => {
     expect(composerChanges(state, { op: 'suggestion', id: 'b', title: 'Ask', text: 'hi' })).toBe(true);
     expect(composerChanges(state, { op: 'suggestion', id: 'a', title: 'Ask', text: 'hi', send: true })).toBe(true);
     expect(composerChanges(state, { op: 'remove', id: 'a' })).toBe(true);

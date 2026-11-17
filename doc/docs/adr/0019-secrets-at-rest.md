@@ -3,6 +3,8 @@
 Status: Accepted
 Date: 2026-10-16
 
+> Runtime storage update: [ADR-0037](0037-async-sqlite.md) supersedes the driver and database-encryption details below. The async backend uses AppThreat SQLite, creates private plaintext databases and refuses encrypted profiles without modifying their originals. Credential storage remains separate. The recovery-key API/export/UI and `PI_KIT_DB_KEY` described below are historical and removed; existing legacy keys are retained, not deleted.
+
 ## Context
 
 Three kinds of sensitive data exist on disk: provider credentials in pi's `~/.pi/agent/auth.json` and MCP OAuth tokens in

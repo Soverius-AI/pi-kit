@@ -24,8 +24,8 @@ export class CoordinationController {
   })
   @Responds(CoordinationSchema)
   @Fails({ 404: 'There is no such thread.' })
-  get(@Param('id') id: string): Coordination {
-    if (!this.threads.get(id)) throw new NotFoundException(`Thread ${id} not found.`);
-    return { leases: this.coordination.leasesFor(id), others: this.coordination.othersInfo(id) };
+  async get(@Param('id') id: string): Promise<Coordination> {
+    if (!(await this.threads.get(id))) throw new NotFoundException(`Thread ${id} not found.`);
+    return { leases: await this.coordination.leasesFor(id), others: await this.coordination.othersInfo(id) };
   }
 }

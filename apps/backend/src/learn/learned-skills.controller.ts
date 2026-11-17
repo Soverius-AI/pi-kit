@@ -31,8 +31,8 @@ export class LearnedSkillsController {
       'its last verification and a flag when its last three threads all ended without an outcome (or it failed a verification and none of them merged).',
   })
   @Responds(LearnedSkillSchema, { array: true })
-  list(): LearnedSkill[] {
-    return this.learned.list();
+  async list(): Promise<LearnedSkill[]> {
+    return await this.learned.list();
   }
 
   @Get(':id')
@@ -44,8 +44,8 @@ export class LearnedSkillsController {
   })
   @Responds(LearnedSkillDetailSchema)
   @Fails({ 404: 'There is no such learned skill.' })
-  get(@Param('id') id: string): LearnedSkillDetail {
-    return this.learned.detail(id);
+  async get(@Param('id') id: string): Promise<LearnedSkillDetail> {
+    return await this.learned.detail(id);
   }
 
   @Post(':id/retire')
