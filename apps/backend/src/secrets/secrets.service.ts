@@ -4,7 +4,6 @@ import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
-  type DatabaseProtection,
   type DiskEncryption,
   type ResolverPlatform,
   type SecretsStatus,
@@ -23,7 +22,6 @@ import {
 } from '@pi-kit/secret-store';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
-import { DatabaseService } from '../db/database.service';
 import { MetaRepository } from '../db/meta.repository';
 import { agentDirOf } from '../pi/pi-resolution';
 import { readMovableKeys } from '../setup/detect';
@@ -40,7 +38,7 @@ export interface KeptKey {
 
 /**
  * Secrets at rest: API keys go to the operating system's credential store and `auth.json` gets the command that prints them (`resolverCommand`), so the pi
- * command line keeps working without pi-kit running; the database key (`pi-kit/db`) lives there too. This service owns the choices (which resolver, whether there is a store, what to do
+ * command line keeps working without pi-kit running. This service owns the choices (which resolver, whether there is a store, what to do
  * when it refuses), the `pi-kit-secret` launcher (written to `<data dir>/bin` and put on this process's PATH, because pi runs the resolver in this process for pi-kit's own sessions) and the facts Settings
  * shows. A key is handled as a parameter of `keep()` and never logged, returned or kept.
  */
@@ -54,7 +52,6 @@ export class SecretsService implements OnModuleInit {
   constructor(
     @Inject(SECRET_STORE) public store: SecretStore,
     @Inject(CONFIG) private readonly config: Pick<BackendConfig, 'dataDir'>,
-    private readonly database: DatabaseService,
     private readonly meta: MetaRepository,
   ) {}
 
@@ -280,7 +277,7 @@ export class SecretsService implements OnModuleInit {
     });
   }
 
-  /** Explicit opt-out affects credential writes, never the database key or database encryption. */
+  /** Explicit opt-out affects credential writes and preserves existing credential-store entries. */
   async setCredentialStorage(enabled: boolean): Promise<MoveKeysResult> {
     const result: MoveKeysResult = { moved: [], failed: [] };
     if (enabled) {
@@ -371,20 +368,6 @@ export class SecretsService implements OnModuleInit {
   async retryAccess(): Promise<SecretsStatus> {
     this.store.retryAccess?.();
     return await this.status();
-  }
-
-  async databaseProtection(): Promise<DatabaseProtection> {
-    return { ...this.database.protection, recoveryKeyShown: (await this.meta.getSetting('recoveryKeyShown')) === true };
-  }
-
-  /** The recovery key, once: the first call returns it and records that it was shown, every later call refuses (the person saved it, or knows they did not). */
-  async recoveryKey(): Promise<{ key: string }> {
-    if ((await this.meta.getSetting('recoveryKeyShown')) === true)
-      throw new Error('The recovery key was shown once already and is not shown again.');
-    const key = this.database.recoveryKey();
-    if (!key) throw new Error('The database is not encrypted, so there is no key to export.');
-    await this.meta.setSetting('recoveryKeyShown', true);
-    return { key };
   }
 
   disk(): Promise<DiskEncryption> {

@@ -267,8 +267,9 @@ describe('PiAgentRunner.followTurn (a turn pi started by itself)', async () => {
     const { database, log, sessions, runner } = await setup();
     try {
       sessions.startTurn();
-      await flush();
-      expect(await log.lastRun('t1')).toMatchObject({ status: 'running' });
+      await vi.waitFor(async () =>
+        expect(await log.lastRun('t1')).toMatchObject({ runId: expect.stringMatching(/^turn-/), status: 'running' }),
+      );
       expect(await runner.isRunning({ threadId: 't1' } as never)).toBe(true);
       const live = firstValueFrom(
         runner.connect({ threadId: 't1', agent: {} as never, headers: {} } as never).pipe(toArray()),
@@ -339,23 +340,26 @@ describe('PiAgentRunner.followTurn (a turn pi started by itself)', async () => {
         } as never)
         .subscribe({ error: () => undefined });
       sessions.startTurn();
-      await flush();
-      expect(new Set((await log.read('t1')).map((row) => row.runId))).toEqual(new Set(['r1']));
+      await vi.waitFor(async () =>
+        expect(new Set((await log.read('t1')).map((row) => row.runId))).toEqual(new Set(['r1'])),
+      );
       finishR1();
-      await flush();
       // pi is still in the turn: it gets a run of its own, which streams it and ends when pi settles.
-      expect(await log.lastRun('t1')).toMatchObject({ status: 'running' });
+      await vi.waitFor(async () =>
+        expect(await log.lastRun('t1')).toMatchObject({ runId: expect.stringMatching(/^turn-/), status: 'running' }),
+      );
       sessions.emit({ type: 'message_start', message: { role: 'assistant', provider: 'p', model: 'm' } });
       sessions.emit({
         type: 'message_end',
         message: { role: 'assistant', stopReason: 'stop', content: [{ type: 'text', text: 'Forwarded to you.' }] },
       });
       sessions.emit({ type: 'agent_settled', aborted: false });
-      await flush();
+      await vi.waitFor(async () =>
+        expect(await log.lastRun('t1')).toMatchObject({ runId: expect.stringMatching(/^turn-/), status: 'finished' }),
+      );
       const runs = [...new Set((await log.read('t1')).map((row) => row.runId))];
       expect(runs).toHaveLength(2);
       expect(runs[1]).toMatch(/^turn-/);
-      expect(await log.lastRun('t1')).toMatchObject({ status: 'finished' });
     } finally {
       await database.onApplicationShutdown();
     }
@@ -412,6 +416,7 @@ describe('PiAgentRunner.followTurn (a turn pi started by itself)', async () => {
         input: { threadId: 't1', runId: 'r1', messages: [], tools: [], state: {}, context: [] },
       } as never);
       sessions.startTurn();
+      await vi.waitFor(async () => expect(await log.lastRun('t1')).toMatchObject({ runId: 'r1' }));
       await flush();
       expect((await log.read('t1')).map((row) => row.runId)).toEqual(['r1']);
     } finally {

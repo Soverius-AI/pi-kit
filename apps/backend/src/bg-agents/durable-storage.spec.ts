@@ -3,10 +3,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as encryption from '../db/encryption';
+import * as guards from '../db/database-file-guards';
 import { LOCK_FILE, openDurableStore, StoreOwnedError, takeOwnerLock } from './durable-storage';
 
-const key = 'ab'.repeat(32);
 let dir: string;
 afterEach(() => {
   vi.restoreAllMocks();
@@ -17,7 +16,7 @@ describe('openDurableStore', async () => {
   it('uses native async SQL, rolls back, and drains accepted operations on close', async () => {
     dir = mkdtempSync(join(tmpdir(), 'pk-bg-store-'));
     const path = join(dir, 'bg-agents.sqlite');
-    const store = await openDurableStore(path, key);
+    const store = await openDurableStore(path);
     await store.exec('CREATE TABLE notes (text TEXT)');
     await store.run('INSERT INTO notes VALUES (?)', 'one');
     await expect(
@@ -33,7 +32,7 @@ describe('openDurableStore', async () => {
     const reopened = await openDurableStore(path);
     expect(await reopened.all('SELECT text FROM notes ORDER BY rowid')).toEqual([{ text: 'one' }, { text: 'two' }]);
     await reopened.close();
-    expect(encryption.isPlainDatabase(path)).toBe(true);
+    expect(guards.isPlainDatabase(path)).toBe(true);
     if (process.platform !== 'win32') expect(statSync(path).mode & 0o777).toBe(0o600);
   });
 
@@ -70,13 +69,12 @@ describe('openDurableStore', async () => {
     await store.close();
   });
 
-  it('refuses encrypted bytes with an actionable message and never alters them, even with a key', async () => {
+  it('refuses encrypted bytes with an actionable message and never alters them', async () => {
     dir = mkdtempSync(join(tmpdir(), 'pk-bg-encrypted-'));
     const path = join(dir, 'bg-agents.sqlite');
     const bytes = Buffer.alloc(4096, 0x91);
     writeFileSync(path, bytes);
     await expect(openDurableStore(path)).rejects.toThrow(/encrypted.*retained.*recover/i);
-    await expect(openDurableStore(path, key)).rejects.toThrow(/encrypted.*retained/i);
     expect(readFileSync(path)).toEqual(bytes);
   });
 

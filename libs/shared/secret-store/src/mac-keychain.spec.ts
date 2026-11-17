@@ -2,7 +2,6 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { DB_KEY_ACCOUNT } from '@pi-kit/protocol';
 import { MacKeychainSecretStore, type MacKeychainModule } from './mac-keychain';
 import { MemorySecretStore } from './store';
 
@@ -44,22 +43,21 @@ describe('Touch ID Keychain storage', () => {
     expect(readFileSync(join(w.agent, 'pi-kit-keychain-accounts.jsonl'), 'utf8')).not.toContain('fixture-key');
   });
 
-  it('copies and verifies the database key and provider/connector secrets, retaining every original', async () => {
+  it('copies provider/connector secrets but never reads, copies or deletes legacy database keys', async () => {
     const w = world();
-    for (const [account, value] of [
-      [DB_KEY_ACCOUNT, 'a'.repeat(64)],
-      ['openrouter', 'fixture-provider'],
-      ['connector-github', 'fixture-connector'],
-    ])
-      w.legacy.set(account, value);
+    w.legacy.set('pi-kit/db', 'retained-legacy-database-key');
+    w.legacy.set('openrouter', 'fixture-provider');
+    w.legacy.set('connector-github', 'fixture-connector');
+    const oldRead = vi.spyOn(w.legacy, 'get');
     await w.store.migrate();
-    expect([...w.data].sort()).toEqual(
-      w.legacy
-        .list()
-        .map((account) => [account, w.legacy.get(account)])
-        .sort(),
-    );
-    expect(w.get).toHaveBeenCalledTimes(3);
+    expect([...w.data].sort()).toEqual([
+      ['connector-github', 'fixture-connector'],
+      ['openrouter', 'fixture-provider'],
+    ]);
+    expect(oldRead).not.toHaveBeenCalledWith('pi-kit/db');
+    expect(w.legacy.get('pi-kit/db')).toBe('retained-legacy-database-key');
+    expect(await w.store.list()).toEqual(['connector-github', 'openrouter']);
+    expect(w.get).toHaveBeenCalledTimes(2);
     w.get.mockClear();
     await w.store.migrate();
     expect(w.get).not.toHaveBeenCalled(); // Relaunch migration checks presence, not secret values.
@@ -173,28 +171,45 @@ function keychain() {
 describe('keys readable while you are away', () => {
   it('copies every key, then reads them without Touch ID; switching off removes only the copies', async () => {
     const k = keychain();
-    await k.store.set(DB_KEY_ACCOUNT, 'd'.repeat(64));
+    await k.store.set('connector-github', 'connector-key');
     await k.store.set('anthropic', 'provider-key');
+    k.items.set('touch:pi-kit/db', 'retained-legacy-database-key');
 
     await k.store.setUnattended(true);
     k.touchIdReads.length = 0;
-    expect(await k.store.get(DB_KEY_ACCOUNT)).toBe('d'.repeat(64));
+    expect(await k.store.get('connector-github')).toBe('connector-key');
     expect(await k.store.get('anthropic')).toBe('provider-key');
     expect(k.touchIdReads).toEqual([]);
 
     await k.store.setUnattended(false);
-    expect([...k.items.keys()].sort()).toEqual(['touch:anthropic', `touch:${DB_KEY_ACCOUNT}`]);
+    expect([...k.items.keys()].sort()).toEqual(['touch:anthropic', 'touch:connector-github', 'touch:pi-kit/db']);
   });
 
   it('removes the copies already made when Touch ID is cancelled for a later key', async () => {
     const k = keychain();
     await k.store.set('openai', 'provider-key');
-    await k.store.set(DB_KEY_ACCOUNT, 'd'.repeat(64));
-    // Keys are copied in name order: openai first, then the database key, which is refused.
-    k.refuseOn(DB_KEY_ACCOUNT);
+    await k.store.set('openrouter', 'another-provider-key');
+    // Keys are copied in name order: openai first, then openrouter, which is refused.
+    k.refuseOn('openrouter');
 
     await expect(k.store.setUnattended(true)).rejects.toThrow();
     expect([...k.items.keys()].filter((key) => key.startsWith('plain:'))).toEqual([]);
     expect(k.store.unattendedKeys).toBe(false);
+  });
+});
+
+describe('reserved database account isolation', () => {
+  it('keeps the reserved account rejected by all normal credential operations', async () => {
+    const w = world();
+    for (const action of [
+      () => w.store.get('pi-kit/db'),
+      () => w.store.set('pi-kit/db', 'never'),
+      () => w.store.delete('pi-kit/db'),
+      () => w.store.migrateValue('pi-kit/db', 'never'),
+    ]) {
+      w.store.retryAccess();
+      await expect(action()).rejects.toThrow();
+    }
+    expect(w.open).not.toHaveBeenCalled();
   });
 });

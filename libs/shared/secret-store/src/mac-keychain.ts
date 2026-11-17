@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { DB_KEY_ACCOUNT, isProviderAccount, type CredentialAccess } from '@pi-kit/protocol';
+import { isProviderAccount, type CredentialAccess } from '@pi-kit/protocol';
 import { accessFailure, KeyringSecretStore, SecretStoreAccessError, type SecretStore } from './store';
 
 interface NativeEntry {
@@ -20,7 +20,7 @@ export interface MacKeychainModule {
   }): NativeEntry;
 }
 
-const validAccount = (account: string): boolean => account === DB_KEY_ACCOUNT || isProviderAccount(account);
+const CREDENTIAL_CHECK = 'pi-kit/credential-check';
 
 /** Account prefix of the unattended copies: separate items, because an item's access control is fixed when it is made. */
 const UNATTENDED = 'unattended/';
@@ -84,8 +84,9 @@ export class MacKeychainSecretStore implements SecretStore {
     return this.unattended;
   }
 
-  private entry(account: string, unattended = false): NativeEntry {
-    if (!validAccount(account)) throw new Error('Invalid credential account.');
+  private entry(account: string, unattended = false, metadataOnly = false): NativeEntry {
+    if (!isProviderAccount(account) && !(metadataOnly && account === CREDENTIAL_CHECK))
+      throw new Error('Invalid credential account.');
     if (!this.available() || !this.native) throw new Error('Touch ID storage is unavailable.');
     return this.native.openKeychainStore({
       keychainService: this.service,
@@ -178,7 +179,7 @@ export class MacKeychainSecretStore implements SecretStore {
       for (const line of readFileSync(this.registry, 'utf8').split('\n')) {
         if (!line) continue;
         const record = JSON.parse(line) as { account?: unknown; present?: unknown };
-        if (typeof record.account !== 'string' || !validAccount(record.account)) continue;
+        if (typeof record.account !== 'string' || !isProviderAccount(record.account)) continue;
         if (record.present === true) accounts.add(record.account);
         else if (record.present === false) accounts.delete(record.account);
       }
@@ -246,14 +247,14 @@ export class MacKeychainSecretStore implements SecretStore {
   list(): Promise<string[]> {
     return this.operate('pi-kit/list', async () => {
       const accounts = new Set([...this.accounts(), ...(await this.legacy.list())]);
-      return [...accounts].filter(validAccount).sort();
+      return [...accounts].filter(isProviderAccount).sort();
     });
   }
 
   async migrate(): Promise<void> {
     if (!this.available()) throw new SecretStoreAccessError(this.accessStatus());
     // Metadata validates the host before legacy enumeration. Never re-read migrated secrets on startup.
-    await this.operate(DB_KEY_ACCOUNT, () => this.entry(DB_KEY_ACCOUNT).status(DB_KEY_ACCOUNT));
+    await this.operate(CREDENTIAL_CHECK, () => this.entry(CREDENTIAL_CHECK, false, true).status(CREDENTIAL_CHECK));
     for (const account of await this.list()) {
       const status = await this.operate(account, () => this.entry(account).status(account));
       if (status.status === 'missing') await this.get(account);

@@ -833,15 +833,6 @@ export const settingsCatalog = (translate: Translate): readonly SettingEntry[] =
       'keychain keyring secret-tool credential manager pi-kit-secret path install optional disable direct api keys plaintext storage security',
   },
   {
-    id: 'database-encryption',
-    section: 'advanced',
-    group: translate('shared.catalog.secretsAndDataAtRest'),
-    name: translate('shared.catalog.databaseEncryption'),
-    description: translate('shared.catalog.piKitSDatabaseHoldsTranscriptsTool'),
-    storage: 'pi-kit',
-    keywords: 'sqlcipher encrypted encryption recovery key sqlite database at rest',
-  },
-  {
     id: 'disk-encryption',
     section: 'advanced',
     group: translate('shared.catalog.secretsAndDataAtRest'),

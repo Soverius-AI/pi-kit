@@ -31,13 +31,7 @@
         "target": "node24",
         "bundle": true,
         "thirdParty": true,
-        "external": [
-          "@appthreat/sqlite3",
-          "@napi-rs/keyring",
-          "better-sqlite3-multiple-ciphers",
-          "node-pty",
-          "keychain-store"
-        ],
+        "external": ["@appthreat/sqlite3", "@napi-rs/keyring", "node-pty", "keychain-store"],
         "esbuildConfig": "apps/backend/esbuild.config.cjs",
         "metafile": true,
         "generatePackageJson": false,

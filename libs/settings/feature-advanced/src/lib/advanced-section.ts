@@ -149,7 +149,7 @@ function size(bytes: number): string {
             </section>
           </pk-tab-panel>
         }
-        @if (dialog.shows('secret-store', 'database-encryption', 'disk-encryption')) {
+        @if (dialog.shows('secret-store', 'disk-encryption')) {
           <pk-tab-panel value="security" [label]="'settings.sectionTabs.security' | transloco">
             <section
               class="pk-group"
@@ -286,67 +286,6 @@ function size(bytes: number): string {
                         {{ failure.provider }} — {{ 'settings.advancedSection.storageUnreadable' | transloco }}
                       </p>
                     }
-                  </div>
-                </div>
-              }
-
-              @if (dialog.shows('database-encryption')) {
-                <div class="row" data-testid="database-protection">
-                  <div class="min-w-0">
-                    <div class="lbl">
-                      {{ 'settings.advancedSection.database' | transloco }}
-                      <span
-                        class="chip"
-                        [class]="secrets.protection()?.database?.state === 'encrypted' ? 'ok' : 'warn'"
-                        data-testid="database-chip"
-                        >{{
-                          secrets.protection()?.database?.state === 'encrypted'
-                            ? ('settings.advancedSection.encrypted' | transloco)
-                            : secrets.protection()
-                              ? ('settings.advancedSection.notEncrypted' | transloco)
-                              : ('settings.advancedSection.checking' | transloco)
-                        }}</span
-                      >
-                    </div>
-                    @if (secrets.protection(); as p) {
-                      <div class="hint mono break-all">{{ p.database.path }}</div>
-                      @if (p.database.state === 'encrypted') {
-                        <div class="hint">
-                          {{ 'settings.advancedSection.transcriptsToolOutputFileBaselinesAndThe' | transloco }}
-                        </div>
-                      } @else {
-                        <div class="hint text-warning" data-testid="database-warning">
-                          {{
-                            'settings.advancedSection.anyoneWhoCanReadThisFileCan'
-                              | transloco
-                                : {
-                                    value1:
-                                      p.database.reason ??
-                                      ('settings.advancedSection.theFileIsNotEncrypted' | transloco),
-                                  }
-                          }}
-                        </div>
-                      }
-                    }
-                  </div>
-                  <div class="ctl ctl-w">
-                    <button
-                      type="button"
-                      class="btn btn-sm"
-                      data-testid="export-recovery-key"
-                      [disabled]="
-                        secrets.recoveryBusy() ||
-                        secrets.protection()?.database?.state !== 'encrypted' ||
-                        secrets.protection()?.database?.recoveryKeyShown
-                      "
-                      (click)="secrets.showRecoveryKey()"
-                    >
-                      {{
-                        secrets.protection()?.database?.recoveryKeyShown
-                          ? ('settings.advancedSection.recoveryKeyShown' | transloco)
-                          : ('settings.advancedSection.exportRecoveryKey' | transloco)
-                      }}
-                    </button>
                   </div>
                 </div>
               }
@@ -659,48 +598,6 @@ function size(bytes: number): string {
           </section>
         </div>
       }
-
-      @if (secrets.recoveryKey(); as key) {
-        <dialog
-          class="modal modal-open"
-          aria-labelledby="recovery-title"
-          tabindex="-1"
-          data-testid="recovery-dialog"
-          (keydown.escape)="secrets.closeRecoveryKey()"
-        >
-          <div class="modal-box max-w-[520px] flex flex-col gap-4">
-            <div id="recovery-title" class="t-xl">{{ 'settings.advancedSection.yourRecoveryKey' | transloco }}</div>
-            <p class="t-sm m-0">
-              {{ 'settings.advancedSection.thisIsTheKeyThatOpensPi' | transloco }}
-              <b>{{ 'settings.advancedSection.itIsShownOnceAndNeverAgain' | transloco }}</b>
-              {{ 'settings.advancedSection.writeItDownOrSaveItIn' | transloco }}
-            </p>
-            <code
-              class="mono break-all p-3 rounded-lg bg-base-200 border border-base-300 select-all"
-              data-testid="recovery-key"
-              >{{ key }}</code
-            >
-            <p class="t-sm muted m-0">
-              {{ 'settings.advancedSection.toUseItLaterStartPiKit' | transloco }}
-              <span class="mono">{{ 'settings.advancedSection.pIKITDBKEY' | transloco }}</span>
-              {{ 'settings.advancedSection.setToThisKeyPiSSession' | transloco }}
-            </p>
-            <div class="modal-action m-0">
-              <button type="button" class="btn btn-sm" (click)="copyKey(key)">
-                {{ 'settings.advancedSection.copy' | transloco }}
-              </button>
-              <button
-                type="button"
-                class="btn btn-sm btn-primary"
-                data-testid="recovery-done"
-                (click)="secrets.closeRecoveryKey()"
-              >
-                {{ 'settings.advancedSection.iHaveSavedIt' | transloco }}
-              </button>
-            </div>
-          </div>
-        </dialog>
-      }
     </div>
   `,
 })
@@ -785,15 +682,6 @@ export class AdvancedSection {
   protected removePattern(index: number): Promise<void> {
     const current = this.redaction.config();
     return this.saveConfig({ ...current, patterns: current.patterns.filter((_, i) => i !== index) });
-  }
-
-  /** Copies the recovery key to the clipboard on the person's click; this code keeps it nowhere else. */
-  protected async copyKey(key: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(key);
-    } catch {
-      // The key is on screen to select by hand.
-    }
   }
 
   /** CopilotKit reads `enableInspector` once at bootstrap; a reload starts the window with the saved choice. */

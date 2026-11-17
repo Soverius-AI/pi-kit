@@ -3,6 +3,8 @@
 Status: Accepted
 Date: 2026-10-15
 
+> Runtime storage update: [ADR-0037](0037-async-sqlite.md) supersedes the native SQLite dependency details below. The legacy encryption-capable driver has been removed; current app and background-agent databases use asynchronous AppThreat SQLite and private plaintext files, independent of credential storage.
+
 ## Context
 
 pi-kit needs an installable package, a test that drives the real app, a backend that comes back after a crash, a way to see whether the bundled pi is out of date, and a transcript that stays usable with thousands of messages.

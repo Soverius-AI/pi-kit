@@ -83,10 +83,10 @@ test('native async SQLite remains pinned and outside the CJS backend bundle', ()
   assert.equal(manifest.dependencies['@appthreat/sqlite3'], '9.1.0');
   const runtime = require('./backend-runtime.cjs');
   assert.ok(runtime.nativePackages.includes('@appthreat/sqlite3'));
-  assert.ok(
-    runtime.nativePackages.includes('better-sqlite3-multiple-ciphers'),
-    'legacy encrypted recovery remains available',
-  );
+  for (const name of ['better-sqlite3', 'better-sqlite3-multiple-ciphers']) {
+    assert.equal(manifest.dependencies[name], undefined, `${name} must not be a runtime dependency`);
+    assert.ok(!runtime.nativePackages.includes(name), `${name} must not be staged`);
+  }
   const project = JSON.parse(readFileSync(new URL('../apps/backend-runtime/project.json', import.meta.url), 'utf8'));
   const native = project.targets['bundle-natives'].options;
   assert.ok(![native.main, ...native.additionalEntryPoints].some((path) => path.includes('@appthreat/sqlite3')));

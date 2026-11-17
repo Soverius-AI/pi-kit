@@ -4539,7 +4539,7 @@ paths:
         - secrets
   /api/secrets/credential-storage:
     put:
-      description: Enables credential-store writes and database encryption on the next restart, or opts out of future writes and exports readable user-level credential references to private plaintext configuration files. Existing encrypted databases remain encrypted. Returns account names and failures only, never keys. Does not change OAuth tokens, project configuration or delete credential-store entries. Unreadable references remain until credentials are re-entered.
+      description: Enables credential-store writes, or opts out of future writes and exports readable user-level credential references to private plaintext configuration files. Returns account names and failures only, never keys. Does not change OAuth tokens, project configuration or delete credential-store entries. Unreadable references remain until credentials are re-entered.
       operationId: Secrets_credentialStorage
       parameters: []
       requestBody:
@@ -4680,7 +4680,7 @@ paths:
         - secrets
   /api/secrets/protection:
     get:
-      description: Returns whether the database is encrypted and whether the disk is.
+      description: Returns whether the operating system disk is encrypted.
       operationId: Secrets_protection
       parameters: []
       responses:
@@ -4697,33 +4697,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
       summary: Get how the data is protected
-      tags:
-        - secrets
-  /api/secrets/recovery-key:
-    post:
-      description: Returns the key that recovers the database, once, so the person can write it down. A second call is refused.
-      operationId: Secrets_recoveryKey
-      parameters: []
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RecoveryKey'
-        '401':
-          description: The bearer token is missing or wrong.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-        '409':
-          description: The recovery key was shown already, or there is none.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Problem'
-      summary: Show the recovery key
       tags:
         - secrets
   /api/redaction:
@@ -11475,25 +11448,6 @@ components:
       required:
         - enabled
       additionalProperties: false
-    DatabaseProtection:
-      type: object
-      properties:
-        state:
-          type: string
-          enum:
-            - encrypted
-            - plain
-        path:
-          type: string
-        reason:
-          type: string
-        recoveryKeyShown:
-          type: boolean
-      required:
-        - state
-        - path
-        - recoveryKeyShown
-      additionalProperties: false
     DeleteSkill:
       type: object
       properties:
@@ -16170,14 +16124,6 @@ components:
         - message
         - ms
       additionalProperties: false
-    RecoveryKey:
-      type: object
-      properties:
-        key:
-          type: string
-      required:
-        - key
-      additionalProperties: false
     RedactionState:
       type: object
       properties:
@@ -16549,12 +16495,9 @@ components:
     SecretsProtection:
       type: object
       properties:
-        database:
-          $ref: '#/components/schemas/DatabaseProtection'
         disk:
           $ref: '#/components/schemas/DiskEncryption'
       required:
-        - database
         - disk
       additionalProperties: false
     SecretsStatus:

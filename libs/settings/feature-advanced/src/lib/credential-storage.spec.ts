@@ -10,9 +10,7 @@ describe('credential storage confirmation', () => {
     storageBusy: signal(false),
     storageResult: signal(undefined),
     installed: signal(undefined),
-    recoveryKey: signal(undefined),
-    protection: signal({ database: { state: 'plain', path: '/db', recoveryKeyShown: false } }),
-    recoveryBusy: signal(false),
+    protection: signal(undefined),
     loadStatus: vi.fn(),
     loadProtection: vi.fn(),
     setCredentialStorage: vi.fn(async () => true),
@@ -26,7 +24,7 @@ describe('credential storage confirmation', () => {
         {
           provide: SettingsStore,
           useValue: {
-            shows: (...ids: string[]) => ids.includes('secret-store') || ids.includes('database-encryption'),
+            shows: (...ids: string[]) => ids.includes('secret-store'),
           },
         },
         { provide: SecretsStore, useValue: secrets },
@@ -54,9 +52,10 @@ describe('credential storage confirmation', () => {
     el.querySelector<HTMLButtonElement>('[data-testid=credential-storage-confirm]')!.click();
     await f.whenStable();
     expect(secrets.setCredentialStorage).toHaveBeenCalledWith(true);
-    expect(text).toContain('does not enable database encryption');
     expect(text).not.toContain('next restart');
-    expect(el.querySelector('[data-testid=database-encryption-toggle]')).toBeNull();
+    expect(el.querySelector('[data-testid=database-protection]')).toBeNull();
+    expect(el.querySelector('[data-testid=export-recovery-key]')).toBeNull();
+    expect(el.querySelector('[data-testid=recovery-dialog]')).toBeNull();
   });
 
   it('warns in a modal, cancels without changing storage, and only disables on confirmation', async () => {
@@ -71,8 +70,6 @@ describe('credential storage confirmation', () => {
     const dialog = el.querySelector('[role=alertdialog]')!;
     expect(dialog.getAttribute('aria-modal')).toBe('true');
     expect(dialog.textContent).toContain('plain text');
-    expect(dialog.textContent).toContain('does not decrypt or replace existing encrypted');
-    expect(dialog.textContent).toContain('explicit offline migration');
     expect(secrets.setCredentialStorage).not.toHaveBeenCalled();
     dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     f.detectChanges();

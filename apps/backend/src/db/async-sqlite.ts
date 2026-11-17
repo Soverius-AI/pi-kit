@@ -167,7 +167,7 @@ export class AsyncStatement {
   }
 }
 
-/** better-sqlite3 accepts bare object keys and ignores surplus named fields. Preserve both. */
+/** Accept bare object keys and ignore surplus named fields for existing repository bindings. */
 function bindings(sql: string, args: unknown[]): unknown[] {
   if (args.length === 1 && Array.isArray(args[0])) return args[0];
   if (

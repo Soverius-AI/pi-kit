@@ -197,7 +197,6 @@
         "outputPath": "dist/apps/backend-runtime-natives/node_modules",
         "main": "node_modules/@napi-rs/keyring/index.js",
         "additionalEntryPoints": [
-          "node_modules/better-sqlite3-multiple-ciphers/lib/index.js",
           "node_modules/node-pty/lib/index.js",
           "node_modules/node-pty/lib/conpty_console_list_agent.js",
           "node_modules/node-pty/lib/worker/conoutSocketWorker.js"
@@ -214,11 +213,6 @@
             "input": "node_modules/@napi-rs/keyring",
             "glob": "{package.json,LICENSE}",
             "output": "@napi-rs/keyring"
-          },
-          {
-            "input": "node_modules/better-sqlite3-multiple-ciphers",
-            "glob": "{package.json,LICENSE,prebuilds/*.node}",
-            "output": "better-sqlite3-multiple-ciphers"
           },
           {
             "input": "node_modules/node-pty",

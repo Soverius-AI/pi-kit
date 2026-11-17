@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -10,7 +10,7 @@ import {
 } from '@pi-kit/secret-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BG_DB_FILE, DB_FILE } from '../db/database.service';
-import { encryptionEnabled, hasEncryptedDatabase, startupSecretStore } from './security-config';
+import { startupSecretStore } from './security-config';
 
 // Selection tests must never instantiate a native keychain, even on a macOS developer machine.
 vi.mock('@pi-kit/secret-store', async (importOriginal) => {
@@ -45,6 +45,7 @@ beforeEach(() => {
 afterEach(() => {
   Object.defineProperty(process, 'platform', originalPlatform);
   vi.clearAllMocks();
+  rmSync(dir, { recursive: true, force: true });
 });
 
 function expectNoNativeAccess(): void {
@@ -54,30 +55,26 @@ function expectNoNativeAccess(): void {
 }
 
 describe('startup security choices', () => {
-  it('defaults a fresh macOS profile to none and plaintext without probing native credentials', () => {
+  it('defaults a fresh macOS profile to none without probing native credentials', () => {
     const store = startupSecretStore(dir, {});
     expect(store.kind).toBe('none');
     expect(selectSecretStore).toHaveBeenCalledWith({});
-    expect(hasEncryptedDatabase(dir)).toBe(false);
-    expect(encryptionEnabled(dir, store)).toBe(false);
     expectNoNativeAccess();
   });
 
-  it('persisted credential opt-in selects macOS storage and enables database encryption at startup', () => {
+  it('persisted credential opt-in selects macOS storage', () => {
     writeSecurityPreferences(dir, { credentialStoreEnabled: true });
     const store = startupSecretStore(dir, {});
     expect(store).toBe(native);
     expect(selectSecretStore).toHaveBeenCalledWith({ PI_KIT_SECRET_STORE: 'macos' });
-    expect(encryptionEnabled(dir, store)).toBe(true);
     expectNoNativeAccess();
   });
 
   it.each(['memory', 'file:/unused-test-store', 'none', 'legacy'])(
     'respects explicit %s overrides instead of choosing macOS storage',
     (choice) => {
-      const store = startupSecretStore(dir, { PI_KIT_SECRET_STORE: choice });
+      startupSecretStore(dir, { PI_KIT_SECRET_STORE: choice });
       expect(selectSecretStore).toHaveBeenCalledWith({ PI_KIT_SECRET_STORE: choice });
-      expect(encryptionEnabled(dir, store)).toBe(choice !== 'none');
       expectNoNativeAccess();
     },
   );
@@ -87,7 +84,7 @@ describe('startup security choices', () => {
       join(dir, 'security.json'),
       JSON.stringify({ credentialStoreEnabled: true, databaseEncryptionEnabled: false }),
     );
-    expect(encryptionEnabled(dir, startupSecretStore(dir, { PI_KIT_SECRET_STORE: 'memory' }))).toBe(true);
+    expect(startupSecretStore(dir, {})).toBe(native);
     expectNoNativeAccess();
   });
 
@@ -97,40 +94,35 @@ describe('startup security choices', () => {
       JSON.stringify({ credentialStoreEnabled: false, databaseEncryptionEnabled: true }),
     );
     expect(startupSecretStore(dir, {}).kind).toBe('none');
-    expect(encryptionEnabled(dir, new MemorySecretStore())).toBe(false);
     expectNoNativeAccess();
   });
 
-  it.each([DB_FILE, BG_DB_FILE])(
-    'retains the original store and encryption for encrypted %s despite credential opt-out',
-    (file) => {
-      writeFileSync(join(dir, file), Buffer.alloc(4096, 42));
-      writeSecurityPreferences(dir, { credentialStoreEnabled: false });
-      expect(hasEncryptedDatabase(dir)).toBe(true);
-      expect(startupSecretStore(dir, {})).toBe(native);
-      expect(encryptionEnabled(dir, native)).toBe(true);
-      expect(encryptionEnabled(dir, new NoSecretStore())).toBe(true);
-      expectNoNativeAccess();
-    },
-  );
-
-  it.each([DB_FILE, BG_DB_FILE])(
-    'existing encrypted %s without preferences remains encrypted and selects its original store',
-    (file) => {
-      writeFileSync(join(dir, file), Buffer.alloc(4096, 42));
-      expect(startupSecretStore(dir, {})).toBe(native);
-      expect(encryptionEnabled(dir, native)).toBe(true);
-      expectNoNativeAccess();
-    },
-  );
-
-  it('a plaintext or empty file is not an encrypted existing profile', () => {
-    const file = join(dir, 'pi-kit.sqlite');
-    writeFileSync(file, '');
-    expect(hasEncryptedDatabase(dir)).toBe(false);
-    writeFileSync(file, 'SQLite format 3\0some pages');
-    expect(hasEncryptedDatabase(dir)).toBe(false);
+  it.each([DB_FILE, BG_DB_FILE])('ignores encrypted %s when credentials are disabled', (file) => {
+    writeFileSync(join(dir, file), Buffer.alloc(4096, 42));
+    writeSecurityPreferences(dir, { credentialStoreEnabled: false });
     expect(startupSecretStore(dir, {}).kind).toBe('none');
+    expectNoNativeAccess();
+  });
+
+  it.each([DB_FILE, BG_DB_FILE])('ignores encrypted %s without credential preferences', (file) => {
+    writeFileSync(join(dir, file), Buffer.alloc(4096, 42));
+    expect(startupSecretStore(dir, {}).kind).toBe('none');
+    expectNoNativeAccess();
+  });
+
+  it.each(['', 'SQLite format 3\0some pages'])(
+    'ignores database contents %j when selecting credentials',
+    (contents) => {
+      writeFileSync(join(dir, DB_FILE), contents);
+      expect(startupSecretStore(dir, {}).kind).toBe('none');
+      expectNoNativeAccess();
+    },
+  );
+
+  it('selects unattended macOS credentials only when opted in', () => {
+    writeSecurityPreferences(dir, { credentialStoreEnabled: true, unattendedKeys: true });
+    startupSecretStore(dir, {});
+    expect(selectSecretStore).toHaveBeenCalledWith({ PI_KIT_SECRET_STORE: 'macos-unattended' });
     expectNoNativeAccess();
   });
 });

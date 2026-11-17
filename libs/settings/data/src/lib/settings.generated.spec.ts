@@ -17,7 +17,6 @@ import {
   secretsInstall,
   secretsMove,
   secretsProtection,
-  secretsRecoveryKey,
   secretsStatus,
   sessionReload,
   settingsAnswer,
@@ -433,25 +432,11 @@ describe('generated operations', () => {
       'POST',
       '/api/secrets/cli/install',
     ],
-    [
-      'recoveryKey',
-      (api: ApiClient) => unwrap(secretsRecoveryKey({ client: api.client })),
-      'POST',
-      '/api/secrets/recovery-key',
-    ],
   ])('%s sends the method and path the contract names', async (_name, call, method, path) => {
     const backend = setup();
     backend.reply({});
     await call(TestBed.inject(ApiClient));
     expect(backend.calls[0]).toMatchObject({ method, path });
     expect(backend.calls[0].body).toBeUndefined();
-  });
-
-  it('a second request for the recovery key is the backend’s refusal, said as it is', async () => {
-    const backend = setup();
-    backend.fail(409, 'The recovery key was shown once already and is not shown again.');
-    await expect(unwrap(secretsRecoveryKey({ client: TestBed.inject(ApiClient).client }))).rejects.toThrow(
-      'not shown again',
-    );
   });
 });

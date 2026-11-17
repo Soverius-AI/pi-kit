@@ -16,7 +16,6 @@ import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
-import { MemorySecretStore } from '@pi-kit/secret-store';
 import { DatabaseService } from '../db/database.service';
 import { MetaRepository } from '../db/meta.repository';
 import { discoverLlamaSwapConfigs } from './local-llama-swap-discovery';
@@ -42,7 +41,7 @@ describe('shared llama-swap configuration', () => {
     vi.stubEnv('PI_KIT_LLAMA_SWAP_CONFIG', path);
     vi.stubEnv('LLAMA_SWAP_CONFIG', '');
     vi.stubEnv('XDG_CONFIG_HOME', join(dir, '.config'));
-    db = await DatabaseService.create({ dataDir: dir }, new MemorySecretStore());
+    db = await DatabaseService.create({ dataDir: dir });
     meta = new MetaRepository(db);
     service = new LocalLlamaSwapService(meta);
     await service.onModuleInit();

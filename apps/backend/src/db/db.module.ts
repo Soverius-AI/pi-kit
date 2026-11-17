@@ -1,9 +1,6 @@
 import { Module } from '@nestjs/common';
-import type { SecretStore } from '@pi-kit/secret-store';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
-import { SECRET_STORE } from '../secrets/tokens';
-import { encryptionEnabled } from '../secrets/security-config';
 import { AttendantRepository } from './attendant.repository';
 import { ChangesRepository } from './changes.repository';
 import { DatabaseService } from './database.service';
@@ -25,16 +22,15 @@ import { ThreadProtectionRepository } from './thread-protection.repository';
 import { ThreadsRepository } from './threads.repository';
 
 /**
- * The database: `DatabaseService`, opened from the config and the secret store, the repositories that each own a
+ * The database: `DatabaseService`, opened from the config, the repositories that each own a
  * table or two, and the redaction that runs before text is kept. Every module that touches a table imports it.
  */
 @Module({
   providers: [
     {
       provide: DatabaseService,
-      inject: [CONFIG, SECRET_STORE],
-      useFactory: (config: BackendConfig, store: SecretStore) =>
-        DatabaseService.create(config, store, encryptionEnabled(config.dataDir, store)),
+      inject: [CONFIG],
+      useFactory: (config: BackendConfig) => DatabaseService.create(config),
     },
     ThreadsRepository,
     EventLogRepository,

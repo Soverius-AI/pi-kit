@@ -185,11 +185,10 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
 
   /**
    * Opens the store with `models` (pi-kit's `ModelRuntime`, which is a pi-ai `Models`): the lock first, then the Harness, then
-   * every unfinished agent is held or followed again. The durable store follows the app database's protection.
+   * every unfinished agent is held or followed again. The durable store uses asynchronous SQLite.
    */
   async open(models: Models): Promise<void> {
     if (this.harness) return;
-    const key = this.database.recoveryKey();
     let lock: OwnerLock;
     try {
       lock = await takeOwnerLock(this.config.dataDir);
@@ -221,7 +220,7 @@ export class BgAgentsService implements OnModuleInit, OnModuleDestroy, AgentsHoo
           listFor: (id) => this.listFor(id),
         }),
       );
-      const storage = await SqliteStorage.open(await openDurableStore(join(this.config.dataDir, STORE_FILE), key));
+      const storage = await SqliteStorage.open(await openDurableStore(join(this.config.dataDir, STORE_FILE)));
       this.harness = await Harness.open(
         storage,
         {

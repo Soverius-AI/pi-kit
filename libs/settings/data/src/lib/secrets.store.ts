@@ -10,28 +10,24 @@ import {
   secretsInstall,
   secretsMove,
   secretsProtection,
-  secretsRecoveryKey,
   secretsRetry,
   secretsStatus,
   secretsUnattended,
   unwrap,
 } from '@pi-kit/api';
 import { ToastStore } from '@pi-kit/data-access';
-import type { DatabaseProtection, DiskEncryption, MoveKeysResult, SecretsStatus } from '@pi-kit/protocol';
+import type { DiskEncryption, MoveKeysResult, SecretsStatus } from '@pi-kit/protocol';
 
 import { SettingsStore } from './settings.store';
 
 interface SecretsState {
   status: SecretsStatus | undefined;
-  protection: { database: DatabaseProtection; disk: DiskEncryption } | undefined;
+  protection: { disk: DiskEncryption } | undefined;
   moving: boolean;
   moved: MoveKeysResult | undefined;
   installing: boolean;
   /** Where the launcher was installed, and whether that folder is on PATH. */
   installed: { path: string; dir: string; onPath: boolean } | undefined;
-  /** The database's recovery key, held only while the dialog that shows it is open. It is never stored, logged or written to the clipboard by this code. */
-  recoveryKey: string | undefined;
-  recoveryBusy: boolean;
   retrying: boolean;
   storageBusy: boolean;
   storageResult: MoveKeysResult | undefined;
@@ -39,9 +35,7 @@ interface SecretsState {
 }
 
 /**
- * Secrets at rest in Settings: where keys can be kept and which keys could move there, the one-time move into the keychain, the database's protection and
- * recovery key, the disk-encryption check and the `pi-kit-secret` command on PATH. Redaction is `RedactionStore`. No call here returns an API key; the recovery key is the database's and
- * is held in `recoveryKey` only until the dialog closes.
+ * Secrets at rest in Settings: where keys can be kept and which keys could move there, the one-time move into the keychain, the disk-encryption check and the `pi-kit-secret` command on PATH. Redaction is `RedactionStore`. No call here returns a secret.
  */
 export const SecretsStore = signalStore(
   { providedIn: 'root' },
@@ -52,8 +46,6 @@ export const SecretsStore = signalStore(
     moved: undefined,
     installing: false,
     installed: undefined,
-    recoveryKey: undefined,
-    recoveryBusy: false,
     retrying: false,
     storageBusy: false,
     storageResult: undefined,
@@ -131,7 +123,7 @@ export const SecretsStore = signalStore(
         } catch (error) {
           toasts.show(
             'error',
-            translate('settings.secretsStore.couldNotReadTheDatabaseProtection', { value1: errorMessage(error) }),
+            translate('settings.secretsStore.couldNotReadDiskEncryption', { value1: errorMessage(error) }),
           );
         }
       },
@@ -179,24 +171,6 @@ export const SecretsStore = signalStore(
         } finally {
           patchState(store, { installing: false });
         }
-      },
-
-      /** "Export recovery key": the backend gives it once; this holds it for the dialog and nothing else. */
-      async showRecoveryKey(): Promise<void> {
-        patchState(store, { recoveryBusy: true });
-        try {
-          const { key } = await unwrap(secretsRecoveryKey({ client: api.client }));
-          patchState(store, { recoveryKey: key });
-          void methods.loadProtection();
-        } catch (error) {
-          toasts.show('warning', errorMessage(error));
-        } finally {
-          patchState(store, { recoveryBusy: false });
-        }
-      },
-
-      closeRecoveryKey(): void {
-        patchState(store, { recoveryKey: undefined });
       },
     };
     return methods;

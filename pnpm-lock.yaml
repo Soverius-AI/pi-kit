@@ -127,12 +127,6 @@ importers:
       '@xterm/xterm':
         specifier: 6.0.0
         version: 6.0.0
-      better-sqlite3:
-        specifier: npm:better-sqlite3-multiple-ciphers@13.0.3
-        version: better-sqlite3-multiple-ciphers@13.0.3
-      better-sqlite3-multiple-ciphers:
-        specifier: 13.0.3
-        version: 13.0.3
       cactus-needle:
         specifier: 0.3.0
         version: 0.3.0(ai@6.0.308(zod@4.6.7))
@@ -144,7 +138,7 @@ importers:
         version: 9.0.0
       drizzle-orm:
         specifier: 0.45.4
-        version: 0.45.4(@opentelemetry/api@1.9.1)(better-sqlite3-multiple-ciphers@13.0.3)
+        version: 0.45.4(@opentelemetry/api@1.9.1)
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9(supports-color@10.2.2)
@@ -5635,10 +5629,6 @@ packages:
   beasties@0.5.4:
     resolution: {integrity: sha512-8/lOOjT+PElYCnaUbmhgd3Uad5R1VTQ4Wg0k4rK8bX04m5WEqHNmnlLy3Q/lJ7dk25XA+72gayzc/skTfKKpcA==}
     engines: {node: '>=20.19.0'}
-
-  better-sqlite3-multiple-ciphers@13.0.3:
-    resolution: {integrity: sha512-UYabM82r1J84TLWc/SszoHs6XopWpl/2HCg3Nui1JUaFXg/VLswzkPowYiRhK/4CftI8dgtikwyZQecMldrGxQ==}
-    engines: {node: '>=22'}
 
   bidi-js@1.1.0:
     resolution: {integrity: sha512-fX1Onk0tdVPC7obPWB5EbJ1z7NVhLq4m2xZLq2YXBkxzMXIGRpNMU88n0EPgWseKl12J7zXs7qrDxPK4sRs2fg==}
@@ -17342,10 +17332,6 @@ snapshots:
       postcss-media-query-parser: 0.2.3
       postcss-safe-parser: 7.1.0(postcss@8.5.30)
 
-  better-sqlite3-multiple-ciphers@13.0.3:
-    dependencies:
-      node-addon-api: 8.9.2
-
   bidi-js@1.1.0:
     dependencies:
       require-from-string: 2.0.2
@@ -18174,10 +18160,9 @@ snapshots:
 
   dotenv@17.4.2: {}
 
-  drizzle-orm@0.45.4(@opentelemetry/api@1.9.1)(better-sqlite3-multiple-ciphers@13.0.3):
+  drizzle-orm@0.45.4(@opentelemetry/api@1.9.1):
     optionalDependencies:
       '@opentelemetry/api': 1.9.1
-      better-sqlite3: better-sqlite3-multiple-ciphers@13.0.3
 
   dset@3.1.4: {}
 

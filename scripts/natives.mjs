@@ -7,7 +7,6 @@
 //   @napi-rs/keyring                one package per platform (`@napi-rs/keyring-<triple>-msvc` ...): the host's comes with the
 //                                   install; the others are downloaded from the registry into a cache and checked against pnpm-lock.yaml's integrity
 //   @appthreat/sqlite3             `prebuilds/<platform>-<arch>/@appthreat+sqlite3[.glibc].node` (ESM lib/ copied intact)
-//   better-sqlite3-multiple-ciphers `prebuilds/<platform>-<arch>.node` inside the package's own tarball (all platforms ship together)
 //   node-pty                        `prebuilds/<platform>-<arch>/` inside the package's own tarball (darwin and win32; Linux has none)
 //   @earendil-works/pi-tui          `native/<platform>/prebuilds/<platform>-<arch>/` inside the package's own tarball
 //   @trycua/cua-driver              computer use (packages/pi-computer-use): one package per platform (`@trycua/cua-driver-<triple>`, the SDK
@@ -198,27 +197,6 @@ async function packageDir(name, version, cacheDir, log, { registryOnly = false }
   return { dir: unpacked, source: `registry tarball ${name}@${version}, integrity checked against pnpm-lock.yaml` };
 }
 
-/** Recover prebuilds omitted by installation or asset copying from the pinned, integrity-checked tarball. */
-export async function provisionSqlitePrebuild({ sqlite, triple, cacheDir, log = console.log }) {
-  const name = 'better-sqlite3-multiple-ciphers';
-  const version = JSON.parse(readFileSync(join(sqlite, 'package.json'), 'utf8')).version;
-  const prebuilds = join(sqlite, 'prebuilds');
-  const wanted = `${triple}.node`;
-  let source = `prebuilds/ in the npm tarball, ${version} (N-API)`;
-  if (!existsSync(join(prebuilds, wanted))) {
-    // Do not reuse the installed package: its prebuilds may be missing too.
-    const pristine = await packageDir(name, version, cacheDir, log, { registryOnly: true });
-    const binary = join(pristine.dir, 'prebuilds', wanted);
-    if (!existsSync(binary))
-      throw new Error(`No ${name} binary for ${triple}: prebuilds/${wanted} is not in the pinned package ${version}`);
-    mkdirSync(prebuilds, { recursive: true });
-    cpSync(binary, join(prebuilds, wanted));
-    source = pristine.source;
-  }
-  for (const file of readdirSync(prebuilds)) if (file !== wanted) rmSync(join(prebuilds, file), { recursive: true });
-  return { module: name, file: `prebuilds/${wanted}`, source };
-}
-
 /** AppThreat publishes every target together; Linux releases deliberately use glibc, never musl. */
 export const appThreatBinary = (triple) =>
   `prebuilds/${triple}/@appthreat+sqlite3${triple.startsWith('linux-') ? '.glibc' : ''}.node`;
@@ -301,13 +279,6 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
   rows.push(
     await provisionAppThreatPrebuild({ sqlite: join(modulesOut, '@appthreat/sqlite3'), triple, cacheDir, log }),
   );
-
-  // ---- legacy offline recovery encryption only, better-sqlite3-multiple-ciphers: N-API prebuilds named <platform>-<arch>.node, the SQLite3 Multiple Ciphers sources next to them
-  const sqlite = join(modulesOut, 'better-sqlite3-multiple-ciphers');
-  if (existsSync(sqlite)) {
-    for (const path of ['deps', 'src', 'binding.gyp', 'build']) prune(`better-sqlite3-multiple-ciphers/${path}`);
-    rows.push(await provisionSqlitePrebuild({ sqlite, triple, cacheDir, log }));
-  }
 
   // ---- node-pty: prebuilds/<platform>-<arch>/ in the tarball. Linux has none: a host-built build/Release is accepted there and nowhere else.
   const pty = join(modulesOut, 'node-pty');
@@ -555,7 +526,6 @@ function expectedFiles(triple) {
   const t = TRIPLES[triple];
   const list = [
     `@napi-rs/keyring-${t.keyring}`,
-    `better-sqlite3-multiple-ciphers/prebuilds/${triple}.node`,
     `@appthreat/sqlite3/${appThreatBinary(triple)}`,
     '@appthreat/sqlite3/lib/sqlite3.js',
     '@appthreat/sqlite3/lib/pool.js',
@@ -657,10 +627,6 @@ export function loadInElectron({ backend, electron, log = console.log, label = '
       if ((await asyncDb.get('SELECT value FROM smoke')).value !== 42) throw new Error('async transaction failed');
       out.push('@appthreat/sqlite3: async in-memory query and transaction ok');
     } finally { await asyncDb.close(); }
-    const Database = req('better-sqlite3-multiple-ciphers');
-    const db = new Database(':memory:');
-    out.push('better-sqlite3-multiple-ciphers (legacy recovery only): sqlite ' + db.prepare('select sqlite_version() v').get().v);
-    db.close();
     const { Entry } = req('@napi-rs/keyring');
     if (typeof Entry !== 'function') throw new Error('@napi-rs/keyring has no Entry');
     out.push('@napi-rs/keyring: Entry loaded');

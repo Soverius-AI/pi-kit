@@ -636,8 +636,7 @@ Where it is stored is one of five words, the same everywhere a credential is lis
 **auth.json, plain text** (an API key pi keeps in its own 0600 file: a warning chip, and a prompt to move it
 when a keychain exists), **auth.json, refreshed by pi** (an OAuth token), **a command that prints it**, and
 **environment variable**. A machine with no credential store says so in a warning group on Settings › Providers
-and in Advanced, never silently. The one secret the app shows is the database's recovery key: in a modal, once,
-selectable and copyable, with "I have saved it" as the only way out; afterwards its button reads "Recovery key shown".
+and in Advanced, never silently. There is no database recovery-key display or export workflow. Database storage is private plaintext, independent of credential storage; the security panel can report OS disk-encryption status.
 
 Redaction (`[redacted openai key …a1b2]`) is text, not a colour: a key shape in a transcript, a tool's output or an
 export is replaced by the kind of key and its last four characters, so two different keys can be told apart; the

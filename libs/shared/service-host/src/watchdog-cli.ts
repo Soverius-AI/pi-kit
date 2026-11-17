@@ -1,6 +1,6 @@
 import { callHost } from './cli-host';
 import type { CliContext, CliIo } from './service-cli';
-import { readWatchdogEnabled, writeWatchdogEnabled } from './watchdog-settings';
+import { WatchdogSettings } from './watchdog-settings';
 
 export const WATCHDOG_USAGE = `Backend watchdog (off by default):
   pi-kit watchdog status    Show whether automatic backend recovery is enabled
@@ -25,8 +25,8 @@ export async function runWatchdogCli(args: string[], io: CliIo, ctx: CliContext)
     );
     enabled = settings.enabled;
   } else {
-    enabled = command === 'status' ? readWatchdogEnabled(ctx.dataDir) : command === 'enable';
-    if (command !== 'status') writeWatchdogEnabled(ctx.dataDir, enabled);
+    enabled = command === 'status' ? WatchdogSettings.read(ctx.dataDir) : command === 'enable';
+    if (command !== 'status') WatchdogSettings.write(ctx.dataDir, enabled);
   }
   io.out(`Backend watchdog: ${enabled ? 'enabled' : 'disabled'}${running ? '' : ' (applies when the host starts)'}\n`);
   return 0;

@@ -121,8 +121,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      # The pnpm version comes from `packageManager` in package.json. No store cache: a restored store once lacked files of
-      # better-sqlite3-multiple-ciphers and broke the mac packaging, and a fresh install is only seconds slower.
+      # The pnpm version comes from `packageManager` in package.json. No store cache: an incomplete restored
+      # native-module store once broke packaging, and a fresh install is only seconds slower.
       - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v4
         with:
@@ -187,8 +187,8 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-      # The pnpm version comes from `packageManager` in package.json. No store cache: a restored store once lacked files of
-      # better-sqlite3-multiple-ciphers and broke the mac packaging, and a fresh install is only seconds slower.
+      # The pnpm version comes from `packageManager` in package.json. No store cache: an incomplete restored
+      # native-module store once broke packaging, and a fresh install is only seconds slower.
       - uses: pnpm/action-setup@v6.1.0
       - uses: actions/setup-node@v4
         with:

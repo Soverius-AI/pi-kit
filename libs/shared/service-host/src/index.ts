@@ -2,6 +2,7 @@ export * from './backend';
 export * from './cli-host';
 export * from './desktop-app';
 export * from './discovery';
+export * from './database-reset';
 export * from './host-channel';
 export * from './host-process';
 export * from './host-protocol';

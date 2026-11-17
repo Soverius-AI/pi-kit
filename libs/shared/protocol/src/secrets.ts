@@ -8,10 +8,8 @@ import { z } from 'zod';
 
 /** The service name of every entry pi-kit keeps in the operating system's credential store. */
 export const SECRET_SERVICE = 'pi-kit';
-/** Accounts that begin with this are pi-kit's own (the database key); every other account is a provider id. */
+/** Accounts that begin with this are reserved for internal use, including legacy entries. */
 export const INTERNAL_ACCOUNT_PREFIX = 'pi-kit/';
-/** The account of the database key (`pi-kit/db`). */
-export const DB_KEY_ACCOUNT = `${INTERNAL_ACCOUNT_PREFIX}db`;
 
 /** What a provider id may look like to be kept in the keychain (and written into a command without quoting). */
 const PROVIDER_ACCOUNT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -99,7 +97,7 @@ export const SecretsStatusSchema = z
     /** The store's name in words: "macOS Keychain", "Windows Credential Manager", "Secret Service (libsecret)". */
     label: z.string(),
     available: z.boolean(),
-    /** User preference for API keys and connector secrets; database encryption is independent. */
+    /** User preference for API keys and connector secrets. */
     credentialsEnabled: z.boolean().optional(),
     /** Native capability and actual credential access are separate: status never probes the store. */
     access: CredentialAccessSchema.optional(),
@@ -123,19 +121,6 @@ export const CredentialStorageSchema = z.object({ enabled: z.boolean() }).strict
 
 export const UnattendedKeysSchema = z.object({ enabled: z.boolean() }).strict().meta({ id: 'UnattendedKeys' });
 
-/** What the Advanced section shows about the database file. */
-export const DatabaseProtectionSchema = z
-  .object({
-    /** `encrypted`: SQLCipher with the key in the credential store; `plain`: no store, or the native module is not the encrypting build. */
-    state: z.enum(['encrypted', 'plain']),
-    path: z.string(),
-    reason: z.string().optional(),
-    /** The recovery key was shown once already (Settings never shows it again). */
-    recoveryKeyShown: z.boolean(),
-  })
-  .meta({ id: 'DatabaseProtection' });
-export type DatabaseProtection = z.infer<typeof DatabaseProtectionSchema>;
-
 export const DiskEncryptionSchema = z
   .object({
     /** `on`, `off`, or `unknown` when the check could not run. */
@@ -153,9 +138,7 @@ export const MoveKeysResultSchema = z
 export type MoveKeysResult = z.infer<typeof MoveKeysResultSchema>;
 
 /** `GET /api/secrets/protection`. */
-export const SecretsProtectionSchema = z
-  .object({ database: DatabaseProtectionSchema, disk: DiskEncryptionSchema })
-  .meta({ id: 'SecretsProtection' });
+export const SecretsProtectionSchema = z.object({ disk: DiskEncryptionSchema }).meta({ id: 'SecretsProtection' });
 export type SecretsProtection = z.infer<typeof SecretsProtectionSchema>;
 
 /** `POST /api/secrets/cli/install`: where `pi-kit-secret` went and whether that folder is on PATH. */
@@ -163,7 +146,3 @@ export const CliInstallResultSchema = z
   .object({ path: z.string(), dir: z.string(), onPath: z.boolean() })
   .meta({ id: 'CliInstallResult' });
 export type CliInstallResult = z.infer<typeof CliInstallResultSchema>;
-
-/** `POST /api/secrets/recovery-key`: the database's recovery key. It is the one secret an answer carries, once, because the person has to write it down; a second call is a 409. */
-export const RecoveryKeySchema = z.object({ key: z.string() }).meta({ id: 'RecoveryKey' });
-export type RecoveryKey = z.infer<typeof RecoveryKeySchema>;

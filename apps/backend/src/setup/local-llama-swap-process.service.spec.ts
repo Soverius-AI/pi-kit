@@ -2,7 +2,6 @@ import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync 
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MemorySecretStore } from '@pi-kit/secret-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DB_FILE, DatabaseService } from '../db/database.service';
 import { MetaRepository } from '../db/meta.repository';
@@ -52,7 +51,6 @@ describe('the llama-swap process pi-kit starts', () => {
     swap: LocalLlamaSwapService,
     managed: LocalLlamaSwapProcessService,
     listen: string;
-  const secrets = new MemorySecretStore();
   beforeEach(async () => {
     dir = realpathSync(mkdtempSync(join(tmpdir(), 'pk-swap-process-')));
     mkdirSync(join(dir, 'bin'));
@@ -66,7 +64,7 @@ describe('the llama-swap process pi-kit starts', () => {
     vi.stubEnv('PATH', `${join(dir, 'bin')}:${process.env['PATH'] ?? ''}`);
     vi.stubEnv('PI_KIT_LLAMA_SWAP_CONFIG', join(dir, 'config.yaml'));
     vi.stubEnv('PI_KIT_LLAMA_SWAP_LISTEN', listen);
-    db = await DatabaseService.create({ dataDir: dir }, secrets);
+    db = await DatabaseService.create({ dataDir: dir });
     meta = new MetaRepository(db);
     swap = new LocalLlamaSwapService(meta);
     await swap.onModuleInit();

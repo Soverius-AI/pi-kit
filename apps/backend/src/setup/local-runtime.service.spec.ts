@@ -2,7 +2,6 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConflictException } from '@nestjs/common';
-import { MemorySecretStore } from '@pi-kit/secret-store';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DB_FILE, DatabaseService } from '../db/database.service';
 import { MetaRepository } from '../db/meta.repository';
@@ -22,7 +21,6 @@ describe('backend-owned local setup jobs', () => {
     catalog: LocalModelCatalogService,
     files: LocalModelFilesService,
     managed: LocalLlamaSwapService;
-  const secrets = new MemorySecretStore();
   const candidate = {
     id: 'choice',
     repository: 'Qwen/Fixture',
@@ -57,7 +55,7 @@ describe('backend-owned local setup jobs', () => {
     vi.stubEnv('PI_CODING_AGENT_DIR', join(dir, 'agent'));
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Offline fixture'));
     writeFileSync(join(dir, 'shared.yaml'), 'models: {}');
-    db = await DatabaseService.create({ dataDir: dir }, secrets);
+    db = await DatabaseService.create({ dataDir: dir });
     meta = new MetaRepository(db);
     runtime = create();
     await runtime.onModuleInit();
@@ -184,7 +182,7 @@ describe('backend-owned local setup jobs', () => {
     await runtime.onModuleDestroy();
     await db.onApplicationShutdown();
     expect(readFileSync(join(dir, DB_FILE)).subarray(0, 16).toString()).toBe('SQLite format 3\0');
-    db = await DatabaseService.create({ dataDir: dir }, secrets);
+    db = await DatabaseService.create({ dataDir: dir });
     meta = new MetaRepository(db);
     runtime = create();
     await runtime.onModuleInit();

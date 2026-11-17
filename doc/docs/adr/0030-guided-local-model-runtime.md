@@ -3,6 +3,8 @@
 Status: Accepted
 Date: 2026-10-18
 
+> Runtime storage update: [ADR-0037](0037-async-sqlite.md) supersedes the database-encryption description below. The legacy encryption-capable driver has been removed; current app and background-agent databases use asynchronous AppThreat SQLite and private plaintext files, independent of credential storage.
+
 ## Context
 
 pi-kit's local-model flow created a private llama-swap engine with its own config, port and provider. A user who already runs llama-swap with a config and downloaded models sees none of that in pi-kit, and the add-provider wizard lists only servers that answer, so a stopped llama-swap cannot be added at all.

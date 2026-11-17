@@ -13,7 +13,7 @@ import {
 import { join } from 'node:path';
 import type { SqliteDatabase, SqliteExecutor, SqliteValue } from '@earendil-works/pi-durable/storage/sqlite';
 import { AsyncSqlite } from '../db/async-sqlite';
-import { assertNoPendingDatabaseTransition, isPlainDatabase } from '../db/encryption';
+import { assertNoPendingDatabaseTransition, isPlainDatabase } from '../db/database-file-guards';
 
 /** The durable store of the background agents and the owner's note next to it, both in `PI_KIT_DATA_DIR`. */
 export const STORE_FILE = 'bg-agents.sqlite';
@@ -23,10 +23,10 @@ const OWNER_FILE = 'bg-agents-owner.sqlite';
 const OWNER_MUTEX = 'bg-agents-owner-lock.sqlite';
 
 /**
- * Open pi-durable with the app database's protection, including explicit startup transitions.
+ * Open pi-durable through the asynchronous SQLite driver.
  * The caller must hold the owner lock before opening/migrating. No credential store is queried here.
  */
-export async function openDurableStore(path: string, _key?: string): Promise<SqliteDatabase> {
+export async function openDurableStore(path: string): Promise<SqliteDatabase> {
   assertNoPendingDatabaseTransition(path);
   if (existsSync(path) && statSync(path).size > 0 && !isPlainDatabase(path)) {
     throw new Error(

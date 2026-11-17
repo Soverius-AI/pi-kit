@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { RpcPeer } from './host-channel';
 import { runCli, type CliContext } from './service-cli';
-import { readWatchdogEnabled } from './watchdog-settings';
+import { WatchdogSettings } from './watchdog-settings';
 
 const directories: string[] = [];
 afterEach(() => {
@@ -40,9 +40,9 @@ describe('pi-kit watchdog', () => {
     expect(await runCli(['watchdog', 'status'], io, ctx)).toBe(0);
     expect(printed.join('')).toContain('disabled');
     expect(await runCli(['watchdog', 'enable'], io, ctx)).toBe(0);
-    expect(readWatchdogEnabled(ctx.dataDir)).toBe(true);
+    expect(WatchdogSettings.read(ctx.dataDir)).toBe(true);
     expect(await runCli(['watchdog', 'disable'], io, ctx)).toBe(0);
-    expect(readWatchdogEnabled(ctx.dataDir)).toBe(false);
+    expect(WatchdogSettings.read(ctx.dataDir)).toBe(false);
   });
 
   it('applies changes through a running host and closes the connection', async () => {
@@ -64,7 +64,7 @@ describe('pi-kit watchdog', () => {
     const { ctx, io } = setup();
     ctx.discover = () => ({ pid: 1, version: '1.0.0', level: 'serve', startedAt: 'now', socket: 's', token: 't' });
     expect(await runCli(['watchdog', 'enable'], io, ctx)).toBe(1);
-    expect(readWatchdogEnabled(ctx.dataDir)).toBe(false);
+    expect(WatchdogSettings.read(ctx.dataDir)).toBe(false);
   });
 
   it.each([

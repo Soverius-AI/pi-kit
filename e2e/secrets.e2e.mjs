@@ -2,14 +2,14 @@
 // a real keychain) and an OpenRouter whose base URL is a stub that forwards to the local model and records the key it is sent.
 //
 // Walk: an API key through the workflow ends as a `!` command in auth.json (no key in the file, in the data folder or on the page) and `pi` in a terminal still resolves it and answers ->
-// "Move my existing keys" -> the database is encrypted and its recovery key is shown once -> a key pasted into a prompt shows as [redacted ...] in the transcript, is not in the database,
+// "Move my existing keys" -> a key pasted into a prompt shows as [redacted ...] in the transcript, is not in the database,
 // and is masked in an export, while pi's own session file keeps it -> a pattern of the person's own, and the switch for a folder.
 import assert from 'node:assert/strict';
-import { execFile, spawn, spawnSync } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { closeSync, existsSync, openSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import Database from 'better-sqlite3-multiple-ciphers';
+import sqlite3 from '@appthreat/sqlite3';
 import { env, openApp } from './support/app.mjs';
 import { MODEL, createWorld, isUp, root } from './support/env.mjs';
 import { startKeyProxy } from './support/key-proxy.mjs';
@@ -280,43 +280,6 @@ describe('an API key through the workflow, with a credential store', () => {
   });
 });
 
-describe('the database', () => {
-  it('is encrypted with a key in the store: not readable with plain sqlite3, readable with the key, and settings say so', async () => {
-    const file = join(world.data, 'pi-kit.sqlite');
-    assert.notEqual(readFileSync(file).subarray(0, 15).toString('latin1'), 'SQLite format 3');
-    const key = secrets()['pi-kit/db'];
-    assert.match(key, /^[0-9a-f]{64}$/);
-    const plain = spawnSync('sqlite3', [file, 'select count(*) from sqlite_master'], { encoding: 'utf8' });
-    if (!plain.error)
-      assert.match(plain.stderr + plain.stdout, /not a database|encrypted/i, 'plain sqlite3 cannot read it');
-    const db = new Database(file, { readonly: true });
-    db.pragma("cipher='chacha20'");
-    db.pragma(`key="x'${key}'"`);
-    assert.ok(db.prepare("select count(*) as n from sqlite_master where name = 'thread_events'").get().n === 1);
-    db.close();
-
-    await app.h.openSettings('Advanced');
-    await settings().getByTestId('section-advanced').getByRole('tab', { name: 'Security', exact: true }).click();
-    const section = settings().getByTestId('secrets-at-rest');
-    await section.getByTestId('database-chip').filter({ hasText: 'encrypted' }).waitFor();
-    assert.match(await section.getByTestId('store-chip').innerText(), /scratch store/);
-  });
-
-  it('shows the recovery key once: it is the key in the store, and a second request is refused', async () => {
-    const section = settings().getByTestId('secrets-at-rest');
-    await section.getByTestId('export-recovery-key').click();
-    const dialog = app.page.getByTestId('recovery-dialog');
-    await dialog.waitFor();
-    assert.equal((await dialog.getByTestId('recovery-key').innerText()).trim(), secrets()['pi-kit/db']);
-    await dialog.getByTestId('recovery-done').click();
-    await dialog.waitFor({ state: 'detached' });
-    assert.equal((await call('/api/secrets/recovery-key', { method: 'POST', body: '{}' })).status, 409);
-    await section.getByRole('button', { name: 'Recovery key shown' }).waitFor();
-    assert.equal(await app.page.getByTestId('recovery-key').count(), 0, 'the key is no longer on the page');
-    await app.page.keyboard.press('Escape');
-  });
-});
-
 describe('redaction', () => {
   let threadId;
 
@@ -336,15 +299,14 @@ describe('redaction', () => {
     threadId = (await call('/api/threads')).body
       .filter((t) => t.cwd === world.project)
       .sort((a, b) => b.updatedAt - a.updatedAt)[0].id;
-    // The replay log in the encrypted database holds no plaintext: opened with the key, searched for the secret.
-    const db = new Database(join(world.data, 'pi-kit.sqlite'), { readonly: true });
-    db.pragma("cipher='chacha20'");
-    db.pragma(`key="x'${secrets()['pi-kit/db']}'"`);
-    const events = db
-      .prepare('select event_json from thread_events')
-      .all()
-      .map((r) => r.event_json);
-    db.close();
+    // The replay log holds only masked text, even when queried directly.
+    const db = await sqlite3.open(join(world.data, 'pi-kit.sqlite'), sqlite3.OPEN_READONLY);
+    let events;
+    try {
+      events = (await db.all('select event_json from thread_events')).map((r) => r.event_json);
+    } finally {
+      await db.close();
+    }
     assert.ok(
       events.some((e) => e.includes('[redacted openai key …zz42]')),
       'the log holds the masked text',

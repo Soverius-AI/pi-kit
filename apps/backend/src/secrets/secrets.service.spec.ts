@@ -42,22 +42,15 @@ const asPlatform = (platform: NodeJS.Platform): void =>
   void Object.defineProperty(process, 'platform', { value: platform });
 
 function make(store: SecretStore, dataDir = scratch()) {
-  const shown = false;
   const settings = new Map<string, unknown>();
-  const database = {
-    protection: { state: 'encrypted', path: join(dataDir, 'pi-kit.sqlite') },
-    recoveryKey: () => 'a'.repeat(64),
-  };
   const meta = {
     getSetting: (k: string) => settings.get(k),
     setSetting: (k: string, v: unknown) => void settings.set(k, v),
   };
-  void shown;
   return {
-    service: new SecretsService(store, { dataDir }, database as never, meta as never),
+    service: new SecretsService(store, { dataDir }, meta as never),
     dataDir,
     settings,
-    database,
     meta,
   };
 }
@@ -98,8 +91,7 @@ describe('SecretsService', () => {
     const calls = ['available', 'get', 'set', 'delete'].map((method) => vi.spyOn(store, method as 'get'));
     const accessStatus = vi.fn(() => ({ state: 'ready' as const }));
     Object.assign(store, { accessStatus });
-    const { service, database } = make(store);
-    database.protection.state = 'plain';
+    const { service } = make(store);
     expect(await service.status()).toMatchObject({
       store: 'none',
       credentialsEnabled: false,
@@ -116,7 +108,6 @@ describe('SecretsService', () => {
       value: 'Bearer new-token',
       storage: 'mcp.json',
     });
-    expect(await service.databaseProtection()).toMatchObject({ state: 'plain' });
     for (const call of calls) expect(call).not.toHaveBeenCalled();
     expect(accessStatus).not.toHaveBeenCalled();
   });
@@ -193,8 +184,7 @@ describe('SecretsService', () => {
 
   it('explicit credential opt-in persists for next startup without accessing database keys', async () => {
     const store = new MemorySecretStore();
-    const { service, dataDir, database } = make(store);
-    database.protection.state = 'plain';
+    const { service, dataDir } = make(store);
     writeSecurityPreferences(dataDir, { credentialStoreEnabled: false });
     const get = vi.spyOn(store, 'get');
     const set = vi.spyOn(store, 'set');
@@ -206,7 +196,6 @@ describe('SecretsService', () => {
     // No SQLite metadata from the first service is needed to remember the choice.
     const next = make(store, dataDir).service;
     expect(await next.credentialsEnabled()).toBe(true);
-    expect(await service.databaseProtection()).toMatchObject({ state: 'plain' });
   });
 
   it('startup never migrates existing plaintext credentials even after opting in', async () => {
@@ -230,7 +219,7 @@ describe('SecretsService', () => {
     const store = new MemorySecretStore();
     store.set('pi-kit/db', 'database-key');
     store.set('litellm', 'saved-api-key');
-    const { service, dataDir, database, meta } = make(store);
+    const { service, dataDir, meta } = make(store);
     const agent = process.env['PI_CODING_AGENT_DIR']!;
     writeFileSync(
       join(agent, 'models.json'),
@@ -242,7 +231,6 @@ describe('SecretsService', () => {
     expect(statSync(join(agent, 'models.json')).mode & 0o777).toBe(0o600);
     expect(store.get('pi-kit/db')).toBe('database-key');
     expect(store.get('litellm')).toBe('saved-api-key');
-    expect((await service.databaseProtection()).state).toBe('encrypted');
     expect(await service.status()).toMatchObject({
       credentialsEnabled: false,
       available: false,
@@ -250,7 +238,7 @@ describe('SecretsService', () => {
       cliNeeded: false,
     });
     expect(await service.resolver('litellm')).toBeUndefined();
-    const next = new SecretsService(store, { dataDir }, database as never, meta as never);
+    const next = new SecretsService(store, { dataDir }, meta as never);
     Object.defineProperty(store, 'protected', { value: true });
     const set = vi.spyOn(store, 'set').mockImplementation(() => {
       throw new Error('must not write');
@@ -423,14 +411,6 @@ describe('SecretsService', () => {
         movable: [],
       });
       expect((await make(new NoSecretStore()).service.status()).resolver).toBeUndefined();
-    });
-
-    it('shows the database key once', async () => {
-      const { service } = make(new MemorySecretStore());
-      expect((await service.databaseProtection()).recoveryKeyShown).toBe(false);
-      expect(await service.recoveryKey()).toEqual({ key: 'a'.repeat(64) });
-      expect((await service.databaseProtection()).recoveryKeyShown).toBe(true);
-      await expect((async () => await service.recoveryKey())()).rejects.toThrow(/not shown again/);
     });
 
     it('a file store is a real second process’s view: the CLI reads what the backend wrote', async () => {

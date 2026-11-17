@@ -1,12 +1,14 @@
 // The backend that gets killed in bg-agents.service.spec.ts: it opens the agents store of `dir`,
 // spawns one agent in edit mode whose first tool call is a `bash` that sleeps, prints READY <agent id> once the call's cleanup intent
-// is recorded, and keeps running until the spec sends SIGKILL. The TypeScript sources are loaded through jiti (pi's extension loader), so
+// is recorded and the shell has written its started marker, and keeps running until the spec sends SIGKILL. The TypeScript sources are loaded through jiti (pi's extension loader), so
 // the same service code runs here as in the backend; Nest is not started, the service is built by hand as the spec builds its own.
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { createJiti } from 'jiti';
 import { createModels } from '@earendil-works/pi-ai/models';
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai/providers/faux';
 
-const [dir, , command] = process.argv.slice(2);
+const [dir, command] = process.argv.slice(2);
 const root = new URL('../../../../../', import.meta.url).pathname;
 const jiti = createJiti(import.meta.url, {
   interopDefault: true,
@@ -60,7 +62,7 @@ const row = await service.spawn({
   model: `${faux.getModel().provider}/${faux.getModel().id}`,
 });
 for (;;) {
-  if ((await agents.get(row.id))?.cleanup) break;
+  if ((await agents.get(row.id))?.cleanup && existsSync(join(dir, 'command-started'))) break;
   await new Promise((resolve) => setTimeout(resolve, 25));
 }
 process.stdout.write(`READY ${row.id}\n`);

@@ -22,8 +22,6 @@
       "@pi-kit/sandbox/core": ["./packages/pi-sandbox/lib/core.ts"],
       "@pi-kit/sandbox/pi": ["./packages/pi-sandbox/lib/pi.ts"],
       "@pi-kit/sandbox/durable": ["./packages/pi-sandbox/lib/durable.ts"],
-      "better-sqlite3-multiple-ciphers": ["./node_modules/better-sqlite3-multiple-ciphers/index"],
-      "better-sqlite3": ["./node_modules/better-sqlite3-multiple-ciphers/index"],
       "@pi-kit/secret-store": ["./libs/shared/secret-store/src/index.ts"],
       "@pi-kit/service-host": ["./libs/shared/service-host/src/index.ts"],
       "@pi-kit/ui": ["./libs/shared/ui/src/index.ts"],

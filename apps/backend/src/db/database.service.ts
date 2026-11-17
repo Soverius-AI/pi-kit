@@ -3,21 +3,21 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync }
 import { hostname } from 'node:os';
 import { join } from 'node:path';
 import { Inject, Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
-import { EnvironmentSchema, type DatabaseProtection } from '@pi-kit/protocol';
-import type { SecretStore } from '@pi-kit/secret-store';
+import { DATABASE_RESET_PENDING_FILE, EnvironmentSchema } from '@pi-kit/protocol';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
 import { AsyncSqlite } from './async-sqlite';
-import { assertNoPendingDatabaseTransition, isPlainDatabase } from './encryption';
+import { assertNoPendingDatabaseTransition, isPlainDatabase } from './database-file-guards';
 
 export const DB_FILE = 'pi-kit.sqlite';
 export const BG_DB_FILE = 'bg-agents.sqlite';
 /** Damaged; the desktop may offer recreation. Never thrown for key/version problems. */
 export class DatabaseBrokenError extends Error {}
-/** Incompatible schema is not corruption. Never offer destructive recreation on this error. */
+/** Incompatible schema is not corruption. Never offer a reset; the matching pi-kit version opens it. */
 export class DatabaseVersionError extends Error {}
-/** Encrypted originals require explicit offline migration, never automatic replacement/decryption. */
+/** Encrypted originals require offline migration or an explicitly confirmed backup and reset. */
 export class DatabaseEncryptionMigrationError extends Error {}
+export class DatabaseResetIncompleteError extends Error {}
 
 /** Owns the async SQLite connection. Nest's factory awaits every migration and identity hydration. */
 @Injectable()
@@ -26,7 +26,6 @@ export class DatabaseService implements OnApplicationShutdown {
   db!: AsyncSqlite;
   readonly ready: Promise<void>;
   readonly path: string;
-  readonly protection: Pick<DatabaseProtection, 'state' | 'path' | 'reason'>;
   private cachedInstanceId?: string;
   get instanceId(): string {
     if (!this.cachedInstanceId)
@@ -36,24 +35,28 @@ export class DatabaseService implements OnApplicationShutdown {
 
   constructor(@Inject(CONFIG) config: Pick<BackendConfig, 'dataDir'>) {
     this.path = join(config.dataDir, DB_FILE);
-    this.protection = {
-      state: 'plain',
-      path: this.path,
-      reason:
-        'The asynchronous SQLite backend uses private plaintext storage. Encrypted profiles require an explicit offline migration.',
-    };
     this.ready = this.initialize(config.dataDir);
   }
 
   private async initialize(dataDir: string): Promise<void> {
     mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+    if (existsSync(join(dataDir, DATABASE_RESET_PENDING_FILE))) {
+      throw new DatabaseResetIncompleteError(
+        `A database reset was interrupted in ${dataDir}. Startup stopped before opening either database. ` +
+          `${DATABASE_RESET_PENDING_FILE} names the database-backup folder holding the original files; the desktop app can move them back.`,
+      );
+    }
     // Check both files BEFORE opening either. Unknown headers may be encrypted, not corrupt.
     for (const path of [this.path, join(dataDir, BG_DB_FILE)]) {
-      assertNoPendingDatabaseTransition(path);
+      try {
+        assertNoPendingDatabaseTransition(path);
+      } catch (error) {
+        throw new DatabaseEncryptionMigrationError((error as Error).message, { cause: error });
+      }
       if (existsSync(path) && statSync(path).size > 0 && !isPlainDatabase(path)) {
         throw new DatabaseEncryptionMigrationError(
-          `${path} is encrypted or has an unrecognized header. The async SQLite backend cannot open encrypted profiles. ` +
-            'All original files were retained unchanged. Use the previous encryption-capable build and the original recovery key to perform an explicit offline plaintext export/migration, then retry. Do not delete or recreate these files.',
+          `${path} is encrypted or has an unrecognized header and cannot be opened by this version of pi-kit. ` +
+            'All original files were retained unchanged.',
         );
       }
     }
@@ -85,7 +88,7 @@ export class DatabaseService implements OnApplicationShutdown {
           })
           .immediate(),
       );
-      this.logger.log(`Database ready at ${this.path} (${this.protection.state})`);
+      this.logger.log(`Database ready at ${this.path}`);
     } catch (error) {
       await this.db.close().catch(() => undefined);
       if (isCorruption(error))
@@ -112,12 +115,7 @@ export class DatabaseService implements OnApplicationShutdown {
     });
   }
 
-  /** Kept compatible with factory callers; no credentials are accessed or plaintext encrypted implicitly. */
-  static async create(
-    config: Pick<BackendConfig, 'dataDir'>,
-    _secrets?: SecretStore,
-    _encryptionEnabled = true,
-  ): Promise<DatabaseService> {
+  static async create(config: Pick<BackendConfig, 'dataDir'>): Promise<DatabaseService> {
     const service = new DatabaseService(config);
     await service.ready;
     return service;
@@ -133,9 +131,6 @@ export class DatabaseService implements OnApplicationShutdown {
       /* Busy/read-only connections still close. */
     }
     await this.db.close();
-  }
-  recoveryKey(): undefined {
-    return undefined;
   }
 
   private async migrate(dir: string): Promise<void> {

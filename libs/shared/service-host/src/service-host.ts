@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { InstanceKeyRequestSchema } from '@pi-kit/protocol';
 import type { BackendEndpoint, Health, RunningBackend, SpawnOptions } from './backend';
 import type { HostLevel } from './discovery';
+import { DatabaseReset } from './database-reset';
 import { RpcError, type RpcPeer } from './host-channel';
 import {
   type DesktopAnswer,
@@ -22,7 +23,7 @@ import { MigratingSealing } from './instance-key-sealing';
 import type { OwnerAccess } from './owner-gateway';
 import type { RemoteAccess } from './remote-access';
 import { BackendActivity, type SleepGuard } from './sleep-guard';
-import { readWatchdogEnabled, writeWatchdogEnabled } from './watchdog-settings';
+import { WatchdogSettings } from './watchdog-settings';
 import {
   BackendWatchdog,
   DEFAULT_WATCHDOG_OPTIONS,
@@ -125,7 +126,7 @@ export class ServiceHost {
   private startupFailure: StartupFailure | undefined;
   private status: WatchdogStatus = { state: 'starting', restarts: 0 };
   private desktop: RpcPeer | undefined;
-  private readonly keys: InstanceKeyStore;
+  private keys: InstanceKeyStore;
   private activity: BackendActivity | undefined;
   private watchdogEnabled: boolean;
 
@@ -134,9 +135,8 @@ export class ServiceHost {
     private readonly deps: ServiceHostDeps,
     private readonly watchdogOptions: WatchdogOptions = DEFAULT_WATCHDOG_OPTIONS,
   ) {
-    this.watchdogEnabled = readWatchdogEnabled(config.dataDir);
-    const sealing = deps.hostSealing ? new MigratingSealing(deps.hostSealing, this.sealing) : this.sealing;
-    this.keys = new InstanceKeyStore(() => InstanceKeyStore.file(config.dataDir), sealing);
+    this.watchdogEnabled = WatchdogSettings.read(config.dataDir);
+    this.keys = this.keyStore();
   }
 
   /** The backend's address, for phone access; fixed once `open()` resolved. */
@@ -203,6 +203,18 @@ export class ServiceHost {
       return this.deps.owner.link();
     });
     peer.handle('owner.revoke', () => this.deps.owner?.revokeAll());
+    for (const [method, operation] of [
+      ['database.reset', DatabaseReset.backup],
+      ['database.restore', DatabaseReset.restore],
+    ] as const)
+      peer.handle(method, () => {
+        if (this.desktop !== peer) throw new RpcError('Only the attached desktop app can reset or restore databases.');
+        if (this.starting || this.watchdog || this.backends.size !== 0 || this.stopping)
+          throw new RpcError('Cannot change databases while the backend is starting, running, or stopping.');
+        const result = operation(this.config.dataDir);
+        this.keys = this.keyStore();
+        return result;
+      });
     peer.handle('start', () => this.start());
     peer.handle('retry', () => this.watchdog?.retry());
     peer.handle('stop', () => void this.stop());
@@ -252,6 +264,8 @@ export class ServiceHost {
   private async firstStart(): Promise<{ bootId?: string }> {
     const endpoint = this.endpoint;
     if (!endpoint || this.stopping) throw new RpcError('The service host is not running.');
+    if (DatabaseReset.clearCompleted(this.config.dataDir))
+      this.deps.log('database reset: the backup had completed; cleared its leftover marker');
     this.startupFailure = undefined;
     let first: LaunchedBackend;
     try {
@@ -366,7 +380,7 @@ export class ServiceHost {
 
   private setWatchdog(enabled: boolean): { enabled: boolean; supported: true } {
     if (this.stopping) throw new RpcError('The service host is stopping.');
-    writeWatchdogEnabled(this.config.dataDir, enabled);
+    WatchdogSettings.write(this.config.dataDir, enabled);
     this.watchdogEnabled = enabled;
     this.watchdog?.setEnabled(enabled);
     this.deps.log(`backend watchdog ${enabled ? 'enabled' : 'disabled'}`);
@@ -387,6 +401,11 @@ export class ServiceHost {
       this.deps.log(`instance key unavailable (${error instanceof InstanceKeyError ? error.code : 'failed'})`);
       return error instanceof InstanceKeyError ? { ...KEY_UNAVAILABLE, error: error.message } : KEY_UNAVAILABLE;
     }
+  }
+
+  private keyStore(): InstanceKeyStore {
+    const sealing = this.deps.hostSealing ? new MigratingSealing(this.deps.hostSealing, this.sealing) : this.sealing;
+    return new InstanceKeyStore(() => InstanceKeyStore.file(this.config.dataDir), sealing);
   }
 
   /** The desktop's safeStorage: the seal of keys made before the host sealed its own, and the fallback where the host cannot seal. */

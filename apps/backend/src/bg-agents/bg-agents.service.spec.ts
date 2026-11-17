@@ -10,9 +10,8 @@ import { firstValueFrom, from, toArray } from 'rxjs';
 import { createModels } from '@earendil-works/pi-ai/models';
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from '@earendil-works/pi-ai/providers/faux';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemorySecretStore } from '@pi-kit/secret-store';
-import { AGENT_LIVE_SYNC_RUN, DB_KEY_ACCOUNT } from '@pi-kit/protocol';
-import { isPlainDatabase } from '../db/encryption';
+import { AGENT_LIVE_SYNC_RUN } from '@pi-kit/protocol';
+import { isPlainDatabase } from '../db/database-file-guards';
 import { DatabaseService } from '../db/database.service';
 import { EventLogRepository } from '../db/event-log.repository';
 import { BgAgentRunner } from './bg-agent-runner';
@@ -24,7 +23,6 @@ import type { ProtectionBinding } from '../db/thread-protection.repository';
 import { SandboxPackage, type ThreadProtectionService } from '../pi/thread-protection.service';
 import { ThreadProtectionTesting } from '../pi/thread-protection.testing';
 
-const key = 'cd'.repeat(32);
 let dir: string;
 let project: string;
 let database: DatabaseService;
@@ -257,15 +255,13 @@ describe('BgAgentsService', () => {
     expect(await service.conversationOf(row.id)).toBeDefined();
   });
 
-  it('preserves plaintext conversations across settings changes without silently encrypting', async () => {
+  it('preserves plaintext conversations across restarts', async () => {
     await service.close();
     await database.onApplicationShutdown();
     rmSync(dir, { recursive: true, force: true });
     database = await DatabaseService.create({ dataDir: dir });
     agents = new BgAgentsRepository(database);
     service = make();
-    const store = new MemorySecretStore();
-    store.set(DB_KEY_ACCOUNT, key);
     const { models, model } = faux([fauxAssistantMessage('Retain this conversation across protection changes.')]);
     await service.open(models);
     const row = await service.spawn({ threadId: 't1', name: 'worker', role: 'worker', brief: 'Work.', model });
@@ -274,9 +270,8 @@ describe('BgAgentsService', () => {
     expect(isPlainDatabase(join(dir, 'bg-agents.sqlite'))).toBe(true);
     await database.onApplicationShutdown();
 
-    for (const enabled of [true, false]) {
-      database = await DatabaseService.create({ dataDir: dir }, store, enabled);
-      expect(database.recoveryKey()).toBeUndefined();
+    for (const restart of [0, 1]) {
+      database = await DatabaseService.create({ dataDir: dir });
       agents = new BgAgentsRepository(database);
       service = make();
       await service.open(faux([]).models);
@@ -286,8 +281,7 @@ describe('BgAgentsService', () => {
       expect(JSON.stringify(view.entries)).toContain('Retain this conversation across protection changes.');
       await service.close();
       expect(isPlainDatabase(join(dir, 'bg-agents.sqlite'))).toBe(true);
-      expect(store.get(DB_KEY_ACCOUNT)).toBe(key);
-      if (enabled) await database.onApplicationShutdown();
+      if (restart === 0) await database.onApplicationShutdown();
     }
   });
 
@@ -1034,9 +1028,11 @@ describe('BgAgentsService', () => {
   });
 
   it('survives a backend kill: the next backend takes the store over, holds the agent for its running command, and goes on when the user discards it', async () => {
+    const marker = join(dir, 'command-started');
+    const command = `printf started > '${marker.replaceAll("'", "'\\''")}'; sleep 5`;
     const worker = spawn(
       process.execPath,
-      [join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'killed-backend.mjs'), dir, key, 'sleep 5'],
+      [join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'killed-backend.mjs'), dir, command],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     );
     let out = '';
@@ -1061,7 +1057,7 @@ describe('BgAgentsService', () => {
     const { models } = faux([fauxAssistantMessage('Done after the restart.')]);
     await service.open(models);
     expect(JSON.parse(readFileSync(join(dir, LOCK_FILE), 'utf8'))).toMatchObject({ pid: process.pid, epoch: 2 });
-    expect(await service.get(id)).toMatchObject({ status: 'blocked', cleanup: { command: 'sleep 5' } });
+    expect(await service.get(id)).toMatchObject({ status: 'blocked', cleanup: { command } });
     expect(service.holds.reasonOf(id)).toBe('cleanup');
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect((await service.get(id))?.status).toBe('blocked'); // held: no request went out
