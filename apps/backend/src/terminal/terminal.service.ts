@@ -131,8 +131,10 @@ export class TerminalService implements OnModuleDestroy {
     });
     pty.onExit(async ({ exitCode, signal }) => {
       this.logger.log(`Terminal in ${cwd} ended (${exitCode})`);
-      await this.saveNow(cwd, terminal);
+      // The write is queued before the terminal leaves the map, so a restart reads this screen, not a dead PID.
+      const saved = this.saveNow(cwd, terminal);
       if (this.terminals.get(cwd) === terminal) this.terminals.delete(cwd);
+      await saved;
       this.emit(terminal, { type: 'exit', exitCode, signal: signal ?? null });
       terminal.listeners.clear();
     });

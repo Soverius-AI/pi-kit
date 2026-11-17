@@ -271,8 +271,9 @@ export class SessionLifecycle {
     await sessionUi.bind(session);
     finishPhase('sessionUiBind');
     try {
-      assertCurrent();
       await this.protection.assertGeneration(threadId, generation);
+      // After the await: a dispose while SQLite answered bumps the epoch without changing the generation.
+      assertCurrent();
     } catch (error) {
       session.dispose();
       throw error;

@@ -61,6 +61,8 @@ export class TerminalController {
   @Fails({ 404: NO_FOLDER })
   async stream(@Param('id') id: string, @Res() res: Response): Promise<void> {
     const cwd = await this.meta.requireWorkspace(id);
+    // A client gone during the lookup already fired `close`; subscribing now would leak the listener and keepalive.
+    if (res.destroyed) return;
     res.status(200);
     res.setHeader('Content-Type', 'application/x-ndjson');
     res.setHeader('Cache-Control', 'no-cache');
