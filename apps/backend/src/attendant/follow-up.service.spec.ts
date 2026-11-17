@@ -58,19 +58,19 @@ let gate: Promise<void> | undefined;
 const ask = vi.fn();
 const touch = vi.fn();
 
-beforeEach(() => {
+beforeEach(async () => {
   Logger.overrideLogger(false);
   dir = mkdtempSync(join(tmpdir(), 'pk-follow-up-'));
-  db = new DatabaseService({ dataDir: dir });
+  db = await DatabaseService.create({ dataDir: dir });
   repo = new AttendantRepository(db);
   meta = new MetaRepository(db);
   events = new EventLogRepository(db);
   rows = new ThreadsRepository(db);
-  meta.touchWorkspace('/proj');
+  await meta.touchWorkspace('/proj');
   const path = join(dir, 't.jsonl');
   writeFileSync(path, '{}\n');
-  rows.insertDraft({ id: 't', cwd: '/proj', sessionPath: path, title: 'A named thread' });
-  rows.upsertFromSession(
+  await rows.insertDraft({ id: 't', cwd: '/proj', sessionPath: path, title: 'A named thread' });
+  await rows.upsertFromSession(
     {
       id: 't',
       cwd: '/proj',
@@ -90,7 +90,7 @@ beforeEach(() => {
     followUpSuggestions: true,
     when: { onEnd: false, onInterrupt: false, everyMinutes: 0 },
   };
-  meta.setSetting('attendant', settings);
+  await meta.setSetting('attendant', settings);
   leaf = 'a';
   agents = [reviewer()];
   pending = [];
@@ -151,15 +151,15 @@ beforeEach(() => {
     status as never,
     { state: async () => ({ status: 'trusted' }) } as never,
   );
-  service.onModuleInit();
-  events.beginRun('t', 'r1');
-  events.endRun('r1', 'finished');
+  await service.onModuleInit();
+  await events.beginRun('t', 'r1');
+  await events.endRun('r1', 'finished');
 });
 
-afterEach(() => {
+afterEach(async () => {
   service.onModuleDestroy();
   attendant.onModuleDestroy();
-  db.onApplicationShutdown();
+  await db.onApplicationShutdown();
   rmSync(dir, { recursive: true, force: true });
   Logger.overrideLogger(['log', 'warn', 'error']);
 });
@@ -167,15 +167,15 @@ afterEach(() => {
 describe('contextual follow-ups', () => {
   it('uses agent reports and the full final response, records real usage, and accepts without sending', async () => {
     await service.generate('t');
-    const suggestion = repo.openSuggestions('t')[0];
+    const suggestion = (await repo.openSuggestions('t'))[0];
     expect(suggestion).toMatchObject({ kind: 'prompt', text: reply });
     const prompt = ask.mock.calls[0][0];
     expect(prompt.user).toContain('Both checks passed');
     expect(prompt.user).toContain('No regressions found');
     expect(prompt.system).toContain('duplicate an active agent');
-    expect(repo.usageSince(0)).toMatchObject({ cost: 0.01, calls: 1, inputTokens: 90 });
+    expect(await repo.usageSince(0)).toMatchObject({ cost: 0.01, calls: 1, inputTokens: 90 });
     await attendant.accept(suggestion.id);
-    expect(repo.suggestion(suggestion.id)?.state).toBe('accepted');
+    expect((await repo.suggestion(suggestion.id))?.state).toBe('accepted');
     await service.generate('t');
     expect(ask).toHaveBeenCalledTimes(1);
   });
@@ -192,27 +192,27 @@ describe('contextual follow-ups', () => {
     'dialog',
     'queue',
   ])('makes no model call for %s', async (reason) => {
-    if (reason === 'off') attendant.patch({ enabled: false });
-    if (reason === 'feature-off') attendant.patch({ followUpSuggestions: false });
-    if (reason === 'cap') attendant.patch({ dailyCostCap: 0 });
-    if (reason === 'project-off') meta.patchWorkspace('/proj', { attendantOff: true });
-    if (reason === 'archived') rows.update('t', { archived: true });
-    if (reason === 'failed') events.endRun('r1', 'error');
+    if (reason === 'off') await attendant.patch({ enabled: false });
+    if (reason === 'feature-off') await attendant.patch({ followUpSuggestions: false });
+    if (reason === 'cap') await attendant.patch({ dailyCostCap: 0 });
+    if (reason === 'project-off') await meta.patchWorkspace('/proj', { attendantOff: true });
+    if (reason === 'archived') await rows.update('t', { archived: true });
+    if (reason === 'failed') await events.endRun('r1', 'error');
     if (reason === 'active-agent') agents = [reviewer({ status: 'active' })];
     if (reason === 'blocked-agent') agents = [reviewer({ status: 'blocked' })];
     if (reason === 'dialog') pending = [{ id: 'question' }];
     if (reason === 'queue') queued = ['already requested'];
     await service.generate('t');
     expect(ask).not.toHaveBeenCalled();
-    expect(repo.openSuggestions('t')).toEqual([]);
+    expect(await repo.openSuggestions('t')).toEqual([]);
   });
 
   it('treats SKIP as a normal paid result and does not retry it', async () => {
     reply = 'SKIP';
     await service.generate('t');
     await service.generate('t');
-    expect(repo.openSuggestions('t')).toEqual([]);
-    expect(repo.actions()[0]).toMatchObject({
+    expect(await repo.openSuggestions('t')).toEqual([]);
+    expect((await repo.actions())[0]).toMatchObject({
       kind: 'prompt',
       status: 'done',
       text: 'No clear follow-up.',
@@ -222,35 +222,35 @@ describe('contextual follow-ups', () => {
   });
 
   it('does not offer new delegation when the project disabled agents', async () => {
-    meta.patchWorkspace('/proj', { agentsOff: true });
+    await meta.patchWorkspace('/proj', { agentsOff: true });
     await service.generate('t');
     expect(JSON.parse(ask.mock.calls[0][0].user).backgroundAgentsEnabled).toBe(false);
   });
 
   it('switching predictions off expires only prompt suggestions', async () => {
-    repo.addSuggestion({ threadId: 't', kind: 'label', target: 'u', text: 'Two approaches' });
+    await repo.addSuggestion({ threadId: 't', kind: 'label', target: 'u', text: 'Two approaches' });
     await service.generate('t');
-    attendant.patch({ followUpSuggestions: false });
-    expect(repo.openSuggestions('t')).toEqual([expect.objectContaining({ kind: 'label' })]);
+    await attendant.patch({ followUpSuggestions: false });
+    expect(await repo.openSuggestions('t')).toEqual([expect.objectContaining({ kind: 'label' })]);
   });
 
   it('expires predictions when a run or branch changes', async () => {
     await service.generate('t');
     treeChanged('t');
-    expect(repo.openSuggestions('t')).toEqual([]);
+    expect(await repo.openSuggestions('t')).toEqual([]);
     agents = [reviewer({ report: 'A changed report' })];
     await service.generate('t');
-    expect(repo.openSuggestions('t')).toHaveLength(1);
-    events.beginRun('t', 'r2');
-    expect(repo.openSuggestions('t')).toEqual([]);
+    expect(await repo.openSuggestions('t')).toHaveLength(1);
+    await events.beginRun('t', 'r2');
+    expect(await repo.openSuggestions('t')).toEqual([]);
   });
 
   it('rejects acceptance if agent state changed even without a delivered event', async () => {
     await service.generate('t');
-    const suggestion = repo.openSuggestions('t')[0];
+    const suggestion = (await repo.openSuggestions('t'))[0];
     agents = [reviewer({ status: 'active' })];
     await expect(attendant.accept(suggestion.id)).rejects.toThrow('no longer matches');
-    expect(repo.openSuggestions('t')).toEqual([]);
+    expect(await repo.openSuggestions('t')).toEqual([]);
   });
 
   it('drops an in-flight result after a branch changes and still accounts for its cost', async () => {
@@ -264,14 +264,14 @@ describe('contextual follow-ups', () => {
     treeChanged('t');
     release();
     await request;
-    expect(repo.openSuggestions('t')).toEqual([]);
-    expect(repo.usageSince(0).cost).toBe(0.01);
+    expect(await repo.openSuggestions('t')).toEqual([]);
+    expect((await repo.usageSince(0)).cost).toBe(0.01);
   });
 
   it('invalidates a displayed prediction when an agent changes', async () => {
     await service.generate('t');
     agentsChanged('t');
-    expect(repo.openSuggestions('t')).toEqual([]);
+    expect(await repo.openSuggestions('t')).toEqual([]);
   });
 });
 

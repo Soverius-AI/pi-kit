@@ -48,14 +48,16 @@ export class LocalLlamaSwapService {
   private target = '';
   private discovery?: { at: number; paths: DiscoveredLlamaSwapConfig[] };
   private targetModels: string[] = [];
-  private registrations: Registration[];
-  constructor(private readonly meta: MetaRepository) {
-    const saved = RegistrationSchema.array().safeParse(meta.getSetting('local-runtime-config-models'));
+  private registrations: Registration[] = [];
+  constructor(private readonly meta: MetaRepository) {}
+
+  async onModuleInit(): Promise<void> {
+    const saved = RegistrationSchema.array().safeParse(await this.meta.getSetting('local-runtime-config-models'));
     this.registrations = saved.success ? saved.data : [];
   }
 
-  externalConfigPath(): string {
-    const saved = this.meta.getSetting('local-runtime-external-config');
+  async externalConfigPath(): Promise<string> {
+    const saved = await this.meta.getSetting('local-runtime-external-config');
     return typeof saved === 'string' ? saved : '';
   }
   private expand(path: string): string {
@@ -65,7 +67,7 @@ export class LocalLlamaSwapService {
     return join(process.env['XDG_CONFIG_HOME'] || join(homedir(), '.config'), 'llama-swap', 'config.yaml');
   }
   private async previousDownloads(targetPath: string): Promise<InstalledLocalModel[]> {
-    const previous = InstalledLocalModelSchema.array().safeParse(this.meta.getSetting('local-runtime-models'));
+    const previous = InstalledLocalModelSchema.array().safeParse(await this.meta.getSetting('local-runtime-models'));
     const models: InstalledLocalModel[] = [];
     const destinationIds = new Set(
       this.registrations.filter((entry) => entry.configPath === targetPath).map((entry) => entry.model.id),
@@ -89,7 +91,7 @@ export class LocalLlamaSwapService {
 
   async selectConfig(input: string): Promise<void> {
     if (!input.trim()) {
-      this.meta.setSetting('local-runtime-external-config', '');
+      await this.meta.setSetting('local-runtime-external-config', '');
       await this.readConfigs();
       return;
     }
@@ -100,7 +102,7 @@ export class LocalLlamaSwapService {
     // Move existing downloaded-file registrations to the chosen shared config without touching the old private file.
     const previous = await this.previousDownloads(canonical);
     if (previous.length) await this.addModels(canonical, previous);
-    this.meta.setSetting('local-runtime-external-config', resolve(path));
+    await this.meta.setSetting('local-runtime-external-config', resolve(path));
     await this.readConfigs();
   }
 
@@ -109,7 +111,7 @@ export class LocalLlamaSwapService {
       const discovered = await discoverLlamaSwapConfigs();
       const saved = z
         .array(z.object({ path: z.string(), source: z.enum(['Running llama-swap', 'Service configuration']) }))
-        .safeParse(this.meta.getSetting('local-runtime-discovered-configs'));
+        .safeParse(await this.meta.getSetting('local-runtime-discovered-configs'));
       // Keep only paths, never process command lines. This survives stopping the service or restarting pi-kit.
       const paths = [
         ...new Map(
@@ -119,15 +121,15 @@ export class LocalLlamaSwapService {
         ).values(),
       ].slice(0, 256);
       this.discovery = { at: Date.now(), paths: discovered };
-      if (discovered.length) this.meta.setSetting('local-runtime-discovered-configs', paths);
+      if (discovered.length) await this.meta.setSetting('local-runtime-discovered-configs', paths);
     }
     const discovered = this.discovery.paths;
     const cached = z
       .array(z.object({ path: z.string(), source: z.string() }))
-      .safeParse(this.meta.getSetting('local-runtime-discovered-configs'));
+      .safeParse(await this.meta.getSetting('local-runtime-discovered-configs'));
     const remembered = cached.success ? cached.data : [];
     const explicit = [
-      this.externalConfigPath(),
+      await this.externalConfigPath(),
       process.env['PI_KIT_LLAMA_SWAP_CONFIG'],
       process.env['LLAMA_SWAP_CONFIG'],
     ]
@@ -161,7 +163,7 @@ export class LocalLlamaSwapService {
       const source =
         discovered.find((entry) => entry.path === candidate)?.source ??
         (explicit.includes(candidate)
-          ? candidate === explicit[0] && this.externalConfigPath()
+          ? candidate === explicit[0] && (await this.externalConfigPath())
             ? 'Selected config'
             : 'Environment'
           : remembered.some((entry) => entry.path === candidate)
@@ -589,8 +591,8 @@ export class LocalLlamaSwapService {
       ),
       ...added,
     ];
-    this.meta.setSetting('local-runtime-config-models', this.registrations);
-    this.meta.setSetting('local-runtime-models', []);
+    await this.meta.setSetting('local-runtime-config-models', this.registrations);
+    await this.meta.setSetting('local-runtime-models', []);
     this.targetModels = await readLlamaSwapModels(path);
   }
 
@@ -616,11 +618,11 @@ export class LocalLlamaSwapService {
       }
     }
     this.registrations = this.registrations.filter((entry) => entry.model.id !== id);
-    this.meta.setSetting('local-runtime-config-models', this.registrations);
+    await this.meta.setSetting('local-runtime-config-models', this.registrations);
     // A deleted legacy download must not be re-added during a later config selection.
-    const previous = InstalledLocalModelSchema.array().safeParse(this.meta.getSetting('local-runtime-models'));
+    const previous = InstalledLocalModelSchema.array().safeParse(await this.meta.getSetting('local-runtime-models'));
     if (previous.success)
-      this.meta.setSetting(
+      await this.meta.setSetting(
         'local-runtime-models',
         previous.data.filter((model) => model.id !== id),
       );

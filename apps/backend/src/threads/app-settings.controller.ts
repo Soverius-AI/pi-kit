@@ -20,8 +20,8 @@ export class AppSettingsController {
     description: 'Returns every stored setting of the app as a JSON value per key.',
   })
   @Responds(AppSettingsSchema)
-  settings(): Record<string, unknown> {
-    return this.meta.allSettings();
+  async settings(): Promise<Record<string, unknown>> {
+    return await this.meta.allSettings();
   }
 
   @Remote()
@@ -37,11 +37,11 @@ export class AppSettingsController {
     schema: { type: 'string', pattern: KEY.source },
   })
   @ApiNoContentResponse({ description: 'The setting is stored.' })
-  setSetting(
+  async setSetting(
     @Param('key') key: string,
     @Body({ schema: PutAppSettingSchema }) body: z.infer<typeof PutAppSettingSchema>,
-  ): void {
+  ): Promise<void> {
     if (!KEY.test(key)) throw new BadRequestException('Invalid settings key.');
-    this.meta.setSetting(key, body.value ?? null);
+    await this.meta.setSetting(key, body.value ?? null);
   }
 }

@@ -1,11 +1,12 @@
 // The native modules of a release build, per target triple.
 //
-// The backend ships five sets of native code. All of them are N-API (ABI-stable across Node and Electron versions), so "the
+// The backend ships several sets of native code. All of them are N-API (ABI-stable across Node and Electron versions), so "the
 // binary for Electron 44" is the binary for the target OS and CPU; nothing is compiled and nothing is rebuilt against Electron.
 //
 //   module                          where the target's binary comes from
 //   @napi-rs/keyring                one package per platform (`@napi-rs/keyring-<triple>-msvc` ...): the host's comes with the
 //                                   install; the others are downloaded from the registry into a cache and checked against pnpm-lock.yaml's integrity
+//   @appthreat/sqlite3             `prebuilds/<platform>-<arch>/@appthreat+sqlite3[.glibc].node` (ESM lib/ copied intact)
 //   better-sqlite3-multiple-ciphers `prebuilds/<platform>-<arch>.node` inside the package's own tarball (all platforms ship together)
 //   node-pty                        `prebuilds/<platform>-<arch>/` inside the package's own tarball (darwin and win32; Linux has none)
 //   @earendil-works/pi-tui          `native/<platform>/prebuilds/<platform>-<arch>/` inside the package's own tarball
@@ -218,6 +219,34 @@ export async function provisionSqlitePrebuild({ sqlite, triple, cacheDir, log = 
   return { module: name, file: `prebuilds/${wanted}`, source };
 }
 
+/** AppThreat publishes every target together; Linux releases deliberately use glibc, never musl. */
+export const appThreatBinary = (triple) =>
+  `prebuilds/${triple}/@appthreat+sqlite3${triple.startsWith('linux-') ? '.glibc' : ''}.node`;
+
+export async function provisionAppThreatPrebuild({ sqlite, triple, cacheDir, log = console.log }) {
+  const name = '@appthreat/sqlite3';
+  if (!TRIPLES[triple]) throw new Error(`Unsupported target ${triple}`);
+  const version = JSON.parse(readFileSync(join(sqlite, 'package.json'), 'utf8')).version;
+  const file = appThreatBinary(triple);
+  let source = `prebuilds/ in the npm tarball, ${version} (N-API)`;
+  if (!existsSync(join(sqlite, file))) {
+    const pristine = await packageDir(name, version, cacheDir, log, { registryOnly: true });
+    if (!existsSync(join(pristine.dir, file)))
+      throw new Error(`No ${name} binary for ${triple}: ${file} is not in the pinned package ${version}`);
+    mkdirSync(dirname(join(sqlite, file)), { recursive: true });
+    cpSync(join(pristine.dir, file), join(sqlite, file));
+    source = pristine.source;
+  }
+  for (const target of readdirSync(join(sqlite, 'prebuilds')))
+    if (target !== triple) rmSync(join(sqlite, 'prebuilds', target), { recursive: true, force: true });
+  for (const binary of readdirSync(join(sqlite, 'prebuilds', triple)))
+    if (`prebuilds/${triple}/${binary}` !== file)
+      rmSync(join(sqlite, 'prebuilds', triple, binary), { recursive: true, force: true });
+  for (const path of ['deps', 'src', 'binding.gyp', 'build'])
+    rmSync(join(sqlite, path), { recursive: true, force: true });
+  return { module: name, file, source };
+}
+
 /**
  * Selects one target's binaries from the Nx runtime assets and provisions its keyring binary.
  * @returns {{ module: string, file: string, source: string }[]} one row per native file, for the report
@@ -268,7 +297,12 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
     rows.push({ module: 'keychain-store', file: `dist/${wanted}`, source: keychain.source });
   }
 
-  // ---- better-sqlite3-multiple-ciphers: N-API prebuilds named <platform>-<arch>.node, the SQLite3 Multiple Ciphers sources next to them
+  // ---- normal async runtime (keep its ESM package and loader dependency closure intact)
+  rows.push(
+    await provisionAppThreatPrebuild({ sqlite: join(modulesOut, '@appthreat/sqlite3'), triple, cacheDir, log }),
+  );
+
+  // ---- legacy offline recovery encryption only, better-sqlite3-multiple-ciphers: N-API prebuilds named <platform>-<arch>.node, the SQLite3 Multiple Ciphers sources next to them
   const sqlite = join(modulesOut, 'better-sqlite3-multiple-ciphers');
   if (existsSync(sqlite)) {
     for (const path of ['deps', 'src', 'binding.gyp', 'build']) prune(`better-sqlite3-multiple-ciphers/${path}`);
@@ -522,6 +556,12 @@ function expectedFiles(triple) {
   const list = [
     `@napi-rs/keyring-${t.keyring}`,
     `better-sqlite3-multiple-ciphers/prebuilds/${triple}.node`,
+    `@appthreat/sqlite3/${appThreatBinary(triple)}`,
+    '@appthreat/sqlite3/lib/sqlite3.js',
+    '@appthreat/sqlite3/lib/pool.js',
+    '@appthreat/sqlite3/lib/worker.js',
+    'node-gyp-build/node-gyp-build.js',
+    'node-addon-api/package.json',
     `../assets/pi/native/${t.platform}/prebuilds/${triple}`,
     `../${RIPGREP_DIR}/${ripgrepName(t.platform)}`,
   ];
@@ -609,9 +649,17 @@ export function loadInElectron({ backend, electron, log = console.log, label = '
     const { join } = require('node:path');
     const req = createRequire(process.env.BACKEND + '/main.js');
     const out = [];
+    const { default: sqlite3 } = await import(pathToFileURL(req.resolve('@appthreat/sqlite3')).href);
+    const asyncDb = await sqlite3.open(':memory:');
+    try {
+      await asyncDb.exec('CREATE TABLE smoke (value INTEGER)');
+      await asyncDb.transaction(async (tx) => { await tx.run('INSERT INTO smoke VALUES (?)', [42]); });
+      if ((await asyncDb.get('SELECT value FROM smoke')).value !== 42) throw new Error('async transaction failed');
+      out.push('@appthreat/sqlite3: async in-memory query and transaction ok');
+    } finally { await asyncDb.close(); }
     const Database = req('better-sqlite3-multiple-ciphers');
     const db = new Database(':memory:');
-    out.push('better-sqlite3-multiple-ciphers: sqlite ' + db.prepare('select sqlite_version() v').get().v);
+    out.push('better-sqlite3-multiple-ciphers (legacy recovery only): sqlite ' + db.prepare('select sqlite_version() v').get().v);
     db.close();
     const { Entry } = req('@napi-rs/keyring');
     if (typeof Entry !== 'function') throw new Error('@napi-rs/keyring has no Entry');

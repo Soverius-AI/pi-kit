@@ -11,10 +11,10 @@ function setup(saved: Record<string, unknown> = {}) {
   const browser = vi.fn(async () => ({ state: emptyBrowserState('thread', true) }));
   const service = new BrowserService(
     { available: true, browser } as never,
-    { get: () => ({ id: 'thread' }) } as never,
-    { get: (id: string) => peers[id] } as never,
+    { get: async () => ({ id: 'thread' }) } as never,
+    { get: async (id: string) => peers[id] } as never,
     {} as never,
-    { getSetting: (key: string) => saved[key] } as never,
+    { getSetting: async (key: string) => saved[key] } as never,
   );
   return { service, browser };
 }
@@ -85,6 +85,39 @@ describe("the browser for a paired instance's thread", () => {
     await expect(service.peerRun('nobody', 'remote-thread', { action: 'reload' })).rejects.toThrow(
       'There is no such paired instance.',
     );
+    expect(browser).not.toHaveBeenCalled();
+  });
+});
+
+describe('async browser prerequisites', () => {
+  it('does not drive the desktop when the asynchronously looked up thread does not exist', async () => {
+    const browser = vi.fn();
+    const service = new BrowserService(
+      { available: true, browser } as never,
+      { get: async () => undefined } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    await expect(service.state('missing')).rejects.toThrow('There is no such thread.');
+    await expect(service.run('missing', { action: 'reload' })).rejects.toThrow('There is no such thread.');
+    expect(browser).not.toHaveBeenCalled();
+  });
+
+  it('waits for saved preferences and propagates lookup failures instead of silently using defaults', async () => {
+    const browser = vi.fn();
+    const service = new BrowserService(
+      { available: true, browser } as never,
+      { get: async () => ({ id: 'thread' }) } as never,
+      {} as never,
+      {} as never,
+      {
+        getSetting: async () => {
+          throw new Error('settings unavailable');
+        },
+      } as never,
+    );
+    await expect(service.run('thread', { action: 'screenshot' })).rejects.toThrow('settings unavailable');
     expect(browser).not.toHaveBeenCalled();
   });
 });

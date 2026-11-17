@@ -15,12 +15,12 @@ import { ChangesService } from './changes.service';
 
 const sh = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' });
 
-const until = async (done: () => boolean): Promise<void> => {
-  for (let i = 0; i < 200 && !done(); i++) await new Promise((resolve) => setTimeout(resolve, 10));
+const until = async (done: () => boolean | Promise<boolean>): Promise<void> => {
+  for (let i = 0; i < 200 && !(await done()); i++) await new Promise((resolve) => setTimeout(resolve, 10));
 };
 
 /** The service with a throwaway repository and database, and real snapshots around the thread's runs. */
-function setup(options: { git?: boolean } = {}) {
+async function setup(options: { git?: boolean } = {}) {
   const base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-changes-')));
   const cwd = join(base, 'project');
   mkdirSync(cwd);
@@ -29,7 +29,7 @@ function setup(options: { git?: boolean } = {}) {
     sh(cwd, 'config', 'user.email', 't@example.com');
     sh(cwd, 'config', 'user.name', 'T');
   }
-  const database = new DatabaseService({ dataDir: join(base, 'data') });
+  const database = await DatabaseService.create({ dataDir: join(base, 'data') });
   const log = new EventLogRepository(database);
   const repo = new ChangesRepository(database);
   const sessions = { has: () => true, isStreaming: () => false } as unknown as PiSessionService;
@@ -54,19 +54,19 @@ function setup(options: { git?: boolean } = {}) {
   /** One run of thread t1: the snapshot before it, `work` as pi's edits, the snapshot after it. */
   const run = async (work: () => void) => {
     const id = `r${++runs}`;
-    log.beginRun('t1', id);
+    await log.beginRun('t1', id);
     await snapshots.whenStarted('t1');
     work();
-    log.endRun(id, 'finished');
-    await until(() => log.runsOf('t1').find((r) => r.runId === id)?.endTree != null);
+    await log.endRun(id, 'finished');
+    await until(async () => (await log.runsOf('t1')).find((r) => r.runId === id)?.endTree != null);
   };
   return { cwd, repo, service, write, run, setRange: (r: { base: string; head: string } | undefined) => (range = r) };
 }
 
 describe('This thread: what its runs changed, from the snapshots around them', () => {
-  let ctx: ReturnType<typeof setup>;
-  beforeEach(() => {
-    ctx = setup();
+  let ctx: Awaited<ReturnType<typeof setup>>;
+  beforeEach(async () => {
+    ctx = await setup();
     ctx.write('a.ts', 'one\ntwo\nthree\n');
     ctx.write('other.ts', 'o\n');
     sh(ctx.cwd, 'add', '.');
@@ -131,7 +131,7 @@ describe('This thread: what its runs changed, from the snapshots around them', (
 
 describe('Working tree: git diff of the folder', () => {
   it('lists modified, new and deleted files with their counts, and diffs one', async () => {
-    const ctx = setup();
+    const ctx = await setup();
     ctx.write('keep.ts', 'a\nb\n');
     ctx.write('gone.ts', 'x\n');
     ctx.write('src/mod.ts', '1\n2\n3\n');
@@ -158,7 +158,7 @@ describe('Working tree: git diff of the folder', () => {
   });
 
   it('reverts a modified file to HEAD, removes an untracked one, and stages everything', async () => {
-    const ctx = setup();
+    const ctx = await setup();
     ctx.write('a.ts', 'orig\n');
     sh(ctx.cwd, 'add', '.');
     sh(ctx.cwd, 'commit', '-q', '-m', 'init');
@@ -177,13 +177,13 @@ describe('Working tree: git diff of the folder', () => {
   });
 
   it('works in a repository without commits, and says there is no working tree outside git', async () => {
-    const fresh = setup();
+    const fresh = await setup();
     fresh.write('first.ts', 'x\n');
     expect((await fresh.service.list('t1', 'worktree')).files).toEqual([
       { path: 'first.ts', status: 'A', added: 1, removed: 0 },
     ]);
 
-    const plain = setup({ git: false });
+    const plain = await setup({ git: false });
     const list = await plain.service.list('t1', 'worktree');
     expect(list).toMatchObject({ git: false, files: [] });
     expect(list.note).toMatch(/need a git repository/);
@@ -194,8 +194,8 @@ describe('Working tree: git diff of the folder', () => {
 
 describe('Outcome: git diff base..head of the thread outcome', () => {
   /** A base commit, then a commit that modifies, adds and deletes, and a later one that is not part of the range. */
-  function twoCommits() {
-    const ctx = setup();
+  async function twoCommits() {
+    const ctx = await setup();
     ctx.write('keep.ts', 'a\nb\n');
     ctx.write('gone.ts', 'x\n');
     ctx.write('src/mod.ts', '1\n2\n3\n');
@@ -215,7 +215,7 @@ describe('Outcome: git diff base..head of the thread outcome', () => {
   }
 
   it('lists the files the two commits differ in, with the numbers git gives, and diffs one', async () => {
-    const { ctx, base, head } = twoCommits();
+    const { ctx, base, head } = await twoCommits();
     ctx.setRange({ base, head });
     const list = await ctx.service.list('t1', 'outcome');
     expect(list.source).toBe('outcome');
@@ -244,7 +244,7 @@ describe('Outcome: git diff base..head of the thread outcome', () => {
   });
 
   it('says why there is nothing when the thread has no outcome, or the folder is not a repository', async () => {
-    const { ctx } = twoCommits();
+    const { ctx } = await twoCommits();
     const none = await ctx.service.list('t1', 'outcome');
     expect(none.files).toEqual([]);
     expect(none.note).toMatch(/no outcome yet/);
@@ -252,21 +252,21 @@ describe('Outcome: git diff base..head of the thread outcome', () => {
       hunks: [],
       note: expect.stringMatching(/no outcome/),
     });
-    const plain = setup({ git: false });
+    const plain = await setup({ git: false });
     expect((await plain.service.list('t1', 'outcome')).git).toBe(false);
   });
 });
 
 describe('pending review comments', () => {
-  it('are replaced as a whole and come back in order', () => {
-    const ctx = setup({ git: false });
+  it('are replaced as a whole and come back in order', async () => {
+    const ctx = await setup({ git: false });
     const a = { id: 'a', file: 'x.ts', side: 'new' as const, line: 3, snippet: 's', text: 'one' };
     const b = { id: 'b', file: 'y.ts', side: 'old' as const, line: 1, snippet: 't', text: 'two' };
-    ctx.service.putComments('t1', [b, a]);
-    expect(ctx.service.comments('t1')).toEqual([b, a]);
-    ctx.service.putComments('t1', [a]);
-    expect(ctx.service.comments('t1')).toEqual([a]);
-    ctx.repo.clearComments('t1');
-    expect(ctx.service.comments('t1')).toEqual([]);
+    await ctx.service.putComments('t1', [b, a]);
+    expect(await ctx.service.comments('t1')).toEqual([b, a]);
+    await ctx.service.putComments('t1', [a]);
+    expect(await ctx.service.comments('t1')).toEqual([a]);
+    await ctx.repo.clearComments('t1');
+    expect(await ctx.service.comments('t1')).toEqual([]);
   });
 });

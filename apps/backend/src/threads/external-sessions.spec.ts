@@ -19,7 +19,7 @@ import {
   type TranscriptCache,
 } from './external-sessions';
 
-vi.mock('../pi/load-pi', () => ({ loadPi: () => import('@earendil-works/pi-coding-agent') }));
+vi.mock('../pi/load-pi', () => ({ loadPi: async () => await import('@earendil-works/pi-coding-agent') }));
 vi.mock('node:child_process', async (original) => ({
   ...(await original<typeof import('node:child_process')>()),
   spawn: vi.fn(),
@@ -227,7 +227,7 @@ describe('external session history', () => {
         nextCursor: null,
       };
     });
-    const codex: typeof withCodex = (use) => use(call);
+    const codex: typeof withCodex = async (use) => await use(call);
     const result = await discoverExternalSessions(root, {
       claudeRoot: root,
       codex,
@@ -259,7 +259,7 @@ describe('external session history', () => {
             nextCursor: 'page2',
           };
     });
-    const reader: typeof withCodex = (use) => use(call);
+    const reader: typeof withCodex = async (use) => await use(call);
     const first = await loadCodexSnapshot(snapshot, reader);
     expect(first.messages.map((message) => message.text)).toEqual(['Do it', 'Done']);
     expect(call.mock.calls.map(([method]) => method)).toEqual([
@@ -296,7 +296,7 @@ describe('external session history', () => {
         },
       };
     });
-    const reader: typeof withCodex = (use) => use(call);
+    const reader: typeof withCodex = async (use) => await use(call);
     const first = (await discoverExternalSessions(root, { claudeRoot: root, codex: reader })).sessions[0];
     expect((await loadCodexSnapshot(first, reader)).messages[0].text).toBe('Native context');
     call.mockClear();
@@ -331,7 +331,7 @@ describe('external session history', () => {
         },
       };
     });
-    const reader: typeof withCodex = (use) => use(call);
+    const reader: typeof withCodex = async (use) => await use(call);
     expect((await loadCodexSnapshot(snapshot, reader)).messages[0].text).toBe('Legacy context');
     expect(call).toHaveBeenCalledWith('thread/read', { threadId: 'native', includeTurns: true });
     call.mockClear();
@@ -358,7 +358,7 @@ describe('external session history', () => {
       if (request.id !== undefined)
         queueMicrotask(() => child.stdout.write(JSON.stringify({ id: request.id, result: { data: [] } }) + '\n'));
     });
-    expect(await withCodex((call) => call('thread/list', { cwd: '/project' }))).toEqual({ data: [] });
+    expect(await withCodex(async (call) => await call('thread/list', { cwd: '/project' }))).toEqual({ data: [] });
     expect(methods).toEqual(['initialize', 'initialized', 'thread/list']);
     expect(child.kill).toHaveBeenCalledTimes(1);
   });
@@ -372,7 +372,7 @@ describe('external session history', () => {
     });
     vi.mocked(spawn).mockReturnValueOnce(child as unknown as ReturnType<typeof spawn>);
     child.stdin.on('data', () => queueMicrotask(() => child.stdout.write('invalid JSON\n')));
-    await expect(withCodex((call) => call('thread/list', {}))).rejects.toThrow('Invalid response');
+    await expect(withCodex(async (call) => await call('thread/list', {}))).rejects.toThrow('Invalid response');
     expect(child.kill).toHaveBeenCalledTimes(1);
   });
 
@@ -398,7 +398,9 @@ describe('external session history', () => {
           ),
         );
     });
-    await expect(withCodex((call) => call('thread/items/list', {}))).rejects.toMatchObject({ code: -32601 });
+    await expect(withCodex(async (call) => await call('thread/items/list', {}))).rejects.toMatchObject({
+      code: -32601,
+    });
     expect(child.kill).toHaveBeenCalledTimes(1);
   });
 

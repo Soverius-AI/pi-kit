@@ -40,7 +40,7 @@ describe('credential storage confirmation', () => {
     });
   });
 
-  it('presents credential storage as an opt-in that protects credentials now and encrypts the database after restart', async () => {
+  it('presents credential storage as a separate opt-in without promising database encryption', async () => {
     secrets.status.set({ available: false, credentialsEnabled: false, label: 'macOS Keychain' });
     const f = TestBed.createComponent(AdvancedSection);
     f.detectChanges();
@@ -54,7 +54,8 @@ describe('credential storage confirmation', () => {
     el.querySelector<HTMLButtonElement>('[data-testid=credential-storage-confirm]')!.click();
     await f.whenStable();
     expect(secrets.setCredentialStorage).toHaveBeenCalledWith(true);
-    expect(text).toContain('next restart');
+    expect(text).toContain('does not enable database encryption');
+    expect(text).not.toContain('next restart');
     expect(el.querySelector('[data-testid=database-encryption-toggle]')).toBeNull();
   });
 
@@ -70,8 +71,8 @@ describe('credential storage confirmation', () => {
     const dialog = el.querySelector('[role=alertdialog]')!;
     expect(dialog.getAttribute('aria-modal')).toBe('true');
     expect(dialog.textContent).toContain('plain text');
-    expect(dialog.textContent).toContain('never decrypted');
-    expect(dialog.textContent).toContain('still require their original key');
+    expect(dialog.textContent).toContain('does not decrypt or replace existing encrypted');
+    expect(dialog.textContent).toContain('explicit offline migration');
     expect(secrets.setCredentialStorage).not.toHaveBeenCalled();
     dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     f.detectChanges();

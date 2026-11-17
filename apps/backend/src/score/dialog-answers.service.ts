@@ -14,9 +14,9 @@ export class DialogAnswersService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    this.off = this.sessions.onDialogAnswered((threadId, { request, answer }) => {
+    this.off = this.sessions.onDialogAnswered(async (threadId, { request, answer }) => {
       const noted = answerFromDialog(request, answer);
-      if (noted) this.signals.noteAnswer(threadId, Date.now(), noted);
+      if (noted) await this.signals.noteAnswer(threadId, Date.now(), noted);
     });
   }
 

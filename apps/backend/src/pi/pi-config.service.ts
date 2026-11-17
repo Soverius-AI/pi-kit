@@ -238,7 +238,7 @@ export class PiConfigService {
   async startLogin(
     provider: string,
     type: 'api_key' | 'oauth',
-    onSignedIn?: () => void,
+    onSignedIn?: () => void | Promise<void>,
     withRuntime?: ModelRuntime,
   ): Promise<LoginRun> {
     if (provider === 'anthropic' && type !== 'api_key')
@@ -273,10 +273,10 @@ export class PiConfigService {
           pi.SettingsManager.create(homedir(), pi.getAgentDir(), { projectTrusted: false }).getOrCreateDeviceId(),
       })
       .then(
-        () => {
+        async () => {
           this.logger.log(`Signed in to ${provider} (${type})`);
           try {
-            onSignedIn?.();
+            await onSignedIn?.();
           } catch (error) {
             this.logger.warn(
               `Could not record when ${provider} was signed in: ${error instanceof Error ? error.message : String(error)}`,
@@ -430,7 +430,7 @@ export class PiConfigService {
     const secrets = this.secrets;
     if (!secrets?.store.available())
       throw new Error('There is no credential store on this machine to move the keys into.');
-    if (!secrets.credentialsEnabled())
+    if (!(await secrets.credentialsEnabled()))
       throw new Error('Credential-store storage is disabled. Enable it before moving keys.');
     const pi = await loadPi();
     const runtime = await createApiKeyOnlyRuntime(pi);

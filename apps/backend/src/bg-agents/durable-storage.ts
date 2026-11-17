@@ -12,14 +12,8 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import type { SqliteDatabase, SqliteExecutor, SqliteValue } from '@earendil-works/pi-durable/storage/sqlite';
-import Database from 'better-sqlite3-multiple-ciphers';
-import {
-  assertNoPendingDatabaseTransition,
-  encryptDatabaseFile,
-  isPlainDatabase,
-  useKey,
-  type EncryptResult,
-} from '../db/encryption';
+import { AsyncSqlite } from '../db/async-sqlite';
+import { assertNoPendingDatabaseTransition, isPlainDatabase } from '../db/encryption';
 
 /** The durable store of the background agents and the owner's note next to it, both in `PI_KIT_DATA_DIR`. */
 export const STORE_FILE = 'bg-agents.sqlite';
@@ -32,60 +26,49 @@ const OWNER_MUTEX = 'bg-agents-owner-lock.sqlite';
  * Open pi-durable with the app database's protection, including explicit startup transitions.
  * The caller must hold the owner lock before opening/migrating. No credential store is queried here.
  */
-export function openDurableStore(path: string, key?: string): SqliteDatabase {
+export async function openDurableStore(path: string, _key?: string): Promise<SqliteDatabase> {
   assertNoPendingDatabaseTransition(path);
-  let transition: EncryptResult | undefined;
-  if (existsSync(path) && statSync(path).size > 0) {
-    const plain = isPlainDatabase(path);
-    if (plain && key) transition = encryptDatabaseFile(path, key);
-    else if (!plain && !key) {
-      throw new Error(
-        'The original key is required to open the encrypted background agents store. Original data was retained.',
-      );
-    }
+  if (existsSync(path) && statSync(path).size > 0 && !isPlainDatabase(path)) {
+    throw new Error(
+      'Encrypted background agents store retained unchanged. Use the previous encrypted release and original key to export/recover it before opening with the async SQLite driver.',
+    );
   }
-  let opening: Database.Database | undefined;
+  const connection = await AsyncSqlite.open(path);
   try {
-    opening = new Database(path, { timeout: 5000 });
-    const connection = opening;
-    chmodSync(path, 0o600); // WAL/SHM inherit the private database mode.
-    if (key) useKey(connection, key);
-    connection.prepare('SELECT count(*) FROM sqlite_master').get();
-    if (connection.pragma('journal_mode = WAL', { simple: true }) !== 'wal')
-      throw new Error('WAL journaling is unavailable for the agents store.');
-    connection.pragma('synchronous = NORMAL');
+    await connection.pragma('busy_timeout = 5000');
+    chmodSync(path, 0o600);
+    await connection.pragma('journal_mode = WAL');
+    await connection.pragma('synchronous = NORMAL');
   } catch (error) {
-    opening?.close();
-    transition?.restoreOriginal();
+    await connection.close();
     throw error;
   }
-  // Only discard after the replacement has opened and its runtime pragmas succeeded.
-  try {
-    transition?.discardOriginal();
-  } catch (error) {
-    opening.close();
-    throw error; // Keep any recovery original; never hide cleanup failure.
-  }
-  const connection = opening;
   let tail: Promise<unknown> = Promise.resolve();
   let closing: Promise<void> | undefined;
   const executor = (active: () => boolean): SqliteExecutor => {
-    const run = <T>(operation: () => T): Promise<T> => {
+    const run = <T>(operation: () => Promise<T>): Promise<T> => {
       if (!active()) return Promise.reject(new Error('The transaction has ended.'));
       try {
-        return Promise.resolve(operation());
+        return operation();
       } catch (error) {
         return Promise.reject(error);
       }
     };
     return {
-      exec: (sql) => run(() => void connection.exec(sql)),
-      run: (sql, ...params: SqliteValue[]) => run(() => void connection.prepare(sql).run(...params)),
-      runCounted: (sql, ...params: SqliteValue[]) => run(() => connection.prepare(sql).run(...params).changes),
+      exec: (sql) =>
+        run(async () => {
+          await connection.exec(sql);
+        }),
+      run: (sql, ...params: SqliteValue[]) =>
+        run(async () => {
+          await connection.prepare(sql).run(...params);
+        }),
+      runCounted: (sql, ...params: SqliteValue[]) =>
+        run(async () => (await connection.prepare(sql).run(...params)).changes),
       get: <T extends object>(sql: string, ...params: SqliteValue[]) =>
-        run(() => connection.prepare(sql).get(...params) as T | undefined),
+        run(async () => (await connection.prepare(sql).get(...params)) as T | undefined),
       all: <T extends object>(sql: string, ...params: SqliteValue[]) =>
-        run(() => connection.prepare(sql).all(...params) as T[]),
+        run(async () => (await connection.prepare(sql).all(...params)) as T[]),
     };
   };
   const direct = executor(() => true);
@@ -106,17 +89,17 @@ export function openDurableStore(path: string, key?: string): SqliteDatabase {
     all: (sql, ...params) => enqueue(() => direct.all(sql, ...params)),
     transaction: (callback) =>
       enqueue(async () => {
-        connection.exec('BEGIN IMMEDIATE');
+        await connection.exec('BEGIN IMMEDIATE');
         let active = true;
         try {
           const value = await callback(executor(() => active));
           active = false;
-          connection.exec('COMMIT');
+          await connection.exec('COMMIT');
           return value;
         } catch (error) {
           active = false;
           try {
-            connection.exec('ROLLBACK');
+            await connection.exec('ROLLBACK');
           } catch (rollback) {
             throw new AggregateError([error, rollback], 'The transaction failed and could not be rolled back.', {
               cause: rollback,
@@ -126,11 +109,11 @@ export function openDurableStore(path: string, key?: string): SqliteDatabase {
         }
       }),
     close: () => {
-      closing ??= tail.then(() => {
+      closing ??= tail.then(async () => {
         try {
-          connection.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+          await connection.exec('PRAGMA wal_checkpoint(TRUNCATE)');
         } finally {
-          connection.close();
+          await connection.close();
         }
       });
       return closing;
@@ -141,7 +124,7 @@ export function openDurableStore(path: string, key?: string): SqliteDatabase {
 export interface OwnerLock {
   /** Grows with every owner of the store; rows this backend writes to `bg_agents` carry it. */
   epoch: number;
-  release(): void;
+  release(): Promise<void>;
 }
 
 /** Thrown by `takeOwnerLock` while another live process owns the store. */
@@ -175,10 +158,10 @@ const notedPid = (path: string): number | undefined => {
  * while held, so contenders can read its schema without preventing acquisition. A separate database commits the fencing
  * epoch under that lock; the diagnostic note has no admission or epoch authority.
  */
-export function takeOwnerLock(dir: string): OwnerLock {
+export async function takeOwnerLock(dir: string): Promise<OwnerLock> {
   mkdirSync(dir, { recursive: true });
   const note = join(dir, LOCK_FILE);
-  let connection: Database.Database | undefined;
+  let connection: AsyncSqlite | undefined;
   let epoch: number;
   try {
     const mutex = join(dir, OWNER_MUTEX);
@@ -186,11 +169,11 @@ export function takeOwnerLock(dir: string): OwnerLock {
     if (!existsSync(mutex)) {
       const seedPath = `${mutex}.${randomUUID()}`;
       try {
-        const seed = new Database(seedPath, { timeout: 0 });
+        const seed = await AsyncSqlite.open(seedPath);
         try {
-          seed.pragma('user_version = 1');
+          await seed.pragma('user_version = 1');
         } finally {
-          seed.close();
+          await seed.close();
         }
         try {
           linkSync(seedPath, mutex);
@@ -201,29 +184,30 @@ export function takeOwnerLock(dir: string): OwnerLock {
         rmSync(seedPath, { force: true });
       }
     }
-    connection = new Database(mutex, { timeout: 0 });
+    connection = await AsyncSqlite.open(mutex);
     // A reserved writer lock excludes other owners while allowing their schema reads. Keep this transaction open until release.
-    connection.exec('BEGIN IMMEDIATE');
-    const counter = new Database(join(dir, OWNER_FILE), { timeout: 0 });
+    await connection.pragma('busy_timeout = 0');
+    await connection.exec('BEGIN IMMEDIATE');
+    const counter = await AsyncSqlite.open(join(dir, OWNER_FILE));
     try {
       // Only the mutex holder opens the counter, so its committed epoch cannot contend with another contender's schema reads.
-      epoch = counter
-        .transaction(() => {
-          counter.exec(
+      epoch = await counter
+        .transaction(async () => {
+          await counter.exec(
             'CREATE TABLE IF NOT EXISTS owner (id INTEGER PRIMARY KEY CHECK (id = 1), epoch INTEGER NOT NULL)',
           );
-          const previous = counter.prepare('SELECT epoch FROM owner WHERE id = 1').get() as
+          const previous = (await counter.prepare('SELECT epoch FROM owner WHERE id = 1').get()) as
             { epoch: number } | undefined;
           const next = (previous?.epoch ?? 0) + 1;
-          counter.prepare('INSERT OR REPLACE INTO owner (id, epoch) VALUES (1, ?)').run(next);
+          await counter.prepare('INSERT OR REPLACE INTO owner (id, epoch) VALUES (1, ?)').run(next);
           return next;
         })
         .immediate();
     } finally {
-      counter.close();
+      await counter.close();
     }
   } catch (error) {
-    connection?.close();
+    await connection?.close();
     if (['SQLITE_BUSY', 'SQLITE_LOCKED'].includes((error as { code?: string }).code ?? ''))
       throw new StoreOwnedError(notedPid(note));
     throw error;
@@ -244,7 +228,7 @@ export function takeOwnerLock(dir: string): OwnerLock {
   let released = false;
   return {
     epoch,
-    release: () => {
+    release: async () => {
       if (released) return;
       released = true;
       try {
@@ -252,7 +236,7 @@ export function takeOwnerLock(dir: string): OwnerLock {
       } catch {
         /* A diagnostic failure must not prevent release. */
       } finally {
-        connection.close();
+        await connection.close();
       }
     },
   };

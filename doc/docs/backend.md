@@ -41,8 +41,8 @@ Three facts about the folders that are easy to get wrong:
 - **A folder is a module.** `<domain>.module.ts` lists the folder's controllers and providers, imports the modules it
   needs and exports only the services another module injects. `app/app.module.ts` imports every feature module; that
   list is the one place a new domain is registered. Four modules are `@Global()`: config,
-  the secret store, the secrets policy and the desktop bridge, because the database needs the store before any
-  module initialises and every service may need the config.
+  the secret store, the secrets policy and the desktop bridge; every service may need the config or desktop capabilities.
+  The database provider awaits opening, migrations and identity hydration before consumers are constructed.
 - **Domains reach each other through exports.** `bg-agents` injects `ThreadsService`, `learn` injects `AguiService`,
   `score` injects `LearnService`. The import graph has no cycle and no `forwardRef`. The few cross-folder imports
   that are not a service are pure helpers: `worktree/worktree-git.ts` and `worktree-paths.ts`, `threads/session-files.ts`,
@@ -178,23 +178,20 @@ and `session-ui.ts` binds the extension UI before use. Application listener poli
 are implementation owners in the existing folder, without additional Nest modules or dependency-injection layers.
 
 **`db/`: SQLite.** `DatabaseService` owns the one connection (`pi-kit.sqlite` in the data folder), in WAL mode, and
-applies the SQL files of `db/migrations/` in name order at construction, each once, all in one `BEGIN IMMEDIATE`
+applies the SQL files of `db/migrations/` in name order during awaited startup, each once, all in one `BEGIN IMMEDIATE`
 transaction (two processes opening a fresh file do not both create the tables), recorded in `schema_migrations` with a
 hash of the SQL (comments and spacing left out). `0001_init.sql` is followed by migrations for run snapshots, agent spans, instance identity and reciprocal peers.
+Database operations use AppThreat's `@appthreat/sqlite3` through the Promise-only `AsyncSqlite` façade, not a synchronous driver wrapped in `async`. One queue owns each connection and an awaited transaction owns it through commit or rollback. Await every query and repository call; put read/check/write guards and write/read return snapshots in one transaction, and await each SQL operation in loops. `DatabaseService.durable()` fences FULL-synchronous commits for security-sensitive writes. The local `instanceId` remains a synchronous immutable getter after startup hydration.
+
+Fresh `pi-kit.sqlite` and `bg-agents.sqlite` files are private plaintext storage, independent of provider credential-store settings. Encrypted or unrecognized existing profile databases and pending encryption-transition artifacts are refused before opening; originals are retained, not reset or decrypted. Opening an encrypted profile requires a deliberately chosen offline export with the previous encryption-capable build and original key, then validation before migration to plaintext. There is no turnkey conversion command supplied by this change ([ADR-0037](adr/0037-async-sqlite.md)).
+
 A database that recorded a missing migration or a different SQL hash is refused and retained; the error advises using
 the matching app version or restoring a compatible backup, not deleting the database. `MaintenanceRepository` prunes what grows with use
 once a day: attendant activity after 90 days, finished runs but each thread's newest, settled follow-up prompts but each
 thread's newest, terminal screens of folders that are gone or unopened for 30 days, and replay logs whose thread or
 background agent is gone. Deleting a thread is one transaction in `ThreadsRepository.delete`, used by both the Delete
 action and the pass that finds a session file gone; background agents follow through `ThreadsService.onDeleted`.
-Whether the file is encrypted follows the storage preference (Settings › Advanced, kept in `<data dir>/security.json`):
-with credential storage on, it is encrypted at rest (`better-sqlite3-multiple-ciphers`) with a random key kept in
-the store as `pi-kit/db` ([ADR-0019](adr/0019-secrets-at-rest.md)); a fresh macOS profile starts plain. A file that
-is already encrypted stays encrypted and needs its original key; nothing is decrypted or replaced on failure.
-
-`EventLogRepository` uses Drizzle on `DatabaseService.orm`, which shares the same connection.
-SQLite generates replay event IDs; IDs increase within each thread and may have gaps when other threads write.
-The SQL migrations, not Drizzle, own the schema.
+`EventLogRepository` uses the same async connection. SQLite generates replay event IDs; IDs increase within each thread and may have gaps when other threads write. SQL migrations own the schema; Drizzle schema declarations supply row types rather than a synchronous runtime connection.
 
 `DbModule` provides and exports the app repositories below. It also provides `MaintenanceRepository` for scheduled
 cleanup without exporting it. `BgAgentsRepository` is provided by its own domain module:
@@ -289,7 +286,7 @@ What each folder owns, its HTTP surface, and what is particular about it. The ro
 5. **Use it in the renderer** through the generated operation, from a store in a `data` library; never through a
    hand-written fetch ([Repository structure](structure.md#generated-http-api-and-configuration-adr-0027)).
 6. **Test the service**, not the route: a `*.spec.ts` next to the service that constructs it with `new` and the
-   repositories it needs on a temporary database (`new DatabaseService({ dataDir })` on an `mkdtemp` folder, as
+   repositories it needs on a temporary database (`await DatabaseService.create({ dataDir })` on an `mkdtemp` folder, as
    `threads/threads.service.spec.ts` does). The request path is covered once, by `contract/contract.spec.ts`.
 
 ### Add a domain
@@ -312,7 +309,8 @@ What each folder owns, its HTTP surface, and what is particular about it. The ro
    between them, and methods that are single statements or one transaction. Text a person typed goes through `redact()`
    before it is stored (`threads.repository.ts` is the example).
 3. Provide and export it in `DbModule`. Nothing else is needed; `DatabaseService` is already open when the
-   repository's constructor runs, so prepared statements can be made there.
+   repository's constructor runs. Constructors may create statement handles but must not issue queries. Await
+   repository methods and `db.onApplicationShutdown()` before deleting a test's temporary directory.
 
 ### Add a stream
 
@@ -388,7 +386,7 @@ factory parameters match `inject`, injectable provided tokens, route parameter n
 written `void this.reconcile()` with a comment that says why.
 
 **Build.** One CommonJS esbuild bundle (`nx build backend`, target `node24`) with the native packages external
-(`better-sqlite3-multiple-ciphers`, `node-pty`, `@napi-rs/keyring`, `keychain-store`); `apps/backend-runtime`
+(`@appthreat/sqlite3`, `node-pty`, `@napi-rs/keyring`, `keychain-store`); `apps/backend-runtime`
 provisions those per platform for the packaged app. Nest 12's packages are ESM and are loaded through Node's
 `require(esm)`; pi is loaded with a dynamic `import()`. The second entry of the bundle,
 `openapi.js`, writes the document ([ADR-0022](adr/0022-latest-dependencies.md)).

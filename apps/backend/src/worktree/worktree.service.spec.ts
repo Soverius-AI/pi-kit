@@ -29,7 +29,7 @@ const git = (cwd: string, ...args: string[]): string =>
     encoding: 'utf8',
   });
 
-beforeEach(() => {
+beforeEach(async () => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-wt-')));
   project = join(base, 'proj');
   mkdirSync(project);
@@ -40,9 +40,9 @@ beforeEach(() => {
   git(project, 'commit', '-q', '-m', 'first');
   process.env['PI_KIT_WORKTREE_ROOT'] = join(base, 'worktrees');
   process.env['PI_KIT_GH'] = 'none';
-  db = new DatabaseService({ dataDir: join(base, 'data') });
+  db = await DatabaseService.create({ dataDir: join(base, 'data') });
   const meta = new MetaRepository(db);
-  meta.touchWorkspace(project);
+  await meta.touchWorkspace(project);
   threads = new ThreadsRepository(db);
   terminals = { start: vi.fn(), write: vi.fn(), kill: vi.fn() };
   sessions = { has: () => false, isStreaming: () => false, dispose: vi.fn() };
@@ -61,8 +61,8 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
-  db.onApplicationShutdown();
+afterEach(async () => {
+  await db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
   if (oldRoot === undefined) delete process.env['PI_KIT_WORKTREE_ROOT'];
   else process.env['PI_KIT_WORKTREE_ROOT'] = oldRoot;
@@ -73,14 +73,14 @@ afterEach(() => {
 /** A thread in a new worktree, as ThreadsService makes it. */
 async function newThread(id: string, title?: string): Promise<ThreadRow> {
   const facts = await service.create(project, { threadId: id, ...(title ? { title } : {}), request: {} });
-  threads.insertDraft({
+  await threads.insertDraft({
     id,
     sessionPath: join(base, `${id}.jsonl`),
     cwd: facts.path,
     ...(title ? { title } : {}),
     worktree: facts,
   });
-  return threads.get(id) as ThreadRow;
+  return (await threads.get(id)) as ThreadRow;
 }
 
 describe('create', () => {
@@ -114,7 +114,7 @@ describe('create', () => {
 
   it('runs the project setup command in the new folder through its terminal', async () => {
     const meta = new MetaRepository(db);
-    meta.setWorktreeSettings(project, { setup: 'npm ci' });
+    await meta.setWorktreeSettings(project, { setup: 'npm ci' });
     const facts = await service.create(project, { threadId: '66666666-aaaa', request: {} });
     expect(terminals.start).toHaveBeenCalledWith(facts.path, expect.any(Number), expect.any(Number));
     expect(terminals.write).toHaveBeenCalledWith(facts.path, 'npm ci\r');
@@ -141,7 +141,7 @@ describe('create', () => {
       base: 'main',
       exists: true,
     });
-    expect(service.settingsOf(project)).toMatchObject({
+    expect(await service.settingsOf(project)).toMatchObject({
       root: null,
       base: null,
       setup: null,
@@ -192,7 +192,7 @@ describe('merge back', () => {
     // The worktree and its merged branch are gone; the thread carries on in the project.
     expect(existsSync(path)).toBe(false);
     expect(git(project, 'branch', '--list', 'pi-kit/reporting-adapter').trim()).toBe('');
-    const after = threads.get('88888888-aaaa') as ThreadRow;
+    const after = (await threads.get('88888888-aaaa')) as ThreadRow;
     expect(after.worktreePath).toBeNull();
     expect(after.cwd).toBe(project);
     expect(sessions.dispose).toHaveBeenCalledWith('88888888-aaaa');
@@ -311,7 +311,7 @@ describe('remove', () => {
     const row = await newThread('12121212-aaaa', 'Clean');
     expect(await service.remove(row, { force: false })).toEqual({ removed: true });
     expect(existsSync(row.worktreePath as string)).toBe(false);
-    expect((threads.get(row.id) as ThreadRow).worktreePath).toBeNull();
+    expect(((await threads.get(row.id)) as ThreadRow).worktreePath).toBeNull();
     // The branch is kept: removing the folder is not discarding the work.
     expect(git(project, 'branch', '--list', 'pi-kit/clean').trim()).toContain('pi-kit/clean');
   });
@@ -329,6 +329,6 @@ describe('remove', () => {
     const row = await newThread('56565656-aaaa', 'Gone');
     rmSync(row.worktreePath as string, { recursive: true, force: true });
     expect(await service.remove(row, { force: false })).toEqual({ removed: true });
-    expect((threads.get(row.id) as ThreadRow).worktreePath).toBeNull();
+    expect(((await threads.get(row.id)) as ThreadRow).worktreePath).toBeNull();
   });
 });

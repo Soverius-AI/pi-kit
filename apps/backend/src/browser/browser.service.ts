@@ -49,24 +49,24 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
   }
 
   async state(threadId: string): Promise<BrowserState> {
-    this.requireThread(threadId);
+    await this.requireThread(threadId);
     return (await this.desktop.browser(threadId)).state;
   }
 
   async run(threadId: string, action: BrowserAction, signal?: AbortSignal): Promise<BrowserResult> {
-    this.requireThread(threadId);
+    await this.requireThread(threadId);
     return this.drive(threadId, action, signal);
   }
 
   /** The page this desktop shows for a thread of a paired instance. The thread lives there; the page lives here. */
   async peerState(peerId: string, threadId: string): Promise<BrowserState> {
-    this.requirePeer(peerId);
+    await this.requirePeer(peerId);
     return (await this.desktop.browser(threadId)).state;
   }
 
   /** Drives that page. A loopback address means the paired computer, so it is opened at that computer's tailnet name. */
   async peerRun(peerId: string, threadId: string, action: BrowserAction, signal?: AbortSignal): Promise<BrowserResult> {
-    const host = new URL(this.requirePeer(peerId).identity.origin).hostname;
+    const host = new URL((await this.requirePeer(peerId)).identity.origin).hostname;
     const url = action.action === 'navigate' && action.url ? LoopbackUrl.toHost(action.url, host) : undefined;
     return this.drive(threadId, url ? { ...action, url } : action, signal);
   }
@@ -79,23 +79,23 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         ...action,
         format:
           action.format ??
-          ScreenshotFormatSchema.safeParse(this.meta.getSetting('screenshotFormat')).data ??
+          ScreenshotFormatSchema.safeParse(await this.meta.getSetting('screenshotFormat')).data ??
           DEFAULT_SCREENSHOT_FORMAT,
         quality:
           action.quality ??
-          ScreenshotQualitySchema.safeParse(this.meta.getSetting('screenshotQuality')).data ??
+          ScreenshotQualitySchema.safeParse(await this.meta.getSetting('screenshotQuality')).data ??
           DEFAULT_SCREENSHOT_QUALITY,
       };
     }
     return this.desktop.browser(threadId, action, signal);
   }
 
-  private requireThread(id: string): void {
-    if (!this.threads.get(id)) throw new NotFoundException('There is no such thread.');
+  private async requireThread(id: string): Promise<void> {
+    if (!(await this.threads.get(id))) throw new NotFoundException('There is no such thread.');
   }
 
-  private requirePeer(id: string): PeerRecord {
-    const peer = this.peers.get(id);
+  private async requirePeer(id: string): Promise<PeerRecord> {
+    const peer = await this.peers.get(id);
     if (peer?.state !== 'active') throw new NotFoundException('There is no such paired instance.');
     return peer;
   }

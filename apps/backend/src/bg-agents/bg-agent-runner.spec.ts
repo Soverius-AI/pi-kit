@@ -16,13 +16,14 @@ import { BgAgentRunner, type BgAgentActions } from './bg-agent-runner';
 let dir: string;
 let database: DatabaseService;
 let runner: BgAgentRunner;
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'pk-bg-runner-'));
-  database = new DatabaseService({ dataDir: dir });
+  database = await DatabaseService.create({ dataDir: dir });
   runner = new BgAgentRunner(new EventLogRepository(database));
 });
-afterEach(() => {
-  database.onApplicationShutdown();
+afterEach(async () => {
+  await runner.close();
+  await database.onApplicationShutdown();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -50,9 +51,9 @@ function stream(first = view()) {
 describe('BgAgentRunner (the AG-UI agent pi-bg)', () => {
   it('stores a followed agent’s events under its id, replays them with cursors, and follows the live feed', async () => {
     const s = stream();
-    runner.attach('7', s);
-    expect(runner.owns('7')).toBe(true);
-    expect(runner.owns('t1')).toBe(false);
+    await runner.attach('7', s);
+    expect(await runner.owns('7')).toBe(true);
+    expect(await runner.owns('t1')).toBe(false);
     // A connection stays open while the agent is followed: what is stored comes first, the live feed after it.
     const live = firstValueFrom(runner.connect({ threadId: '7', agentId: 'pi-bg' } as never).pipe(toArray()));
     const input = {
@@ -93,14 +94,13 @@ describe('BgAgentRunner (the AG-UI agent pi-bg)', () => {
     const s = stream();
     const told = vi.fn();
     runner.onLive = told;
-    runner.attach('7', s);
+    await runner.attach('7', s);
     expect(runner.liveSyncsOf('7')).toBe(0);
     // A client that saw the attachment and left: the agent is idle, so it is not connected when the change comes.
     const seen: BaseEvent[] = [];
-    runner
-      .connect({ threadId: '7', agentId: 'pi-bg' } as never)
-      .subscribe((event) => seen.push(event))
-      .unsubscribe();
+    const first = runner.connect({ threadId: '7', agentId: 'pi-bg' } as never).subscribe((event) => seen.push(event));
+    await vi.waitFor(() => expect(seen.length).toBe(5));
+    first.unsubscribe();
     const cursor = (seen.at(-1)?.metadata as Record<string, string>)[REPLAY_CURSOR_METADATA];
     const inbox = { items: [{ id: 5, mode: 'followUp' }] };
     await s.emit(view([], {}, { 'pi.inbox': inbox }), [['s', ['docs', 'pi.inbox'], inbox]]);
@@ -108,10 +108,11 @@ describe('BgAgentRunner (the AG-UI agent pi-bg)', () => {
     expect(told).toHaveBeenCalledWith('7');
     // Told, it joins again from its cursor and gets the sync run from the log.
     const joined: BaseEvent[] = [];
-    runner
+    const second = runner
       .connect({ threadId: '7', agentId: 'pi-bg', headers: { [REPLAY_CURSOR_HEADER]: cursor } } as never)
-      .subscribe((event) => joined.push(event))
-      .unsubscribe();
+      .subscribe((event) => joined.push(event));
+    await vi.waitFor(() => expect(joined.length).toBe(4));
+    second.unsubscribe();
     expect(joined.map((event) => event.type)).toEqual([
       EventType.CUSTOM,
       EventType.RUN_STARTED,
@@ -119,7 +120,9 @@ describe('BgAgentRunner (the AG-UI agent pi-bg)', () => {
       EventType.RUN_FINISHED,
     ]);
     const log = new EventLogRepository(database);
-    const stored = log.read('7').map(({ event }) => event as { type: EventType; runId?: string; patch?: unknown });
+    const stored = (await log.read('7')).map(
+      ({ event }) => event as { type: EventType; runId?: string; patch?: unknown },
+    );
     expect(stored.map((event) => event.type)).toEqual([
       EventType.RUN_STARTED,
       EventType.MESSAGES_SNAPSHOT,
@@ -135,7 +138,7 @@ describe('BgAgentRunner (the AG-UI agent pi-bg)', () => {
     const run = { run: { taskId: 1, inputs: [1], turns: 0 } } as unknown as LiveState;
     await s.emit(view([], run, { 'pi.inbox': inbox }), [['s', ['docs', 'pi.live', 'run'], run.run as never]]);
     await s.emit(view([], {}, { 'pi.inbox': inbox }), [['d', ['docs', 'pi.live', 'run']]]);
-    const replay = log.read('7').map(({ event }) => event as { type: EventType; content?: unknown });
+    const replay = (await log.read('7')).map(({ event }) => event as { type: EventType; content?: unknown });
     expect(replay.at(-2)).toMatchObject({
       type: EventType.ACTIVITY_SNAPSHOT,
       content: { docs: { 'pi.inbox': inbox } },
@@ -144,10 +147,40 @@ describe('BgAgentRunner (the AG-UI agent pi-bg)', () => {
     await runner.detach('7');
   });
 
+  it('fails the producer closed after an append rejection and replays only the committed prefix', async () => {
+    const log = new EventLogRepository(database);
+    runner = new BgAgentRunner(log);
+    const s = stream();
+    await runner.attach('7', s);
+    const prefix = await log.read('7');
+    const seen: BaseEvent[] = [];
+    const errors: unknown[] = [];
+    const live = runner.connect({ threadId: '7', agentId: 'pi-bg' } as never).subscribe({
+      next: (event) => seen.push(event),
+      error: (error: unknown) => errors.push(error),
+    });
+    await vi.waitFor(() => expect(seen).toHaveLength(prefix.length + 1));
+    vi.spyOn(log, 'append').mockRejectedValueOnce(new Error('disk full'));
+    await expect(
+      s.emit(view([], {}, { inbox: { changed: true } }), [['s', ['docs', 'inbox'], { changed: true }]]),
+    ).rejects.toThrow('disk full');
+    expect(errors).toHaveLength(1);
+    expect(seen).toHaveLength(prefix.length + 1);
+    expect(runner.isRunning('7')).toBe(false);
+    await expect(s.emit(view())).rejects.toThrow('disk full');
+    expect(errors).toHaveLength(1);
+    expect(s.stop).toHaveBeenCalledTimes(1);
+    const replay = await firstValueFrom(runner.connect({ threadId: '7', agentId: 'pi-bg' } as never).pipe(toArray()));
+    expect(replay.slice(1).map((event) => event.type)).toEqual(prefix.map(({ event }) => event.type));
+    expect(await log.read('7')).toEqual(prefix);
+    live.unsubscribe();
+    await runner.close();
+  });
+
   it('a run of pi-bg is a message to the agent, a stop ends it', async () => {
     const actions: BgAgentActions = { send: vi.fn(async () => undefined), stop: vi.fn(async () => undefined) };
     runner.useActions(actions);
-    runner.attach('7', stream());
+    await runner.attach('7', stream());
     const events = await firstValueFrom(
       runner
         .run({

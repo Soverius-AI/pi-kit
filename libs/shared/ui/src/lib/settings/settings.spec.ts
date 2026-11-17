@@ -9,6 +9,7 @@ import {
   searchSettings,
   settingById,
   storageLabel,
+  storageTitle,
 } from './catalog';
 
 const entry = (id: string): SettingEntry => settingById(english, id) as SettingEntry;
@@ -172,6 +173,11 @@ describe('the settings catalog and its search', () => {
   it('says where a setting is stored', () => {
     expect(storageLabel(english, entry('auto-compaction'))).toBe('pi settings.json');
     expect(storageLabel(english, entry('theme'))).toBe('pi-kit database');
+    expect(storageLabel(english, entry('watchdog'))).toBe('pi-kit watchdog.json');
+    expect(storageTitle(english, entry('watchdog'))).toBe('Stored in watchdog.json in pi-kit’s data directory.');
+    expect(storageTitle(german, entry('watchdog'))).toBe(
+      'In watchdog.json im Datenverzeichnis von pi-kit gespeichert.',
+    );
     expect(storageLabel(english, { storage: 'project', file: 'mcp.json' })).toBe('project .pi/mcp.json');
     expect(storageLabel(english, entry('providers'))).toBe('pi auth.json');
   });

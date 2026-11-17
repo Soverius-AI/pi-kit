@@ -14,6 +14,7 @@ import { installOf } from './service-spec';
 import { DESKTOP_USAGE, type DesktopApp, runDesktopCli } from './desktop-cli';
 import { runLoginCli, runLogoutCli, runModelCli, SETTINGS_USAGE } from './settings-cli';
 import { type FinishPlan, runUpdateCli, UPDATE_USAGE } from './update-cli';
+import { runWatchdogCli, WATCHDOG_USAGE } from './watchdog-cli';
 
 export interface CliIo {
   out(text: string): void;
@@ -76,6 +77,7 @@ const GROUPS: Record<string, (args: string[], io: CliIo, ctx: CliContext) => Pro
   remote: runRemoteCli,
   serve,
   update: runUpdateCli,
+  watchdog: runWatchdogCli,
 };
 
 /** `status` exits with 3 when nothing runs, like `systemctl is-active` and LSB init scripts, so scripts can tell. */
@@ -94,6 +96,7 @@ Service commands (include "service" before the command):
   pi-kit service logs       Print the end of service.log and where the logs are
   pi-kit serve              Run it in this terminal instead, for a container or another supervisor
 ${UPDATE_USAGE}
+${WATCHDOG_USAGE}
 For example, use "pi-kit service logs", not "pi-kit logs".
 
 ${SETTINGS_USAGE}

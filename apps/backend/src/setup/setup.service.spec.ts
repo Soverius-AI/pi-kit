@@ -44,7 +44,7 @@ describe('onboarding completion', () => {
     'records only the %s flag and returns it on later detection',
     async (state) => {
       const f = fixture();
-      const value = f.service().setState(state);
+      const value = await f.service().setState(state);
       expect(value).toEqual({ state, at: expect.any(Number) });
       expect(f.meta.setSetting).toHaveBeenCalledExactlyOnceWith('onboarding', value);
       expect([...f.values.keys()]).toEqual(['onboarding']);

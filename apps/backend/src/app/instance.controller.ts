@@ -32,7 +32,7 @@ export class InstanceController {
     description: 'Stable owner identity and freely editable display name. Does not enable remote access.',
   })
   @Responds(EnvironmentSchema)
-  identity(): Environment {
+  identity(): Promise<Environment> {
     return this.instances.identity();
   }
 
@@ -42,7 +42,9 @@ export class InstanceController {
     description: 'Owner-only label change; identity, project paths, threads and publication are unchanged.',
   })
   @Responds(EnvironmentSchema)
-  rename(@Body({ schema: RenameEnvironmentSchema }) body: z.infer<typeof RenameEnvironmentSchema>): Environment {
+  rename(
+    @Body({ schema: RenameEnvironmentSchema }) body: z.infer<typeof RenameEnvironmentSchema>,
+  ): Promise<Environment> {
     return this.instances.rename(body.name);
   }
 
@@ -52,7 +54,7 @@ export class InstanceController {
     description: 'Private desktop-owner API; never proxied to a paired phone.',
   })
   @Responds(InstanceAccessPreferencesSchema)
-  access(): InstanceAccessPreferences {
+  access(): Promise<InstanceAccessPreferences> {
     return this.instances.preferences();
   }
 
@@ -64,7 +66,7 @@ export class InstanceController {
   @Responds(InstanceAccessPreferencesSchema)
   setAccess(
     @Body({ schema: InstanceAccessPreferencesSchema }) body: InstanceAccessPreferences,
-  ): InstanceAccessPreferences {
+  ): Promise<InstanceAccessPreferences> {
     return this.instances.setPreferences(body);
   }
 
@@ -74,10 +76,10 @@ export class InstanceController {
     description: 'Private desktop-owner callback after verifying Serve publication; never enables access itself.',
   })
   @Responds(z.object({ saved: z.literal(true) }))
-  endpoint(@Body({ schema: z.object({ origin: PeerOriginSchema }).strict() }) body: { origin: string }): {
+  async endpoint(@Body({ schema: z.object({ origin: PeerOriginSchema }).strict() }) body: { origin: string }): Promise<{
     saved: true;
-  } {
-    this.peers.setOrigin(body.origin);
+  }> {
+    await this.peers.setOrigin(body.origin);
     return { saved: true };
   }
 
@@ -88,7 +90,7 @@ export class InstanceController {
       'Private desktop-owner persistence API. Contains credential hashes and CSRF state, never raw device cookies. Not available to phones.',
   })
   @Responds(StoredDeviceGrantsSchema)
-  devices(): StoredDeviceGrant[] {
+  devices(): Promise<StoredDeviceGrant[]> {
     return this.instances.devices();
   }
 
@@ -99,8 +101,8 @@ export class InstanceController {
       'Private desktop-owner API; commit precedes issuing the device cookie. Revoked identities cannot be reactivated.',
   })
   @Responds(z.object({ saved: z.literal(true) }))
-  saveDevice(@Body({ schema: StoredDeviceGrantSchema }) body: StoredDeviceGrant): { saved: true } {
-    this.instances.saveDevice(body);
+  async saveDevice(@Body({ schema: StoredDeviceGrantSchema }) body: StoredDeviceGrant): Promise<{ saved: true }> {
+    await this.instances.saveDevice(body);
     return { saved: true };
   }
 
@@ -110,8 +112,8 @@ export class InstanceController {
     description: 'Private desktop-owner API; retains a revocation tombstone across restarts.',
   })
   @Responds(z.object({ revoked: z.literal(true) }))
-  revokeDevice(@Param('id') id: string): { revoked: true } {
-    this.instances.revokeDevice(id);
+  async revokeDevice(@Param('id') id: string): Promise<{ revoked: true }> {
+    await this.instances.revokeDevice(id);
     return { revoked: true };
   }
 }

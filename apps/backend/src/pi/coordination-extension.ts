@@ -15,9 +15,9 @@ export const COORDINATION_SECTION = 'other_agents';
  */
 export interface CoordinationHook {
   /** The text of "Other agents in this workspace" for the thread's next run, or `undefined` when no other agent is working here. */
-  section(threadId: string): string | undefined;
+  section(threadId: string): string | undefined | Promise<string | undefined>;
   /** What other threads changed in files this thread knows, since the last time it was told: one line per file. Taking them marks them told. */
-  notices(threadId: string): string[];
+  notices(threadId: string): string[] | Promise<string[]>;
 }
 
 /**
@@ -42,21 +42,21 @@ export function createCoordinationExtension(
       );
     }
 
-    api.on('before_agent_start', (event) => {
+    api.on('before_agent_start', async (event) => {
       const hook = options.hook();
       if (!hook) return undefined;
-      const section = hook.section(threadId);
+      const section = await hook.section(threadId);
       if (section) event.systemPromptOptions.sections[COORDINATION_SECTION] = section;
       else delete event.systemPromptOptions.sections[COORDINATION_SECTION];
-      const notices = hook.notices(threadId);
+      const notices = await hook.notices(threadId);
       if (notices.length === 0) return undefined;
       return { message: { customType: COORDINATION_NOTICE, content: notices.join('\n'), display: true } };
     });
 
-    api.on('turn_end', (event) => {
+    api.on('turn_end', async (event) => {
       // Only a turn with tool calls is followed by another request in the same run; after the last turn the notice waits for the next prompt.
       if (event.toolResults.length === 0) return undefined;
-      const notices = options.hook()?.notices(threadId) ?? [];
+      const notices = (await options.hook()?.notices(threadId)) ?? [];
       if (notices.length === 0) return undefined;
       return {
         entries: [

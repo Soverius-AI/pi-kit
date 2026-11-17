@@ -44,8 +44,8 @@ export class SecretsController {
       'Returns where keys can be kept (the keychain, or a file), which keys of the auth file could move there and whether the `pi-kit-secret` command is on PATH. Never a key.',
   })
   @Responds(SecretsStatusSchema)
-  status(): SecretsStatus {
-    return this.secrets.status();
+  async status(): Promise<SecretsStatus> {
+    return await this.secrets.status();
   }
 
   @Put('secrets/credential-storage')
@@ -87,8 +87,8 @@ export class SecretsController {
       'Allows credential operations again after an access failure. Does not read or modify a credential itself.',
   })
   @Responds(SecretsStatusSchema)
-  retry(): SecretsStatus {
-    return this.secrets.retryAccess();
+  async retry(): Promise<SecretsStatus> {
+    return await this.secrets.retryAccess();
   }
 
   /** "Move my existing keys into the keychain". Only on the person's click; one answer lists what moved and what stayed. */
@@ -133,7 +133,7 @@ export class SecretsController {
   })
   @Responds(SecretsProtectionSchema)
   async protection(): Promise<SecretsProtection> {
-    return { database: this.secrets.databaseProtection(), disk: await this.secrets.disk() };
+    return { database: await this.secrets.databaseProtection(), disk: await this.secrets.disk() };
   }
 
   /** The database key, once. A second call is refused. */
@@ -146,9 +146,9 @@ export class SecretsController {
   })
   @Responds(RecoveryKeySchema)
   @Fails({ 409: 'The recovery key was shown already, or there is none.' })
-  recoveryKey(): RecoveryKey {
+  async recoveryKey(): Promise<RecoveryKey> {
     try {
-      return this.secrets.recoveryKey();
+      return await this.secrets.recoveryKey();
     } catch (error) {
       throw new ConflictException(error instanceof Error ? error.message : String(error));
     }
@@ -164,7 +164,7 @@ export class SecretsController {
       'Returns the patterns the redaction pass applies beyond its built-in ones, the folders where it is off and the patterns that could not be used.',
   })
   @Responds(RedactionStateSchema)
-  redactionConfig(): RedactionState {
+  async redactionConfig(): Promise<RedactionState> {
     return this.redaction.current();
   }
 
@@ -175,7 +175,9 @@ export class SecretsController {
       'Replaces the redaction patterns and the folders where the pass is off, and answers with the settings and the patterns that could not be used.',
   })
   @Responds(RedactionStateSchema)
-  saveRedaction(@Body({ schema: RedactionConfigSchema }) body: z.infer<typeof RedactionConfigSchema>): RedactionState {
-    return this.redaction.save(body);
+  async saveRedaction(
+    @Body({ schema: RedactionConfigSchema }) body: z.infer<typeof RedactionConfigSchema>,
+  ): Promise<RedactionState> {
+    return await this.redaction.save(body);
   }
 }

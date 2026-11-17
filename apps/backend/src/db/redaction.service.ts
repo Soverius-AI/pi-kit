@@ -21,7 +21,7 @@ const SETTING = 'redaction';
  */
 @Injectable()
 export class RedactionService {
-  private config: RedactionConfig;
+  private config: RedactionConfig = DEFAULT_REDACTION;
   private extra: RedactionPattern[] = [];
   private errors: string[] = [];
   private readonly cwdOfThread = new Map<string, string>();
@@ -30,12 +30,16 @@ export class RedactionService {
     private readonly meta: MetaRepository,
     private readonly threads: ThreadsRepository,
   ) {
-    this.config = this.read();
     this.compile();
   }
 
-  private read(): RedactionConfig {
-    const parsed = RedactionConfigSchema.safeParse(this.meta.getSetting(SETTING) ?? {});
+  async onModuleInit(): Promise<void> {
+    this.config = await this.read();
+    this.compile();
+  }
+
+  private async read(): Promise<RedactionConfig> {
+    const parsed = RedactionConfigSchema.safeParse((await this.meta.getSetting(SETTING)) ?? {});
     return parsed.success ? parsed.data : DEFAULT_REDACTION;
   }
 
@@ -50,9 +54,10 @@ export class RedactionService {
   }
 
   /** Saves the configuration (Settings › Advanced); patterns that are not valid expressions are kept in the list, named in `errors`, and do nothing. */
-  save(config: RedactionConfig): { config: RedactionConfig; errors: string[] } {
-    this.config = RedactionConfigSchema.parse(config);
-    this.meta.setSetting(SETTING, this.config);
+  async save(config: RedactionConfig): Promise<{ config: RedactionConfig; errors: string[] }> {
+    const parsed = RedactionConfigSchema.parse(config);
+    await this.meta.setSetting(SETTING, parsed);
+    this.config = parsed;
     this.compile();
     return this.current();
   }
@@ -70,22 +75,22 @@ export class RedactionService {
     return !cwd || !this.config.offFor.includes(cwd);
   }
 
-  private cwdFor(threadId: string): string | undefined {
+  private async cwdFor(threadId: string): Promise<string | undefined> {
     let cwd = this.cwdOfThread.get(threadId);
     if (cwd === undefined) {
-      cwd = this.threads.get(threadId)?.cwd;
+      cwd = (await this.threads.get(threadId))?.cwd;
       if (cwd !== undefined) this.cwdOfThread.set(threadId, cwd);
     }
     return cwd;
   }
 
-  enabledForThread(threadId: string): boolean {
-    return this.enabledForCwd(this.cwdFor(threadId));
+  async enabledForThread(threadId: string): Promise<boolean> {
+    return this.enabledForCwd(await this.cwdFor(threadId));
   }
 
   /** An AG-UI event (or any JSON value) of a thread, with its strings redacted; the same object when the pass is off for the thread's folder. */
-  event<T>(threadId: string, event: T): T {
-    return this.enabledForThread(threadId) ? redactValue(event, this.extra) : event;
+  async event<T>(threadId: string, event: T): Promise<T> {
+    return (await this.enabledForThread(threadId)) ? redactValue(event, this.extra) : event;
   }
 
   text(cwd: string | undefined, text: string): string {

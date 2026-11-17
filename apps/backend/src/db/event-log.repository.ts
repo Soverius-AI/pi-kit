@@ -1,7 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { BaseEvent } from '@ag-ui/core';
-import { and, asc, count, desc, eq, getTableColumns, gt, isNotNull, lt, max, sql } from 'drizzle-orm';
 import { DatabaseService } from './database.service';
 import { runRecords, threadEvents } from './event-log.schema';
 import { RedactionService } from './redaction.service';
@@ -10,217 +9,163 @@ export type RunRow = typeof runRecords.$inferSelect;
 export type RunStatus = RunRow['status'];
 export type StoredEvent = Pick<typeof threadEvents.$inferSelect, 'seq' | 'runId' | 'event'>;
 
-/** The AG-UI replay log (`thread_events`) and the run lock rows (`runs`). */
+/** Async durable replay log. SQLite's partial unique index arbitrates run ownership. */
 @Injectable()
 export class EventLogRepository {
-  private readonly db: DatabaseService['orm'];
+  private readonly db: DatabaseService['db'];
   private readonly generations = new Map<string, string>();
   private readonly runListeners = new Set<(threadId: string, change: 'start' | 'end') => void>();
-
   constructor(
     database: DatabaseService,
-    /** Masks key shapes in what is written; absent in tests that do not care. */
     @Optional() private readonly redaction?: RedactionService,
   ) {
-    this.db = database.orm;
+    this.db = database.db;
   }
-
-  /** SQLite allocates the ID inside the insert; no application counter can become stale. */
-  append(threadId: string, runId: string | null, event: BaseEvent): number {
-    return this.db
-      .insert(threadEvents)
-      .values({
+  async append(threadId: string, runId: string | null, event: BaseEvent): Promise<number> {
+    const result = await this.db
+      .prepare('INSERT INTO thread_events(thread_id,run_id,event_json,type) VALUES(?,?,?,?)')
+      .run(
         threadId,
         runId,
-        event: this.redaction ? this.redaction.event(threadId, event) : event,
-        type: event.type,
-      })
-      .returning({ seq: threadEvents.seq })
-      .get().seq;
+        JSON.stringify(this.redaction ? await this.redaction.event(threadId, event) : event),
+        event.type,
+      );
+    return Number(result.lastInsertRowid);
   }
-
-  read(threadId: string): StoredEvent[] {
+  read(threadId: string): Promise<StoredEvent[]> {
     return this.readAfter(threadId, 0);
   }
-
   cursor(threadId: string, seq: number): string {
     let generation = this.generations.get(threadId);
     if (!generation) this.generations.set(threadId, (generation = randomUUID()));
     return `${generation}:${seq}`;
   }
-
-  /** Reject cursors from a restart, rebuilt branch, or a row removed by compaction. */
-  resolveCursor(threadId: string, cursor: string | undefined): number | undefined {
+  async resolveCursor(threadId: string, cursor: string | undefined): Promise<number | undefined> {
     if (!cursor) return undefined;
     const split = cursor.lastIndexOf(':');
     const seq = Number(cursor.slice(split + 1));
     if (split < 0 || !Number.isSafeInteger(seq) || seq < 0 || cursor !== this.cursor(threadId, seq)) return undefined;
-    if (seq === 0) return this.count(threadId) === 0 ? 0 : undefined;
-    return this.db
-      .select({ seq: threadEvents.seq })
-      .from(threadEvents)
-      .where(and(eq(threadEvents.threadId, threadId), eq(threadEvents.seq, seq)))
-      .get()
+    if (seq === 0) return (await this.count(threadId)) === 0 ? 0 : undefined;
+    return (await this.db.prepare('SELECT seq FROM thread_events WHERE thread_id=? AND seq=?').get(threadId, seq))
       ? seq
       : undefined;
   }
-
-  /** The events after `seq`, in order: what a compaction pass looks at instead of the whole log. */
-  readAfter(threadId: string, seq: number): StoredEvent[] {
-    return this.db
-      .select({ seq: threadEvents.seq, runId: threadEvents.runId, event: threadEvents.event })
-      .from(threadEvents)
-      .where(and(eq(threadEvents.threadId, threadId), gt(threadEvents.seq, seq)))
-      .orderBy(asc(threadEvents.seq))
-      .all();
+  async readAfter(threadId: string, seq: number): Promise<StoredEvent[]> {
+    const rows = await this.db
+      .prepare(
+        'SELECT seq,run_id AS runId,event_json AS event FROM thread_events WHERE thread_id=? AND seq>? ORDER BY seq',
+      )
+      .all(threadId, seq);
+    return (rows as { seq: number; runId: string | null; event: string }[]).map((row) => ({
+      ...row,
+      event: JSON.parse(row.event) as BaseEvent,
+    }));
   }
-
-  /**
-   * Sequence number of the newest `MESSAGES_SNAPSHOT`, optionally before `before`; 0 if there is none. The type is a literal in the SQL so
-   * SQLite uses the partial index `thread_events_snapshot`, the one index on this table besides the thread's own.
-   */
-  lastSnapshotSeq(threadId: string, before = Number.MAX_SAFE_INTEGER): number {
+  async lastSnapshotSeq(threadId: string, before = Number.MAX_SAFE_INTEGER): Promise<number> {
+    const row = (await this.db
+      .prepare("SELECT MAX(seq) AS seq FROM thread_events WHERE thread_id=? AND type='MESSAGES_SNAPSHOT' AND seq<?")
+      .get(threadId, before)) as { seq: number | null } | undefined;
+    return row?.seq ?? 0;
+  }
+  async runsWithEvents(threadId: string): Promise<{ runId: string; firstSeq: number }[]> {
+    return (await this.db
+      .prepare(
+        'SELECT run_id AS runId,MIN(seq) AS firstSeq FROM thread_events WHERE thread_id=? AND run_id IS NOT NULL GROUP BY run_id ORDER BY MIN(seq)',
+      )
+      .all(threadId)) as { runId: string; firstSeq: number }[];
+  }
+  async deleteBefore(threadId: string, seq: number): Promise<number> {
+    return (await this.db.prepare('DELETE FROM thread_events WHERE thread_id=? AND seq<?').run(threadId, seq)).changes;
+  }
+  async count(threadId: string): Promise<number> {
     return (
-      this.db
-        .select({ seq: max(threadEvents.seq) })
-        .from(threadEvents)
-        .where(
-          and(
-            eq(threadEvents.threadId, threadId),
-            sql`${threadEvents.type} = 'MESSAGES_SNAPSHOT'`,
-            lt(threadEvents.seq, before),
-          ),
-        )
-        .get()?.seq ?? 0
+      (
+        (await this.db.prepare('SELECT COUNT(*) AS n FROM thread_events WHERE thread_id=?').get(threadId)) as
+          { n: number } | undefined
+      )?.n ?? 0
     );
   }
-
-  /** The runs that have events, oldest first, each with the first sequence number it wrote. */
-  runsWithEvents(threadId: string): { runId: string; firstSeq: number }[] {
-    return this.db
-      .select({ runId: sql<string>`${threadEvents.runId}`, firstSeq: sql<number>`MIN(${threadEvents.seq})` })
-      .from(threadEvents)
-      .where(and(eq(threadEvents.threadId, threadId), isNotNull(threadEvents.runId)))
-      .groupBy(threadEvents.runId)
-      .orderBy(sql`MIN(${threadEvents.seq})`)
-      .all();
+  async deleteSeqs(threadId: string, seqs: number[]): Promise<void> {
+    if (seqs.length === 0) return;
+    // Each async statement crosses the native worker boundary. Delete bounded sets instead
+    // of paying a prepare/dispatch/await for every event during a large compaction pass.
+    // Keep all chunks in one transaction, including rollback if a later chunk fails.
+    const chunkSize = 500;
+    await this.db.transaction(async () => {
+      for (let offset = 0; offset < seqs.length; offset += chunkSize) {
+        const chunk = seqs.slice(offset, offset + chunkSize);
+        await this.db
+          .prepare(`DELETE FROM thread_events WHERE thread_id=? AND seq IN (${chunk.map(() => '?').join(',')})`)
+          .run(threadId, ...chunk);
+      }
+    })();
   }
-
-  /** Deletes every event before `seq`; returns how many rows went. */
-  deleteBefore(threadId: string, seq: number): number {
-    return this.db
-      .delete(threadEvents)
-      .where(and(eq(threadEvents.threadId, threadId), lt(threadEvents.seq, seq)))
-      .run().changes;
-  }
-
-  count(threadId: string): number {
-    return this.db.select({ n: count() }).from(threadEvents).where(eq(threadEvents.threadId, threadId)).get()?.n ?? 0;
-  }
-
-  deleteSeqs(threadId: string, seqs: number[]): void {
-    const del = this.db
-      .delete(threadEvents)
-      .where(and(eq(threadEvents.threadId, threadId), eq(threadEvents.seq, sql.placeholder('seq'))))
-      .prepare();
-    this.db.transaction(() => {
-      for (const seq of seqs) del.run({ seq });
-    });
-  }
-
-  /** Forgets the log, e.g. when the session file changed behind our back and is the better source. */
-  clear(threadId: string): void {
-    this.db.delete(threadEvents).where(eq(threadEvents.threadId, threadId)).run();
+  async clear(threadId: string): Promise<void> {
+    // Rotate before yielding: cursors issued to writes queued after this clear use the new generation.
     this.generations.delete(threadId);
+    await this.db.prepare('DELETE FROM thread_events WHERE thread_id=?').run(threadId);
   }
-
-  /** Takes the lock. Throws if the thread already has a 'running' row (partial unique index). */
-  beginRun(threadId: string, runId: string): void {
-    this.db.insert(runRecords).values({ runId, threadId, status: 'running', startedAt: Date.now() }).run();
+  async beginRun(threadId: string, runId: string): Promise<void> {
+    await this.db
+      .prepare("INSERT INTO runs(run_id,thread_id,status,started_at) VALUES(?,?,'running',?)")
+      .run(runId, threadId, Date.now());
     this.notifyRun(threadId, 'start');
   }
-
-  endRun(runId: string, status: Exclude<RunStatus, 'running'>): void {
-    const row = this.db
-      .update(runRecords)
-      .set({ status, endedAt: Date.now() })
-      .where(eq(runRecords.runId, runId))
-      .returning({ threadId: runRecords.threadId })
-      .get();
+  async endRun(runId: string, status: Exclude<RunStatus, 'running'>): Promise<void> {
+    const row = (
+      await this.db
+        .prepare('UPDATE runs SET status=?,ended_at=? WHERE run_id=? RETURNING thread_id AS threadId')
+        .all(status, Date.now(), runId)
+    )[0] as { threadId: string } | undefined;
     if (row) this.notifyRun(row.threadId, 'end');
   }
-
-  /**
-   * A run started or ended (the lock row changed): `ThreadStatusService` (among others) listens, so the sidebar learns it without polling.
-   * Called synchronously from `beginRun` and `endRun`; a listener that needs the run's bookkeeping to be complete defers itself.
-   */
   onRunChange(listener: (threadId: string, change: 'start' | 'end') => void): () => void {
     this.runListeners.add(listener);
-    return () => this.runListeners.delete(listener);
+    return () => {
+      this.runListeners.delete(listener);
+    };
   }
-
   private notifyRun(threadId: string, change: 'start' | 'end'): void {
     for (const listener of [...this.runListeners]) {
       try {
         listener(threadId, change);
       } catch {
-        // a listener must not break the run lock
+        /* observers cannot break locks */
       }
     }
   }
-
-  /** Where the run worked and the snapshot of that folder before it started; `tree` is `null` outside a git work tree. */
-  setStartTree(runId: string, folder: string, tree: string | null, shadow?: { dir: string; prefix: string }): void {
-    this.db
-      .update(runRecords)
-      .set({ folder, startTree: tree, shadowDir: shadow?.dir ?? null, shadowPrefix: shadow?.prefix ?? null })
-      .where(eq(runRecords.runId, runId))
-      .run();
+  async setStartTree(
+    runId: string,
+    folder: string,
+    tree: string | null,
+    shadow?: { dir: string; prefix: string },
+  ): Promise<void> {
+    await this.db
+      .prepare('UPDATE runs SET folder=?,start_tree=?,shadow_dir=?,shadow_prefix=? WHERE run_id=?')
+      .run(folder, tree, shadow?.dir ?? null, shadow?.prefix ?? null, runId);
   }
-
-  /** The snapshot of the run's folder when it ended. */
-  setEndTree(runId: string, tree: string | null): void {
-    this.db.update(runRecords).set({ endTree: tree }).where(eq(runRecords.runId, runId)).run();
+  async setEndTree(runId: string, tree: string | null): Promise<void> {
+    await this.db.prepare('UPDATE runs SET end_tree=? WHERE run_id=?').run(tree, runId);
   }
-
-  /** Every run of a thread, oldest first. */
-  runsOf(threadId: string): RunRow[] {
-    return this.db
-      .select()
-      .from(runRecords)
-      .where(eq(runRecords.threadId, threadId))
-      .orderBy(asc(sql`${runRecords}.rowid`))
-      .all();
+  async runsOf(threadId: string): Promise<RunRow[]> {
+    return (await this.db
+      .prepare(`SELECT ${RUN_COLUMNS} FROM runs WHERE thread_id=? ORDER BY rowid`)
+      .all(threadId)) as RunRow[];
   }
-
-  /** Runs left 'running' by a process that no longer exists. */
-  staleRuns(): RunRow[] {
-    return this.db.select().from(runRecords).where(eq(runRecords.status, 'running')).all();
+  async staleRuns(): Promise<RunRow[]> {
+    return (await this.db.prepare(`SELECT ${RUN_COLUMNS} FROM runs WHERE status='running'`).all()) as RunRow[];
   }
-
-  /** The newest run of a thread: the last row written, as in `lastRunByThread` (a clock that steps back does not reorder runs). */
-  lastRun(threadId: string): RunRow | undefined {
-    return this.db
-      .select()
-      .from(runRecords)
-      .where(eq(runRecords.threadId, threadId))
-      .orderBy(desc(sql`${runRecords}.rowid`))
-      .limit(1)
-      .get();
+  async lastRun(threadId: string): Promise<RunRow | undefined> {
+    return (await this.db
+      .prepare(`SELECT ${RUN_COLUMNS} FROM runs WHERE thread_id=? ORDER BY rowid DESC LIMIT 1`)
+      .get(threadId)) as RunRow | undefined;
   }
-
-  /** Latest run per thread, for the thread list. */
-  lastRunByThread(): Map<string, RunRow> {
-    const latest = this.db
-      .select({ rowId: sql<number>`MAX(${runRecords}.rowid)`.as('row_id') })
-      .from(runRecords)
-      .groupBy(runRecords.threadId)
-      .as('latest');
-    const rows = this.db
-      .select(getTableColumns(runRecords))
-      .from(runRecords)
-      .innerJoin(latest, eq(sql`${runRecords}.rowid`, latest.rowId))
-      .all();
+  async lastRunByThread(): Promise<Map<string, RunRow>> {
+    const rows = (await this.db
+      .prepare(`SELECT ${RUN_COLUMNS} FROM runs WHERE rowid IN (SELECT MAX(rowid) FROM runs GROUP BY thread_id)`)
+      .all()) as RunRow[];
     return new Map(rows.map((row) => [row.threadId, row]));
   }
 }
+const RUN_COLUMNS =
+  'run_id AS runId,thread_id AS threadId,status,started_at AS startedAt,ended_at AS endedAt,folder,shadow_dir AS shadowDir,shadow_prefix AS shadowPrefix,start_tree AS startTree,end_tree AS endTree';

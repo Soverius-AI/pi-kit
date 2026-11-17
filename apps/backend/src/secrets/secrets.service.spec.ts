@@ -100,7 +100,7 @@ describe('SecretsService', () => {
     Object.assign(store, { accessStatus });
     const { service, database } = make(store);
     database.protection.state = 'plain';
-    expect(service.status()).toMatchObject({
+    expect(await service.status()).toMatchObject({
       store: 'none',
       credentialsEnabled: false,
       available: false,
@@ -116,7 +116,7 @@ describe('SecretsService', () => {
       value: 'Bearer new-token',
       storage: 'mcp.json',
     });
-    expect(service.databaseProtection()).toMatchObject({ state: 'plain' });
+    expect(await service.databaseProtection()).toMatchObject({ state: 'plain' });
     for (const call of calls) expect(call).not.toHaveBeenCalled();
     expect(accessStatus).not.toHaveBeenCalled();
   });
@@ -141,13 +141,13 @@ describe('SecretsService', () => {
               },
       );
       writeFileSync(file, original);
-      expect(service.credentialsEnabled()).toBe(false);
+      expect(await service.credentialsEnabled()).toBe(false);
       await service.onModuleInit();
       const launcher = join(dataDir, 'bin', 'pi-kit-secret');
       expect(readFileSync(launcher, 'utf8')).toContain("PI_KIT_SECRET_STORE='macos'");
       expect(process.env['PATH']!.split(delimiter)[0]).toBe(join(dataDir, 'bin'));
       expect(readFileSync(file, 'utf8')).toBe(original);
-      expect(service.status()).toMatchObject({ credentialsEnabled: false, available: false });
+      expect(await service.status()).toMatchObject({ credentialsEnabled: false, available: false });
       expect(await service.keep('openrouter', 'new-direct-key')).toEqual({
         value: 'new-direct-key',
         storage: 'auth.json',
@@ -205,8 +205,8 @@ describe('SecretsService', () => {
     expect(set).not.toHaveBeenCalled();
     // No SQLite metadata from the first service is needed to remember the choice.
     const next = make(store, dataDir).service;
-    expect(next.credentialsEnabled()).toBe(true);
-    expect(service.databaseProtection()).toMatchObject({ state: 'plain' });
+    expect(await next.credentialsEnabled()).toBe(true);
+    expect(await service.databaseProtection()).toMatchObject({ state: 'plain' });
   });
 
   it('startup never migrates existing plaintext credentials even after opting in', async () => {
@@ -242,14 +242,14 @@ describe('SecretsService', () => {
     expect(statSync(join(agent, 'models.json')).mode & 0o777).toBe(0o600);
     expect(store.get('pi-kit/db')).toBe('database-key');
     expect(store.get('litellm')).toBe('saved-api-key');
-    expect(service.databaseProtection().state).toBe('encrypted');
-    expect(service.status()).toMatchObject({
+    expect((await service.databaseProtection()).state).toBe('encrypted');
+    expect(await service.status()).toMatchObject({
       credentialsEnabled: false,
       available: false,
       movable: [],
       cliNeeded: false,
     });
-    expect(service.resolver('litellm')).toBeUndefined();
+    expect(await service.resolver('litellm')).toBeUndefined();
     const next = new SecretsService(store, { dataDir }, database as never, meta as never);
     Object.defineProperty(store, 'protected', { value: true });
     const set = vi.spyOn(store, 'set').mockImplementation(() => {
@@ -262,7 +262,7 @@ describe('SecretsService', () => {
     await next.onModuleInit();
     expect(launcher).not.toHaveBeenCalled();
     await next.setCredentialStorage(true);
-    expect(next.credentialsEnabled()).toBe(true);
+    expect(await next.credentialsEnabled()).toBe(true);
     set.mockRestore();
   });
 
@@ -281,7 +281,7 @@ describe('SecretsService', () => {
     expect(result.failed[0].provider).toBe('openrouter');
     expect(JSON.stringify(result)).not.toContain('sensitive-native-error');
     expect(readFileSync(join(agent, 'auth.json'), 'utf8')).toContain('!pi-kit-secret get openrouter');
-    expect(service.credentialsEnabled()).toBe(false);
+    expect(await service.credentialsEnabled()).toBe(false);
   });
 
   describe('which command auth.json gets', () => {
@@ -290,29 +290,29 @@ describe('SecretsService', () => {
       Object.defineProperty(keychain, 'kind', { value: 'keychain' });
       asPlatform('darwin');
       setEnv('PI_KIT_SECRET_STORE', 'legacy');
-      expect(make(keychain).service.resolver('openrouter')).toBe(
+      expect(await make(keychain).service.resolver('openrouter')).toBe(
         '!security find-generic-password -s pi-kit -a openrouter -w',
       );
       asPlatform('win32');
-      expect(make(keychain).service.resolver('openrouter')).toBe('!pi-kit-secret get openrouter');
+      expect(await make(keychain).service.resolver('openrouter')).toBe('!pi-kit-secret get openrouter');
       asPlatform('linux');
-      expect(make(keychain).service.resolver('openrouter')).toBe('!pi-kit-secret get openrouter');
+      expect(await make(keychain).service.resolver('openrouter')).toBe('!pi-kit-secret get openrouter');
       const bin = scratch();
       writeFileSync(join(bin, 'secret-tool'), '#!/bin/sh\n');
       chmodSync(join(bin, 'secret-tool'), 0o755);
       setEnv('PATH', `${bin}${delimiter}${process.env['PATH']}`);
-      expect(make(keychain).service.resolver('openrouter')).toBe(
+      expect(await make(keychain).service.resolver('openrouter')).toBe(
         '!secret-tool lookup service pi-kit username openrouter',
       );
     });
 
     it('is the helper for a scratch store, because `security` cannot read a file, and nothing without a store or a helper on a platform that needs it', async () => {
       asPlatform('darwin');
-      expect(make(new MemorySecretStore()).service.resolver('groq')).toBe('!pi-kit-secret get groq');
-      expect(make(new NoSecretStore()).service.resolver('groq')).toBeUndefined();
+      expect(await make(new MemorySecretStore()).service.resolver('groq')).toBe('!pi-kit-secret get groq');
+      expect(await make(new NoSecretStore()).service.resolver('groq')).toBeUndefined();
       setEnv('PI_KIT_SECRET_CLI', join(scratch(), 'missing.cjs'));
-      expect(make(new MemorySecretStore()).service.resolver('groq')).toBeUndefined();
-      expect(make(new MemorySecretStore()).service.resolver('not a provider')).toBeUndefined();
+      expect(await make(new MemorySecretStore()).service.resolver('groq')).toBeUndefined();
+      expect(await make(new MemorySecretStore()).service.resolver('not a provider')).toBeUndefined();
     });
   });
 
@@ -408,7 +408,7 @@ describe('SecretsService', () => {
           'cloudflare-workers-ai': { type: 'api_key', key: 'cf-abcdefghijkl', env: { CLOUDFLARE_ACCOUNT_ID: 'x' } },
         }),
       );
-      const status = make(new MemorySecretStore()).service.status();
+      const status = await make(new MemorySecretStore()).service.status();
       expect(status).toMatchObject({
         store: 'memory',
         available: true,
@@ -417,20 +417,20 @@ describe('SecretsService', () => {
       });
       expect(status.cliInstallDir).toBe(process.env['PI_KIT_BIN_DIR']);
       expect(status.cliNeeded).toBe(true);
-      expect(make(new NoSecretStore()).service.status()).toMatchObject({
+      expect(await make(new NoSecretStore()).service.status()).toMatchObject({
         store: 'none',
         available: false,
         movable: [],
       });
-      expect(make(new NoSecretStore()).service.status().resolver).toBeUndefined();
+      expect((await make(new NoSecretStore()).service.status()).resolver).toBeUndefined();
     });
 
     it('shows the database key once', async () => {
       const { service } = make(new MemorySecretStore());
-      expect(service.databaseProtection().recoveryKeyShown).toBe(false);
-      expect(service.recoveryKey()).toEqual({ key: 'a'.repeat(64) });
-      expect(service.databaseProtection().recoveryKeyShown).toBe(true);
-      expect(() => service.recoveryKey()).toThrow(/not shown again/);
+      expect((await service.databaseProtection()).recoveryKeyShown).toBe(false);
+      expect(await service.recoveryKey()).toEqual({ key: 'a'.repeat(64) });
+      expect((await service.databaseProtection()).recoveryKeyShown).toBe(true);
+      await expect((async () => await service.recoveryKey())()).rejects.toThrow(/not shown again/);
     });
 
     it('a file store is a real second process’s view: the CLI reads what the backend wrote', async () => {

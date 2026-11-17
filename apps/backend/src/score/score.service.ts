@@ -93,8 +93,8 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
       this.plugins.register(channels, (threadId, channel, payload, signal) =>
         this.plugin(threadId, channel, payload, signal),
       ),
-      this.outcomes.onOutcome((threadId) => this.onOutcome(threadId)),
-      this.pkg.onInstalledChange(() => this.status.touchAll()),
+      this.outcomes.onOutcome(async (threadId) => await this.onOutcome(threadId)),
+      this.pkg.onInstalledChange(async () => await this.status.touchAll()),
     );
     this.status.setScoreBadge((row) => this.badgeOf(row));
     void this.pkg
@@ -105,7 +105,7 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
         ),
       )
       .then(() => this.pkg.refresh())
-      .then(() => this.status.touchAll())
+      .then(async () => await this.status.touchAll())
       .catch(() => undefined);
     // `pi remove` and `pi install` happen outside pi-kit: look at pi's settings now and then, so the badge and the views follow.
     this.timer = setInterval(() => void this.pkg.refresh(), 5000);
@@ -129,11 +129,11 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The score of a thread's outcome with the label of every hunk, as they stand; 404 while there is none (or the package is gone: then nothing of it is drawn). */
-  view(threadId: string): OutcomeScoreView {
-    this.threads.assertExists(threadId);
+  async view(threadId: string): Promise<OutcomeScoreView> {
+    await this.threads.assertExists(threadId);
     if (!this.pkg.installedNow())
       throw new NotFoundException('There is no score: the meat-proxy package is not installed.');
-    const row = this.outcomeRows.get(threadId);
+    const row = await this.outcomeRows.get(threadId);
     const store = parseLabelsStore(row?.hunkLabels);
     const scores = parseScores(row?.scores);
     if (!row || !store || !scores) throw new NotFoundException('This thread has not been scored.');
@@ -151,13 +151,13 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The distribution of the scored threads of every project (Settings › Projects and trust). Empty while the package is not installed. */
-  overview(): ScoreOverview {
+  async overview(): Promise<ScoreOverview> {
     const installed = this.pkg.installedNow();
     if (!installed) return { installed, projects: [] };
     const scored: ScoredThread[] = [];
-    for (const [threadId, row] of this.outcomeRows.all()) {
+    for (const [threadId, row] of await this.outcomeRows.all()) {
       const scores = parseScores(row.scores);
-      const thread = this.threadRows.get(threadId);
+      const thread = await this.threadRows.get(threadId);
       if (!scores || !thread || !parseLabelsStore(row.hunkLabels)) continue;
       scored.push({ threadId, title: thread.title, cwd: thread.cwd, meat: scores.meat, line: scores.line, at: row.at });
     }
@@ -176,9 +176,9 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
     options: { consent?: boolean } = {},
     signal?: AbortSignal,
   ): Promise<ScoreRequestResult> {
-    const row = this.require(threadId);
+    const row = await this.require(threadId);
     if (!(await this.pkg.refresh())) throw new ConflictException(NOT_INSTALLED);
-    if (!this.outcomes.get(threadId))
+    if (!(await this.outcomes.get(threadId)))
       throw new ConflictException(
         'This thread has no outcome yet, so there is nothing to score. It gets one when its worktree is merged back, a pull request is opened, or a commit contains files it changed.',
       );
@@ -189,24 +189,24 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
       if (result.code === 'not-found') throw new NotFoundException(result.error);
       throw new ConflictException(result.error);
     }
-    return { status: 'scored', score: this.view(threadId) };
+    return { status: 'scored', score: await this.view(threadId) };
   }
 
   /** The person says what a hunk is; the score is computed again from the labels as they stand, and the correction is kept for the next scoring of the thread. */
   async relabel(threadId: string, hunk: string, label: HunkLabel | null): Promise<OutcomeScoreView> {
-    this.threads.assertExists(threadId);
+    await this.threads.assertExists(threadId);
     const module = await this.pkg.scoring();
     if (!module) throw new ConflictException(NOT_INSTALLED);
-    const row = this.outcomeRows.get(threadId);
+    const row = await this.outcomeRows.get(threadId);
     const store = parseLabelsStore(row?.hunkLabels);
     if (!row || !store) throw new NotFoundException('This thread has not been scored.');
     const next = relabelHunk(store, hunk, label, Date.now());
     if (!next) throw new NotFoundException('The thread’s outcome has no such hunk.');
     const scores = module.computeScores(effectiveHunks(next));
     if (!scores) throw new BadRequestException('The outcome has no changed lines to weigh.');
-    this.outcomeRows.setAnnotations(threadId, { hunkLabels: next, scores });
-    this.status.touch(threadId);
-    return this.view(threadId);
+    await this.outcomeRows.setAnnotations(threadId, { hunkLabels: next, scores });
+    await this.status.touch(threadId);
+    return await this.view(threadId);
   }
 
   // ---- scoring
@@ -248,28 +248,29 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
 
   // ---- the attendant's fourth job
 
-  private onOutcome(threadId: string): void {
-    if (!this.attendant.settings().enabled) return;
-    const outcome = this.outcomeRows.get(threadId);
+  private async onOutcome(threadId: string): Promise<void> {
+    if (!(await this.attendant.settings()).enabled) return;
+    const outcome = await this.outcomeRows.get(threadId);
     const store = parseLabelsStore(outcome?.hunkLabels);
     // Scored already for this very outcome: only a later commit (a longer outcome) is scored again.
     if (outcome && store && store.head === outcome.headCommit && store.base === outcome.baseCommit) return;
-    this.attendant.enqueueTask(threadId, async () => void (await this.autoScore(threadId)), 'score');
+    await this.attendant.enqueueTask(threadId, async () => void (await this.autoScore(threadId)), 'score');
   }
 
   /** Scores without being asked. Runs in the attendant's queue, under its cap; the activity lists the call as `score` and then the result. */
   async autoScore(threadId: string): Promise<'scored' | 'skipped'> {
-    const row = this.threadRows.get(threadId);
-    if (!row || !this.attendant.settings().enabled || !this.attendant.allowedIn(row.cwd)) return 'skipped';
+    const row = await this.threadRows.get(threadId);
+    if (!row || !(await this.attendant.settings()).enabled || !(await this.attendant.allowedIn(row.cwd)))
+      return 'skipped';
     if (!(await this.pkg.refresh())) return 'skipped';
     const result = await this.score(row, 'attendant');
     if (result.ok) {
-      this.attendant.note('score', row, result.scores.line, 'done');
+      await this.attendant.note('score', row, result.scores.line, 'done');
       return 'scored';
     }
     // The cap and a missing model are listed by the attendant itself; what is left is the thread's own reason.
     if (result.code === 'invalid' || result.code === 'not-found')
-      this.attendant.note('score', row, result.error, 'skipped');
+      await this.attendant.note('score', row, result.error, 'skipped');
     else this.logger.debug(`No score for ${threadId}: ${result.error}`);
     return 'skipped';
   }
@@ -306,7 +307,7 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
         case PLUGIN_CHANNELS.baselines: {
           const request = BaselinesRequestSchema.safeParse(payload);
           if (!request.success) return fail('invalid', request.error.issues.map((i) => i.message).join('; '));
-          const row = this.lookup(request.data.thread ?? sessionThread);
+          const row = await this.lookup(request.data.thread ?? sessionThread);
           return row
             ? { requestId, ok: true, files: await this.baselinesOf(row) }
             : fail('not-found', 'There is no such thread.');
@@ -314,7 +315,7 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
         case PLUGIN_CHANNELS.annotate: {
           const request = AnnotateRequestSchema.safeParse(payload);
           if (!request.success) return fail('invalid', request.error.issues.map((i) => i.message).join('; '));
-          const row = this.lookup(request.data.thread ?? sessionThread);
+          const row = await this.lookup(request.data.thread ?? sessionThread);
           if (!row) return fail('not-found', 'There is no such thread.');
           const stored = await this.store(row.id, request.data, signal);
           return stored.ok ? { requestId, ok: true } : fail(stored.code as PluginFailureCode, stored.error);
@@ -322,7 +323,7 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
         case PLUGIN_CHANNELS.outcome: {
           const request = OutcomeRequestSchema.safeParse(payload);
           if (!request.success) return fail('invalid', request.error.issues.map((i) => i.message).join('; '));
-          const row = this.lookup(request.data.thread ?? sessionThread);
+          const row = await this.lookup(request.data.thread ?? sessionThread);
           if (!row) return fail('not-found', 'There is no such thread.');
           const reply = await this.outcomeReply(row, request.data.diff === true);
           return {
@@ -336,7 +337,7 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
         case PLUGIN_CHANNELS.attendant: {
           const request = AttendantRunRequestSchema.safeParse(payload);
           if (!request.success) return fail('invalid', request.error.issues.map((i) => i.message).join('; '));
-          const row = this.lookup(request.data.thread ?? sessionThread);
+          const row = await this.lookup(request.data.thread ?? sessionThread);
           if (!row) return fail('not-found', 'There is no such thread.');
           const needed = await this.consentNeeded(row.id, request.data.consent === true);
           if (needed) return fail('consent', needed.message, { model: needed.model });
@@ -381,7 +382,7 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
     const request = AnnotateRequestSchema.safeParse(body);
     if (!request.success)
       return { ok: false, code: 'invalid', error: request.error.issues.map((i) => i.message).join('; ') };
-    const row = this.outcomeRows.get(threadId);
+    const row = await this.outcomeRows.get(threadId);
     if (!row) return { ok: false, code: 'not-found', error: 'This thread has no outcome to annotate.' };
     const labels = mergeLabels(parseLabelsStore(row.hunkLabels), request.data, Date.now());
     let scores = request.data.scores;
@@ -390,8 +391,8 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
       scores = module?.computeScores(effectiveHunks(labels)) ?? scores;
     }
     if (signal?.aborted) return { ok: false, code: 'failed', error: 'The request was cancelled.' };
-    this.outcomeRows.setAnnotations(threadId, { hunkLabels: labels, scores });
-    this.status.touch(threadId);
+    await this.outcomeRows.setAnnotations(threadId, { hunkLabels: labels, scores });
+    await this.status.touch(threadId);
     return { ok: true };
   }
 
@@ -404,8 +405,8 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
     diff: string | null;
     annotations: { hunkLabels: unknown; scores: unknown };
   }> {
-    const outcome = this.outcomes.get(row.id) ?? null;
-    const stored = this.outcomeRows.get(row.id);
+    const outcome = (await this.outcomes.get(row.id)) ?? null;
+    const stored = await this.outcomeRows.get(row.id);
     let diff: string | null = null;
     if (withDiff && outcome) {
       // The project's folder, not the worktree's: the commits are in the shared repository, and the worktree may be removed any moment.
@@ -460,36 +461,39 @@ export class ScoreService implements OnModuleInit, OnModuleDestroy {
     threadId: string,
     consent: boolean,
   ): Promise<{ model: string; message: string } | undefined> {
-    if (this.attendant.settings().enabled || this.hasConsent(threadId)) return undefined;
+    if ((await this.attendant.settings()).enabled || (await this.hasConsent(threadId))) return undefined;
     if (consent) {
-      this.giveConsent(threadId);
+      await this.giveConsent(threadId);
       return undefined;
     }
     const model = (await this.attendant.modelLabel()) ?? 'the attendant’s model';
     return { model, message: scoreConsentSentence(model) };
   }
 
-  private hasConsent(threadId: string): boolean {
-    return ((this.meta.getSetting(CONSENT_SETTING) as string[] | undefined) ?? []).includes(threadId);
+  private async hasConsent(threadId: string): Promise<boolean> {
+    return (((await this.meta.getSetting(CONSENT_SETTING)) as string[] | undefined) ?? []).includes(threadId);
   }
 
-  private giveConsent(threadId: string): void {
-    const known = (this.meta.getSetting(CONSENT_SETTING) as string[] | undefined) ?? [];
-    this.meta.setSetting(CONSENT_SETTING, [...known.filter((id) => id !== threadId), threadId].slice(-CONSENT_KEEP));
+  private async giveConsent(threadId: string): Promise<void> {
+    const known = ((await this.meta.getSetting(CONSENT_SETTING)) as string[] | undefined) ?? [];
+    await this.meta.setSetting(
+      CONSENT_SETTING,
+      [...known.filter((id) => id !== threadId), threadId].slice(-CONSENT_KEEP),
+    );
   }
 
   // ---- lookups
 
   /** A thread id, or the start of one when it is unique. */
-  private lookup(idOrPrefix: string): ThreadRow | undefined {
-    const exact = this.threadRows.get(idOrPrefix);
+  private async lookup(idOrPrefix: string): Promise<ThreadRow | undefined> {
+    const exact = await this.threadRows.get(idOrPrefix);
     if (exact) return exact;
-    const matches = this.threadRows.all().filter((row) => row.id.startsWith(idOrPrefix));
+    const matches = (await this.threadRows.all()).filter((row) => row.id.startsWith(idOrPrefix));
     return matches.length === 1 ? matches[0] : undefined;
   }
 
-  private require(threadId: string): ThreadRow {
-    const row = this.threadRows.get(threadId);
+  private async require(threadId: string): Promise<ThreadRow> {
+    const row = await this.threadRows.get(threadId);
     if (!row) throw new NotFoundException(`Thread ${threadId} not found.`);
     return row;
   }

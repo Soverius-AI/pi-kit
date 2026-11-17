@@ -39,37 +39,37 @@ export class LogCompactor {
     private readonly limits: { maxRows: number; keepRuns: number } = COMPACTION,
   ) {}
 
-  compact(threadId: string, options: { full?: boolean } = {}): CompactionResult {
+  async compact(threadId: string, options: { full?: boolean } = {}): Promise<CompactionResult> {
     const result: CompactionResult = { trimmed: 0, collapsed: 0 };
-    const last = this.log.lastSnapshotSeq(threadId);
+    const last = await this.log.lastSnapshotSeq(threadId);
     if (last === 0) return result;
     // A full pass repairs logs whose earlier incremental passes left deltas behind (e.g. duplicate final snapshots).
-    const previous = options.full ? 0 : this.log.lastSnapshotSeq(threadId, last);
+    const previous = options.full ? 0 : await this.log.lastSnapshotSeq(threadId, last);
 
     // The window starts at the previous snapshot (included: it is deleted) and holds this run, plus whatever earlier runs that never
     // reached a snapshot left behind. `compactableIndices` only looks before the last snapshot of the window, which is `last`.
-    const window = this.log.readAfter(threadId, Math.max(0, previous - 1));
+    const window = await this.log.readAfter(threadId, Math.max(0, previous - 1));
     const drop = compactableIndices(window.map((s) => s.event));
     if (drop.length > 0) {
-      this.log.deleteSeqs(
+      await this.log.deleteSeqs(
         threadId,
         drop.map((i) => window[i].seq),
       );
       result.trimmed = drop.length;
     }
-    if (this.log.count(threadId) > this.limits.maxRows) result.collapsed = this.collapse(threadId, last);
+    if ((await this.log.count(threadId)) > this.limits.maxRows) result.collapsed = await this.collapse(threadId, last);
     return result;
   }
 
   /** Deletes the runs older than the newest `keepRuns`, provided a snapshot survives in the ones that stay. */
-  private collapse(threadId: string, lastSnapshot: number): number {
-    const runs = this.log.runsWithEvents(threadId);
+  private async collapse(threadId: string, lastSnapshot: number): Promise<number> {
+    const runs = await this.log.runsWithEvents(threadId);
     if (runs.length <= this.limits.keepRuns) return 0;
     const cut = runs[runs.length - this.limits.keepRuns].firstSeq;
     if (lastSnapshot < cut) return 0; // the newest snapshot belongs to an older run: nothing may go
     // Toolbar actions and suggestions extensions registered (`pi.composer`) are state, not history: a registration that only an
     // old run holds is written again, in a run of its own after the newest ones, before the old runs go.
-    const all = this.log.read(threadId);
+    const all = await this.log.read(threadId);
     const registered = foldComposer(all.map((s) => s.event));
     const survivors = foldComposer(all.filter((s) => s.seq >= cut).map((s) => s.event));
     const latestPreview = [...all].reverse().find((row) => {
@@ -80,7 +80,7 @@ export class LogCompactor {
         parsePiCustomEvent({ name: event.name, value: event.value })
       );
     });
-    const deleted = this.log.deleteBefore(threadId, cut);
+    const deleted = await this.log.deleteBefore(threadId, cut);
     if (latestPreview && latestPreview.seq < cut) {
       const runId = `preview-${Date.now()}`;
       for (const event of [
@@ -88,7 +88,7 @@ export class LogCompactor {
         latestPreview.event,
         { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: 'success' } },
       ] as BaseEvent[])
-        this.log.append(threadId, runId, event);
+        await this.log.append(threadId, runId, event);
     }
     const lost = [...registered.values()].filter((registration) => composerChanges(survivors, registration));
     if (lost.length > 0) {
@@ -98,7 +98,7 @@ export class LogCompactor {
         ...lost.flatMap((registration) => mapUiEvent({ kind: 'composer', registration })),
         { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: 'success' } },
       ] as BaseEvent[];
-      for (const event of events) this.log.append(threadId, runId, event);
+      for (const event of events) await this.log.append(threadId, runId, event);
     }
     return deleted;
   }

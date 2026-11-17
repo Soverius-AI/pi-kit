@@ -89,93 +89,120 @@ export class SkillDraftsRepository {
     return this.database.db;
   }
 
-  get(id: string): SkillDraft | undefined {
-    const row = this.db.prepare('SELECT * FROM skill_drafts WHERE id = ?').get(id) as RawDraft | undefined;
+  async get(id: string): Promise<SkillDraft | undefined> {
+    const row = (await this.db.prepare('SELECT * FROM skill_drafts WHERE id = ?').get(id)) as RawDraft | undefined;
     return row && toDraft(row);
   }
 
-  forThread(threadId: string): SkillDraft | undefined {
-    const row = this.db.prepare('SELECT * FROM skill_drafts WHERE thread_id = ?').get(threadId) as RawDraft | undefined;
+  async forThread(threadId: string): Promise<SkillDraft | undefined> {
+    const row = (await this.db.prepare('SELECT * FROM skill_drafts WHERE thread_id = ?').get(threadId)) as
+      RawDraft | undefined;
     return row && toDraft(row);
   }
 
-  pending(): SkillDraft[] {
+  async pending(): Promise<SkillDraft[]> {
     return (
-      this.db.prepare("SELECT * FROM skill_drafts WHERE state = 'pending' ORDER BY created_at DESC").all() as RawDraft[]
+      (await this.db
+        .prepare("SELECT * FROM skill_drafts WHERE state = 'pending' ORDER BY created_at DESC")
+        .all()) as RawDraft[]
     ).map(toDraft);
   }
 
   /** Drafts whose verification is running, including any left over after a restart. */
-  verifying(): SkillDraft[] {
+  async verifying(): Promise<SkillDraft[]> {
     return (
-      this.db
+      (await this.db
         .prepare("SELECT * FROM skill_drafts WHERE json_extract(verification, '$.state') = 'running'")
-        .all() as RawDraft[]
+        .all()) as RawDraft[]
     ).map(toDraft);
   }
 
   /** Every thread's draft, by thread id (a pass over the thread list). */
-  all(): Map<string, SkillDraft> {
+  async all(): Promise<Map<string, SkillDraft>> {
     return new Map(
-      (this.db.prepare('SELECT * FROM skill_drafts').all() as RawDraft[]).map((r) => [r.thread_id, toDraft(r)]),
+      ((await this.db.prepare('SELECT * FROM skill_drafts').all()) as RawDraft[]).map((r) => [r.thread_id, toDraft(r)]),
     );
   }
 
   /** A new pending draft. A thread has one: a second `insert` for it throws (the caller checks `forThread` first). */
-  insert(draft: NewDraft, now = Date.now()): SkillDraft {
-    const id = randomUUID();
-    this.db
-      .prepare(
-        'INSERT INTO skill_drafts (id, thread_id, name, text, scope, state, made_by, model, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(id, draft.threadId, draft.name, draft.text, draft.scope, 'pending', draft.madeBy, draft.model ?? null, now);
-    return this.get(id) as SkillDraft;
+  async insert(draft: NewDraft, now = Date.now()): Promise<SkillDraft> {
+    return await this.database.db
+      .transaction(async () => {
+        const id = randomUUID();
+        await this.db
+          .prepare(
+            'INSERT INTO skill_drafts (id, thread_id, name, text, scope, state, made_by, model, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          )
+          .run(
+            id,
+            draft.threadId,
+            draft.name,
+            draft.text,
+            draft.scope,
+            'pending',
+            draft.madeBy,
+            draft.model ?? null,
+            now,
+          );
+        return (await this.get(id)) as SkillDraft;
+      })
+      .immediate();
   }
 
   /** The person's edits of a draft (name, text, scope). */
-  edit(id: string, edit: { name?: string; text?: string; scope?: SkillScope }): SkillDraft | undefined {
-    const current = this.get(id);
-    if (!current) return undefined;
-    this.db
-      .prepare('UPDATE skill_drafts SET name = ?, text = ?, scope = ? WHERE id = ?')
-      .run(edit.name ?? current.name, edit.text ?? current.text, edit.scope ?? current.scope, id);
-    return this.get(id);
+  async edit(id: string, edit: { name?: string; text?: string; scope?: SkillScope }): Promise<SkillDraft | undefined> {
+    return await this.database.db
+      .transaction(async () => {
+        const current = await this.get(id);
+        if (!current) return undefined;
+        await this.db
+          .prepare('UPDATE skill_drafts SET name = ?, text = ?, scope = ? WHERE id = ?')
+          .run(edit.name ?? current.name, edit.text ?? current.text, edit.scope ?? current.scope, id);
+        return await this.get(id);
+      })
+      .immediate();
   }
 
-  setState(
+  async setState(
     id: string,
     state: SkillDraftState,
     options: { path?: string | null; now?: number } = {},
-  ): SkillDraft | undefined {
-    const decided = state === 'pending' ? null : (options.now ?? Date.now());
-    this.db
-      .prepare('UPDATE skill_drafts SET state = ?, decided_at = ?, path = ? WHERE id = ?')
-      .run(state, decided, state === 'approved' ? (options.path ?? null) : null, id);
-    return this.get(id);
+  ): Promise<SkillDraft | undefined> {
+    return await this.database.db
+      .transaction(async () => {
+        const decided = state === 'pending' ? null : (options.now ?? Date.now());
+        await this.db
+          .prepare('UPDATE skill_drafts SET state = ?, decided_at = ?, path = ? WHERE id = ?')
+          .run(state, decided, state === 'approved' ? (options.path ?? null) : null, id);
+        return await this.get(id);
+      })
+      .immediate();
   }
 
-  setVerification(id: string, report: SkillVerification | null): void {
-    this.db
+  async setVerification(id: string, report: SkillVerification | null): Promise<void> {
+    await this.db
       .prepare('UPDATE skill_drafts SET verification = ? WHERE id = ?')
       .run(report ? JSON.stringify(report) : null, id);
   }
 
   /** Drafts that were approved, oldest first: the learned skills. Retired ones are included; `retiredAt(id)` says which. */
-  approved(): SkillDraft[] {
+  async approved(): Promise<SkillDraft[]> {
     return (
-      this.db.prepare("SELECT * FROM skill_drafts WHERE state = 'approved' ORDER BY decided_at ASC").all() as RawDraft[]
+      (await this.db
+        .prepare("SELECT * FROM skill_drafts WHERE state = 'approved' ORDER BY decided_at ASC")
+        .all()) as RawDraft[]
     ).map(toDraft);
   }
 
   /** When the draft's skill was retired, or null while it is live. */
-  retiredAt(id: string): number | null {
-    const row = this.db.prepare('SELECT retired_at FROM skill_drafts WHERE id = ?').get(id) as
+  async retiredAt(id: string): Promise<number | null> {
+    const row = (await this.db.prepare('SELECT retired_at FROM skill_drafts WHERE id = ?').get(id)) as
       { retired_at: number | null } | undefined;
     return row?.retired_at ?? null;
   }
 
   /** Records the retirement of an approved draft's skill (`at`), or its restoration (`null`). */
-  setRetired(id: string, at: number | null): void {
-    this.db.prepare('UPDATE skill_drafts SET retired_at = ? WHERE id = ?').run(at, id);
+  async setRetired(id: string, at: number | null): Promise<void> {
+    await this.db.prepare('UPDATE skill_drafts SET retired_at = ? WHERE id = ?').run(at, id);
   }
 }

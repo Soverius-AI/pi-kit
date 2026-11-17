@@ -530,11 +530,14 @@ async function firstLaunch(host: HostClient, splash: BrowserWindow): Promise<{ b
       return await host.start();
     } catch (error) {
       const failure = error instanceof HostStartError ? error.failure : undefined;
-      if (failure?.reason === 'database-version') {
+      if (failure?.reason === 'database-version' || failure?.reason === 'database-encrypted') {
         await dialog.showMessageBox({
           type: 'error',
           title: 'pi-kit',
-          message: 'This profile needs a compatible pi-kit version.',
+          message:
+            failure.reason === 'database-encrypted'
+              ? 'This encrypted profile needs an explicit offline migration.'
+              : 'This profile needs a compatible pi-kit version.',
           detail: failure.message,
           buttons: ['Quit'],
           defaultId: 0,

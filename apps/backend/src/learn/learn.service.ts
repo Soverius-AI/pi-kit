@@ -110,7 +110,7 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     this.plugins.setDefault((threadId, channel, payload, signal) => this.plugin(threadId, channel, payload, signal));
-    this.offOutcome = this.outcomes.onOutcome((threadId) => this.onOutcome(threadId));
+    this.offOutcome = this.outcomes.onOutcome(async (threadId) => await this.onOutcome(threadId));
     void this.pkg
       .ensureInstalled()
       .catch((error: unknown) =>
@@ -132,22 +132,22 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
 
   // ---- reads
 
-  forThread(threadId: string): SkillDraft {
-    this.threads.assertExists(threadId);
-    const draft = this.drafts.forThread(threadId);
+  async forThread(threadId: string): Promise<SkillDraft> {
+    await this.threads.assertExists(threadId);
+    const draft = await this.drafts.forThread(threadId);
     if (!draft) throw new NotFoundException('This thread has no skill draft.');
     return draft;
   }
 
-  pending(): SkillDraft[] {
-    return this.drafts.pending();
+  async pending(): Promise<SkillDraft[]> {
+    return await this.drafts.pending();
   }
 
   /** The transcript of a thread, reduced and redacted: the payload of `pi-kit:thread:transcript`. */
   async transcriptOf(threadId: string): Promise<ThreadTranscript> {
-    const row = this.require(threadId);
+    const row = await this.require(threadId);
     const source = await this.threads.treeSource(threadId);
-    const outcome = this.outcomes.get(threadId);
+    const outcome = await this.outcomes.get(threadId);
     return reduceTranscript({
       threadId,
       title: row.title,
@@ -156,7 +156,7 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
       leafId: source.leafId,
       outcome: outcome ? await this.outcomeFacts(row, outcome) : undefined,
       patterns: this.redaction.extraPatterns(),
-      answers: this.signals?.answers(threadId),
+      answers: await this.signals?.answers(threadId),
       folder: row.sessionCwd || row.cwd,
     });
   }
@@ -188,12 +188,13 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
 
   /** `POST /api/threads/:id/skill-draft`: a draft for the thread on the person's request, after their consent when the attendant is off. */
   async request(threadId: string, options: { consent?: boolean } = {}): Promise<SkillDraftRequestResult> {
-    const row = this.require(threadId);
-    const existing = this.drafts.forThread(threadId);
+    const row = await this.require(threadId);
+    const existing = await this.drafts.forThread(threadId);
     // One draft per thread: a pending one is read, an approved one is the skill, a discarded one is reopened from the thread menu.
     if (existing) return { status: 'drafted', draft: existing };
-    if (this.meta.learningSource(threadId)) throw new ConflictException('Choose the original chat to learn from.');
-    if (this.meta.isVerificationThread(threadId))
+    if (await this.meta.learningSource(threadId))
+      throw new ConflictException('Choose the original chat to learn from.');
+    if (await this.meta.isVerificationThread(threadId))
       throw new ConflictException(
         'This thread replayed a skill to verify it. There is nothing to learn from a replay.',
       );
@@ -209,27 +210,30 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
     threadId: string,
     consent: boolean,
   ): Promise<{ model: string; message: string } | undefined> {
-    if (this.attendant.settings().enabled || this.hasConsent(threadId)) return undefined;
+    if ((await this.attendant.settings()).enabled || (await this.hasConsent(threadId))) return undefined;
     if (consent) {
-      this.giveConsent(threadId);
+      await this.giveConsent(threadId);
       return undefined;
     }
     const model = (await this.attendant.modelLabel()) ?? 'the attendant’s model';
     return { model, message: consentSentence(model) };
   }
 
-  private hasConsent(threadId: string): boolean {
-    return ((this.meta.getSetting(CONSENT_SETTING) as string[] | undefined) ?? []).includes(threadId);
+  private async hasConsent(threadId: string): Promise<boolean> {
+    return (((await this.meta.getSetting(CONSENT_SETTING)) as string[] | undefined) ?? []).includes(threadId);
   }
 
-  private giveConsent(threadId: string): void {
-    const known = (this.meta.getSetting(CONSENT_SETTING) as string[] | undefined) ?? [];
-    this.meta.setSetting(CONSENT_SETTING, [...known.filter((id) => id !== threadId), threadId].slice(-CONSENT_KEEP));
+  private async giveConsent(threadId: string): Promise<void> {
+    const known = ((await this.meta.getSetting(CONSENT_SETTING)) as string[] | undefined) ?? [];
+    await this.meta.setSetting(
+      CONSENT_SETTING,
+      [...known.filter((id) => id !== threadId), threadId].slice(-CONSENT_KEEP),
+    );
   }
 
   /** The model call and the draft it becomes, shared by the person's request and the attendant's own. */
-  private makeDraft(row: ThreadRow, madeBy: SkillDraftMaker): Promise<DraftResult> {
-    const existing = this.drafts.forThread(row.id);
+  private async makeDraft(row: ThreadRow, madeBy: SkillDraftMaker): Promise<DraftResult> {
+    const existing = await this.drafts.forThread(row.id);
     if (existing) return Promise.resolve({ ok: true, draft: existing });
     const pending = this.drafting.get(row.id);
     if (pending) return pending;
@@ -287,20 +291,20 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
           : `The model’s answer was not a skill: ${parsed?.reason ?? 'no answer'}.`,
       };
     // A plugin may have supplied a draft while this model call was pending. Keep the thread's existing draft.
-    const existing = this.drafts.forThread(row.id);
+    const existing = await this.drafts.forThread(row.id);
     if (existing) return { ok: true, draft: existing };
-    const stored = this.store(row.id, parsed.text, madeBy, completion.model);
+    const stored = await this.store(row.id, parsed.text, madeBy, completion.model);
     return stored.ok ? { ok: true, draft: stored.draft } : stored;
   }
 
   /** Validates a `SKILL.md` a model or a package produced, stamps its provenance and keeps it as a pending draft with a `learn` suggestion for the sidebar. */
-  private store(
+  private async store(
     threadId: string,
     rawText: string,
     madeBy: SkillDraftMaker,
     model: string | null,
-  ): { ok: true; draft: SkillDraft } | { ok: false; error: string; code: PluginFailureCode } {
-    const existing = this.drafts.forThread(threadId);
+  ): Promise<{ ok: true; draft: SkillDraft } | { ok: false; error: string; code: PluginFailureCode }> {
+    const existing = await this.drafts.forThread(threadId);
     if (existing)
       return {
         ok: false,
@@ -311,21 +315,21 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
     const name = parseSkillText(rawText).name;
     if (problems.length > 0 || !name)
       return { ok: false, code: 'invalid', error: problems.join(' ') || 'The draft has no name.' };
-    const outcome = this.outcomes.get(threadId);
+    const outcome = await this.outcomes.get(threadId);
     const text = stampProvenance(normalizeSkillText(rawText, name), {
       learnedFrom: threadId,
       base: outcome?.base ?? null,
       head: outcome?.head ?? null,
     });
-    const draft = this.drafts.insert({ threadId, name, text, scope: 'project', madeBy, model });
-    this.suggest(draft);
-    this.status.touch(threadId);
+    const draft = await this.drafts.insert({ threadId, name, text, scope: 'project', madeBy, model });
+    await this.suggest(draft);
+    await this.status.touch(threadId);
     this.logger.log(`Drafted the skill ${name} from thread ${threadId} (${madeBy})`);
     return { ok: true, draft };
   }
 
-  private suggest(draft: SkillDraft): void {
-    this.attendantRows.addSuggestion({
+  private async suggest(draft: SkillDraft): Promise<void> {
+    await this.attendantRows.addSuggestion({
       threadId: draft.threadId,
       kind: 'learn',
       target: draft.id,
@@ -339,25 +343,25 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
 
   // ---- after an outcome (the attendant's third job)
 
-  private onOutcome(threadId: string): void {
+  private async onOutcome(threadId: string): Promise<void> {
     if (
-      !this.attendant.settings().enabled ||
-      this.drafts.forThread(threadId) ||
-      this.meta.isVerificationThread(threadId) ||
-      this.meta.learningSource(threadId)
+      !(await this.attendant.settings()).enabled ||
+      (await this.drafts.forThread(threadId)) ||
+      (await this.meta.isVerificationThread(threadId)) ||
+      (await this.meta.learningSource(threadId))
     )
       return;
-    this.attendant.enqueueTask(threadId, async () => void (await this.autoDraft(threadId)));
+    await this.attendant.enqueueTask(threadId, async () => void (await this.autoDraft(threadId)));
   }
 
   /** Drafts without being asked, if the thread looks worth it. Runs in the attendant's queue. */
   async autoDraft(threadId: string): Promise<'drafted' | 'not-worth' | 'skipped'> {
-    const row = this.threadRows.get(threadId);
+    const row = await this.threadRows.get(threadId);
     if (
       !row ||
-      this.drafts.forThread(threadId) ||
-      !this.attendant.settings().enabled ||
-      !this.attendant.allowedIn(row.cwd)
+      (await this.drafts.forThread(threadId)) ||
+      !(await this.attendant.settings()).enabled ||
+      !(await this.attendant.allowedIn(row.cwd))
     )
       return 'skipped';
     if (!(await this.pkg.analysis())) return 'skipped';
@@ -375,7 +379,7 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
     if (!verdict.worth) {
       if (!this.told.has(threadId)) {
         this.told.add(threadId);
-        this.attendant.note('learn', row, `Not worth a skill: ${verdict.reason}`);
+        await this.attendant.note('learn', row, `Not worth a skill: ${verdict.reason}`);
       }
       return 'not-worth';
     }
@@ -386,8 +390,8 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
 
   // ---- deciding
 
-  private requireDraft(id: string): SkillDraft {
-    const draft = this.drafts.get(id);
+  private async requireDraft(id: string): Promise<SkillDraft> {
+    const draft = await this.drafts.get(id);
     if (!draft) throw new NotFoundException('There is no such draft.');
     return draft;
   }
@@ -399,7 +403,7 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
    * thread's `learn` suggestion is closed.
    */
   async approve(id: string, body: ApproveSkillDraft): Promise<ApprovedSkillDraft> {
-    const draft = this.requireDraft(id);
+    const draft = await this.requireDraft(id);
     if (draft.state !== 'pending')
       throw new ConflictException(
         draft.state === 'approved'
@@ -413,7 +417,7 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
       );
     const problems = skillTextProblems(normalizeSkillText(body.text, name));
     if (problems.length > 0) throw new BadRequestException(problems.join(' '));
-    const outcome = this.outcomes.get(draft.threadId);
+    const outcome = await this.outcomes.get(draft.threadId);
     const stamped = stampProvenance(normalizeSkillText(body.text, name), {
       learnedFrom: draft.threadId,
       base: outcome?.base ?? null,
@@ -429,7 +433,7 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
     const pi = await loadPi();
     this.assertPiReads(pi, text, name);
 
-    const project = this.threadRows.get(draft.threadId)?.cwd;
+    const project = (await this.threadRows.get(draft.threadId))?.cwd;
     if (body.scope === 'project' && !project)
       throw new BadRequestException(
         'The thread’s project is gone, so there is no project folder to write into. Choose the user folder.',
@@ -456,12 +460,15 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       throw new ConflictException(`Could not write ${file}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    this.drafts.edit(id, { name, text, scope: body.scope });
+    await this.drafts.edit(id, { name, text, scope: body.scope });
     if (body.verify)
-      this.drafts.setVerification(id, { ...(draft.verification ?? { state: 'not-run' as const }), requested: true });
-    const approved = this.drafts.setState(id, 'approved', { path: file }) as SkillDraft;
-    this.attendantRows.closeLearn(id, 'accepted');
-    this.status.touch(draft.threadId);
+      await this.drafts.setVerification(id, {
+        ...(draft.verification ?? { state: 'not-run' as const }),
+        requested: true,
+      });
+    const approved = (await this.drafts.setState(id, 'approved', { path: file })) as SkillDraft;
+    await this.attendantRows.closeLearn(id, 'accepted');
+    await this.status.touch(draft.threadId);
     this.logger.log(`Approved the skill ${name} (${body.scope}) from thread ${draft.threadId}: ${file}`);
     await this.reloadSessions(body.scope === 'project' ? project : undefined);
     return { draft: approved, path: file };
@@ -483,7 +490,7 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
 
   /** Sessions that are open and idle read their skills again, so the new one is in the `/` menu; the others pick it up when they open. */
   private async reloadSessions(project: string | undefined): Promise<void> {
-    for (const row of this.threadRows.all()) {
+    for (const row of await this.threadRows.all()) {
       if (project && row.cwd !== project) continue;
       if (!this.sessions.has(row.id) || this.sessions.stats(row.id).streaming) continue;
       try {
@@ -495,37 +502,37 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Discard: records the decision, writes nothing. The thread is not drafted again; the draft can be reopened. */
-  discard(id: string): SkillDraft {
-    const draft = this.requireDraft(id);
+  async discard(id: string): Promise<SkillDraft> {
+    const draft = await this.requireDraft(id);
     if (draft.state !== 'pending')
       throw new ConflictException(
         draft.state === 'approved'
           ? 'This draft is approved: the skill exists. Retire the skill instead.'
           : 'This draft is discarded already.',
       );
-    const discarded = this.drafts.setState(id, 'discarded') as SkillDraft;
-    this.attendantRows.closeLearn(id, 'dismissed');
-    this.status.touch(draft.threadId);
+    const discarded = (await this.drafts.setState(id, 'discarded')) as SkillDraft;
+    await this.attendantRows.closeLearn(id, 'dismissed');
+    await this.status.touch(draft.threadId);
     return discarded;
   }
 
   /** Reopen: a discarded draft is pending again, with a new `learn` suggestion. */
-  reopen(id: string): SkillDraft {
-    const draft = this.requireDraft(id);
+  async reopen(id: string): Promise<SkillDraft> {
+    const draft = await this.requireDraft(id);
     if (draft.state !== 'discarded')
       throw new ConflictException(
         draft.state === 'pending' ? 'This draft is open already.' : 'This draft is approved.',
       );
-    const reopened = this.drafts.setState(id, 'pending') as SkillDraft;
-    this.suggest(reopened);
-    this.status.touch(draft.threadId);
+    const reopened = (await this.drafts.setState(id, 'pending')) as SkillDraft;
+    await this.suggest(reopened);
+    await this.status.touch(draft.threadId);
     return reopened;
   }
 
   // ---- the skill after it is approved: edit, retire, restore
 
-  private requireApproved(id: string): SkillDraft & { path: string } {
-    const draft = this.requireDraft(id);
+  private async requireApproved(id: string): Promise<SkillDraft & { path: string }> {
+    const draft = await this.requireDraft(id);
     if (draft.state !== 'approved' || !draft.path) throw new ConflictException('This draft is not an approved skill.');
     return draft as SkillDraft & { path: string };
   }
@@ -541,8 +548,9 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
    * idle read their skills again.
    */
   async saveApproved(id: string, body: SaveLearnedSkill): Promise<SkillDraft> {
-    const draft = this.requireApproved(id);
-    if (this.drafts.retiredAt(id) !== null) throw new ConflictException('This skill is retired. Restore it first.');
+    const draft = await this.requireApproved(id);
+    if ((await this.drafts.retiredAt(id)) !== null)
+      throw new ConflictException('This skill is retired. Restore it first.');
     if (draft.verification?.state === 'running')
       throw new ConflictException('This skill is being verified. Wait for it, or stop it, before saving.');
     if (!existsSync(draft.path)) throw new ConflictException(`The skill file is gone (${draft.path}).`);
@@ -550,7 +558,7 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
     const problems = skillTextProblems(normalized);
     if (problems.length > 0) throw new BadRequestException(problems.join(' '));
     const current = provenanceOf(readFileSync(draft.path, 'utf8'));
-    const outcome = this.outcomes.get(draft.threadId);
+    const outcome = await this.outcomes.get(draft.threadId);
     const stamped = stampProvenance(normalized, {
       learnedFrom: draft.threadId,
       base: current.base ?? outcome?.base ?? null,
@@ -563,29 +571,29 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
     );
     this.assertPiReads(await loadPi(), text, draft.name);
     writeFileSync(draft.path, text);
-    const saved = this.drafts.edit(draft.id, { text }) as SkillDraft;
-    this.status.touch(draft.threadId);
+    const saved = (await this.drafts.edit(draft.id, { text })) as SkillDraft;
+    await this.status.touch(draft.threadId);
     this.logger.log(`Saved the skill ${draft.name}: ${draft.path}`);
     await this.reloadSessions(this.projectOf(draft));
     return saved;
   }
 
   /** The text of an approved skill's file brought into the draft, so a replay tests the file as it is (a hand edit outside pi-kit counts). Writes no skill file. */
-  syncApprovedText(id: string): SkillDraft {
-    const draft = this.requireApproved(id);
+  async syncApprovedText(id: string): Promise<SkillDraft> {
+    const draft = await this.requireApproved(id);
     const file =
-      this.drafts.retiredAt(id) !== null
+      (await this.drafts.retiredAt(id)) !== null
         ? join(dirname(dirname(draft.path)), '.retired', draft.name, 'SKILL.md')
         : draft.path;
     if (!existsSync(file)) return draft;
     const text = readFileSync(file, 'utf8');
-    return text === draft.text ? draft : ((this.drafts.edit(id, { text }) as SkillDraft | undefined) ?? draft);
+    return text === draft.text ? draft : (((await this.drafts.edit(id, { text })) as SkillDraft | undefined) ?? draft);
   }
 
   /** Retire: the skill's folder moves to `<skills>/.retired/<name>/` (pi does not load it any more), the draft records when, and open sessions read their skills again. Nothing is deleted. */
   async retire(id: string): Promise<SkillDraft> {
-    const draft = this.requireApproved(id);
-    if (this.drafts.retiredAt(id) !== null) throw new ConflictException('This skill is retired already.');
+    const draft = await this.requireApproved(id);
+    if ((await this.drafts.retiredAt(id)) !== null) throw new ConflictException('This skill is retired already.');
     if (draft.verification?.state === 'running')
       throw new ConflictException('This skill is being verified. Wait for it, or stop it, before retiring it.');
     try {
@@ -593,17 +601,17 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       throw new ConflictException(error instanceof Error ? error.message : String(error));
     }
-    this.drafts.setRetired(id, Date.now());
-    this.status.touch(draft.threadId);
+    await this.drafts.setRetired(id, Date.now());
+    await this.status.touch(draft.threadId);
     this.logger.log(`Retired the skill ${draft.name} (${draft.path})`);
     await this.reloadSessions(this.projectOf(draft));
-    return this.requireDraft(id);
+    return await this.requireDraft(id);
   }
 
   /** Restore: a retired skill's folder moves back and pi loads it again, unless pi lists another skill of that name by now. */
   async unretire(id: string): Promise<SkillDraft> {
-    const draft = this.requireApproved(id);
-    if (this.drafts.retiredAt(id) === null) throw new ConflictException('This skill is not retired.');
+    const draft = await this.requireApproved(id);
+    if ((await this.drafts.retiredAt(id)) === null) throw new ConflictException('This skill is not retired.');
     const project = this.projectOf(draft);
     const listed = await this.resources.overview(project ?? process.cwd()).catch(() => undefined);
     const clash = listed?.items.find((item) => item.type === 'skills' && item.name === draft.name);
@@ -616,11 +624,11 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       throw new ConflictException(error instanceof Error ? error.message : String(error));
     }
-    this.drafts.setRetired(id, null);
-    this.status.touch(draft.threadId);
+    await this.drafts.setRetired(id, null);
+    await this.status.touch(draft.threadId);
     this.logger.log(`Restored the skill ${draft.name} (${draft.path})`);
     await this.reloadSessions(project);
-    return this.requireDraft(id);
+    return await this.requireDraft(id);
   }
 
   // ---- the plugin API
@@ -650,9 +658,9 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
         case PLUGIN_CHANNELS.transcript: {
           const request = TranscriptRequestSchema.safeParse(payload);
           if (!request.success) return fail('invalid', request.error.issues.map((i) => i.message).join('; '));
-          const id = this.resolveThread(request.data.thread ?? sessionThread);
+          const id = await this.resolveThread(request.data.thread ?? sessionThread);
           if (!id) return fail('not-found', 'There is no such thread.');
-          const draft = this.drafts.forThread(id);
+          const draft = await this.drafts.forThread(id);
           return {
             requestId,
             ok: true,
@@ -663,21 +671,22 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
         case PLUGIN_CHANNELS.outcome: {
           const request = OutcomeRequestSchema.safeParse(payload);
           if (!request.success) return fail('invalid', request.error.issues.map((i) => i.message).join('; '));
-          const id = this.resolveThread(request.data.thread ?? sessionThread);
+          const id = await this.resolveThread(request.data.thread ?? sessionThread);
           if (!id) return fail('not-found', 'There is no such thread.');
-          const outcome = this.outcomes.get(id) ?? null;
-          const facts = request.data.diff && outcome ? await this.outcomeFacts(this.require(id), outcome) : undefined;
+          const outcome = (await this.outcomes.get(id)) ?? null;
+          const facts =
+            request.data.diff && outcome ? await this.outcomeFacts(await this.require(id), outcome) : undefined;
           return { requestId, ok: true, outcome, ...(request.data.diff ? { diff: facts?.diff ?? null } : {}) };
         }
         case PLUGIN_CHANNELS.attendant: {
           const request = AttendantRunRequestSchema.safeParse(payload);
           if (!request.success) return fail('invalid', request.error.issues.map((i) => i.message).join('; '));
-          const id = this.resolveThread(request.data.thread ?? sessionThread);
+          const id = await this.resolveThread(request.data.thread ?? sessionThread);
           if (!id) return fail('not-found', 'There is no such thread.');
           const needed = await this.consentNeeded(id, request.data.consent === true);
           if (needed) return fail('consent', needed.message, { model: needed.model });
           const completion = await this.attendant.complete(
-            this.require(id),
+            await this.require(id),
             { system: request.data.system, user: request.data.user },
             {
               kind: 'learn',
@@ -700,17 +709,17 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
         case PLUGIN_CHANNELS.draft: {
           const request = DraftRequestSchema.safeParse(payload);
           if (!request.success) return fail('invalid', request.error.issues.map((i) => i.message).join('; '));
-          const id = this.resolveThread(request.data.thread ?? sessionThread);
+          const id = await this.resolveThread(request.data.thread ?? sessionThread);
           if (!id) return fail('not-found', 'There is no such thread.');
-          const stored = this.store(id, request.data.text, 'person', request.data.model ?? null);
+          const stored = await this.store(id, request.data.text, 'person', request.data.model ?? null);
           return stored.ok ? { requestId, ok: true, draft: stored.draft } : fail(stored.code, stored.error);
         }
         case PLUGIN_CHANNELS.verified: {
           const request = VerifiedRequestSchema.safeParse(payload);
           if (!request.success) return fail('invalid', request.error.issues.map((i) => i.message).join('; '));
-          const id = this.resolveThread(request.data.thread ?? sessionThread);
+          const id = await this.resolveThread(request.data.thread ?? sessionThread);
           if (!id) return fail('not-found', 'There is no such thread.');
-          const draft = this.drafts.forThread(id);
+          const draft = await this.drafts.forThread(id);
           if (!draft)
             return fail('not-found', 'This thread has no skill draft to verify. Draft one first with /learn.');
           const summary = (d: SkillDraft) => ({ id: d.id, name: d.name, state: d.state });
@@ -729,7 +738,7 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
           // The reply comes when the replay is over (a minute to many; `whenDone` is the running job's own promise), and the person can watch the thread in the sidebar meanwhile.
           // A session that closes first is answered as failed by the plugin bridge; the replay itself keeps running under the verification service, which owns its Stop.
           const verification = await this.verifier.whenDone(draft.id);
-          return { requestId, ok: true, draft: summary(this.drafts.get(draft.id) ?? draft), verification };
+          return { requestId, ok: true, draft: summary((await this.drafts.get(draft.id)) ?? draft), verification };
         }
         default:
           return fail('invalid', `pi-kit has no event named ${channel}.`);
@@ -740,14 +749,14 @@ export class LearnService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** A thread id, or the start of one when it is unique. */
-  private resolveThread(idOrPrefix: string): string | undefined {
-    if (this.threadRows.get(idOrPrefix)) return idOrPrefix;
-    const matches = this.threadRows.all().filter((row) => row.id.startsWith(idOrPrefix));
+  private async resolveThread(idOrPrefix: string): Promise<string | undefined> {
+    if (await this.threadRows.get(idOrPrefix)) return idOrPrefix;
+    const matches = (await this.threadRows.all()).filter((row) => row.id.startsWith(idOrPrefix));
     return matches.length === 1 ? matches[0].id : undefined;
   }
 
-  private require(threadId: string): ThreadRow {
-    const row = this.threadRows.get(threadId);
+  private async require(threadId: string): Promise<ThreadRow> {
+    const row = await this.threadRows.get(threadId);
     if (!row) throw new NotFoundException(`Thread ${threadId} not found.`);
     return row;
   }

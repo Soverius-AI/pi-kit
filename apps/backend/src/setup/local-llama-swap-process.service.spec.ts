@@ -69,20 +69,21 @@ describe('the llama-swap process pi-kit starts', () => {
     db = await DatabaseService.create({ dataDir: dir }, secrets);
     meta = new MetaRepository(db);
     swap = new LocalLlamaSwapService(meta);
+    await swap.onModuleInit();
     await swap.readConfigs(true);
     managed = new LocalLlamaSwapProcessService(swap, meta);
   });
   afterEach(async () => {
     await managed.onModuleDestroy();
     vi.unstubAllEnvs();
-    db.onApplicationShutdown();
+    await db.onApplicationShutdown();
     rmSync(join(dir, DB_FILE), { force: true });
     rmSync(dir, { recursive: true, force: true });
   });
 
   it('starts llama-swap with the selected config, reports it running, and stops it with the autostart choice', async () => {
     await managed.refresh();
-    expect(managed.status()).toMatchObject({
+    expect(await managed.status()).toMatchObject({
       state: 'stopped',
       canStart: true,
       configPath: join(dir, 'config.yaml'),
@@ -96,13 +97,13 @@ describe('the llama-swap process pi-kit starts', () => {
     expect(started.pid).toBeGreaterThan(0);
     expect(started.log).toContain(`fake llama-swap listening on ${listen}`);
     expect(await answers(started.baseUrl)).toBe(true);
-    expect(managed.autostart()).toBe(true);
-    expect(meta.getSetting('local-runtime-autostart')).toEqual({ configPath: join(dir, 'config.yaml'), listen });
+    expect(await managed.autostart()).toBe(true);
+    expect(await meta.getSetting('local-runtime-autostart')).toEqual({ configPath: join(dir, 'config.yaml'), listen });
     await expect(managed.start({})).rejects.toThrow('already running');
     const stopped = await managed.stop();
     expect(stopped).toMatchObject({ state: 'stopped' });
     expect(await answers(started.baseUrl)).toBe(false);
-    expect(managed.autostart()).toBe(false);
+    expect(await managed.autostart()).toBe(false);
     expect(states).toEqual(['running', 'stopped']);
   });
 
@@ -112,7 +113,7 @@ describe('the llama-swap process pi-kit starts', () => {
     await new Promise<void>((resolve) => other.listen(Number(port), host, resolve));
     try {
       await managed.refresh();
-      expect(managed.status()).toMatchObject({
+      expect(await managed.status()).toMatchObject({
         state: 'stopped',
         canStart: false,
         reason: expect.stringContaining(`already answers on ${listen}`),
@@ -128,7 +129,7 @@ describe('the llama-swap process pi-kit starts', () => {
     writeFileSync(join(dir, 'config.yaml'), 'models: {}');
     await swap.readConfigs(true);
     await managed.refresh();
-    expect(managed.status()).toMatchObject({ canStart: false, reason: 'The config has no models yet.' });
+    expect(await managed.status()).toMatchObject({ canStart: false, reason: 'The config has no models yet.' });
     await expect(managed.start({})).rejects.toThrow('no models');
     writeFileSync(join(dir, 'config.yaml'), 'models: [\n');
     await expect(managed.start({})).rejects.toThrow('cannot be used');
@@ -136,7 +137,7 @@ describe('the llama-swap process pi-kit starts', () => {
     await swap.readConfigs(true);
     vi.stubEnv('FAKE_SWAP_EXIT', '1');
     await expect(managed.start({})).rejects.toThrow('stopped on its own (3)');
-    expect(managed.status()).toMatchObject({
+    expect(await managed.status()).toMatchObject({
       state: 'failed',
       error: expect.stringContaining('(3)'),
       log: expect.arrayContaining(['fake llama-swap: cannot bind']),
@@ -144,19 +145,19 @@ describe('the llama-swap process pi-kit starts', () => {
   });
 
   it('starts the saved choice with the app and drops the older private-engine recipe', async () => {
-    meta.setSetting('local-runtime-autostart', { model: { id: 'old' }, contextTokens: 4096, autostart: true });
+    await meta.setSetting('local-runtime-autostart', { model: { id: 'old' }, contextTokens: 4096, autostart: true });
     await managed.startSaved();
-    expect(managed.status().state).toBe('stopped');
-    expect(meta.getSetting('local-runtime-autostart')).toBeNull();
-    meta.setSetting('local-runtime-autostart', { configPath: join(dir, 'config.yaml'), listen });
+    expect((await managed.status()).state).toBe('stopped');
+    expect(await meta.getSetting('local-runtime-autostart')).toBeNull();
+    await meta.setSetting('local-runtime-autostart', { configPath: join(dir, 'config.yaml'), listen });
     await managed.startSaved();
-    expect(managed.status()).toMatchObject({ state: 'running' });
+    expect(await managed.status()).toMatchObject({ state: 'running' });
     expect(await answers(`http://${listen}/v1`)).toBe(true);
     // The choice on its own: off keeps the process, on records the running process's config and listener.
-    managed.setAutostart(false);
-    expect(managed.autostart()).toBe(false);
-    expect(managed.status().state).toBe('running');
-    managed.setAutostart(true);
-    expect(meta.getSetting('local-runtime-autostart')).toEqual({ configPath: join(dir, 'config.yaml'), listen });
+    await managed.setAutostart(false);
+    expect(await managed.autostart()).toBe(false);
+    expect((await managed.status()).state).toBe('running');
+    await managed.setAutostart(true);
+    expect(await meta.getSetting('local-runtime-autostart')).toEqual({ configPath: join(dir, 'config.yaml'), listen });
   });
 });

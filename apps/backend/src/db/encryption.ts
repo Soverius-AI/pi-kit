@@ -1,11 +1,19 @@
 import { randomBytes } from 'node:crypto';
+import { join } from 'node:path';
 import { chmodSync, closeSync, existsSync, openSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import Database from 'better-sqlite3-multiple-ciphers';
+import { createRequire } from 'node:module';
+import type Database from 'better-sqlite3-multiple-ciphers';
+
+// Recovery tooling only: normal async startup imports header guards, never loads the legacy native driver.
+const requireLegacy = createRequire(typeof __filename === 'string' ? __filename : join(process.cwd(), 'package.json'));
+function legacyDatabase(): typeof Database {
+  return requireLegacy('better-sqlite3-multiple-ciphers');
+}
 
 /**
  * Encryption of pi-kit's SQLite file: SQLite3 Multiple Ciphers through `better-sqlite3-multiple-ciphers`, a random 256-bit key held in the operating system's credential store.
  * The key is a raw key (`x'<64 hex>'`), so opening the database costs no key derivation (about 0.6 ms) and the file is readable by any SQLite3 Multiple Ciphers build given `CIPHER` and the same key.
- * This file is the mechanics (the header check, the key pragma, the one-time migration of a plaintext file); `DatabaseService` decides when to use them.
+ * Header/transition checks are used by async startup. Keyed opening and encryption are legacy offline recovery tools ONLY; DatabaseService never loads the legacy native driver or converts a profile implicitly.
  */
 
 const PLAIN_HEADER = 'SQLite format 3\0';
@@ -47,7 +55,7 @@ export function useKey(db: Database.Database, hexKey: string): void {
 /** Reads one statement through a keyed connection: true when the key opens the file. */
 export function keyOpens(path: string, hexKey: string): boolean {
   if (!existsSync(path)) return false;
-  const db = new Database(path, { fileMustExist: true });
+  const db = new (legacyDatabase())(path, { fileMustExist: true });
   try {
     useKey(db, hexKey);
     db.prepare('SELECT count(*) FROM sqlite_master').get();
@@ -107,7 +115,7 @@ export function encryptDatabaseFile(path: string, hexKey: string): EncryptResult
   clean();
   let before: Record<string, number>;
   chmodSync(path, 0o600);
-  const source = new Database(path, { fileMustExist: true });
+  const source = new (legacyDatabase())(path, { fileMustExist: true });
   try {
     source.pragma('wal_checkpoint(TRUNCATE)');
     before = tableCounts(source);
@@ -121,7 +129,7 @@ export function encryptDatabaseFile(path: string, hexKey: string): EncryptResult
     source.close();
   }
   try {
-    const target = new Database(copy);
+    const target = new (legacyDatabase())(copy);
     try {
       target.pragma('journal_mode = DELETE');
       target.pragma(`cipher='${CIPHER}'`);
@@ -130,7 +138,7 @@ export function encryptDatabaseFile(path: string, hexKey: string): EncryptResult
       target.close();
     }
     if (isPlainDatabase(copy)) throw new Error('The copy is still plaintext after the rekey.');
-    const check = new Database(copy, { fileMustExist: true });
+    const check = new (legacyDatabase())(copy, { fileMustExist: true });
     try {
       useKey(check, hexKey);
       const after = tableCounts(check);

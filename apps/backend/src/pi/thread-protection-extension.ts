@@ -27,8 +27,8 @@ export class ThreadProtectionExtension {
     options: { threadId: string; cwd: string; client: SandboxClient; protection: ThreadProtectionService },
   ): Promise<{ factory: ExtensionFactory; bash: BashOperations; tools: string[] }> {
     const { threadId, cwd, client, protection } = options;
-    const generation = protection.binding(threadId).generation;
-    const sandbox = { client, cwd, assertCurrent: () => protection.assertCurrent(threadId, generation) };
+    const generation = (await protection.binding(threadId)).generation;
+    const sandbox = { client, cwd, assertCurrent: () => protection.assertSessionCurrent(threadId, generation, true) };
     const { PiSandbox } = await SandboxPackage.load('pi');
     const definitions = PiSandbox.toolDefinitions(pi, sandbox);
     const tools = definitions.map((definition) => definition.name);

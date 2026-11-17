@@ -46,30 +46,30 @@ export class PeerSessions implements OnModuleDestroy {
     this.challenges.clear();
   }
 
-  active(peerId: string): PeerRecord {
-    const peer = this.peers.get(peerId);
+  async active(peerId: string): Promise<PeerRecord> {
+    const peer = await this.peers.get(peerId);
     if (!peer || peer.state !== 'active') throw new ForbiddenException('Instance is not mutually paired.');
     return peer;
   }
 
-  canDevice(deviceId: string, peer: PeerRecord): boolean {
+  async canDevice(deviceId: string, peer: PeerRecord): Promise<boolean> {
     return (
       peer.state === 'active' &&
       peer.remoteAllowRelay &&
       peer.shareDevices &&
-      this.peers.deviceAllowed(deviceId, peer.identity.instanceId)
+      (await this.peers.deviceAllowed(deviceId, peer.identity.instanceId))
     );
   }
 
-  target(peerId: string, deviceId?: string): PeerRecord {
-    const peer = this.active(peerId);
-    if (deviceId && !this.canDevice(deviceId, peer))
+  async target(peerId: string, deviceId?: string): Promise<PeerRecord> {
+    const peer = await this.active(peerId);
+    if (deviceId && !(await this.canDevice(deviceId, peer)))
       throw new ForbiddenException('This device may not use that environment.');
     return peer;
   }
 
-  challenge(peerId: string): { nonce: string; bootId: string; expiresAt: number } {
-    this.active(peerId);
+  async challenge(peerId: string): Promise<{ nonce: string; bootId: string; expiresAt: number }> {
+    await this.active(peerId);
     this.expire();
     if (this.challenges.size >= 500) throw new BadRequestException('Challenge limit reached.');
     const nonce = PeerProofs.secret(),
@@ -82,7 +82,7 @@ export class PeerSessions implements OnModuleDestroy {
     this.expire();
     if (this.sessions.size >= 1024) throw new ServiceUnavailableException('Peer session limit reached.');
     const input = PeerSessionRequestSchema.parse(value),
-      peer = this.active(input.peerId);
+      peer = await this.active(input.peerId);
     const challenge = this.challenges.get(input.nonce);
     if (
       !challenge ||
@@ -111,7 +111,8 @@ export class PeerSessions implements OnModuleDestroy {
       relay: input.relay,
       binding: PeerProofs.digest(token, input.nonce, this.bootId, input.relay),
     });
-    if (this.active(input.peerId).revision !== peer.revision) throw new UnauthorizedException('Peer grant changed.');
+    if ((await this.active(input.peerId)).revision !== peer.revision)
+      throw new UnauthorizedException('Peer grant changed.');
     this.sessions.set(PeerProofs.digest(token), {
       peerId: input.peerId,
       pairId: peer.pairId,
@@ -123,10 +124,10 @@ export class PeerSessions implements OnModuleDestroy {
     return { token, expiresAt, proof, bootId: this.bootId };
   }
 
-  authorize(token: string): Session {
+  async authorize(token: string): Promise<Session> {
     const session = /^[A-Za-z0-9_-]{43}$/.test(token) ? this.sessions.get(PeerProofs.digest(token)) : undefined;
     if (!session || session.expiresAt <= Date.now()) throw new UnauthorizedException('Peer session renewal required.');
-    const peer = this.active(session.peerId);
+    const peer = await this.active(session.peerId);
     if (peer.pairId !== session.pairId || peer.revision !== session.revision || (session.relay && !peer.allowRelay))
       throw new UnauthorizedException('Peer grant revoked.');
     return session;
@@ -134,7 +135,7 @@ export class PeerSessions implements OnModuleDestroy {
 
   /** A session token for calling the peer, opened once per peer and device and reused until it nears expiry. */
   async access(peerId: string, deviceId?: string, renew = false): Promise<string> {
-    const peer = this.target(peerId, deviceId),
+    const peer = await this.target(peerId, deviceId),
       key = JSON.stringify([peerId, deviceId ?? null]);
     const cached = this.outbound.get(key);
     if (!renew && cached && cached.expiresAt > Date.now() + 30000) return cached.token;
@@ -184,10 +185,10 @@ export class PeerSessions implements OnModuleDestroy {
     if (confirmed.relay !== relay) throw new ForbiddenException('Peer session role changed.');
     if (result.bootId !== challenge.bootId || result.expiresAt > Date.now() + 6 * 60000)
       throw new ForbiddenException('Invalid peer session.');
-    const current = this.target(peerId, deviceId);
+    const current = await this.target(peerId, deviceId);
     if (current.pairId !== peer.pairId || current.revision !== peer.revision)
       throw new ForbiddenException('The instance grant changed.');
-    this.peers.refreshIdentity(metadata);
+    await this.peers.refreshIdentity(metadata);
     this.outbound.set(key, { peerId, token: result.token, expiresAt: result.expiresAt });
     return result.token;
   }

@@ -3689,6 +3689,82 @@ paths:
       tags:
         - worktrees
       x-remote: true
+  /api/watchdog:
+    get:
+      description: Returns the owner opt-in to automatic backend recovery. Disabled by default.
+      operationId: Settings_watchdog
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  supported:
+                    type: boolean
+                required:
+                  - enabled
+                  - supported
+                additionalProperties: false
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Get watchdog settings
+      tags:
+        - pi-settings
+    put:
+      description: Persists and applies automatic backend recovery independently of background-service lifetime.
+      operationId: Settings_setWatchdog
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+              required:
+                - enabled
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  supported:
+                    type: boolean
+                required:
+                  - enabled
+                  - supported
+                additionalProperties: false
+        '400':
+          description: The service host is unavailable or could not save the setting.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Set watchdog settings
+      tags:
+        - pi-settings
   /api/pi-settings:
     get:
       description: Returns pi's settings, the providers with the state of their credentials, the models, the keybindings and pi's version, read for `cwd` (the default folder without it).
@@ -6410,7 +6486,7 @@ paths:
         - update
   /api/update/restart:
     post:
-      description: Ends the backend, and the watchdog starts it again with the newer pi. Settings and the toast call this after an update.
+      description: Requests one explicit backend restart with the newer pi, even when automatic watchdog recovery is off. Settings and the toast call this after an update.
       operationId: Update_restart
       parameters: []
       responses:

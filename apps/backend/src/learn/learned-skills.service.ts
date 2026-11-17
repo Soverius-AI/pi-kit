@@ -69,10 +69,10 @@ export class LearnedSkillsService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
-    this.offUses = this.sessions.onSkillsUsed((threadId, used) => this.record(threadId, used));
-    this.offOutcome = this.outcomes.onOutcome((threadId, kind) => {
+    this.offUses = this.sessions.onSkillsUsed(async (threadId, used) => await this.record(threadId, used));
+    this.offOutcome = this.outcomes.onOutcome(async (threadId, kind) => {
       try {
-        this.uses.markOutcome(threadId, kind);
+        await this.uses.markOutcome(threadId, kind);
       } catch (error) {
         this.logger.warn(
           `Could not mark the skill uses of ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -87,12 +87,12 @@ export class LearnedSkillsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** A prompt used these skills: each one whose file carries `x-pi-kit.learnedFrom` is a use. A verification replay is not a use (it pins the draft to test it). */
-  record(threadId: string, used: readonly SkillUse[]): void {
-    if (this.meta.isVerificationThread(threadId)) return;
+  async record(threadId: string, used: readonly SkillUse[]): Promise<void> {
+    if (await this.meta.isVerificationThread(threadId)) return;
     for (const skill of used) {
       try {
         const learnedFrom = provenanceOf(readFileSync(skill.path, 'utf8')).learnedFrom;
-        if (learnedFrom) this.uses.record({ learnedFrom, threadId });
+        if (learnedFrom) await this.uses.record({ learnedFrom, threadId });
       } catch {
         // A skill file that cannot be read is not a learned skill we can count.
       }
@@ -101,50 +101,47 @@ export class LearnedSkillsService implements OnModuleInit, OnModuleDestroy {
 
   // ---- reads
 
-  list(): LearnedSkill[] {
-    return this.drafts
-      .approved()
-      .filter((draft) => !!draft.path)
-      .map((draft) => this.view(draft))
-      .sort((a, b) => a.name.localeCompare(b.name));
+  async list(): Promise<LearnedSkill[]> {
+    const drafts = (await this.drafts.approved()).filter((draft) => !!draft.path);
+    return (await Promise.all(drafts.map((draft) => this.view(draft)))).sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  detail(id: string): LearnedSkillDetail {
-    const draft = this.require(id);
-    const text = this.textOf(draft) ?? draft.text;
-    return { ...this.view(draft), text, draft: { ...draft, text } };
+  async detail(id: string): Promise<LearnedSkillDetail> {
+    const draft = await this.require(id);
+    const text = (await this.textOf(draft)) ?? draft.text;
+    return { ...(await this.view(draft)), text, draft: { ...draft, text } };
   }
 
   // ---- the person's actions
 
   async retire(id: string): Promise<LearnedSkill> {
-    this.require(id);
-    return this.view(await this.learn.retire(id));
+    await this.require(id);
+    return await this.view(await this.learn.retire(id));
   }
 
   async unretire(id: string): Promise<LearnedSkill> {
-    this.require(id);
-    return this.view(await this.learn.unretire(id));
+    await this.require(id);
+    return await this.view(await this.learn.unretire(id));
   }
 
   async save(id: string, body: SaveLearnedSkill): Promise<LearnedSkill> {
-    this.require(id);
-    return this.view(await this.learn.saveApproved(id, body));
+    await this.require(id);
+    return await this.view(await this.learn.saveApproved(id, body));
   }
 
   /** Re-verify: the approved skill, as the file is now, is replayed from its thread's base commit. The draft stays approved; the report lands in `verification` and the file. */
   async reverify(id: string): Promise<LearnedSkill> {
-    const draft = this.require(id);
-    if (this.drafts.retiredAt(draft.id) !== null)
+    const draft = await this.require(id);
+    if ((await this.drafts.retiredAt(draft.id)) !== null)
       throw new ConflictException('This skill is retired. Restore it first.');
-    this.learn.syncApprovedText(id);
-    return this.view(await this.verify.start(id, {}));
+    await this.learn.syncApprovedText(id);
+    return await this.view(await this.verify.start(id, {}));
   }
 
   // ---- the record
 
-  private require(id: string): SkillDraft & { path: string } {
-    const draft = this.drafts.get(id);
+  private async require(id: string): Promise<SkillDraft & { path: string }> {
+    const draft = await this.drafts.get(id);
     if (!draft || draft.state !== 'approved' || !draft.path)
       throw new NotFoundException('There is no such learned skill.');
     return draft as SkillDraft & { path: string };
@@ -155,22 +152,22 @@ export class LearnedSkillsService implements OnModuleInit, OnModuleDestroy {
     return retired ? join(retiredFolderOf(draft.path, draft.name), 'SKILL.md') : draft.path;
   }
 
-  private textOf(draft: SkillDraft & { path: string }): string | undefined {
+  private async textOf(draft: SkillDraft & { path: string }): Promise<string | undefined> {
     try {
-      return readFileSync(this.fileOf(draft, this.drafts.retiredAt(draft.id) !== null), 'utf8');
+      return readFileSync(this.fileOf(draft, (await this.drafts.retiredAt(draft.id)) !== null), 'utf8');
     } catch {
       return undefined;
     }
   }
 
-  private view(draft: SkillDraft): LearnedSkill {
+  private async view(draft: SkillDraft): Promise<LearnedSkill> {
     const approved = draft as SkillDraft & { path: string };
-    const retiredAt = this.drafts.retiredAt(draft.id);
+    const retiredAt = await this.drafts.retiredAt(draft.id);
     const file = this.fileOf(approved, retiredAt !== null);
-    const fileText = this.textOf(approved);
-    const summary = this.uses.summary(draft.threadId);
-    const origin = this.threadRows.get(draft.threadId);
-    const outcome = this.outcomes.get(draft.threadId);
+    const fileText = await this.textOf(approved);
+    const summary = await this.uses.summary(draft.threadId);
+    const origin = await this.threadRows.get(draft.threadId);
+    const outcome = await this.outcomes.get(draft.threadId);
     const verification = this.verificationOf(draft, fileText);
     const threads: UsingThread[] = summary.threads.map((t) => ({ ...t, ended: !this.running(t.threadId) }));
     const provenance = fileText ? provenanceOf(fileText) : { base: undefined, head: undefined };

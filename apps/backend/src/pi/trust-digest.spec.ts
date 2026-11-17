@@ -34,7 +34,7 @@ function project(name: string, extension = 'export default () => {};\n', mcp = '
 /** A trust service for which `worktree` is a thread worktree of `main`, answered "once" for `main` only. */
 async function trustOf(main: string, worktree: string): Promise<TrustService> {
   const trust = new TrustService();
-  trust.useWorktrees((path) => (path === worktree ? main : undefined));
+  trust.useWorktrees(async (path) => (path === worktree ? main : undefined));
   await trust.decide(main, 'once');
   return trust;
 }

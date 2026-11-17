@@ -40,11 +40,24 @@ afterEach(() => {
 });
 
 describe('ThreadProtectionService', () => {
+  it('keeps synchronous SDK admission fail-closed until an awaited binding and rejects changed generations', async () => {
+    const f = new Fixture();
+    expect(() => f.service.assertSessionCurrent('t', 0, false)).toThrow(/protection changed/);
+    await f.service.assertHostCapability('t', 'MCP servers');
+    expect(() => f.service.assertSessionCurrent('t', 0, false)).not.toThrow();
+    await f.service.set('t', cwd, { mode: 'sandboxed' }, vi.fn());
+    expect(() => f.service.assertSessionCurrent('t', 0, false)).toThrow(/protection changed/);
+    expect(() => f.service.assertSessionCurrent('t', 1, false)).toThrow(/Host capabilities/);
+    expect(() => f.service.assertSessionCurrent('t', 1, true)).not.toThrow();
+    Object.assign(f.clients[0], { state: 'unavailable' });
+    expect(() => f.service.assertSessionCurrent('t', 1, true)).toThrow(/sandbox is unavailable/);
+  });
+
   it('keeps a thread nobody changed in Bypass without loading the sandbox', async () => {
     const f = new Fixture();
-    expect(f.service.status('t')).toMatchObject({ mode: 'bypass', state: 'bypass', reason: null });
+    expect(await f.service.status('t')).toMatchObject({ mode: 'bypass', state: 'bypass', reason: null });
     expect(await f.service.prepare('t', cwd)).toBeUndefined();
-    f.service.assertHostCapability('t', 'MCP servers');
+    await f.service.assertHostCapability('t', 'MCP servers');
     expect(f.load).not.toHaveBeenCalled();
     expect(f.rows.bindings.size).toBe(0);
   });
@@ -57,8 +70,8 @@ describe('ThreadProtectionService', () => {
     const change = f.service.set('t', cwd, { mode: 'sandboxed' }, dispose);
     await vi.waitFor(() => expect(f.create).toHaveBeenCalledOnce());
     expect(f.rows.bindings.get('t')).toEqual(sandboxed);
-    expect(f.service.status('t').state).toBe('starting');
-    expect(() => f.service.assertAdmitted('t')).toThrow(/changing its protection/);
+    expect((await f.service.status('t')).state).toBe('starting');
+    await expect((async () => await f.service.assertAdmitted('t'))()).rejects.toThrow(/changing its protection/);
     expect(dispose).toHaveBeenCalledOnce();
     started({ state: 'active', exec: vi.fn(), request: vi.fn(), close: vi.fn(async () => undefined) });
     expect(await change).toMatchObject({ mode: 'sandboxed', state: 'active', generation: 1 });
@@ -87,16 +100,18 @@ describe('ThreadProtectionService', () => {
       state: 'unavailable',
       reason: 'bubblewrap is missing',
     });
-    expect(() => f.service.assertHostCapability('t', 'MCP servers')).toThrow(/sandboxed thread/);
+    await expect((async () => await f.service.assertHostCapability('t', 'MCP servers'))()).rejects.toThrow(
+      /sandboxed thread/,
+    );
     expect(await f.service.prepare('t', cwd)).toBe(f.clients[0]);
-    expect(f.service.status('t').state).toBe('active');
+    expect((await f.service.status('t')).state).toBe('active');
   });
 
   it('holds a thread whose failed start did not confirm cleanup until the person confirms its recovery', async () => {
     const f = new Fixture();
     f.create.mockRejectedValueOnce(new Error('supervisor connection lost'));
     expect((await f.service.set('t', cwd, { mode: 'sandboxed' }, vi.fn())).state).toBe('recovery-required');
-    expect(() => f.service.assertAdmitted('t')).toThrow(/did not confirm its cleanup/);
+    await expect((async () => await f.service.assertAdmitted('t'))()).rejects.toThrow(/did not confirm its cleanup/);
     await expect(f.service.set('t', cwd, { mode: 'bypass', confirmBypass: true }, vi.fn())).rejects.toThrow(
       /Confirm that it stopped/,
     );
@@ -110,7 +125,7 @@ describe('ThreadProtectionService', () => {
     const f = new Fixture();
     await f.service.set('t', cwd, { mode: 'sandboxed' }, vi.fn());
     const restarted = f.restart();
-    expect(restarted.status('t').state).toBe('recovery-required');
+    expect((await restarted.status('t')).state).toBe('recovery-required');
     await expect(restarted.prepare('t', cwd)).rejects.toThrow(/did not confirm its shutdown/);
     expect(f.create).toHaveBeenCalledOnce();
     expect((await restarted.set('t', cwd, { mode: 'sandboxed', confirmRecovery: true }, vi.fn())).state).toBe('active');
@@ -122,7 +137,7 @@ describe('ThreadProtectionService', () => {
     await f.service.set('t', cwd, { mode: 'sandboxed' }, vi.fn());
     await f.service.onModuleDestroy();
     const restarted = f.restart();
-    expect(restarted.status('t').state).toBe('idle');
+    expect((await restarted.status('t')).state).toBe('idle');
     expect(await restarted.prepare('t', cwd)).toBe(f.clients[1]);
   });
 
@@ -148,8 +163,8 @@ describe('ThreadProtectionService', () => {
     await expect(f.service.set('t', cwd, { mode: 'bypass', confirmBypass: true }, vi.fn())).rejects.toThrow(
       'teardown unconfirmed',
     );
-    expect(f.service.binding('t').mode).toBe('sandboxed');
-    expect(f.service.status('t')).toMatchObject({ state: 'recovery-required', reason: 'teardown unconfirmed' });
+    expect((await f.service.binding('t')).mode).toBe('sandboxed');
+    expect(await f.service.status('t')).toMatchObject({ state: 'recovery-required', reason: 'teardown unconfirmed' });
     expect(f.rows.owners.get('thread:t')).toBe('recovery-required');
   });
 
@@ -213,8 +228,8 @@ describe('ThreadProtectionService', () => {
   it('starts a fork in its source’s mode with a generation of its own', async () => {
     const f = new Fixture();
     f.rows.bindings.set('source', { ...sandboxed, generation: 4 });
-    f.service.copy('source', 'fork');
-    f.service.copy('plain', 'other');
+    await f.service.copy('source', 'fork');
+    await f.service.copy('plain', 'other');
     expect(f.rows.bindings.get('fork')).toEqual({ ...sandboxed, generation: 0 });
     expect(f.rows.bindings.has('other')).toBe(false);
   });
@@ -222,11 +237,11 @@ describe('ThreadProtectionService', () => {
   it('blocks tools of an older generation and of a sandbox that stopped', async () => {
     const f = new Fixture();
     await f.service.set('t', cwd, { mode: 'sandboxed' }, vi.fn());
-    f.service.assertCurrent('t', 1);
-    expect(() => f.service.assertCurrent('t', 0)).toThrow(/protection changed/);
+    await f.service.assertCurrent('t', 1);
+    await expect((async () => await f.service.assertCurrent('t', 0))()).rejects.toThrow(/protection changed/);
     Object.assign(f.clients[0], { state: 'unavailable', reason: 'worker exited' });
-    expect(() => f.service.assertCurrent('t', 1)).toThrow('worker exited');
-    expect(f.service.status('t')).toMatchObject({ state: 'unavailable', reason: 'worker exited' });
+    await expect((async () => await f.service.assertCurrent('t', 1))()).rejects.toThrow('worker exited');
+    expect(await f.service.status('t')).toMatchObject({ state: 'unavailable', reason: 'worker exited' });
   });
 
   it('reopens a stopping sandbox only once it stopped, and not at all when its stop failed', async () => {

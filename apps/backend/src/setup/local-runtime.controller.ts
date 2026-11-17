@@ -169,8 +169,10 @@ export class LocalRuntimeController {
   })
   @Responds(LocalRuntimeJobSchema)
   @Fails({ 409: 'Another local action is running.' })
-  reloadModel(@Body({ schema: LocalModelReloadSchema }) body: z.infer<typeof LocalModelReloadSchema>): LocalRuntimeJob {
-    return this.runtime.reloadModel(body);
+  async reloadModel(
+    @Body({ schema: LocalModelReloadSchema }) body: z.infer<typeof LocalModelReloadSchema>,
+  ): Promise<LocalRuntimeJob> {
+    return await this.runtime.reloadModel(body);
   }
 
   @Get('models')
@@ -194,7 +196,7 @@ export class LocalRuntimeController {
   @Responds(LocalRuntimeStatusSchema)
   async status(): Promise<LocalRuntimeStatus> {
     await this.runtime.refreshManaged();
-    return this.runtime.status();
+    return await this.runtime.status();
   }
 
   @Post('start')
@@ -234,8 +236,10 @@ export class LocalRuntimeController {
   })
   @Responds(LocalRuntimeStatusSchema)
   @Fails({ 400: 'No llama-swap config is selected.' })
-  autostart(@Body({ schema: LocalAutostartSchema }) body: z.infer<typeof LocalAutostartSchema>): LocalRuntimeStatus {
-    return this.runtime.setAutostart(body.enabled);
+  async autostart(
+    @Body({ schema: LocalAutostartSchema }) body: z.infer<typeof LocalAutostartSchema>,
+  ): Promise<LocalRuntimeStatus> {
+    return await this.runtime.setAutostart(body.enabled);
   }
 
   @Get('doctor')
@@ -273,8 +277,10 @@ export class LocalRuntimeController {
   })
   @Responds(LocalRuntimeJobSchema)
   @Fails({ 409: 'Another local setup job is still running.' })
-  install(@Body({ schema: LocalInstallSchema }) body: z.infer<typeof LocalInstallSchema>): LocalRuntimeJob {
-    return this.runtime.install(body.tools);
+  async install(
+    @Body({ schema: LocalInstallSchema }) body: z.infer<typeof LocalInstallSchema>,
+  ): Promise<LocalRuntimeJob> {
+    return await this.runtime.install(body.tools);
   }
 
   @Post('download')
@@ -286,8 +292,10 @@ export class LocalRuntimeController {
   })
   @Responds(LocalRuntimeJobSchema)
   @Fails({ 409: 'Another local setup job is still running.' })
-  download(@Body({ schema: LocalDownloadSchema }) body: z.infer<typeof LocalDownloadSchema>): LocalRuntimeJob {
-    return this.runtime.download(body.selection);
+  async download(
+    @Body({ schema: LocalDownloadSchema }) body: z.infer<typeof LocalDownloadSchema>,
+  ): Promise<LocalRuntimeJob> {
+    return await this.runtime.download(body.selection);
   }
 
   @Post('retry')
@@ -299,8 +307,8 @@ export class LocalRuntimeController {
   })
   @Responds(LocalRuntimeJobSchema)
   @Fails({ 400: 'The job has no saved retry details.', 409: 'Another local action is running.' })
-  retry(): LocalRuntimeJob {
-    return this.runtime.retry();
+  async retry(): Promise<LocalRuntimeJob> {
+    return await this.runtime.retry();
   }
 
   @Post('dismiss')
@@ -311,8 +319,8 @@ export class LocalRuntimeController {
   })
   @Responds(LocalRuntimeStatusSchema)
   @Fails({ 409: 'The job is still running.' })
-  dismiss(): LocalRuntimeStatus {
-    return this.runtime.dismiss();
+  async dismiss(): Promise<LocalRuntimeStatus> {
+    return await this.runtime.dismiss();
   }
 
   @Get('storage')
@@ -390,7 +398,7 @@ export class LocalRuntimeController {
       'Cancels the active job and waits for cleanup before a retry can start. Existing external model servers are unaffected.',
   })
   @Responds(LocalRuntimeStatusSchema)
-  cancel(): LocalRuntimeStatus {
-    return this.runtime.cancel();
+  async cancel(): Promise<LocalRuntimeStatus> {
+    return await this.runtime.cancel();
   }
 }

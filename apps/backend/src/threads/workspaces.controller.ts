@@ -45,8 +45,8 @@ export class WorkspacesController {
   })
   @Responds(ExternalSessionsSchema)
   @Fails({ 404: 'The folder is not a known project.' })
-  externalSessions(@Param('id') id: string): Promise<ExternalSessions> {
-    return this.imports.discover(this.meta.requireWorkspace(id));
+  async externalSessions(@Param('id') id: string): Promise<ExternalSessions> {
+    return await this.imports.discover(await this.meta.requireWorkspace(id));
   }
 
   @Remote()
@@ -63,11 +63,11 @@ export class WorkspacesController {
     404: 'The folder is not a known project.',
     409: 'The source changed or is unavailable; check again.',
   })
-  importExternal(
+  async importExternal(
     @Param('id') id: string,
     @Body({ schema: ImportExternalSessionSchema }) body: z.infer<typeof ImportExternalSessionSchema>,
   ): Promise<ThreadDetail> {
-    return this.imports.importSession(this.meta.requireWorkspace(id), body);
+    return await this.imports.importSession(await this.meta.requireWorkspace(id), body);
   }
 
   /** What the Where row of the new-thread page shows about the project's folder: the checked-out branch, the changed files, the branches and who holds them. */
@@ -81,8 +81,8 @@ export class WorkspacesController {
   })
   @Responds(ProjectGitSchema)
   @Fails({ 404: 'The folder is not a known project.' })
-  git(@Param('id') id: string): Promise<ProjectGit> {
-    return this.worktrees.projectGit(this.meta.requireWorkspace(id));
+  async git(@Param('id') id: string): Promise<ProjectGit> {
+    return await this.worktrees.projectGit(await this.meta.requireWorkspace(id));
   }
 
   /** The defaults for every project: where worktrees go and where a new thread starts. */
@@ -94,8 +94,8 @@ export class WorkspacesController {
       'Returns where worktrees are made and where a new thread starts for every project that does not say otherwise.',
   })
   @Responds(WorktreeDefaultsSchema)
-  defaults(): WorktreeDefaults {
-    return this.worktrees.defaults();
+  async defaults(): Promise<WorktreeDefaults> {
+    return await this.worktrees.defaults();
   }
 
   @Patch('defaults')
@@ -105,10 +105,10 @@ export class WorkspacesController {
       'Changes the worktree folder and the start mode that projects without their own setting use, and answers with the defaults.',
   })
   @Responds(WorktreeDefaultsSchema)
-  patchDefaults(
+  async patchDefaults(
     @Body({ schema: PatchWorktreeDefaultsSchema }) body: z.infer<typeof PatchWorktreeDefaultsSchema>,
-  ): WorktreeDefaults {
-    return this.worktrees.patchDefaults(body);
+  ): Promise<WorktreeDefaults> {
+    return await this.worktrees.patchDefaults(body);
   }
 
   @Remote()
@@ -118,8 +118,8 @@ export class WorkspacesController {
     description: 'Lists the known project folders with their sidebar flags and thread counts.',
   })
   @Responds(WorkspaceSchema, { array: true })
-  workspaces(): Workspace[] {
-    return this.threads.workspaces();
+  async workspaces(): Promise<Workspace[]> {
+    return await this.threads.workspaces();
   }
 
   /** One project's sidebar flags (folded, hidden, the attendant's and the background agents' opt-outs) or its worktree settings; answers with the projects. */
@@ -132,8 +132,10 @@ export class WorkspacesController {
   })
   @Responds(WorkspaceSchema, { array: true })
   @Fails({ 404: 'The folder is not a known project.' })
-  patchWorkspace(@Body({ schema: PatchWorkspaceSchema }) body: z.infer<typeof PatchWorkspaceSchema>): Workspace[] {
-    return this.threads.patchWorkspace(body);
+  async patchWorkspace(
+    @Body({ schema: PatchWorkspaceSchema }) body: z.infer<typeof PatchWorkspaceSchema>,
+  ): Promise<Workspace[]> {
+    return await this.threads.patchWorkspace(body);
   }
 
   /** The order of the sidebar's project groups; answers with the projects. */
@@ -144,8 +146,10 @@ export class WorkspacesController {
     description: "Sets the order of the sidebar's project groups, and answers with the projects.",
   })
   @Responds(WorkspaceSchema, { array: true })
-  orderWorkspaces(@Body({ schema: WorkspaceOrderSchema }) body: z.infer<typeof WorkspaceOrderSchema>): Workspace[] {
-    return this.threads.orderWorkspaces(body.order);
+  async orderWorkspaces(
+    @Body({ schema: WorkspaceOrderSchema }) body: z.infer<typeof WorkspaceOrderSchema>,
+  ): Promise<Workspace[]> {
+    return await this.threads.orderWorkspaces(body.order);
   }
 
   /** Takes a project off the sidebar and the list of projects; its threads and files stay (Settings › Projects › Forget). */
@@ -159,8 +163,8 @@ export class WorkspacesController {
   })
   @Responds(WorkspaceSchema, { array: true })
   @Fails({ 404: 'The folder is not a known project.', 409: 'A run is going in the project.' })
-  forgetWorkspace(@Param('id') id: string): Workspace[] {
-    return this.threads.forgetWorkspace(id);
+  async forgetWorkspace(@Param('id') id: string): Promise<Workspace[]> {
+    return await this.threads.forgetWorkspace(id);
   }
 
   /** Opens a folder as a project (the sidebar's "Add project", Settings › Projects, onboarding). */
@@ -170,7 +174,7 @@ export class WorkspacesController {
   @ApiOperation({ summary: 'Open a project', description: 'Adds a folder to the known projects.' })
   @ApiNoContentResponse({ description: 'The folder is a known project.' })
   @Fails({ 400: 'The folder is not an existing absolute path.' })
-  addWorkspace(@Body({ schema: OpenWorkspaceSchema }) body: z.infer<typeof OpenWorkspaceSchema>): void {
-    this.threads.addWorkspace(body.cwd);
+  async addWorkspace(@Body({ schema: OpenWorkspaceSchema }) body: z.infer<typeof OpenWorkspaceSchema>): Promise<void> {
+    await this.threads.addWorkspace(body.cwd);
   }
 }

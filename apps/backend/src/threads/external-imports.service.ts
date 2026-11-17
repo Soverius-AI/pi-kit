@@ -27,35 +27,39 @@ export class ExternalImportsService {
     private readonly meta: MetaRepository,
     private readonly sessions: PiSessionService,
   ) {
-    threads.onDeleted((id) => this.drop(id));
+    threads.onDeleted(async (id) => await this.drop(id));
   }
 
   async discover(cwd: string): Promise<ExternalSessions> {
     this.threads.requireDirectory(cwd);
     const discovery = await discoverExternalSessions(cwd, { cache: this.transcripts });
-    const ledger = this.ledger();
+    const ledger = await this.ledger();
     return {
       unavailable: discovery.unavailable,
       skipped: discovery.skipped,
-      sessions: discovery.sessions.map((session) => {
-        const versions = ledger[session.key] ?? {};
-        const threadId = versions[session.fingerprint];
-        const importedThreadId = threadId && this.threads.find(threadId) ? threadId : null;
-        return {
-          key: session.key,
-          source: session.source,
-          title: redact(session.title),
-          updatedAt: session.updatedAt,
-          fingerprint: session.fingerprint,
-          importedThreadId,
-          // Without a surviving imported copy there is nothing the source changed from.
-          status: importedThreadId
-            ? 'imported'
-            : Object.values(versions).some((id) => this.threads.find(id))
-              ? 'changed'
-              : 'new',
-        };
-      }),
+      sessions: await Promise.all(
+        discovery.sessions.map(async (session) => {
+          const versions = ledger[session.key] ?? {};
+          const threadId = versions[session.fingerprint];
+          const importedThreadId = threadId && (await this.threads.find(threadId)) ? threadId : null;
+          return {
+            key: session.key,
+            source: session.source,
+            title: redact(session.title),
+            updatedAt: session.updatedAt,
+            fingerprint: session.fingerprint,
+            importedThreadId,
+            // Without a surviving imported copy there is nothing the source changed from.
+            status: importedThreadId
+              ? 'imported'
+              : (await Promise.all(Object.values(versions).map(async (id) => await this.threads.find(id)))).some(
+                    Boolean,
+                  )
+                ? 'changed'
+                : 'new',
+          };
+        }),
+      ),
     };
   }
 
@@ -71,8 +75,8 @@ export class ExternalImportsService {
   }
 
   private async importOnce(cwd: string, request: ImportExternalSession): Promise<ThreadDetail> {
-    const versions = this.ledger()[request.key] ?? {};
-    const imported = this.threadOf(versions[request.fingerprint]);
+    const versions = (await this.ledger())[request.key] ?? {};
+    const imported = await this.threadOf(versions[request.fingerprint]);
     if (imported) return imported;
     const discovery = await discoverExternalSessions(cwd, { key: request.key, cache: this.transcripts });
     let snapshot = discovery.sessions.find((session) => session.key === request.key);
@@ -85,9 +89,9 @@ export class ExternalImportsService {
     if (!snapshot.messages.length) throw new BadRequestException('The source has no importable conversation history.');
     // A source whose metadata moved while its history stayed the same is the import we already have.
     const contentKey = `content:${fingerprint({ title: snapshot.title, messages: snapshot.messages })}`;
-    const same = this.threadOf(versions[contentKey]);
+    const same = await this.threadOf(versions[contentKey]);
     if (same) {
-      this.remember(request.key, same.id, [request.fingerprint]);
+      await this.remember(request.key, same.id, [request.fingerprint]);
       return same;
     }
     const session = await this.sessions.importHistory(cwd, snapshot.title, snapshot.messages, {
@@ -97,29 +101,29 @@ export class ExternalImportsService {
       importedAt: Date.now(),
     });
     const detail = await this.threads.adopt(session);
-    this.remember(request.key, detail.id, [request.fingerprint, contentKey]);
+    await this.remember(request.key, detail.id, [request.fingerprint, contentKey]);
     return detail;
   }
 
-  private threadOf(id: string | undefined): ThreadDetail | undefined {
-    return id ? this.threads.find(id) : undefined;
+  private async threadOf(id: string | undefined): Promise<ThreadDetail | undefined> {
+    return id ? await this.threads.find(id) : undefined;
   }
 
-  private ledger(): Ledger {
-    const value = this.meta.getSetting(LEDGER);
+  private async ledger(): Promise<Ledger> {
+    const value = await this.meta.getSetting(LEDGER);
     return value && typeof value === 'object' ? (value as Ledger) : {};
   }
 
   /** Reads the ledger again before writing: another import may have finished meanwhile. */
-  private remember(source: string, threadId: string, versions: string[]): void {
-    const ledger = this.ledger();
+  private async remember(source: string, threadId: string, versions: string[]): Promise<void> {
+    const ledger = await this.ledger();
     ledger[source] = { ...ledger[source], ...Object.fromEntries(versions.map((version) => [version, threadId])) };
-    this.meta.setSetting(LEDGER, ledger);
+    await this.meta.setSetting(LEDGER, ledger);
   }
 
   /** A deleted thread takes its entries along: the ledger only names threads that exist, and an empty one is not kept. */
-  private drop(threadId: string): void {
-    const ledger = this.ledger();
+  private async drop(threadId: string): Promise<void> {
+    const ledger = await this.ledger();
     let dropped = false;
     for (const [source, versions] of Object.entries(ledger)) {
       for (const [version, id] of Object.entries(versions)) {
@@ -130,7 +134,7 @@ export class ExternalImportsService {
       if (!Object.keys(versions).length) delete ledger[source];
     }
     if (!dropped) return;
-    if (Object.keys(ledger).length) this.meta.setSetting(LEDGER, ledger);
-    else this.meta.deleteSetting(LEDGER);
+    if (Object.keys(ledger).length) await this.meta.setSetting(LEDGER, ledger);
+    else await this.meta.deleteSetting(LEDGER);
   }
 }

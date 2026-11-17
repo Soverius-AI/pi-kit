@@ -98,6 +98,9 @@ await new Promise((resolve, reject) => {
 report('invalid local RPC authentication rejected');
 for (const path of ['/api/health', '/api/threads']) assert.equal((await fetch(first.backendUrl + path)).status, 401);
 report('unauthenticated backend APIs rejected');
+// Crash recovery is opt-in; this suite explicitly enables the behavior it exercises.
+const watchdog = spawnSync(paths.launcher, ['watchdog', 'enable'], { env, encoding: 'utf8', timeout: 15_000 });
+assert.equal(watchdog.status, 0, watchdog.stderr || watchdog.stdout);
 const previousBackend = hostStatus().backendPid;
 process.kill(previousBackend, 'SIGKILL');
 const recovered = await until('watchdog recovers crashed backend', () => {

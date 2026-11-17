@@ -22,7 +22,7 @@ export interface AgentsHook {
     model?: string;
   }): Promise<BgAgentRow>;
   send(agentId: string, text: string, mode: 'steer' | 'followUp', requestId: string): Promise<void>;
-  list(threadId: string): BgAgentRow[];
+  list(threadId: string): Promise<BgAgentRow[]>;
   /** Waits for the agent's run to end or the caller to cancel; the status afterwards. */
   wait(agentId: string, signal?: AbortSignal): Promise<AgentStatus>;
   stop(agentId: string): Promise<void>;
@@ -151,7 +151,7 @@ export function createAgentTools(options: { threadId: string; host: () => Agents
       description: 'The background agents of this thread with their status and, when done, their report.',
       parameters: params(z.object({}).strict()),
       async execute() {
-        return text(host().list(threadId).map(summary));
+        return text((await host().list(threadId)).map(summary));
       },
     });
     api.registerTool({

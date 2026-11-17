@@ -38,11 +38,19 @@ export class ThreadStatusService implements OnModuleInit {
   private readonly logger = new Logger(ThreadStatusService.name);
   /** The state last pushed per thread, as JSON, so an unchanged state is not pushed again. */
   private readonly last = new Map<string, string>();
-  private readonly listeners = new Set<(event: ThreadsEvent) => void>();
+  private work: Promise<unknown> = Promise.resolve();
+  private readonly revisions = new Map<string, number>();
+
+  private ordered<T>(run: () => Promise<T>): Promise<T> {
+    const pending = this.work.then(run);
+    this.work = pending.catch(() => undefined);
+    return pending;
+  }
+  private readonly listeners = new Set<(event: ThreadsEvent) => unknown>();
   /** What the Meat Proxy Score plugin adds to an outcome's badge: the score, while its package is installed. Set by the score service. */
   private scoreBadge: ((row: OutcomeRow) => ThreadScoreBadge | undefined) | undefined;
   /** The questions of a thread's background agents the user has to answer; set by the agents module. */
-  private agentQuestions: ((threadId: string) => AgentQuestionDialog[]) | undefined;
+  private agentQuestions: ((threadId: string) => AgentQuestionDialog[] | Promise<AgentQuestionDialog[]>) | undefined;
 
   constructor(
     private readonly threads: ThreadsRepository,
@@ -56,10 +64,10 @@ export class ThreadStatusService implements OnModuleInit {
   onModuleInit(): void {
     // A run ends in the runner's synchronous bookkeeping (the session file's mtime, the counts); the push waits until it is complete.
     this.events.onRunChange((threadId, change) =>
-      setImmediate(() => {
+      setImmediate(async () => {
         try {
-          if (change === 'end') this.measureOpenSession(threadId);
-          this.touch(threadId);
+          if (change === 'end') await this.measureOpenSession(threadId);
+          await this.touch(threadId);
         } catch (error) {
           this.logger.warn(
             `The state of ${threadId} could not be pushed: ${error instanceof Error ? error.message : String(error)}`,
@@ -68,12 +76,14 @@ export class ThreadStatusService implements OnModuleInit {
       }),
     );
     this.sessions.onDialogsChanged((threadId) => {
-      // A drafted answer belongs to a question; once the question is gone the draft is too.
-      this.attendant.expireAnswers(
-        threadId,
-        this.sessions.pendingDialogs(threadId).map((d) => d.id),
-      );
-      this.touch(threadId);
+      void (async () => {
+        // A drafted answer belongs to a question; once the question is gone the draft is too.
+        await this.attendant.expireAnswers(
+          threadId,
+          this.sessions.pendingDialogs(threadId).map((d) => d.id),
+        );
+        await this.touch(threadId);
+      })().catch((error) => this.logger.warn(`Dialog state of ${threadId}: ${String(error)}`));
     });
   }
 
@@ -83,14 +93,16 @@ export class ThreadStatusService implements OnModuleInit {
   }
 
   /** Where the user questions of background agents come from: they make the thread wait like pi's own dialogs. */
-  setAgentQuestions(source: ((threadId: string) => AgentQuestionDialog[]) | undefined): void {
+  setAgentQuestions(
+    source: ((threadId: string) => AgentQuestionDialog[] | Promise<AgentQuestionDialog[]>) | undefined,
+  ): void {
     this.agentQuestions = source;
   }
 
   /** The state of a thread. Pass `lookups` when computing many. */
-  stateOf(row: ThreadRow, lookups?: StateLookups): ThreadState {
-    const lastRun = lookups ? lookups.lastRuns.get(row.id) : this.events.lastRun(row.id);
-    const outcomeRow = lookups ? lookups.outcomes.get(row.id) : this.outcomes.get(row.id);
+  async stateOf(row: ThreadRow, lookups?: StateLookups): Promise<ThreadState> {
+    const lastRun = lookups ? lookups.lastRuns.get(row.id) : await this.events.lastRun(row.id);
+    const outcomeRow = lookups ? lookups.outcomes.get(row.id) : await this.outcomes.get(row.id);
     return computeThreadState({
       running: lastRun?.status === 'running',
       dialogs: this.sessions.pendingDialogs(row.id),
@@ -101,68 +113,85 @@ export class ThreadStatusService implements OnModuleInit {
       origin: row.origin,
       fileMtime: sessionMtime(row.sessionPath),
       logMtime: row.logMtime,
-      summary: (lookups ? lookups.summaries.get(row.id) : this.attendant.meta(row.id)?.summary) ?? null,
-      suggestions: lookups ? (lookups.suggestions.get(row.id) ?? []) : this.attendant.openSuggestions(row.id),
+      summary: (lookups ? lookups.summaries.get(row.id) : (await this.attendant.meta(row.id))?.summary) ?? null,
+      suggestions: lookups ? (lookups.suggestions.get(row.id) ?? []) : await this.attendant.openSuggestions(row.id),
       outcome: outcomeBadge(outcomeRow, outcomeRow ? this.scoreBadge?.(outcomeRow) : undefined),
-      draft: draftBadge(lookups ? lookups.drafts.get(row.id) : this.drafts.forThread(row.id)),
-      agentQuestions: this.agentQuestions?.(row.id) ?? [],
+      draft: draftBadge(lookups ? lookups.drafts.get(row.id) : await this.drafts.forThread(row.id)),
+      agentQuestions: (await this.agentQuestions?.(row.id)) ?? [],
     });
   }
 
-  lookups(): StateLookups {
+  async lookups(): Promise<StateLookups> {
     return {
-      lastRuns: this.events.lastRunByThread(),
-      summaries: this.attendant.summaries(),
-      suggestions: this.attendant.allOpenSuggestions(),
-      outcomes: this.outcomes.all(),
-      drafts: this.drafts.all(),
+      lastRuns: await this.events.lastRunByThread(),
+      summaries: await this.attendant.summaries(),
+      suggestions: await this.attendant.allOpenSuggestions(),
+      outcomes: await this.outcomes.all(),
+      drafts: await this.drafts.all(),
     };
   }
 
   /** Every thread's state, and what a stream that just connected starts with. It also seeds the "last pushed" memory. */
-  snapshot(): Record<string, ThreadState> {
-    const lookups = this.lookups();
+  async snapshot(): Promise<Record<string, ThreadState>> {
+    return await this.ordered(async () => await this.computeSnapshot());
+  }
+
+  private async computeSnapshot(): Promise<Record<string, ThreadState>> {
+    const revisions = new Map(this.revisions);
+    const lookups = await this.lookups();
     const states: Record<string, ThreadState> = {};
-    for (const row of this.threads.all()) {
-      const state = this.stateOf(row, lookups);
+    for (const row of await this.threads.all()) {
+      const state = await this.stateOf(row, lookups);
       states[row.id] = state;
-      this.last.set(row.id, JSON.stringify(state));
+      if (revisions.get(row.id) === this.revisions.get(row.id)) this.last.set(row.id, JSON.stringify(state));
     }
     return states;
   }
 
-  subscribe(listener: (event: ThreadsEvent) => void): () => void {
+  subscribe(listener: (event: ThreadsEvent) => unknown): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
   /** Recomputes one thread and pushes it if it changed. */
-  touch(threadId: string): void {
-    const row = this.threads.get(threadId);
+  async touch(threadId: string): Promise<void> {
+    return await this.ordered(async () => await this.computeTouch(threadId));
+  }
+
+  private async computeTouch(threadId: string): Promise<void> {
+    const revisions = new Map(this.revisions);
+    const row = await this.threads.get(threadId);
     if (!row) return this.gone(threadId);
-    const state = this.stateOf(row);
+    const state = await this.stateOf(row);
     const key = JSON.stringify(state);
-    if (this.last.get(threadId) === key) return;
+    if (revisions.get(threadId) !== this.revisions.get(threadId) || this.last.get(threadId) === key) return;
     this.last.set(threadId, key);
     this.emit({ type: 'state', id: threadId, state });
   }
 
   /** Recomputes every thread (after a reconcile pass, which can change the file facts of many) and pushes what changed. */
-  touchAll(): void {
-    const lookups = this.lookups();
+  async touchAll(): Promise<void> {
+    return await this.ordered(async () => await this.computeTouchall());
+  }
+
+  private async computeTouchall(): Promise<void> {
+    const revisions = new Map(this.revisions);
+    const lookups = await this.lookups();
     const known = new Set<string>();
-    for (const row of this.threads.all()) {
+    for (const row of await this.threads.all()) {
       known.add(row.id);
-      const state = this.stateOf(row, lookups);
+      const state = await this.stateOf(row, lookups);
       const key = JSON.stringify(state);
-      if (this.last.get(row.id) === key) continue;
+      if (revisions.get(row.id) !== this.revisions.get(row.id) || this.last.get(row.id) === key) continue;
       this.last.set(row.id, key);
       this.emit({ type: 'state', id: row.id, state });
     }
-    for (const id of [...this.last.keys()]) if (!known.has(id)) this.gone(id);
+    for (const id of [...this.last.keys()])
+      if (!known.has(id) && revisions.get(id) === this.revisions.get(id)) this.gone(id);
   }
 
   gone(threadId: string): void {
+    this.revisions.set(threadId, (this.revisions.get(threadId) ?? 0) + 1);
     if (this.last.delete(threadId)) this.emit({ type: 'gone', id: threadId });
   }
 
@@ -177,11 +206,11 @@ export class ThreadStatusService implements OnModuleInit {
   }
 
   /** The thread's session is open and a run just ended: pi knows the context exactly. */
-  private measureOpenSession(threadId: string): void {
+  private async measureOpenSession(threadId: string): Promise<void> {
     try {
-      const row = this.threads.get(threadId);
+      const row = await this.threads.get(threadId);
       if (!row || !this.sessions.has(threadId)) return;
-      this.threads.setContext(threadId, this.sessions.contextShare(threadId), sessionMtime(row.sessionPath));
+      await this.threads.setContext(threadId, this.sessions.contextShare(threadId), sessionMtime(row.sessionPath));
     } catch (error) {
       this.logger.debug(
         `Could not measure the context of ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -192,7 +221,7 @@ export class ThreadStatusService implements OnModuleInit {
   private emit(event: ThreadsEvent): void {
     for (const listener of [...this.listeners]) {
       try {
-        listener(event);
+        Promise.resolve(listener(event)).catch(() => undefined);
       } catch {
         // a closed stream must not stop the others
       }

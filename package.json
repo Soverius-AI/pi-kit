@@ -121,6 +121,7 @@
     "@angular/platform-browser": "22.2.3",
     "@angular/router": "22.2.3",
     "@anthropic-ai/sandbox-runtime": "0.0.82",
+    "@appthreat/sqlite3": "9.1.0",
     "@copilotkit/angular": "0.6.0",
     "@copilotkit/core": "1.88.0",
     "@copilotkit/runtime": "1.88.0",

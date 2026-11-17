@@ -77,7 +77,7 @@ export class ConnectorsService {
         throw new BadRequestException(
           'A connector with a token or a client secret stays in your user file; "Project only" is for servers without credentials.',
         );
-      const cwd = this.threads.cwdOf(threadId);
+      const cwd = await this.threads.cwdOf(threadId);
       // Answered, not merely "nothing to trust yet": the file this writes is what makes the folder ask.
       if (!(await this.trust.folderTrusted(cwd)))
         throw new ConflictException(
@@ -233,7 +233,7 @@ export class ConnectorsService {
     if (threadId) await this.threads.openSession(threadId);
     const config = readMcpConfig({
       agentDir,
-      ...(threadId ? { cwd: this.threads.cwdOf(threadId) } : {}),
+      ...(threadId ? { cwd: await this.threads.cwdOf(threadId) } : {}),
       projectTrusted: threadId ? this.sessions.isProjectTrusted(threadId) : false,
     });
     const entry = config.servers.find((e) => e.name === name);

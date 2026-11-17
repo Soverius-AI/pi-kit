@@ -22,6 +22,7 @@ import { MigratingSealing } from './instance-key-sealing';
 import type { OwnerAccess } from './owner-gateway';
 import type { RemoteAccess } from './remote-access';
 import { BackendActivity, type SleepGuard } from './sleep-guard';
+import { readWatchdogEnabled, writeWatchdogEnabled } from './watchdog-settings';
 import {
   BackendWatchdog,
   DEFAULT_WATCHDOG_OPTIONS,
@@ -126,12 +127,14 @@ export class ServiceHost {
   private desktop: RpcPeer | undefined;
   private readonly keys: InstanceKeyStore;
   private activity: BackendActivity | undefined;
+  private watchdogEnabled: boolean;
 
   constructor(
     private readonly config: HostConfig,
     private readonly deps: ServiceHostDeps,
     private readonly watchdogOptions: WatchdogOptions = DEFAULT_WATCHDOG_OPTIONS,
   ) {
+    this.watchdogEnabled = readWatchdogEnabled(config.dataDir);
     const sealing = deps.hostSealing ? new MigratingSealing(deps.hostSealing, this.sealing) : this.sealing;
     this.keys = new InstanceKeyStore(() => InstanceKeyStore.file(config.dataDir), sealing);
   }
@@ -186,8 +189,14 @@ export class ServiceHost {
     });
     // What `attach` answers too, without becoming the desktop: for the `pi-kit` command's backend calls.
     peer.handle('backend', (): BackendEndpoint => {
-      if (!this.endpoint || !this.watchdog) throw new RpcError('The backend is not running.');
+      if (!this.endpoint || !this.current || this.status.state !== 'running')
+        throw new RpcError('The backend is not running.');
       return { ...this.endpoint };
+    });
+    peer.handle('watchdog.status', () => this.watchdogSettings());
+    peer.handle('watchdog.set', (enabled) => {
+      if (typeof enabled !== 'boolean') throw new RpcError('Invalid watchdog preference.');
+      return this.setWatchdog(enabled);
     });
     peer.handle('owner.link', () => {
       if (!this.deps.owner) throw new RpcError('This pi-kit has no browser access.');
@@ -272,7 +281,7 @@ export class ServiceHost {
           this.desktop?.emit('status', status);
         },
       },
-      this.watchdogOptions,
+      { ...this.watchdogOptions, enabled: this.watchdogEnabled },
     );
     this.watchdog.start();
     const guard = this.deps.sleepGuard;
@@ -299,7 +308,10 @@ export class ServiceHost {
     this.backends.set(generation, running);
     this.current = running;
     running.child.on('message', (message: unknown) => this.fromBackend(generation, message));
-    void running.exited.then(() => this.backends.delete(generation));
+    void running.exited.then(() => {
+      this.backends.delete(generation);
+      if (this.current === running) this.current = undefined;
+    });
     this.deps.log(`backend started, pid ${running.child.pid}, ${running.url}`);
     this.desktop?.emit('spawned', { pid: running.child.pid });
     return running;
@@ -321,6 +333,22 @@ export class ServiceHost {
   private async answer(generation: number, value: unknown): Promise<DesktopAnswer> {
     const message = fields(value);
     if (message?.['type'] === 'instance-key') return this.instanceKey(generation, message['keyRequest']);
+    if (message?.['type'] === 'watchdog' || message?.['type'] === 'backend-restart') {
+      if (generation !== this.generation || this.stopping)
+        return { error: 'The service host is stopping.', errorCode: 'unavailable' };
+      try {
+        if (message['type'] === 'backend-restart') {
+          if (!this.watchdog) throw new Error('The backend is not running.');
+          this.watchdog.restartOnExit();
+          return { result: {} };
+        }
+        const enabled = message['enabled'];
+        if (enabled !== undefined && typeof enabled !== 'boolean') throw new Error('Invalid watchdog preference.');
+        return { result: enabled === undefined ? this.watchdogSettings() : this.setWatchdog(enabled) };
+      } catch (error) {
+        return { error: error instanceof Error ? error.message : String(error), errorCode: 'failed' };
+      }
+    }
     const desktop = this.desktop;
     if (desktop) {
       try {
@@ -330,6 +358,19 @@ export class ServiceHost {
       }
     }
     return detachedAnswer(value);
+  }
+
+  private watchdogSettings(): { enabled: boolean; supported: true } {
+    return { enabled: this.watchdogEnabled, supported: true };
+  }
+
+  private setWatchdog(enabled: boolean): { enabled: boolean; supported: true } {
+    if (this.stopping) throw new RpcError('The service host is stopping.');
+    writeWatchdogEnabled(this.config.dataDir, enabled);
+    this.watchdogEnabled = enabled;
+    this.watchdog?.setEnabled(enabled);
+    this.deps.log(`backend watchdog ${enabled ? 'enabled' : 'disabled'}`);
+    return this.watchdogSettings();
   }
 
   private async instanceKey(generation: number, request: unknown): Promise<DesktopAnswer> {

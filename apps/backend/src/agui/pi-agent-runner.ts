@@ -61,6 +61,8 @@ interface ActiveRun {
   /** Writes an event into this run's log and feeds it to the followers and the run's own stream. */
   emit?: (event: BaseEvent) => void;
   close?: () => void;
+  drain?: Promise<void>;
+  shutdown?: () => void;
   /** Stop was pressed: a run that has not handed pi its prompt yet (it waits for the folder's snapshot) never does, nor do messages queued behind it. */
   stopped?: boolean;
 }
@@ -84,6 +86,8 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
   private readonly pendingTurns = new Set<string>();
   private readonly listeners: (() => void)[] = [];
   private destroyed = false;
+  private readonly maintenance = new Set<Promise<void>>();
+  private readonly threadGates = new Map<string, Promise<unknown>>();
   /** Toolbar registrations that came while no run listened, waiting a moment so ones that arrive together are written together. */
   private readonly pendingComposer = new Map<
     string,
@@ -95,7 +99,7 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
   /** The runner of the agent `pi-bg`, whose requests the runtime sends here like every other agent's. */
   private background?: Pick<PiAgentRunner, 'run' | 'connect' | 'stop'> & {
     isRunning(threadId: string): boolean;
-    owns(threadId: string): boolean;
+    owns(threadId: string): Promise<boolean>;
   };
 
   constructor(
@@ -113,48 +117,49 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
    * Runs still marked 'running' belong to a process that is gone: close them in the log as aborted. Navigating the
    * session tree outside a run (the panel, an extension) is written to the log as a small run of its own.
    */
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     this.listeners.push(
-      this.sessions.onTreeChanged((threadId) => this.publishBranch(threadId)),
+      this.sessions.onTreeChanged((threadId) =>
+        this.publishBranch(threadId).catch((error) => logger.error(String(error))),
+      ),
       this.sessions.onUnattachedUiEvent((threadId, event) => this.publishUiEvent(threadId, event)),
       this.sessions.onTurnStarted((threadId) => this.followTurn(threadId)),
     );
-    for (const run of this.log.staleRuns()) {
-      const events = this.log
-        .read(run.threadId)
+    for (const run of await this.log.staleRuns()) {
+      const events = (await this.log.read(run.threadId))
         .filter((stored) => stored.runId === run.runId)
         .map((stored) => stored.event);
       for (const event of closeRun(events, { message: RESTART_MESSAGE, code: 'aborted' })) {
-        this.log.append(run.threadId, run.runId, event);
+        await this.log.append(run.threadId, run.runId, event);
       }
-      this.log.endRun(run.runId, 'aborted');
+      await this.log.endRun(run.runId, 'aborted');
       // The log now accounts for everything in the file, so it is not stale.
-      const row = this.threads.get(run.threadId);
-      if (row) this.threads.setLogMtime(run.threadId, sessionMtime(row.sessionPath));
+      const row = await this.threads.get(run.threadId);
+      if (row) await this.threads.setLogMtime(run.threadId, sessionMtime(row.sessionPath));
       logger.warn(`Marked run ${run.runId} of thread ${run.threadId} as aborted (the backend restarted mid-run).`);
     }
   }
 
   /** Stop event producers and delayed toolbar writes before the database's application shutdown hook closes it. */
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
     this.destroyed = true;
     this.listeners.splice(0).forEach((leave) => leave());
     for (const queued of this.pendingComposer.values()) clearTimeout(queued.timer);
     this.pendingComposer.clear();
     const runs = [...this.active.entries()];
-    this.active.clear();
+
     if (runs.length)
       logger.warn(
         `RUN_SHUTDOWN ${JSON.stringify({ pid: process.pid, runs: runs.map(([threadId, { runId }]) => ({ threadId, runId })) })}`,
       );
+    for (const [, run] of runs) run.shutdown?.();
     for (const [, run] of runs) {
-      try {
-        run.upstream?.unsubscribe();
-      } catch (error) {
-        logger.warn(`Unsubscribing run ${run.runId} during shutdown failed: ${String(error)}`);
-      }
-      run.close?.();
+      await run.drain;
+      // Initialization may have installed a later event queue while we awaited it.
+      await run.drain;
     }
+    await Promise.allSettled([...this.maintenance]);
+    await Promise.allSettled([...this.threadGates.values()]);
   }
 
   useAgent(factory: () => AbstractAgent): void {
@@ -166,10 +171,12 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
   }
 
   /** A request of `pi-bg`: by its agent id where the runtime says it, else by the thread id, which is then an agent's. */
-  private isBackground(request: { threadId: string; agent?: AbstractAgent; agentId?: string }): boolean {
+  private async isBackground(request: { threadId: string; agent?: AbstractAgent; agentId?: string }): Promise<boolean> {
     return (
       !!this.background &&
-      (request.agent?.agentId === 'pi-bg' || request.agentId === 'pi-bg' || this.background.owns(request.threadId))
+      (request.agent?.agentId === 'pi-bg' ||
+        request.agentId === 'pi-bg' ||
+        (await this.background.owns(request.threadId)))
     );
   }
 
@@ -181,7 +188,7 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
    * in gets a run of its own (`followPending`).
    */
   private followTurn(threadId: string): void {
-    if (!this.followAgent) return;
+    if (this.destroyed || !this.followAgent) return;
     if (this.active.has(threadId)) {
       this.pendingTurns.add(threadId);
       return;
@@ -219,8 +226,15 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
   }
 
   run(request: AgentRunnerRunRequest): Observable<BaseEvent> {
+    const backgroundRunner = this.background;
+    if (!backgroundRunner) return this.runForeground(request);
+    return defer(() => this.isBackground(request)).pipe(
+      switchMap((background) => (background ? backgroundRunner.run(request) : this.runForeground(request))),
+    );
+  }
+
+  private runForeground(request: AgentRunnerRunRequest): Observable<BaseEvent> {
     if (this.destroyed) throw new Error('The backend is shutting down.');
-    if (this.isBackground(request)) return (this.background as NonNullable<typeof this.background>).run(request);
     const { threadId, agent, input } = request;
     const runId = input.runId;
     // Steering and follow-ups go to the run that is going; they are neither a run of their own
@@ -250,12 +264,6 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     )
       return runWithMiddleware(agent, input);
     if (this.active.has(threadId)) throw new Error('Thread already running');
-    try {
-      this.log.beginRun(threadId, runId);
-    } catch {
-      throw new Error('Thread already running');
-    }
-
     const active: ActiveRun = { runId, events: [], live: new Subject() };
     this.active.set(threadId, active);
     const out = new ReplaySubject<BaseEvent>(Infinity);
@@ -264,8 +272,8 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       active.live.complete();
     };
 
-    const emit = (event: BaseEvent): void => {
-      const seq = this.log.append(threadId, runId, event);
+    const emit = async (event: BaseEvent): Promise<void> => {
+      const seq = await this.log.append(threadId, runId, event);
       active.events.push(event);
       const delivered = this.withCursor(threadId, seq, event);
       active.live.next({ seq, event: delivered });
@@ -277,14 +285,15 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     const beforeStart: BaseEvent[] = [];
     // RxJS reports exceptions thrown by observer callbacks as uncaught exceptions. Never let a write
     // failure escape a next/error/complete callback: only this run should end, even when storage is unavailable.
-    const storageFailed = (error: unknown): void => {
-      if (this.active.get(threadId) !== active) return;
-      this.active.delete(threadId);
+    let storageFailureHandled = false;
+    const storageFailed = async (error: unknown): Promise<void> => {
+      if (storageFailureHandled || this.active.get(threadId) !== active) return;
+      storageFailureHandled = true;
       logger.error(
         `Writing run ${runId} of thread ${threadId} failed: ${error instanceof Error ? error.stack : String(error)}`,
       );
       try {
-        this.log.endRun(runId, 'error');
+        await this.log.endRun(runId, 'error');
       } catch (endError) {
         logger.error(`Releasing run ${runId} failed: ${String(endError)}`);
       }
@@ -294,9 +303,14 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
         logger.warn(`Unsubscribing run ${runId} failed: ${String(stopError)}`);
       }
       // Dispatch cancellation before clients see the error and can start a replacement run.
-      void this.sessions
-        .abort(threadId)
-        .catch((abortError: unknown) => logger.warn(`Stopping run ${runId} failed: ${String(abortError)}`));
+      try {
+        void this.sessions
+          .abort(threadId)
+          .catch((abortError: unknown) => logger.warn(`Stopping run ${runId} failed: ${String(abortError)}`));
+      } catch (abortError) {
+        logger.warn(`Stopping run ${runId} failed: ${String(abortError)}`);
+      }
+      this.active.delete(threadId);
       for (const event of closeRun(active.events, {
         message: 'The run stopped because its events could not be saved.',
         code: 'EVENT_LOG_ERROR',
@@ -307,65 +321,124 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       }
       active.close?.();
     };
-    active.emit = (event) => {
-      if (this.active.get(threadId) !== active) return;
-      try {
-        if (started) emit(event);
-        else beforeStart.push(event);
-      } catch (error) {
-        storageFailed(error);
+    // RxJS producers cannot await next(). Bound accepted work; overload cancels the producer,
+    // drains accepted writes, then closes the run rather than accumulating unbounded promises.
+    let pending = 0;
+    let accepting = true;
+    let tail = Promise.resolve();
+    const enqueue = (work: () => Promise<void>): void => {
+      if (!accepting) return;
+      if (pending >= 256) {
+        accepting = false;
+        active.upstream?.unsubscribe();
+        void Promise.resolve()
+          .then(() => this.sessions.abort(threadId))
+          .catch((error) => logger.warn(String(error)));
+        tail = tail
+          .then(() => fail('Event producer exceeded the durable queue capacity.', 'EVENT_QUEUE_OVERFLOW'))
+          .catch(storageFailed);
+        active.drain = tail;
+        return;
       }
+      pending++;
+      tail = tail
+        .then(async () => {
+          if (this.active.get(threadId) === active) await work();
+        })
+        .catch(async (error) => {
+          accepting = false;
+          await storageFailed(error);
+        })
+        .finally(() => {
+          pending--;
+        });
+      active.drain = tail;
     };
-    const finish = (terminal: BaseEvent): void => {
-      if (this.active.get(threadId) !== active) return; // already ended
-      this.endRun(threadId, active, terminal, emit);
+    active.emit = (event) => {
+      if (!accepting || this.active.get(threadId) !== active) return;
+      // Stage synchronously while RUN_STARTED is pending. Enqueueing this behind a terminal
+      // already accepted from a burst would otherwise lose session_start registrations.
+      if (!started) {
+        if (beforeStart.length < 256) beforeStart.push(event);
+        else
+          enqueue(async () => {
+            throw new Error('Pre-start event queue exceeded capacity');
+          });
+      } else enqueue(() => emit(event));
+    };
+    const finish = async (terminal: BaseEvent): Promise<void> => {
+      if (this.active.get(threadId) !== active) return;
+      accepting = false;
+      await this.endRun(threadId, active, terminal, emit);
       this.active.delete(threadId);
       active.close?.();
       this.followPending(threadId);
     };
-    // The stream broke without a terminal event: close what is open, then end the run with an error.
-    const fail = (message: string, code: string): void => {
+    const fail = async (message: string, code: string): Promise<void> => {
       if (this.active.get(threadId) !== active) return;
+      const closing = closeRun(active.events, { message, code });
+      const terminal = closing.pop() as BaseEvent;
+      for (const event of closing) await emit(event);
+      await finish(terminal);
+    };
+    active.shutdown = () => {
+      active.stopped = true;
+      active.upstream?.unsubscribe();
+      if (active.upstream) enqueue(() => fail(RESTART_MESSAGE, 'aborted'));
+      accepting = false;
+    };
+    const initialize = async (): Promise<void> => {
       try {
-        const closing = closeRun(active.events, { message, code });
-        const terminal = closing.pop() as BaseEvent;
-        closing.forEach(emit);
-        finish(terminal);
+        await this.withThreadGate(threadId, () => this.log.beginRun(threadId, runId));
       } catch (error) {
-        storageFailed(error);
+        this.active.delete(threadId);
+        out.error(error);
+        active.live.complete();
+        return;
+      }
+      if (this.destroyed) {
+        await fail(RESTART_MESSAGE, 'aborted');
+        return;
+      }
+      if (active.stopped) {
+        await emit({ type: EventType.RUN_STARTED, threadId, runId } as BaseEvent);
+        await finish({ type: EventType.RUN_FINISHED, threadId, runId, result: { aborted: true } } as BaseEvent);
+        return;
+      }
+      try {
+        const upstream = runWithMiddleware(agent, input);
+        active.upstream = upstream.subscribe({
+          next: (event) =>
+            enqueue(async () => {
+              if (isTerminal(event)) return finish(event);
+              await emit(event.type === EventType.RUN_STARTED ? withInput(event, input) : event);
+              if (event.type === EventType.RUN_STARTED) {
+                started = true;
+                for (const queued of beforeStart.splice(0)) await emit(queued);
+                await this.flushComposer(threadId, emit);
+              }
+            }),
+          error: (error) => enqueue(() => fail(error instanceof Error ? error.message : String(error), 'error')),
+          complete: () => enqueue(() => fail('The run ended without a result.', 'INCOMPLETE_STREAM')),
+        });
+        if (!accepting || this.active.get(threadId) !== active) active.upstream.unsubscribe();
+      } catch (error) {
+        enqueue(() => fail(error instanceof Error ? error.message : String(error), 'error'));
       }
     };
-
-    try {
-      // pi gets the prompt once the folder's snapshot is taken: what the run changes is measured from it.
-      const upstream = runWithMiddleware(agent, input);
-      active.upstream = upstream.subscribe({
-        next: (event) => {
-          if (this.active.get(threadId) !== active) return;
-          try {
-            if (isTerminal(event)) return finish(event);
-            emit(event.type === EventType.RUN_STARTED ? withInput(event, input) : event);
-            if (event.type === EventType.RUN_STARTED) {
-              started = true;
-              beforeStart.splice(0).forEach(emit);
-              this.flushComposer(threadId);
-            }
-          } catch (error) {
-            storageFailed(error);
-          }
-        },
-        error: (error) => fail(error instanceof Error ? error.message : String(error), 'error'),
-        complete: () => fail('The run ended without a result.', 'INCOMPLETE_STREAM'),
-      });
-      if (this.active.get(threadId) !== active) active.upstream.unsubscribe();
-    } catch (error) {
-      fail(error instanceof Error ? error.message : String(error), 'error');
-    }
+    active.drain = initialize().catch(storageFailed);
     return out.asObservable();
   }
 
   connect(request: AgentRunnerConnectRequest): Observable<BaseEvent> {
-    if (this.isBackground(request)) return (this.background as NonNullable<typeof this.background>).connect(request);
+    const backgroundRunner = this.background;
+    if (!backgroundRunner) return this.connectForeground(request);
+    return defer(() => this.isBackground(request)).pipe(
+      switchMap((background) => (background ? backgroundRunner.connect(request) : this.connectForeground(request))),
+    );
+  }
+
+  private connectForeground(request: AgentRunnerConnectRequest): Observable<BaseEvent> {
     const { threadId } = request;
     return new Observable<BaseEvent>((subscriber) => {
       let follow: Subscription | undefined;
@@ -374,67 +447,108 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       void (async () => {
         await this.ensureCurrent(threadId);
         if (closed) return;
+        if (this.destroyed) {
+          subscriber.complete();
+          return;
+        }
         // Older versions wrote the final snapshot twice, so the incremental compaction window missed the run's
         // deltas. Repair oversized idle logs before replaying thousands of tiny chunks into the renderer.
         const hydrate = request.headers?.[THREAD_HYDRATION_HEADER] === '1';
-        if (!hydrate && !this.hasLivePrompt(threadId) && this.log.count(threadId) > COMPACTION.maxRows) {
-          this.compactor.compact(threadId, { full: true });
+        if (!hydrate && !this.hasLivePrompt(threadId) && (await this.log.count(threadId)) > COMPACTION.maxRows) {
+          await this.withThreadGate(threadId, async () => {
+            if (!this.destroyed && !this.hasLivePrompt(threadId))
+              await this.compactor.compact(threadId, { full: true });
+          });
         }
-        this.flushComposer(threadId);
-        this.expireOrphanedInterrupt(threadId);
-        // Everything from here to the subscription is synchronous, so no event slips between the
-        // stored log and the live feed.
-        const after = this.log.resolveCursor(threadId, request.headers?.[REPLAY_CURSOR_HEADER]);
-        const run = this.active.get(threadId);
-        subscriber.next({
-          type: EventType.CUSTOM,
-          name: REPLAY_RESET_EVENT,
-          value: { reset: after === undefined, ...(hydrate ? { running: !!run } : {}) },
-        } as BaseEvent);
-        const stored = after === undefined ? this.log.read(threadId) : this.log.readAfter(threadId, after);
-        if (hydrate && (after === undefined || stored.length > 0)) {
-          // This is a state transfer, not a replay. Keep the durable AG-UI log unchanged, including
-          // unfinished tool arguments. Read/project/join synchronously so no new event can fall in a gap.
-          const history = after === undefined ? stored : this.log.read(threadId);
-          const seq = history.at(-1)?.seq ?? 0;
-          const runId = run?.runId ?? history.at(-1)?.runId ?? `hydrate-${threadId}`;
-          subscriber.next({ type: EventType.RUN_STARTED, threadId, runId } as BaseEvent);
-          const value = hydrateThread(history.map((row) => row.event));
-          value.view.promptActive = this.hasLivePrompt(threadId);
-          const snapshot = {
-            type: EventType.CUSTOM,
-            name: THREAD_HYDRATION_EVENT,
-            value: { ...value, running: !!run },
-          } as BaseEvent;
-          subscriber.next(this.withCursor(threadId, seq, snapshot));
+        await this.flushComposer(threadId);
+        await this.withThreadGate(threadId, () => this.expireOrphanedInterrupt(threadId));
+        const admitted = this.active.get(threadId);
+        if (admitted?.upstream) await admitted.drain;
+        await this.withThreadGate(threadId, async () => {
+          // Subscribe before asynchronous reads, buffer until the replay watermark is known.
+          let run = this.active.get(threadId);
+          const buffered: { seq?: number; event: BaseEvent }[] = [];
+          let replaying = true;
+          let completed = false;
+          let last = 0;
+          if (run)
+            follow = run.live.subscribe({
+              next: (item) => {
+                if (replaying) buffered.push(item);
+                else if (item.seq === undefined || item.seq > last) subscriber.next(item.event);
+              },
+              complete: () => {
+                completed = true;
+                if (!replaying) subscriber.complete();
+              },
+            });
+          const after = await this.log.resolveCursor(threadId, request.headers?.[REPLAY_CURSOR_HEADER]);
+          const stored =
+            after === undefined ? await this.log.read(threadId) : await this.log.readAfter(threadId, after);
+          // A run may reserve itself during the async read, but admission waits on this gate.
+          // Attach before releasing it, so that run's first durable event cannot slip through.
           if (!run) {
-            const terminal = [...history].reverse().find((row) => isTerminal(row.event))?.event;
-            const outcome =
-              terminal?.type === EventType.RUN_FINISHED
-                ? (terminal as { outcome?: unknown }).outcome
-                : { type: 'success' };
-            subscriber.next(
-              this.withCursor(threadId, seq, {
-                type: EventType.RUN_FINISHED,
-                threadId,
-                runId,
-                outcome,
-                result: {
-                  aborted:
-                    terminal?.type === EventType.RUN_FINISHED &&
-                    (terminal as { result?: { aborted?: boolean } }).result?.aborted === true,
+            run = this.active.get(threadId);
+            if (run)
+              follow = run.live.subscribe({
+                next: (item) => {
+                  if (replaying) buffered.push(item);
+                  else if (item.seq === undefined || item.seq > last) subscriber.next(item.event);
                 },
-              } as BaseEvent),
-            );
+                complete: () => {
+                  completed = true;
+                  if (!replaying) subscriber.complete();
+                },
+              });
           }
-        } else if (!hydrate) {
-          for (const { seq, event } of stored) subscriber.next(this.withCursor(threadId, seq, event));
-        }
-        if (!run) return subscriber.complete();
-        const last = stored.at(-1)?.seq ?? after ?? 0;
-        follow = run.live.subscribe({
-          next: ({ seq, event }) => (seq === undefined || seq > last) && subscriber.next(event),
-          complete: () => subscriber.complete(),
+          subscriber.next({
+            type: EventType.CUSTOM,
+            name: REPLAY_RESET_EVENT,
+            value: { reset: after === undefined, ...(hydrate ? { running: !!run } : {}) },
+          } as BaseEvent);
+          if (hydrate && (after === undefined || stored.length > 0)) {
+            // This is a state transfer, not a replay. Keep the durable AG-UI log unchanged, including
+            // unfinished tool arguments. Read/project/join synchronously so no new event can fall in a gap.
+            const history = after === undefined ? stored : await this.log.read(threadId);
+            const seq = history.at(-1)?.seq ?? 0;
+            last = seq;
+            const runId = run?.runId ?? history.at(-1)?.runId ?? `hydrate-${threadId}`;
+            subscriber.next({ type: EventType.RUN_STARTED, threadId, runId } as BaseEvent);
+            const value = hydrateThread(history.map((row) => row.event));
+            value.view.promptActive = this.hasLivePrompt(threadId);
+            const snapshot = {
+              type: EventType.CUSTOM,
+              name: THREAD_HYDRATION_EVENT,
+              value: { ...value, running: !!run },
+            } as BaseEvent;
+            subscriber.next(this.withCursor(threadId, seq, snapshot));
+            if (!run) {
+              const terminal = [...history].reverse().find((row) => isTerminal(row.event))?.event;
+              const outcome =
+                terminal?.type === EventType.RUN_FINISHED
+                  ? (terminal as { outcome?: unknown }).outcome
+                  : { type: 'success' };
+              subscriber.next(
+                this.withCursor(threadId, seq, {
+                  type: EventType.RUN_FINISHED,
+                  threadId,
+                  runId,
+                  outcome,
+                  result: {
+                    aborted:
+                      terminal?.type === EventType.RUN_FINISHED &&
+                      (terminal as { result?: { aborted?: boolean } }).result?.aborted === true,
+                  },
+                } as BaseEvent),
+              );
+            }
+          } else if (!hydrate) {
+            for (const { seq, event } of stored) subscriber.next(this.withCursor(threadId, seq, event));
+          }
+          last = Math.max(last, stored.at(-1)?.seq ?? after ?? 0);
+          replaying = false;
+          for (const item of buffered) if (item.seq === undefined || item.seq > last) subscriber.next(item.event);
+          if (!run || completed) subscriber.complete();
         });
       })().catch((error) => subscriber.error(error));
 
@@ -449,8 +563,8 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     return { ...event, metadata: { ...event.metadata, [REPLAY_CURSOR_METADATA]: this.log.cursor(threadId, seq) } };
   }
 
-  isRunning(request: AgentRunnerIsRunningRequest): Promise<boolean> {
-    if (this.isBackground(request))
+  async isRunning(request: AgentRunnerIsRunningRequest): Promise<boolean> {
+    if (await this.isBackground(request))
       return Promise.resolve((this.background as NonNullable<typeof this.background>).isRunning(request.threadId));
     return Promise.resolve(this.active.has(request.threadId));
   }
@@ -462,7 +576,7 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
    * the dialog and aborts pi, and the client's answer to the interrupt then ends as a stopped run.
    */
   async stop(request: AgentRunnerStopRequest): Promise<boolean> {
-    if (this.isBackground(request)) return (this.background as NonNullable<typeof this.background>).stop(request);
+    if (await this.isBackground(request)) return (this.background as NonNullable<typeof this.background>).stop(request);
     const run = this.active.get(request.threadId);
     if (!run) {
       if (this.sessions.pendingDialogs(request.threadId).length === 0) return false;
@@ -478,6 +592,7 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       `RUN_STOP ${JSON.stringify({ pid: process.pid, threadId: request.threadId, runId: run.runId, reason: 'stop-request' })}`,
     );
     await this.sessions.abort(request.threadId);
+    await run.drain;
     return true;
   }
 
@@ -511,7 +626,12 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
    * of the branch the thread is on now, and our bookkeeping (leaf, fork count, log validity) follows. A thread that runs
    * is left alone: its own run records the tree when it ends.
    */
-  publishBranch(threadId: string): void {
+  publishBranch(threadId: string): Promise<void> {
+    return this.trackMaintenance(this.withThreadGate(threadId, () => this.writeBranch(threadId)));
+  }
+
+  private async writeBranch(threadId: string): Promise<void> {
+    if (this.destroyed) return;
     if (this.hasLivePrompt(threadId)) return;
     const entries = this.sessionEntries(threadId);
     if (!entries) return;
@@ -523,15 +643,15 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       { type: EventType.CUSTOM, name: 'pi.tree', value: { leafId, changed: leafId ? [leafId] : [] } },
       { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: 'success' } },
     ] as BaseEvent[];
-    for (const event of events) this.log.append(threadId, runId, event);
+    for (const event of events) await this.log.append(threadId, runId, event);
     try {
-      this.compact(threadId);
+      await this.compact(threadId);
     } catch (error) {
       logger.warn(
         `Compacting the log of ${threadId} failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    this.recordTree(threadId);
+    await this.recordTree(threadId);
   }
 
   /**
@@ -546,9 +666,9 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       queued.registrations.push(event.registration);
       return;
     }
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       try {
-        this.flushComposer(threadId);
+        await this.flushComposer(threadId);
       } catch (error) {
         logger.error(`Writing toolbar registrations for ${threadId} failed: ${String(error)}`);
       }
@@ -561,7 +681,37 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
    * Writes the queued registrations that change what the log already says: into the run that is going when there is one (that run
    * opened the session), else into one small run of their own, so the next `connect()` replays them. `connect()` flushes first.
    */
-  private flushComposer(threadId: string): void {
+  private flushComposer(threadId: string, write?: (event: BaseEvent) => Promise<void>): Promise<void> {
+    return this.trackMaintenance(this.withThreadGate(threadId, () => this.writeComposer(threadId, write)));
+  }
+
+  /** Thread-local admission/maintenance gate; no lock on unrelated threads or the database worker. */
+  private withThreadGate<T>(threadId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.threadGates.get(threadId) ?? Promise.resolve();
+    const pending = previous.catch(() => undefined).then(work);
+    this.threadGates.set(threadId, pending);
+    void pending.then(
+      () => {
+        if (this.threadGates.get(threadId) === pending) this.threadGates.delete(threadId);
+      },
+      () => {
+        if (this.threadGates.get(threadId) === pending) this.threadGates.delete(threadId);
+      },
+    );
+    return pending;
+  }
+
+  private trackMaintenance(pending: Promise<void>): Promise<void> {
+    this.maintenance.add(pending);
+    void pending.then(
+      () => this.maintenance.delete(pending),
+      () => this.maintenance.delete(pending),
+    );
+    return pending;
+  }
+
+  private async writeComposer(threadId: string, write?: (event: BaseEvent) => Promise<void>): Promise<void> {
+    if (this.destroyed) return;
     const queued = this.pendingComposer.get(threadId);
     if (!queued) return;
     // A synthetic toolbar run would replace the suspended run's interrupt with a success outcome.
@@ -569,8 +719,8 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     if (!this.active.has(threadId) && this.hasLivePrompt(threadId)) return;
     clearTimeout(queued.timer);
     this.pendingComposer.delete(threadId);
-    if (!this.threads.get(threadId)) return;
-    const state = this.composerState(threadId);
+    if (!(await this.threads.get(threadId))) return;
+    const state = await this.composerState(threadId);
     const fresh: ComposerRegistration[] = [];
     for (const registration of queued.registrations) {
       if (!composerChanges(state, registration)) continue;
@@ -582,7 +732,8 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     const events = fresh.flatMap((registration) => mapUiEvent({ kind: 'composer', registration }));
     const active = this.active.get(threadId);
     if (active?.emit) {
-      events.forEach(active.emit);
+      if (write) for (const event of events) await write(event);
+      else events.forEach(active.emit);
       return;
     }
     const runId = `composer-${randomUUID()}`;
@@ -591,36 +742,41 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       ...events,
       { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: 'success' } },
     ] as BaseEvent[];
-    for (const e of run) this.log.append(threadId, runId, e);
+    for (const e of run) await this.log.append(threadId, runId, e);
   }
 
   /** The toolbar registrations the replay log holds for a thread, by id, as a client reducing the log ends up with them. */
-  composerState(threadId: string): Map<string, ComposerRegistration> {
-    return foldComposer(this.log.read(threadId).map((stored) => stored.event));
+  async composerState(threadId: string): Promise<Map<string, ComposerRegistration>> {
+    return foldComposer((await this.log.read(threadId)).map((stored) => stored.event));
   }
 
   // ---- internals
 
   /** The leaf the app is on, the thread's fork count and the log's validity against the file as it is now. */
-  private recordTree(threadId: string): void {
-    const row = this.threads.get(threadId);
+  private async recordTree(threadId: string): Promise<void> {
+    const row = await this.threads.get(threadId);
     const source = this.sessions.openTree(threadId);
     if (!row || !source) return;
     const mtime = sessionMtime(row.sessionPath);
-    this.threads.setLeaf(threadId, source.leafId, mtime);
-    this.threads.setForkCount(threadId, buildSessionTree(source.entries, source.leafId).forks, mtime);
-    if (mtime !== null) this.threads.setLogMtime(threadId, mtime);
+    await this.threads.setLeaf(threadId, source.leafId, mtime);
+    await this.threads.setForkCount(threadId, buildSessionTree(source.entries, source.leafId).forks, mtime);
+    if (mtime !== null) await this.threads.setLogMtime(threadId, mtime);
   }
 
   /** Writes the run's tail: snapshot from pi's file, terminal event, then compaction and bookkeeping. */
-  private endRun(threadId: string, active: ActiveRun, terminal: BaseEvent, emit: (event: BaseEvent) => void): void {
+  private async endRun(
+    threadId: string,
+    active: ActiveRun,
+    terminal: BaseEvent,
+    emit: (event: BaseEvent) => Promise<void>,
+  ): Promise<void> {
     if (isInterrupt(terminal)) {
       // pi is still inside its prompt, waiting for an answer: the session file is not at a boundary yet, so
       // the log keeps the stream as it was (no snapshot, no compaction) and the next run continues it.
-      emit(terminal);
-      this.log.endRun(active.runId, 'finished');
+      await emit(terminal);
+      await this.log.endRun(active.runId, 'finished');
       // The prompt is still alive, but its persisted entries are already represented by this run's stream.
-      this.recordTree(threadId);
+      await this.recordTree(threadId);
       return;
     }
     const snapshot = this.snapshotFromSession(threadId);
@@ -629,33 +785,37 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     // the pi entry ids the snapshot names. CopilotKit's message view keeps a row's element across such an id change.
     if (snapshot) {
       // emit stores the event too. A second append would make the compactor start at this same run's snapshot.
-      emit(snapshot);
+      await emit(snapshot);
     }
-    emit(terminal);
+    await emit(terminal);
 
-    this.log.endRun(
+    await this.log.endRun(
       active.runId,
-      isAborted(terminal) ? 'aborted' : terminal.type === EventType.RUN_FINISHED ? 'finished' : 'error',
+      isAborted(terminal) || (terminal as { code?: string }).code === 'aborted'
+        ? 'aborted'
+        : terminal.type === EventType.RUN_FINISHED
+          ? 'finished'
+          : 'error',
     );
     try {
-      this.compact(threadId);
+      await this.compact(threadId);
     } catch (error) {
       logger.warn(
         `Compacting the log of ${threadId} failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    const row = this.threads.get(threadId);
+    const row = await this.threads.get(threadId);
     if (row) {
       const entries = this.sessionEntries(threadId);
       const open = this.sessions.openTree(threadId);
       const first = entries && sessionToMessages(entries).find((m) => m.role === 'user');
-      this.threads.recordRunEnd(threadId, {
+      await this.threads.recordRunEnd(threadId, {
         logMtime: sessionMtime(row.sessionPath),
         messageCount: entries?.filter((e) => e.type === 'message').length ?? row.messageCount,
         preview: first && typeof first.content === 'string' ? first.content.slice(0, 200) : undefined,
         ...(open ? { lastLine: lastAssistantLine(open.entries, open.leafId) } : {}),
       });
-      this.recordTree(threadId);
+      await this.recordTree(threadId);
     }
   }
 
@@ -664,13 +824,13 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
    * does not hold that session (the app was restarted) nobody can ever answer: close the log as aborted
    * instead of showing a question that goes nowhere.
    */
-  private expireOrphanedInterrupt(threadId: string): void {
-    if (this.hasLivePrompt(threadId)) return;
-    const last = this.log.read(threadId).at(-1);
+  private async expireOrphanedInterrupt(threadId: string): Promise<void> {
+    if (this.destroyed || this.hasLivePrompt(threadId)) return;
+    const last = (await this.log.read(threadId)).at(-1);
     if (!last || !isInterrupt(last.event)) return;
     const runId = `expired-${Date.now()}`;
-    this.log.append(threadId, runId, { type: EventType.RUN_STARTED, threadId, runId } as BaseEvent);
-    this.log.append(threadId, runId, {
+    await this.log.append(threadId, runId, { type: EventType.RUN_STARTED, threadId, runId } as BaseEvent);
+    await this.log.append(threadId, runId, {
       type: EventType.RUN_ERROR,
       message: 'The app was closed while pi was waiting for an answer.',
       code: 'aborted',
@@ -696,8 +856,8 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
     return entries && messagesSnapshot(sessionToMessages(entries, this.sessionOptions(threadId)));
   }
 
-  private compact(threadId: string): void {
-    const result = this.compactor.compact(threadId);
+  private async compact(threadId: string): Promise<void> {
+    const result = await this.compactor.compact(threadId);
     if (result.collapsed > 0) logger.log(`Collapsed ${result.collapsed} rows of old runs from the log of ${threadId}.`);
   }
 
@@ -706,19 +866,23 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
    * the thread has no log yet, the log is rebuilt as one `MESSAGES_SNAPSHOT` of the file's active
    * branch. This is also how CLI-created sessions get their history without ever having run here.
    */
-  private async ensureCurrent(threadId: string): Promise<void> {
+  private ensureCurrent(threadId: string): Promise<void> {
+    return this.trackMaintenance(this.withThreadGate(threadId, () => this.reconcileCurrent(threadId)));
+  }
+
+  private async reconcileCurrent(threadId: string): Promise<void> {
     if (this.hasLivePrompt(threadId)) return;
-    const row = this.threads.get(threadId);
+    const row = await this.threads.get(threadId);
     if (!row) return;
-    this.threads.touchOpened(threadId);
+    await this.threads.touchOpened(threadId);
     const mtime = sessionMtime(row.sessionPath);
-    const hasLog = this.log.count(threadId) > 0;
+    const hasLog = (await this.log.count(threadId)) > 0;
     if (mtime === null) return; // a draft without a file: nothing to show
     if (hasLog && row.logMtime !== null && mtime <= row.logMtime) return;
 
     const session = await this.sessions.readSession(row.sessionPath);
     if (this.hasLivePrompt(threadId)) return; // a prompt started or suspended while the file was being read
-    this.log.clear(threadId);
+    await this.log.clear(threadId);
     const runId = `history-${mtime}`;
     const messages = sessionToMessages(session.entries, this.sessionOptions(threadId));
     // Clearing the log also dropped the toolbar registrations; the open session still holds them.
@@ -731,8 +895,8 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       ...composer,
       { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: 'success' } },
     ] as BaseEvent[];
-    for (const event of events) this.log.append(threadId, runId, event);
-    this.threads.setLogMtime(threadId, mtime);
+    for (const event of events) await this.log.append(threadId, runId, event);
+    await this.threads.setLogMtime(threadId, mtime);
   }
 
   /** A suspended AG-UI run still belongs to pi's live prompt. Its stream contains control state absent from the session file. */

@@ -13,7 +13,7 @@ server installs use the same service-host implementation ([ADR-0036](adr/0036-al
 flowchart LR
   manager["Service manager\nlaunchd · systemd · Task Scheduler · Run key"]
   subgraph host["Service host (libs/shared/service-host)"]
-    watchdog["Watchdog: starts and restarts the backend"]
+    watchdog["Service host: starts backend; recovery opt-in"]
     backend["Backend (NestJS)\n127.0.0.1, per-launch token"]
     owner["Owner gateway\nloopback, preferred port 47800"]
     remote["Remote gateway\nbehind Tailscale Serve"]
@@ -68,9 +68,10 @@ its own newer version.
 | Linux | systemd user unit | the same unit, with `loginctl enable-linger` |
 | Windows | the desktop app: a `Run` key and a windowless supervisor | a server install: a Task Scheduler task (asks for the account password once) |
 
-**Settings › General › Background** in the app does what `pi-kit service install` and `uninstall` do. The host restarts its
-backend after a crash; launchd, systemd and the Windows supervisor restart the host. Turning the background service off
-makes the host follow the desktop app's lifetime instead.
+**Settings › General › Background** in the app does what `pi-kit service install` and `uninstall` do. Automatic backend recovery is **off by default**. Enable it separately with **Settings › General › Backend recovery** or
+`pi-kit watchdog enable` (`disable` turns it off; `status` reports it). The choice is persisted in `<dataDir>/watchdog.json`.
+Only with this opt-in does the host restart its backend after a crash or failed health checks; launchd, systemd and the Windows supervisor restart the host. Turning the background service off
+makes the host follow the desktop app's lifetime instead. Explicit update restarts still work with automatic recovery off.
 
 Boot startup does not bypass disk encryption, suspend, network policy, or credential-store locks. A macOS LaunchDaemon
 runs as the owning user, but the login keychain may be locked before sign-in. Linux boot startup requires lingering;

@@ -8,7 +8,7 @@ export interface PathBatch {
   at: number;
 }
 
-export type FolderListener = (batch: PathBatch) => void;
+export type FolderListener = (batch: PathBatch) => unknown;
 
 /** The paths of one batch are capped; past it the batch says `overflow`. */
 export const MAX_BATCH_PATHS = 200;
@@ -35,7 +35,7 @@ export const headChanged = (at = Date.now()): PathBatch => ({ paths: [], overflo
 export class FolderChangesService {
   private readonly logger = new Logger(FolderChangesService.name);
   private readonly listeners = new Map<string, Set<FolderListener>>();
-  private readonly anyListeners = new Set<(cwd: string, batch: PathBatch) => void>();
+  private readonly anyListeners = new Set<(cwd: string, batch: PathBatch) => unknown>();
 
   /** Listens to `cwd`; returns the function that stops. */
   subscribe(cwd: string, listener: FolderListener): () => void {
@@ -49,7 +49,7 @@ export class FolderChangesService {
   }
 
   /** Every batch of every folder (the file index forgets its cache here). */
-  onBatch(listener: (cwd: string, batch: PathBatch) => void): () => void {
+  onBatch(listener: (cwd: string, batch: PathBatch) => unknown): () => void {
     this.anyListeners.add(listener);
     return () => this.anyListeners.delete(listener);
   }
@@ -61,9 +61,9 @@ export class FolderChangesService {
     for (const listener of [...(this.listeners.get(cwd) ?? [])]) this.isolated(cwd, () => listener(batch));
   }
 
-  private isolated(cwd: string, call: () => void): void {
+  private isolated(cwd: string, call: () => unknown): void {
     try {
-      call();
+      Promise.resolve(call()).catch((error) => this.logger.error(`A listener of ${cwd} failed: ${String(error)}`));
     } catch (error) {
       this.logger.error(
         `A listener of ${cwd} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,

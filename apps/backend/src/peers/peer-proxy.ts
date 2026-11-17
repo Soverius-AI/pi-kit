@@ -48,7 +48,7 @@ export class PeerProxy {
 
   async remote(peerId: string, deviceId: string | undefined, path: string, req: Request, res: Response): Promise<void> {
     PeerProxy.checked(path, req.method);
-    const peer = this.peers.target(peerId, deviceId),
+    const peer = await this.peers.target(peerId, deviceId),
       body = PeerProxy.body(req),
       controller = new AbortController();
     const abort = () => controller.abort();
@@ -87,7 +87,7 @@ export class PeerProxy {
     PeerProxy.checked(path, req.method);
     let peerId: string;
     try {
-      peerId = this.peers.authorize(token).peerId;
+      peerId = (await this.peers.authorize(token)).peerId;
     } catch {
       res.setHeader('x-pi-peer-auth', 'renew');
       res.status(401).json({ error: 'Peer session renewal required' });
@@ -135,7 +135,7 @@ export class PeerProxy {
   }
 
   async projects(peerId: string, deviceId?: string, signal?: AbortSignal): Promise<Workspace[]> {
-    const peer = this.peers.target(peerId, deviceId);
+    const peer = await this.peers.target(peerId, deviceId);
     const response = await this.fetch(peer, deviceId, {
       path: '/api/workspaces',
       method: 'GET',
@@ -160,7 +160,7 @@ export class PeerProxy {
         );
       if (workspaces.some((project) => project.instanceId !== peerId))
         throw new ForbiddenException('Project owner mismatch.');
-      this.assertTarget(peer, deviceId);
+      await this.assertTarget(peer, deviceId);
       return workspaces;
     } finally {
       response.destroy();
@@ -183,7 +183,7 @@ export class PeerProxy {
     const peerId = peer.identity.instanceId;
     const send = async (renew: boolean) => {
       const token = await this.peers.access(peerId, deviceId, renew);
-      this.assertTarget(peer, deviceId);
+      await this.assertTarget(peer, deviceId);
       if (renew && !call.replayable)
         throw new ServiceUnavailableException('Connection renewed. Retry the operation explicitly.');
       return this.network.open(
@@ -201,8 +201,8 @@ export class PeerProxy {
     upstream.destroy();
     return send(true);
   }
-  private assertTarget(peer: PeerRecord, deviceId?: string): void {
-    const current = this.peers.target(peer.identity.instanceId, deviceId);
+  private async assertTarget(peer: PeerRecord, deviceId?: string): Promise<void> {
+    const current = await this.peers.target(peer.identity.instanceId, deviceId);
     if (
       current.pairId !== peer.pairId ||
       current.revision !== peer.revision ||

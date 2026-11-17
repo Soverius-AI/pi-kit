@@ -13,6 +13,8 @@ import { NOT_RUNNING, runCli, type CliContext } from './service-cli';
 import { FileWrappingKeys, HostSealing, instanceKeyFile, KeyringWrappingKeys } from './instance-key-sealing';
 import { hostConfigFromEnv, type LaunchedBackend, ServiceHost, type ServiceHostDeps } from './service-host';
 import type { ServiceManager } from './service-registration';
+import { readWatchdogEnabled, writeWatchdogEnabled } from './watchdog-settings';
+import { DEFAULT_WATCHDOG_OPTIONS } from './watchdog';
 
 const TOKEN = 'k'.repeat(64);
 
@@ -90,6 +92,83 @@ async function startHost(
 }
 
 describe('ServiceHost with a desktop on its socket', () => {
+  it('starts without watchdog polling and leaves a crashed backend down by default', async () => {
+    const backend = fakeBackend(2000);
+    const schedule = vi.fn(() => () => undefined);
+    const { host, path } = await startHost(backend, true, () => ({ schedule }));
+    const peer = await connectHostChannel(path, TOKEN);
+    cleanup.push(async () => peer.close());
+    await host.start();
+    expect(await peer.call('watchdog.status')).toEqual({ enabled: false, supported: true });
+    expect(schedule).not.toHaveBeenCalled();
+    backend.exit();
+    await vi.waitFor(async () => {
+      expect(await peer.call('status')).toMatchObject({ status: { state: 'failed' } });
+    });
+    expect(schedule).not.toHaveBeenCalled();
+    await expect(peer.call('backend')).rejects.toThrow('not running');
+  });
+
+  it('persists and applies authenticated watchdog commands without replacing the desktop', async () => {
+    const backend = fakeBackend(2000);
+    const schedule = vi.fn(() => () => undefined);
+    const { host, path, dataDir, desktop } = await startHost(backend, true, () => ({ schedule }));
+    const { client } = await desktop();
+    await client.attach();
+    await host.start();
+    const peer = await connectHostChannel(path, TOKEN);
+    cleanup.push(async () => peer.close());
+    expect(await peer.call('watchdog.set', true)).toEqual({ enabled: true, supported: true });
+    expect(readWatchdogEnabled(dataDir)).toBe(true);
+    expect(schedule).toHaveBeenCalledWith(expect.any(Function), DEFAULT_WATCHDOG_OPTIONS.pingIntervalMs);
+    expect(await peer.call('status')).toMatchObject({ desktopAttached: true });
+    expect(await peer.call('watchdog.set', false)).toEqual({ enabled: false, supported: true });
+    expect(readWatchdogEnabled(dataDir)).toBe(false);
+    await expect(peer.call('watchdog.set', 'true')).rejects.toThrow('Invalid watchdog');
+  });
+
+  it('reads an opt-in saved before the host starts', async () => {
+    const schedule = vi.fn(() => () => undefined);
+    const { host, path } = await startHost(fakeBackend(2000), true, (dataDir) => {
+      writeWatchdogEnabled(dataDir, true);
+      return { schedule };
+    });
+    await host.start();
+    const peer = await connectHostChannel(path, TOKEN);
+    cleanup.push(async () => peer.close());
+    expect(await peer.call('watchdog.status')).toEqual({ enabled: true, supported: true });
+    expect(schedule).toHaveBeenCalledWith(expect.any(Function), DEFAULT_WATCHDOG_OPTIONS.pingIntervalMs);
+  });
+
+  it('answers watchdog preferences directly to a backend with no desktop attached', async () => {
+    const backend = fakeBackend(2000);
+    const { host, dataDir } = await startHost(backend);
+    await host.start();
+    backend.child.emit('message', { type: 'watchdog', id: 'w1' });
+    backend.child.emit('message', { type: 'watchdog', id: 'w2', enabled: true });
+    backend.child.emit('message', { type: 'watchdog', id: 'w3', enabled: 'yes' });
+    backend.child.emit('message', { type: 'backend-restart', id: 'r1' });
+    await vi.waitFor(() => expect(backend.child.received).toHaveLength(4));
+    expect(backend.child.received).toContainEqual({
+      type: 'desktop-answer',
+      id: 'w1',
+      result: { enabled: false, supported: true },
+    });
+    expect(backend.child.received).toContainEqual({
+      type: 'desktop-answer',
+      id: 'w2',
+      result: { enabled: true, supported: true },
+    });
+    expect(backend.child.received).toContainEqual({
+      type: 'desktop-answer',
+      id: 'w3',
+      error: 'Invalid watchdog preference.',
+      errorCode: 'failed',
+    });
+    expect(backend.child.received).toContainEqual({ type: 'desktop-answer', id: 'r1', result: {} });
+    expect(readWatchdogEnabled(dataDir)).toBe(true);
+  });
+
   it('hands the backend’s own startup failure to the desktop, so a broken database can be offered for reset', async () => {
     const backend = fakeBackend(2000);
     const { desktop } = await startHost(backend, false);

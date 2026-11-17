@@ -131,7 +131,7 @@ const transcript = {
   ],
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-score-')));
   project = join(base, 'project');
   mkdirSync(join(project, 'notes'), { recursive: true });
@@ -152,9 +152,9 @@ beforeEach(() => {
   head2 = git(project, 'rev-parse', 'HEAD');
 
   process.env['PI_CODING_AGENT_DIR'] = join(base, 'agent');
-  db = new DatabaseService({ dataDir: join(base, 'data') });
+  db = await DatabaseService.create({ dataDir: join(base, 'data') });
   meta = new MetaRepository(db);
-  meta.touchWorkspace(project);
+  await meta.touchWorkspace(project);
   rows = new ThreadsRepository(db);
   outcomeRows = new OutcomesRepository(db);
   installed = true;
@@ -174,8 +174,8 @@ beforeEach(() => {
     cost: 0,
   });
 
-  rows.insertDraft({ id: 't1', sessionPath: join(base, 't1.jsonl'), cwd: project, baseCommit });
-  outcomeRows.put({
+  await rows.insertDraft({ id: 't1', sessionPath: join(base, 't1.jsonl'), cwd: project, baseCommit });
+  await outcomeRows.put({
     threadId: 't1',
     kind: 'committed',
     baseCommit,
@@ -221,8 +221,8 @@ beforeEach(() => {
     onInstalledChange: () => () => undefined,
     ensureInstalled: async () => 'present',
   } as unknown as MeatProxyPackage;
-  const outcomeOf = (id: string) => {
-    const row = outcomeRows.get(id);
+  const outcomeOf = async (id: string) => {
+    const row = await outcomeRows.get(id);
     return (
       row && {
         kind: row.kind,
@@ -242,9 +242,9 @@ beforeEach(() => {
     { get: outcomeOf, onOutcome: () => () => undefined } as never,
     rows,
     {
-      assertExists: (id: string) =>
+      assertExists: async (id: string) =>
         void (
-          rows.get(id) ??
+          (await rows.get(id)) ??
           (() => {
             throw new Error('missing');
           })()
@@ -275,8 +275,8 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
-  db.onApplicationShutdown();
+afterEach(async () => {
+  await db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
   if (previousAgentDir === undefined) delete process.env['PI_CODING_AGENT_DIR'];
   else process.env['PI_CODING_AGENT_DIR'] = previousAgentDir;
@@ -286,7 +286,7 @@ const ask = (channel: string, payload: Record<string, unknown> = {}, session = '
   service.plugin(session, channel, { requestId: 'r1', ...payload });
 
 /** An outcome with enough changed text for more than one of the package's prompts; the fake model labels whatever each prompt offers. */
-function longOutcome(): void {
+async function longOutcome(): Promise<void> {
   for (let index = 0; index < 30; index++) piChanged.push(`notes/long-${index}.txt`);
   for (let index = 0; index < 30; index++)
     writeFileSync(
@@ -296,7 +296,7 @@ function longOutcome(): void {
   git(project, 'add', '-A');
   git(project, 'commit', '-q', '-m', 'Long outcome');
   const head = git(project, 'rev-parse', 'HEAD');
-  outcomeRows.put({
+  await outcomeRows.put({
     threadId: 't1',
     kind: 'committed',
     baseCommit,
@@ -319,12 +319,12 @@ function longOutcome(): void {
 }
 
 /** An outcome whose only changed file no run of the thread changed: every hunk is decided by rule, and no model is asked. */
-function handOnlyOutcome(): void {
+async function handOnlyOutcome(): Promise<void> {
   writeFileSync(join(project, 'notes', 'hand2.md'), 'by hand too\n');
   git(project, 'add', '-A');
   git(project, 'commit', '-q', '-m', 'By hand');
   const head = git(project, 'rev-parse', 'HEAD');
-  outcomeRows.put({
+  await outcomeRows.put({
     threadId: 't1',
     kind: 'committed',
     baseCommit: head2,
@@ -368,7 +368,7 @@ describe('scoring a thread through the package’s pipeline', () => {
   });
 
   it('a long diff is labelled in several calls, each listed with its place, and every hunk ends up labelled', async () => {
-    longOutcome();
+    await longOutcome();
     const result = await service.request('t1');
     expect(result.status).toBe('scored');
     expect(completions.length).toBeGreaterThan(1);
@@ -391,7 +391,7 @@ describe('scoring a thread through the package’s pipeline', () => {
   });
 
   it('the request’s signal cancels a scoring of several batches: the call in flight hears it, no further batch is sent, nothing is stored, the request is refused', async () => {
-    longOutcome();
+    await longOutcome();
     const release = holdAnswers();
     const caller = new AbortController();
     const pending = service.request('t1', {}, caller.signal);
@@ -403,7 +403,7 @@ describe('scoring a thread through the package’s pipeline', () => {
     await expect(pending).rejects.toThrow(ConflictException);
     await expect(pending).rejects.toThrow(/cancelled/);
     expect(completions).toHaveLength(1);
-    expect(outcomeRows.get('t1')).toMatchObject({ scores: null, hunkLabels: null });
+    expect(await outcomeRows.get('t1')).toMatchObject({ scores: null, hunkLabels: null });
   });
 
   it.each([
@@ -422,8 +422,8 @@ describe('scoring a thread through the package’s pipeline', () => {
     {
       when: 'before a scoring whose every hunk is decided by rule',
       calls: 0,
-      arrange: (caller: AbortController) => {
-        handOnlyOutcome();
+      arrange: async (caller: AbortController) => {
+        await handOnlyOutcome();
         caller.abort();
       },
     },
@@ -432,11 +432,11 @@ describe('scoring a thread through the package’s pipeline', () => {
     arrange(caller);
     await expect(service.request('t1', {}, caller.signal)).rejects.toThrow(/cancelled/);
     expect(completions).toHaveLength(calls);
-    expect(outcomeRows.get('t1')).toMatchObject({ scores: null, hunkLabels: null });
+    expect(await outcomeRows.get('t1')).toMatchObject({ scores: null, hunkLabels: null });
   });
 
   it('a thread without an outcome has nothing to score', async () => {
-    rows.insertDraft({ id: 't2', sessionPath: join(base, 't2.jsonl'), cwd: project });
+    await rows.insertDraft({ id: 't2', sessionPath: join(base, 't2.jsonl'), cwd: project });
     await expect(service.request('t2')).rejects.toThrow(/no outcome/);
     expect(completions).toHaveLength(0);
   });
@@ -445,14 +445,14 @@ describe('scoring a thread through the package’s pipeline', () => {
     await service.request('t1');
     installed = false;
     await expect(service.request('t1')).rejects.toThrow(/not installed/);
-    expect(() => service.view('t1')).toThrow(/not installed/);
-    expect(service.overview()).toEqual({ installed: false, projects: [] });
+    await expect((async () => await service.view('t1'))()).rejects.toThrow(/not installed/);
+    expect(await service.overview()).toEqual({ installed: false, projects: [] });
   });
 
   it('the model’s failure comes back as a refusal, and nothing is stored', async () => {
     answer = () => ({ ok: false, code: 'cap', error: 'The attendant’s daily cost cap is reached.' });
     await expect(service.request('t1')).rejects.toThrow(/daily cost cap/);
-    expect(outcomeRows.get('t1')?.scores).toBeNull();
+    expect((await outcomeRows.get('t1'))?.scores).toBeNull();
   });
 
   it('with the attendant off it asks first: the sentence names the model, nothing is sent, and the agreement is kept for the thread', async () => {
@@ -494,7 +494,7 @@ describe('POST /threads/:id/score over HTTP', () => {
     });
 
   it('a client that closes the connection mid-scoring cancels it: the attendant’s call hears it, no batch follows, nothing is stored', async () => {
-    longOutcome();
+    await longOutcome();
     const release = holdAnswers();
     const url = await start();
     const requested = vi.spyOn(service, 'request');
@@ -509,18 +509,18 @@ describe('POST /threads/:id/score over HTTP', () => {
     release();
     await expect(requested.mock.results[0].value).rejects.toThrow(ConflictException);
     expect(completions).toHaveLength(1);
-    expect(outcomeRows.get('t1')).toMatchObject({ scores: null, hunkLabels: null });
+    expect(await outcomeRows.get('t1')).toMatchObject({ scores: null, hunkLabels: null });
   });
 
   it('a client that waits is never cancelled: the signal stays quiet through every batch and the score comes back', async () => {
-    longOutcome();
+    await longOutcome();
     const url = await start();
     const response = await post(url);
     expect(response.status).toBe(200);
     expect(((await response.json()) as { status: string }).status).toBe('scored');
     expect(completions.length).toBeGreaterThan(1);
     expect(completions.map((c) => c.signal?.aborted)).toEqual(completions.map(() => false));
-    expect(outcomeRows.get('t1')?.scores).not.toBeNull();
+    expect((await outcomeRows.get('t1'))?.scores).not.toBeNull();
   });
 });
 
@@ -544,7 +544,7 @@ describe('the attendant’s own scoring after an outcome', () => {
 
   it('says why in the activity when the outcome changed no text', async () => {
     git(project, 'checkout', '-q', baseCommit);
-    outcomeRows.put({
+    await outcomeRows.put({
       threadId: 't1',
       kind: 'committed',
       baseCommit,
@@ -572,8 +572,11 @@ describe('the person relabels a hunk', () => {
     completions.length = 0;
     await service.request('t1');
     expect(completions[0].prompt.user).toContain('the model said autonomous, the person says specified');
-    expect(service.view('t1').hunks.find((h) => h.id === id)).toMatchObject({ label: 'specified', by: 'person' });
-    expect(service.view('t1').scores.meat).toBe(100);
+    expect((await service.view('t1')).hunks.find((h) => h.id === id)).toMatchObject({
+      label: 'specified',
+      by: 'person',
+    });
+    expect((await service.view('t1')).scores.meat).toBe(100);
     // Taking it back.
     const back = await service.relabel('t1', id, null);
     expect(back.scores.meat).toBe(75);
@@ -592,7 +595,7 @@ describe('the person relabels a hunk', () => {
 describe('what is drawn, and when', () => {
   it('says the labels are out of date when the outcome moved on', async () => {
     await service.request('t1');
-    outcomeRows.put({
+    await outcomeRows.put({
       threadId: 't1',
       kind: 'committed',
       baseCommit,
@@ -602,14 +605,14 @@ describe('what is drawn, and when', () => {
       at: 9,
       files: [],
     });
-    expect(service.view('t1').stale).toBe(true);
-    expect(service.view('t1').head).toBe(headCommit);
+    expect((await service.view('t1')).stale).toBe(true);
+    expect((await service.view('t1')).head).toBe(headCommit);
   });
 
   it('the distribution counts the scored threads of each project', async () => {
-    expect(service.overview().projects).toEqual([]);
+    expect((await service.overview()).projects).toEqual([]);
     await service.request('t1');
-    const overview = service.overview();
+    const overview = await service.overview();
     expect(overview.installed).toBe(true);
     expect(overview.projects).toHaveLength(1);
     expect(overview.projects[0]).toMatchObject({ cwd: project, scored: 1, mean: 75 });
@@ -662,16 +665,16 @@ describe('the plugin events', () => {
       scores,
     });
     expect(reply).toEqual({ requestId: 'r1', ok: true });
-    expect(outcomeRows.get('t1')).toMatchObject({
+    expect(await outcomeRows.get('t1')).toMatchObject({
       scores: { meat: 100 },
       hunkLabels: { base: baseCommit, head: headCommit, model: 'm', labels, corrections: {} },
     });
     expect(touched).toContain('t1');
-    expect(service.view('t1').hunks).toHaveLength(count);
+    expect((await service.view('t1')).hunks).toHaveLength(count);
   });
 
   it('annotate: a thread without an outcome, a bad payload, and a label outside the four', async () => {
-    rows.insertDraft({ id: 't2', sessionPath: join(base, 't2.jsonl'), cwd: project });
+    await rows.insertDraft({ id: 't2', sessionPath: join(base, 't2.jsonl'), cwd: project });
     expect(await ask(PLUGIN_CHANNELS.annotate, { thread: 't2', base: 'a', head: 'b', labels: [] })).toMatchObject({
       ok: false,
       code: 'not-found',
@@ -690,7 +693,7 @@ describe('the plugin events', () => {
     const fresh = (await service.request('t1')).score!;
     expect(fresh.scores.meat).toBe(100);
     await ask(PLUGIN_CHANNELS.annotate, { base: baseCommit, head: headCommit, labels: null, scores: null });
-    expect(outcomeRows.get('t1')).toMatchObject({ scores: null, hunkLabels: null });
+    expect(await outcomeRows.get('t1')).toMatchObject({ scores: null, hunkLabels: null });
   });
 
   it('returns the complete outcome diff beyond the former two-million-character cutoff', async () => {
@@ -699,7 +702,7 @@ describe('the plugin events', () => {
     git(project, 'add', '-A');
     git(project, 'commit', '-q', '-m', 'Large outcome with a final file');
     const head = git(project, 'rev-parse', 'HEAD');
-    outcomeRows.put({
+    await outcomeRows.put({
       threadId: 't1',
       kind: 'committed',
       baseCommit,

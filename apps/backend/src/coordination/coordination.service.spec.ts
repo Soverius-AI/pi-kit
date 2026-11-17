@@ -20,7 +20,7 @@ let open: Set<string>;
 const PROJECT = '/proj';
 
 /** A thread of the project with a real session file (its mtime is what "recently active" reads). */
-function addThread(
+async function addThread(
   id: string,
   title: string,
   options: {
@@ -30,13 +30,13 @@ function addThread(
     worktree?: { path: string; branch: string };
     cli?: boolean;
   } = {},
-): void {
+): Promise<void> {
   const sessionPath = join(dir, `${id}.jsonl`);
   writeFileSync(sessionPath, '{}\n');
   const modified = new Date(Date.now() - (options.modifiedAgoMs ?? 0));
   utimesSync(sessionPath, modified, modified);
   if (options.cli) {
-    threads.upsertFromSession({
+    await threads.upsertFromSession({
       id,
       sessionPath,
       cwd: options.cwd ?? PROJECT,
@@ -49,7 +49,7 @@ function addThread(
     });
     return;
   }
-  threads.insertDraft({
+  await threads.insertDraft({
     id,
     sessionPath,
     cwd: options.worktree?.path ?? options.cwd ?? PROJECT,
@@ -60,7 +60,7 @@ function addThread(
         }
       : {}),
   });
-  threads.recordRunEnd(id, { logMtime: null, messageCount: options.messages ?? 2, preview: undefined });
+  await threads.recordRunEnd(id, { logMtime: null, messageCount: options.messages ?? 2, preview: undefined });
 }
 
 const start = (threadId: string, toolName: string, path: string, cwd = PROJECT): ToolStart => ({
@@ -70,10 +70,10 @@ const start = (threadId: string, toolName: string, path: string, cwd = PROJECT):
   args: { path },
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'pk-coord-'));
   mkdirSync(dir, { recursive: true });
-  db = new DatabaseService({ dataDir: join(dir, 'data') });
+  db = await DatabaseService.create({ dataDir: join(dir, 'data') });
   threads = new ThreadsRepository(db);
   leases = new LeasesRepository(db);
   activity = {};
@@ -88,64 +88,61 @@ beforeEach(() => {
   } as unknown as ThreadStatusService;
   service = new CoordinationService(threads, leases, sessions, status);
 });
-afterEach(() => {
-  db.onApplicationShutdown();
+afterEach(async () => {
+  await db.onApplicationShutdown();
   rmSync(dir, { recursive: true, force: true });
 });
 
 describe('capture', () => {
-  it('takes a lease on edit and write, not on read, and keeps paths relative to the thread folder', () => {
-    addThread('a', 'A');
-    service.record(start('a', 'edit', '/proj/src/a.ts'));
-    service.record(start('a', 'write', 'src/b.ts'));
-    service.record(start('a', 'read', 'src/c.ts'));
-    service.record(start('a', 'bash', 'src/d.ts'));
-    service.record(start('a', 'edit', '/elsewhere/x.ts'));
-    expect(
-      leases
-        .activeOf('a')
-        .map((l) => l.path)
-        .sort(),
-    ).toEqual(['src/a.ts', 'src/b.ts']);
+  it('takes a lease on edit and write, not on read, and keeps paths relative to the thread folder', async () => {
+    await addThread('a', 'A');
+    await service.record(start('a', 'edit', '/proj/src/a.ts'));
+    await service.record(start('a', 'write', 'src/b.ts'));
+    await service.record(start('a', 'read', 'src/c.ts'));
+    await service.record(start('a', 'bash', 'src/d.ts'));
+    await service.record(start('a', 'edit', '/elsewhere/x.ts'));
+    expect((await leases.activeOf('a')).map((l) => l.path).sort()).toEqual(['src/a.ts', 'src/b.ts']);
   });
 });
 
 describe('others', () => {
-  it('is empty for a thread that is alone, and lists a recently active thread next to it', () => {
-    addThread('a', 'A');
-    expect(service.others('a')).toEqual([]);
-    addThread('b', 'B', { modifiedAgoMs: 60_000 });
-    expect(service.others('a')).toMatchObject([{ title: 'B', state: 'idle', relation: 'same-folder', files: [] }]);
+  it('is empty for a thread that is alone, and lists a recently active thread next to it', async () => {
+    await addThread('a', 'A');
+    expect(await service.others('a')).toEqual([]);
+    await addThread('b', 'B', { modifiedAgoMs: 60_000 });
+    expect(await service.others('a')).toMatchObject([
+      { title: 'B', state: 'idle', relation: 'same-folder', files: [] },
+    ]);
   });
 
-  it('leaves out threads that are idle, old and without a lease, empty drafts and archived ones', () => {
-    addThread('a', 'A');
-    addThread('old', 'Old', { modifiedAgoMs: LEASE_TTL_MS + 60_000 });
-    addThread('draft', 'Draft', { messages: 0 });
-    addThread('gone', 'Gone');
-    threads.update('gone', { archived: true });
-    addThread('elsewhere', 'Elsewhere', { cwd: '/another/project' });
-    expect(service.others('a')).toEqual([]);
+  it('leaves out threads that are idle, old and without a lease, empty drafts and archived ones', async () => {
+    await addThread('a', 'A');
+    await addThread('old', 'Old', { modifiedAgoMs: LEASE_TTL_MS + 60_000 });
+    await addThread('draft', 'Draft', { messages: 0 });
+    await addThread('gone', 'Gone');
+    await threads.update('gone', { archived: true });
+    await addThread('elsewhere', 'Elsewhere', { cwd: '/another/project' });
+    expect(await service.others('a')).toEqual([]);
   });
 
-  it('lists a running thread and the files it edited in the last 30 minutes, newest first', () => {
-    addThread('a', 'A');
-    addThread('b', 'B', { modifiedAgoMs: LEASE_TTL_MS * 2 });
+  it('lists a running thread and the files it edited in the last 30 minutes, newest first', async () => {
+    await addThread('a', 'A');
+    await addThread('b', 'B', { modifiedAgoMs: LEASE_TTL_MS * 2 });
     activity['b'] = 'running';
     const now = Date.now();
-    leases.take('b', PROJECT, 'src/old.ts', now - LEASE_TTL_MS - 1000);
-    leases.take('b', PROJECT, 'src/x.ts', now - 120_000);
-    leases.take('b', PROJECT, 'src/y.ts', now - 5_000);
-    const [other] = service.others('a');
+    await leases.take('b', PROJECT, 'src/old.ts', now - LEASE_TTL_MS - 1000);
+    await leases.take('b', PROJECT, 'src/x.ts', now - 120_000);
+    await leases.take('b', PROJECT, 'src/y.ts', now - 5_000);
+    const [other] = await service.others('a');
     expect(other.state).toBe('running');
     expect(other.files.map((f) => f.path)).toEqual(['src/y.ts', 'src/x.ts']);
   });
 
-  it('knows a thread in a worktree of the project as such, with its branch, and a command-line session in the same folder', () => {
-    addThread('a', 'A');
-    addThread('w', 'W', { worktree: { path: '/wt/proj/w', branch: 'pi-kit/w' }, modifiedAgoMs: 1000 });
-    addThread('cli', 'In a terminal', { cli: true, modifiedAgoMs: 30_000 });
-    const found = service.others('a');
+  it('knows a thread in a worktree of the project as such, with its branch, and a command-line session in the same folder', async () => {
+    await addThread('a', 'A');
+    await addThread('w', 'W', { worktree: { path: '/wt/proj/w', branch: 'pi-kit/w' }, modifiedAgoMs: 1000 });
+    await addThread('cli', 'In a terminal', { cli: true, modifiedAgoMs: 30_000 });
+    const found = await service.others('a');
     expect(found.find((o) => o.title === 'W')).toMatchObject({
       relation: 'worktree',
       branch: 'pi-kit/w',
@@ -156,69 +153,64 @@ describe('others', () => {
       relation: 'same-folder',
       files: [],
     });
-    expect(
-      service
-        .othersInfo('a')
-        .map((o) => o.state)
-        .sort(),
-    ).toEqual(['idle', 'terminal']);
+    expect((await service.othersInfo('a')).map((o) => o.state).sort()).toEqual(['idle', 'terminal']);
   });
 
-  it('does not call a command-line session in another folder of the repository "next to" a thread; a thread open in the app is not one', () => {
-    addThread('w', 'W', { worktree: { path: '/wt/proj/w', branch: 'pi-kit/w' } });
-    addThread('cli', 'In a terminal', { cli: true, modifiedAgoMs: 1000 });
-    expect(service.others('w').map((o) => o.title)).not.toContain('In a terminal');
-    addThread('a', 'A');
+  it('does not call a command-line session in another folder of the repository "next to" a thread; a thread open in the app is not one', async () => {
+    await addThread('w', 'W', { worktree: { path: '/wt/proj/w', branch: 'pi-kit/w' } });
+    await addThread('cli', 'In a terminal', { cli: true, modifiedAgoMs: 1000 });
+    expect((await service.others('w')).map((o) => o.title)).not.toContain('In a terminal');
+    await addThread('a', 'A');
     open.add('cli');
-    expect(service.others('a').map((o) => o.state)).not.toContain('terminal');
+    expect((await service.others('a')).map((o) => o.state)).not.toContain('terminal');
   });
 });
 
 describe('the section and the notices', () => {
-  it('builds the section from the others and is undefined when alone', () => {
-    addThread('a', 'A');
-    expect(service.section('a')).toBeUndefined();
-    addThread('b', 'Fix e2e');
-    leases.take('b', PROJECT, 'src/a.ts');
-    expect(service.section('a')).toMatch(
+  it('builds the section from the others and is undefined when alone', async () => {
+    await addThread('a', 'A');
+    expect(await service.section('a')).toBeUndefined();
+    await addThread('b', 'Fix e2e');
+    await leases.take('b', PROJECT, 'src/a.ts');
+    expect(await service.section('a')).toMatch(
       /^Other agents in this workspace[\s\S]*"Fix e2e" \(idle, this same folder\): edited src\/a\.ts[\s\S]*Rules:/,
     );
   });
 
-  it('tells a thread once that another changed a file it read, and again only after another change', () => {
-    addThread('a', 'A');
-    addThread('b', 'Reporting adapter');
+  it('tells a thread once that another changed a file it read, and again only after another change', async () => {
+    await addThread('a', 'A');
+    await addThread('b', 'Reporting adapter');
     const t0 = Date.now();
-    service.record(start('a', 'read', 'src/map.ts'), t0 - 10_000);
-    expect(service.notices('a')).toEqual([]);
-    service.record(start('b', 'edit', 'src/map.ts'), t0 - 5_000);
-    expect(service.notices('a')).toEqual(['*Reporting adapter* changed `src/map.ts` since you last read it.']);
-    expect(service.notices('a')).toEqual([]);
-    service.record(start('b', 'edit', 'src/map.ts'), t0);
-    expect(service.notices('a')).toHaveLength(1);
+    await service.record(start('a', 'read', 'src/map.ts'), t0 - 10_000);
+    expect(await service.notices('a')).toEqual([]);
+    await service.record(start('b', 'edit', 'src/map.ts'), t0 - 5_000);
+    expect(await service.notices('a')).toEqual(['*Reporting adapter* changed `src/map.ts` since you last read it.']);
+    expect(await service.notices('a')).toEqual([]);
+    await service.record(start('b', 'edit', 'src/map.ts'), t0);
+    expect(await service.notices('a')).toHaveLength(1);
     // Reading the file again settles it: a change before the read is not news.
-    service.record(start('a', 'read', 'src/map.ts'), t0 + 1000);
-    service.record(start('b', 'edit', 'src/map.ts'), t0 + 500);
-    expect(service.notices('a')).toEqual([]);
+    await service.record(start('a', 'read', 'src/map.ts'), t0 + 1000);
+    await service.record(start('b', 'edit', 'src/map.ts'), t0 + 500);
+    expect(await service.notices('a')).toEqual([]);
   });
 
-  it('says nothing about files the thread never touched, or leases of its own', () => {
-    addThread('a', 'A');
-    addThread('b', 'B');
-    service.record(start('b', 'edit', 'src/other.ts'));
-    service.record(start('a', 'edit', 'src/mine.ts'));
-    expect(service.notices('a')).toEqual([]);
+  it('says nothing about files the thread never touched, or leases of its own', async () => {
+    await addThread('a', 'A');
+    await addThread('b', 'B');
+    await service.record(start('b', 'edit', 'src/other.ts'));
+    await service.record(start('a', 'edit', 'src/mine.ts'));
+    expect(await service.notices('a')).toEqual([]);
   });
 
-  it('gives the leases of other threads in the thread’s own folder, with the other thread’s title', () => {
-    addThread('a', 'A');
-    addThread('b', 'Fix e2e');
-    addThread('w', 'In a worktree', { worktree: { path: '/wt/proj/w', branch: 'pi-kit/w' } });
-    leases.take('b', PROJECT, 'src/x.ts');
-    leases.take('w', '/wt/proj/w', 'src/y.ts');
-    leases.take('a', PROJECT, 'src/mine.ts');
-    expect(service.leasesFor('a').map((l) => [l.path, l.title])).toEqual([['src/x.ts', 'Fix e2e']]);
+  it('gives the leases of other threads in the thread’s own folder, with the other thread’s title', async () => {
+    await addThread('a', 'A');
+    await addThread('b', 'Fix e2e');
+    await addThread('w', 'In a worktree', { worktree: { path: '/wt/proj/w', branch: 'pi-kit/w' } });
+    await leases.take('b', PROJECT, 'src/x.ts');
+    await leases.take('w', '/wt/proj/w', 'src/y.ts');
+    await leases.take('a', PROJECT, 'src/mine.ts');
+    expect((await service.leasesFor('a')).map((l) => [l.path, l.title])).toEqual([['src/x.ts', 'Fix e2e']]);
     // A thread in a worktree works in another folder: the lease of the main checkout's file is not on its files, and its own is not another's.
-    expect(service.leasesFor('w')).toEqual([]);
+    expect(await service.leasesFor('w')).toEqual([]);
   });
 });

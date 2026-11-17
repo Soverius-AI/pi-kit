@@ -42,7 +42,7 @@ function world(): World {
     stats: () => ({ streaming: w.streaming }),
     reload: async () => void w.calls.push('reload'),
   };
-  const threads = { openSession: async () => undefined, cwdOf: () => cwd };
+  const threads = { openSession: async () => undefined, cwdOf: async () => cwd };
   const mcp = {
     filePath: async (scope: string) => (scope === 'user' ? w.user : w.project),
     overview: async () => overview(),

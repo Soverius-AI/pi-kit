@@ -54,7 +54,7 @@ export interface PiAgentOptions {
   /** Answers an MCP App's request (`forwardedProps.__proxiedMCPRequest`) on pi's own MCP connection. */
   relayMcp: (threadId: string, request: ProxiedMcpRequest, signal?: AbortSignal) => Promise<unknown>;
   /** Called once a review batch is recorded in the session: the pending comments of the thread are sent, so they are dropped. */
-  reviewRecorded?: (threadId: string) => void;
+  reviewRecorded?: (threadId: string) => void | Promise<void>;
   /**
    * Called when the thread is ready and pi is about to get a prompt (nothing written to the session yet): the folder's snapshot is taken first,
    * so the run has its "before". `false`: the run was stopped meanwhile, and pi never gets the prompt.
@@ -393,7 +393,7 @@ export class PiAgent extends AbstractAgent {
             try {
               const entryId = this.sessions.appendReview(threadId, review);
               emit([reviewActivity(entryId, review.comments)]);
-              this.options.reviewRecorded?.(threadId);
+              await this.options.reviewRecorded?.(threadId);
             } catch (error) {
               logger.warn(
                 `Could not record the review batch of thread ${threadId}: ${error instanceof Error ? error.message : String(error)}`,

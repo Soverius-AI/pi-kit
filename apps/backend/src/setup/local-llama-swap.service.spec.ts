@@ -45,9 +45,10 @@ describe('shared llama-swap configuration', () => {
     db = await DatabaseService.create({ dataDir: dir }, new MemorySecretStore());
     meta = new MetaRepository(db);
     service = new LocalLlamaSwapService(meta);
+    await service.onModuleInit();
   });
-  afterEach(() => {
-    db.onApplicationShutdown();
+  afterEach(async () => {
+    await db.onApplicationShutdown();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
     rmSync(dir, { recursive: true, force: true });
@@ -191,12 +192,13 @@ describe('shared llama-swap configuration', () => {
       source: 'Running llama-swap',
       baseUrl,
     });
-    expect(JSON.stringify(meta.getSetting('local-runtime-discovered-configs'))).not.toContain(baseUrl);
+    expect(JSON.stringify(await meta.getSetting('local-runtime-discovered-configs'))).not.toContain(baseUrl);
     await service.register(first);
     expect(parse(readFileSync(active, 'utf8')).models[service.modelName(first)]).toBeDefined();
     expect(readFileSync(common, 'utf8')).toBe('models: {other: {cmd: never-run}}');
     vi.mocked(discoverLlamaSwapConfigs).mockResolvedValue([]);
     const reloaded = new LocalLlamaSwapService(meta);
+    await reloaded.onModuleInit();
     const stopped = (await reloaded.readConfigs()).find((entry) => entry.selected);
     expect(stopped?.path).toBe(active);
     expect(stopped?.baseUrl).toBeUndefined();
@@ -279,6 +281,7 @@ describe('shared llama-swap configuration', () => {
     expect(Object.keys(config.models)).toHaveLength(2);
     expect(config.models[`${name}-2`].cmd).toContain('--model');
     const reloaded = new LocalLlamaSwapService(meta);
+    await reloaded.onModuleInit();
     await reloaded.register(first);
     expect(Object.keys(parse(readFileSync(path, 'utf8')).models)).toHaveLength(2);
     await reloaded.unregister(first.id);
@@ -301,7 +304,7 @@ describe('shared llama-swap configuration', () => {
     const file = join(dir, 'downloaded.gguf');
     writeFileSync(file, 'GGUF fixture');
     const downloaded = { ...first, path: file };
-    meta.setSetting('local-runtime-models', [downloaded, { ...second, path: join(dir, 'missing.gguf') }]);
+    await meta.setSetting('local-runtime-models', [downloaded, { ...second, path: join(dir, 'missing.gguf') }]);
     const legacy = join(dir, 'local-runtime', 'llama-swap.yaml');
     mkdirSync(join(dir, 'local-runtime'));
     writeFileSync(legacy, 'models: {legacy: {cmd: old-private-engine}}');
@@ -314,6 +317,7 @@ describe('shared llama-swap configuration', () => {
     expect(readFileSync(legacy, 'utf8')).toBe('models: {legacy: {cmd: old-private-engine}}');
     expect(fetch).not.toHaveBeenCalled();
     const reloaded = new LocalLlamaSwapService(meta);
+    await reloaded.onModuleInit();
     const configs = await reloaded.readConfigs();
     expect(configs.find((entry) => entry.path === path)).toMatchObject({
       selected: true,
@@ -329,7 +333,7 @@ describe('shared llama-swap configuration', () => {
     writeFileSync(b, 'GGUF');
     const existing = { ...first, path: a },
       next = { ...second, path: b };
-    meta.setSetting('local-runtime-models', [existing]);
+    await meta.setSetting('local-runtime-models', [existing]);
     await service.register(existing);
     const loaded = await service.configFile(path);
     await service.saveConfigFile({ path, text: 'models: {}', version: loaded.version });
@@ -379,7 +383,7 @@ describe('shared llama-swap configuration', () => {
     for (const text of ['models: [invalid]', 'models: {broken', 'x'.repeat(2_000_001)]) {
       writeFileSync(broken, text);
       await expect(service.selectConfig(broken)).rejects.toThrow();
-      expect(service.externalConfigPath()).toBe(path);
+      expect(await service.externalConfigPath()).toBe(path);
       expect(readFileSync(broken, 'utf8')).toBe(text);
     }
     writeFileSync(path, 'models: [private-secret]');

@@ -41,9 +41,9 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
   onModuleInit(): void {
     this.unsubscribe = this.sessions.onToolStart((start) => this.record(start));
     this.sessions.setCoordination(this);
-    this.timer = setInterval(() => {
+    this.timer = setInterval(async () => {
       try {
-        this.leases.prune();
+        await this.leases.prune();
       } catch (error) {
         this.logger.warn(`Pruning leases failed: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -60,7 +60,7 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
   // ---- capture
 
   /** A tool call is about to run: `edit` and `write` take the lease on the file; `read` only remembers that this thread knows the file. */
-  record(start: ToolStart, now = Date.now()): void {
+  async record(start: ToolStart, now = Date.now()): Promise<void> {
     const tool = start.toolName;
     if (tool !== 'edit' && tool !== 'write' && tool !== 'read') return;
     const path = normalizeToolPath(start.cwd, start.args['path']);
@@ -70,7 +70,7 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
     this.touched.set(start.threadId, mine);
     if (tool === 'read') return;
     try {
-      this.leases.take(start.threadId, start.cwd, path, now);
+      await this.leases.take(start.threadId, start.cwd, path, now);
     } catch (error) {
       this.logger.warn(
         `Could not record the lease on ${path}: ${error instanceof Error ? error.message : String(error)}`,
@@ -85,18 +85,17 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
    * waiting) or edited a file lately or were active in the last 30 minutes, and sessions of the pi command line in the same folder that wrote
    * lately ("pi in a terminal", no lease details).
    */
-  others(threadId: string, now = Date.now()): OtherAgent[] {
-    const me = this.threads.get(threadId);
+  async others(threadId: string, now = Date.now()): Promise<OtherAgent[]> {
+    const me = await this.threads.get(threadId);
     if (!me) return [];
     const folder = folderOf(me);
     const out: OtherAgent[] = [];
-    for (const other of this.threads.all()) {
+    for (const other of await this.threads.all()) {
       if (other.id === threadId || other.archived || other.cwd !== me.cwd) continue;
       const otherFolder = folderOf(other);
       const sameFolder = otherFolder === folder;
-      const state = this.status.stateOf(other).activity;
-      const files = this.leases
-        .activeOf(other.id, now)
+      const state = (await this.status.stateOf(other)).activity;
+      const files = (await this.leases.activeOf(other.id, now))
         .filter((l) => l.cwd === otherFolder)
         .map((l) => ({ path: l.path, at: l.at }));
       const modified = fileMtime(other.sessionPath);
@@ -118,19 +117,19 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
   }
 
   /** The same, for the renderer's Files panel ("Also working here: ..."). */
-  othersInfo(threadId: string): OtherAgentInfo[] {
-    return this.others(threadId).map((a) => ({ title: a.title, state: a.state, relation: a.relation }));
+  async othersInfo(threadId: string): Promise<OtherAgentInfo[]> {
+    return (await this.others(threadId)).map((a) => ({ title: a.title, state: a.state, relation: a.relation }));
   }
 
   /** Other threads' active leases in the folder the thread runs in (the "being edited by" chip of the Files panel and review mode). */
-  leasesFor(threadId: string, now = Date.now()): FileLease[] {
-    const me = this.threads.get(threadId);
+  async leasesFor(threadId: string, now = Date.now()): Promise<FileLease[]> {
+    const me = await this.threads.get(threadId);
     if (!me) return [];
     const folder = folderOf(me);
     const out: FileLease[] = [];
-    for (const lease of this.leases.activeIn(folder, now)) {
+    for (const lease of await this.leases.activeIn(folder, now)) {
       if (lease.threadId === threadId) continue;
-      const owner = this.threads.get(lease.threadId);
+      const owner = await this.threads.get(lease.threadId);
       if (!owner || owner.archived) continue;
       out.push({
         path: lease.path,
@@ -145,9 +144,9 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
 
   // ---- CoordinationHook (the extension every session carries)
 
-  section(threadId: string): string | undefined {
+  async section(threadId: string): Promise<string | undefined> {
     try {
-      return buildSection(this.others(threadId), Date.now());
+      return buildSection(await this.others(threadId), Date.now());
     } catch (error) {
       this.logger.warn(
         `Could not build the section for ${threadId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -156,11 +155,11 @@ export class CoordinationService implements CoordinationHook, OnModuleInit, OnMo
     }
   }
 
-  notices(threadId: string): string[] {
+  async notices(threadId: string): Promise<string[]> {
     try {
       const mine = this.touched.get(threadId);
       if (!mine || mine.size === 0) return [];
-      const others: OtherLease[] = this.leasesFor(threadId).map((l) => ({
+      const others: OtherLease[] = (await this.leasesFor(threadId)).map((l) => ({
         threadId: l.threadId,
         title: l.title,
         path: l.path,

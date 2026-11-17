@@ -40,11 +40,11 @@ export class ChangesController {
   })
   @Responds(ChangesListSchema)
   @Fails({ 404: NO_THREAD })
-  list(
+  async list(
     @Param('id') id: string,
     @Query({ schema: ChangesQuerySchema }) query: z.infer<typeof ChangesQuerySchema>,
   ): Promise<ChangesList> {
-    return this.changes.list(id, query.source);
+    return await this.changes.list(id, query.source);
   }
 
   @Remote()
@@ -60,12 +60,12 @@ export class ChangesController {
   })
   @Responds(DiffModelSchema)
   @Fails({ 404: 'There is no such thread, or pi has not edited the file in it.' })
-  file(
+  async file(
     @Param('id') id: string,
     @Param('file') file: string,
     @Query({ schema: ChangesQuerySchema }) query: z.infer<typeof ChangesQuerySchema>,
   ): Promise<DiffModel> {
-    return this.changes.file(id, query.source, file);
+    return await this.changes.file(id, query.source, file);
   }
 
   /** Asks for `confirm: true`: this overwrites the file on disk. */
@@ -82,11 +82,11 @@ export class ChangesController {
     404: 'There is no such thread, or pi has not edited the file in it.',
     409: NOT_IDLE + ' Or there is no earlier copy and no git to restore it from.',
   })
-  revert(
+  async revert(
     @Param('id') id: string,
     @Body({ schema: RevertRequestSchema }) body: z.infer<typeof RevertRequestSchema>,
   ): Promise<void> {
-    return this.changes.revert(id, body.source, body.file);
+    return await this.changes.revert(id, body.source, body.file);
   }
 
   @Remote()
@@ -103,11 +103,11 @@ export class ChangesController {
     404: NO_THREAD,
     409: 'The folder is not a git repository.',
   })
-  stage(
+  async stage(
     @Param('id') id: string,
     @Body({ schema: StageRequestSchema }) body: z.infer<typeof StageRequestSchema>,
   ): Promise<StageResult> {
-    return this.changes.stage(id, body.source, body.files);
+    return await this.changes.stage(id, body.source, body.files);
   }
 
   @Remote()
@@ -118,8 +118,8 @@ export class ChangesController {
   })
   @Responds(ReviewCommentSchema, { array: true })
   @Fails({ 404: NO_THREAD })
-  comments(@Param('id') id: string): ReviewComment[] {
-    return this.changes.comments(id);
+  async comments(@Param('id') id: string): Promise<ReviewComment[]> {
+    return await this.changes.comments(id);
   }
 
   @Remote()
@@ -131,10 +131,10 @@ export class ChangesController {
   })
   @ApiNoContentResponse({ description: 'The batch is stored.' })
   @Fails({ 404: NO_THREAD })
-  putComments(
+  async putComments(
     @Param('id') id: string,
     @Body({ schema: PutReviewCommentsSchema }) body: z.infer<typeof PutReviewCommentsSchema>,
-  ): void {
-    this.changes.putComments(id, body.comments);
+  ): Promise<void> {
+    await this.changes.putComments(id, body.comments);
   }
 }

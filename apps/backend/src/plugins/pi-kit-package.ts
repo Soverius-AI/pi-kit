@@ -113,16 +113,17 @@ export abstract class PiKitPackage<Module> {
     const ours = configured.find((p) => p.installedPath && nameOf(p.installedPath) === this.spec.name);
     const stale = configured.find((p) => this.isSource(p.source) && (!p.installedPath || !existsSync(p.installedPath)));
     if (ours?.installedPath) {
-      this.remember();
+      await this.remember();
       return 'present';
     }
-    const offered = (this.meta.getSetting(this.spec.setting) as { offered?: boolean } | undefined)?.offered === true;
+    const offered =
+      ((await this.meta.getSetting(this.spec.setting)) as { offered?: boolean } | undefined)?.offered === true;
     if (stale) {
       // The app moved or was updated: the entry points at a folder that is gone. Point it at the copy that ships now.
       packages.removeSourceFromSettings(stale.source);
       packages.addSourceToSettings(bundled);
       await settings.flush();
-      this.remember();
+      await this.remember();
       this.logger.log(`Pointed pi at the ${this.spec.label} package in ${bundled} (was ${stale.source}).`);
       return 'repointed';
     }
@@ -131,7 +132,7 @@ export abstract class PiKitPackage<Module> {
     await settings.flush();
     const failures = settings.drainErrors();
     if (failures.length > 0) throw new Error(`pi could not save its settings: ${failures[0].error.message}`);
-    this.remember();
+    await this.remember();
     this.logger.log(`Installed the ${this.spec.label} package (${bundled}) into pi's settings.`);
     return 'installed';
   }
@@ -147,8 +148,8 @@ export abstract class PiKitPackage<Module> {
     return this.loaded;
   }
 
-  private remember(): void {
-    this.meta.setSetting(this.spec.setting, { offered: true });
+  private async remember(): Promise<void> {
+    await this.meta.setSetting(this.spec.setting, { offered: true });
   }
 
   private isSource(source: string): boolean {

@@ -55,7 +55,7 @@ function world(options: { store?: SecretStore } = {}): World {
       return { messages: [{ text: `Signed out of MCP server "x".`, level: 'info' }], finished: true };
     },
   };
-  const threads = { openSession: async () => undefined, cwdOf: () => cwd };
+  const threads = { openSession: async () => undefined, cwdOf: async () => cwd };
   const mcp = {
     login: async (_thread: string, name: string) => {
       w.calls.push(`login ${name}`);

@@ -10,7 +10,7 @@ module.exports = {
   keepNames: true,
   treeShaking: true,
   external: [...nativePackages, ...optionalImports],
-  // Drizzle's adapter imports this name; use the same encrypted native driver in packaged builds.
+  // Legacy offline recovery encryption helper only; normal runtime uses @appthreat/sqlite3.
   alias: { 'better-sqlite3': 'better-sqlite3-multiple-ciphers' },
   // Nest 12 uses import.meta.url for its optional synchronous package loader.
   // The backend remains CJS so existing launchers and __dirname assets work.

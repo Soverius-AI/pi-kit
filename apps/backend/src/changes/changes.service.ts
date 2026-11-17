@@ -54,11 +54,11 @@ export class ChangesService {
   // ---- reads
 
   async list(threadId: string, source: ChangeSource): Promise<ChangesList> {
-    const cwd = this.threads.cwdOf(threadId);
+    const cwd = await this.threads.cwdOf(threadId);
     const notGit: ChangesList = { source, cwd, git: false, files: [], note: NOT_GIT_NOTE };
     if (source !== 'thread') {
       if (!(await git.isWorkTree(cwd))) return notGit;
-      return source === 'worktree' ? this.worktreeList(cwd) : this.outcomeList(threadId, cwd);
+      return source === 'worktree' ? await this.worktreeList(cwd) : await this.outcomeList(threadId, cwd);
     }
     // The snapshots answer whether this is a git work tree too.
     const files = await this.threadFiles(threadId, cwd);
@@ -74,12 +74,12 @@ export class ChangesService {
   }
 
   async file(threadId: string, source: ChangeSource, path: string): Promise<DiffModel> {
-    const cwd = this.threads.cwdOf(threadId);
+    const cwd = await this.threads.cwdOf(threadId);
     const rel = posixRelative(path);
     insideWorkspace(cwd, rel);
     if (source !== 'thread') {
       if (!(await git.isWorkTree(cwd))) return emptyModel(rel, 'M', { note: NOT_GIT_NOTE });
-      return source === 'worktree' ? this.worktreeFile(cwd, rel) : this.outcomeFile(threadId, cwd, rel);
+      return source === 'worktree' ? await this.worktreeFile(cwd, rel) : await this.outcomeFile(threadId, cwd, rel);
     }
     const state = await this.snapshots.threadChanges(threadId, cwd);
     if (!state) return emptyModel(rel, 'M', { note: NOT_GIT_NOTE });
@@ -109,7 +109,7 @@ export class ChangesService {
     const isGit = await git.isWorkTree(cwd);
     const all = isGit ? await git.statusBadges(cwd) : [];
     let thread: string[] = [];
-    if (threadId && this.threads.cwdOf(threadId) === cwd) {
+    if (threadId && (await this.threads.cwdOf(threadId)) === cwd) {
       try {
         thread = (await this.list(threadId, 'thread')).files.map((f) => f.path);
       } catch (error) {
@@ -130,7 +130,7 @@ export class ChangesService {
 
   /** "Revert file": puts the file back as it was before the thread (or, in the working tree, as `HEAD` has it). The caller has confirmed. */
   async revert(threadId: string, source: EditableSource, path: string): Promise<void> {
-    const cwd = this.threads.cwdOf(threadId);
+    const cwd = await this.threads.cwdOf(threadId);
     const rel = posixRelative(path);
     const absolute = insideWorkspace(cwd, rel);
     this.requireIdle(threadId);
@@ -155,7 +155,7 @@ export class ChangesService {
 
   /** "Stage all": `git add` for the working tree, or for the files of "This thread". */
   async stage(threadId: string, source: EditableSource, files?: string[]): Promise<{ staged: number }> {
-    const cwd = this.threads.cwdOf(threadId);
+    const cwd = await this.threads.cwdOf(threadId);
     if (!(await git.isWorkTree(cwd)))
       throw new ConflictException('This folder is not a git repository, so there is nothing to stage into.');
     const paths = files?.map((f) => posixRelative(f));
@@ -173,14 +173,14 @@ export class ChangesService {
 
   // ---- pending comments
 
-  comments(threadId: string): ReviewComment[] {
-    this.threads.cwdOf(threadId);
-    return this.repo.comments(threadId);
+  async comments(threadId: string): Promise<ReviewComment[]> {
+    await this.threads.cwdOf(threadId);
+    return await this.repo.comments(threadId);
   }
 
-  putComments(threadId: string, comments: ReviewComment[]): void {
-    this.threads.cwdOf(threadId);
-    this.repo.replaceComments(threadId, comments);
+  async putComments(threadId: string, comments: ReviewComment[]): Promise<void> {
+    await this.threads.cwdOf(threadId);
+    await this.repo.replaceComments(threadId, comments);
   }
 
   // ---- "This thread"
@@ -278,7 +278,7 @@ export class ChangesService {
 
   /** `git diff base..head` of the thread's outcome: the commits that are its result, in the folder it works in (the project's once its worktree is gone). */
   private async outcomeList(threadId: string, cwd: string): Promise<ChangesList> {
-    const range = this.outcomes.range(threadId);
+    const range = await this.outcomes.range(threadId);
     if (!range)
       return {
         source: 'outcome',
@@ -309,7 +309,7 @@ export class ChangesService {
   }
 
   private async outcomeFile(threadId: string, cwd: string, rel: string): Promise<DiffModel> {
-    const range = this.outcomes.range(threadId);
+    const range = await this.outcomes.range(threadId);
     if (!range) return emptyModel(rel, 'M', { note: 'This thread has no outcome yet.' });
     const status = (await git.nameStatusRange(cwd, range.base, range.head)).get(rel);
     if (!status) return emptyModel(rel, 'M', { note: 'The outcome did not change this file.' });

@@ -36,7 +36,7 @@ describe('ShadowRepo', () => {
     writeFileSync(join(repo, path), text);
   };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     base = mkdtempSync(join(tmpdir(), 'pk-shadow-'));
     repo = join(base, 'repo');
     data = join(base, 'data');
@@ -48,7 +48,7 @@ describe('ShadowRepo', () => {
     sh(repo, 'add', '-A');
     sh(repo, 'commit', '-q', '-m', 'base');
   });
-  afterEach(() => rmSync(base, { recursive: true, force: true, maxRetries: 5 }));
+  afterEach(async () => rmSync(base, { recursive: true, force: true, maxRetries: 5 }));
 
   it('records edits, new and deleted files between two snapshots, with line counts', async () => {
     const shadow = (await ShadowRepo.open(repo, data, registry))!;

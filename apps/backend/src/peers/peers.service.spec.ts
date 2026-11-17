@@ -19,11 +19,11 @@ const owned: { dir: string; db: DatabaseService; service?: PeersService; session
 const nodes = new Map<string, Node>();
 const offline = new Set<string>();
 const calls: { origin: string; path: string; body: Record<string, unknown> }[] = [];
-afterEach(() => {
+afterEach(async () => {
   for (const item of owned.splice(0)) {
     item.service?.onModuleDestroy();
     item.sessions?.onModuleDestroy();
-    item.db.onApplicationShutdown();
+    await item.db.onApplicationShutdown();
     rmSync(item.dir, { recursive: true, force: true });
   }
   nodes.clear();
@@ -39,7 +39,7 @@ const network = {
     try {
       switch (path) {
         case '/peer/identity':
-          return target.service.metadata();
+          return await target.service.metadata();
         case '/peer/pair/request':
           return await target.service.request(body);
         case '/peer/pair/status':
@@ -47,7 +47,7 @@ const network = {
         case '/peer/pair/ack':
           return await target.service.acknowledge(String(body.pairId), String(body.proof));
         case '/peer/challenge':
-          return target.sessions.challenge(String(body.peerId));
+          return await target.sessions.challenge(String(body.peerId));
         case '/peer/session':
           return await target.sessions.session(body);
         case '/peer/unpair':
@@ -63,14 +63,14 @@ const network = {
 } as PeerHttp;
 async function node(label: string) {
   const dir = mkdtempSync(join(tmpdir(), 'pi-kit-peer-'));
-  const db = new DatabaseService({ dataDir: dir }),
+  const db = await DatabaseService.create({ dataDir: dir }),
     instance = new InstanceRepository(db),
     records = new PeersRepository(db);
   const holder: (typeof owned)[number] = { dir, db };
   owned.push(holder);
-  instance.rename(label);
+  await instance.rename(label);
   const origin = `https://${label.toLowerCase()}.fixture.ts.net`;
-  records.setOrigin(origin);
+  await records.setOrigin(origin);
   const keys = generateKeyPairSync('ed25519');
   const publicKey = keys.publicKey.export({ format: 'jwk' });
   const info = InstanceKeyInfoSchema.parse({ publicKey, fingerprint: await calculateJwkThumbprint(publicKey) });
@@ -121,15 +121,15 @@ async function node(label: string) {
 }
 async function progress(target: Node, from: Node) {
   await (target.service as unknown as { progress(peer: PeerRecord): Promise<void> }).progress(
-    target.records.get(from.id)!,
+    (await target.records.get(from.id))!,
   );
 }
 async function pair(a: Node, b: Node, relay = true) {
   const invite = await a.service.invitation();
   await b.service.connect(invite.invitation, relay);
-  const pending = a.service.manager().requests[0];
-  expect(b.records.get(a.id)?.confirmationCode).toBe(pending.confirmationCode);
-  a.service.approvePair(pending.pairId, relay);
+  const pending = (await a.service.manager()).requests[0];
+  expect((await b.records.get(a.id))?.confirmationCode).toBe(pending.confirmationCode);
+  await a.service.approvePair(pending.pairId, relay);
   await progress(b, a);
   return pending.pairId;
 }
@@ -145,35 +145,35 @@ const phone = () => ({
 describe('reciprocal instance control plane', () => {
   it('does not initialize OS keys for ordinary local use or name edits', async () => {
     const a = await node('Alpha');
-    expect(a.service.manager().peers).toEqual([]);
-    a.instance.rename('Arbeits-Mac 日本語');
+    expect((await a.service.manager()).peers).toEqual([]);
+    await a.instance.rename('Arbeits-Mac 日本語');
     expect(a.signer.instanceKeyInfo).not.toHaveBeenCalled();
-    expect(() => a.service.metadata()).toThrow();
+    await expect((async () => await a.service.metadata())()).rejects.toThrow();
     await a.service.invitation();
     expect(a.signer.instanceKeyInfo).toHaveBeenCalledWith(a.id, true);
-    expect(a.service.metadata().identity.name).toBe('Arbeits-Mac 日本語');
+    expect((await a.service.metadata()).identity.name).toBe('Arbeits-Mac 日本語');
   });
   it('requires both owners, confirms the same random signed code, and approves both directions', async () => {
     const a = await node('Alpha'),
       b = await node('Beta');
     const invite = await a.service.invitation();
     await b.service.connect(invite.invitation, true);
-    expect(a.records.list()).toEqual([]);
-    expect(b.records.get(a.id)?.state).toBe('pending');
-    expect(() => b.sessions.target(a.id)).toThrow();
-    expect(() => a.sessions.challenge(b.id)).toThrow();
-    const request = a.service.manager().requests[0];
+    expect(await a.records.list()).toEqual([]);
+    expect((await b.records.get(a.id))?.state).toBe('pending');
+    await expect((async () => await b.sessions.target(a.id))()).rejects.toThrow();
+    await expect((async () => await a.sessions.challenge(b.id))()).rejects.toThrow();
+    const request = (await a.service.manager()).requests[0];
     expect(request.confirmationCode).toMatch(/^\d{6}$/);
-    expect(b.records.get(a.id)?.confirmationCode).toBe(request.confirmationCode);
-    a.service.approvePair(request.pairId, true);
-    expect(a.records.get(b.id)?.state).toBe('pending');
+    expect((await b.records.get(a.id))?.confirmationCode).toBe(request.confirmationCode);
+    await a.service.approvePair(request.pairId, true);
+    expect((await a.records.get(b.id))?.state).toBe('pending');
     await progress(b, a);
-    expect(a.records.get(b.id)?.state).toBe('active');
-    expect(b.records.get(a.id)?.state).toBe('active');
+    expect((await a.records.get(b.id))?.state).toBe('active');
+    expect((await b.records.get(a.id))?.state).toBe('active');
     const toB = await a.sessions.access(b.id),
       toA = await b.sessions.access(a.id);
-    expect(b.sessions.authorize(toB)).toMatchObject({ peerId: a.id, relay: false });
-    expect(a.sessions.authorize(toA)).toMatchObject({ peerId: b.id, relay: false });
+    expect(await b.sessions.authorize(toB)).toMatchObject({ peerId: a.id, relay: false });
+    expect(await a.sessions.authorize(toA)).toMatchObject({ peerId: b.id, relay: false });
     const count = calls.filter((call) => call.path === '/peer/session').length;
     await Promise.all(Array.from({ length: 10 }, () => a.sessions.access(b.id, undefined, true)));
     expect(calls.filter((call) => call.path === '/peer/session')).toHaveLength(count + 1);
@@ -182,16 +182,16 @@ describe('reciprocal instance control plane', () => {
     const a = await node('Alpha'),
       b = await node('Beta');
     await b.service.connect((await a.service.invitation()).invitation, true);
-    const request = a.service.manager().requests[0];
-    a.service.approvePair(request.pairId, true);
+    const request = (await a.service.manager()).requests[0];
+    await a.service.approvePair(request.pairId, true);
     a.restart();
     await progress(b, a);
-    expect(a.records.get(b.id)).toMatchObject({
+    expect(await a.records.get(b.id)).toMatchObject({
       pairId: request.pairId,
       state: 'active',
       confirmationCode: request.confirmationCode,
     });
-    expect(b.records.get(a.id)?.state).toBe('active');
+    expect((await b.records.get(a.id))?.state).toBe('active');
   });
   it('consumes an invitation once even when different valid requests race', async () => {
     const a = await node('Alpha'),
@@ -203,7 +203,7 @@ describe('reciprocal instance control plane', () => {
       c.service.connect(invitation, true),
     ]);
     expect(results.filter((value) => value.status === 'fulfilled')).toHaveLength(1);
-    expect(a.service.manager().requests).toHaveLength(1);
+    expect((await a.service.manager()).requests).toHaveLength(1);
   });
   it('rejects session-proof replay, wrong audiences and mode substitution', async () => {
     const a = await node('Alpha'),
@@ -212,7 +212,7 @@ describe('reciprocal instance control plane', () => {
     await a.sessions.access(b.id);
     const original = calls.find((call) => call.origin === b.origin && call.path === '/peer/session')!.body;
     await expect(b.sessions.session(original)).rejects.toThrow();
-    const challenge = b.sessions.challenge(a.id);
+    const challenge = await b.sessions.challenge(a.id);
     const claims: PeerProofClaims = {
       aud: a.id,
       purpose: 'session',
@@ -235,35 +235,35 @@ describe('reciprocal instance control plane', () => {
       b = await node('Beta');
     const pairId = await pair(a, b);
     const old = await a.sessions.access(b.id),
-      fingerprint = b.service.metadata().identity.fingerprint;
+      fingerprint = (await b.service.metadata()).identity.fingerprint;
     b.restart();
-    expect(() => b.sessions.authorize(old)).toThrow();
+    await expect((async () => await b.sessions.authorize(old))()).rejects.toThrow();
     b.signer.locked = true;
     await expect(a.sessions.access(b.id, undefined, true)).rejects.toThrow();
-    expect(b.records.get(a.id)).toMatchObject({ state: 'active', pairId });
+    expect(await b.records.get(a.id)).toMatchObject({ state: 'active', pairId });
     b.signer.locked = false;
     const renewed = await a.sessions.access(b.id, undefined, true);
-    expect(b.sessions.authorize(renewed).peerId).toBe(a.id);
-    expect(b.service.metadata().identity.fingerprint).toBe(fingerprint);
+    expect((await b.sessions.authorize(renewed)).peerId).toBe(a.id);
+    expect((await b.service.metadata()).identity.fingerprint).toBe(fingerprint);
   });
   it('intersects phone scope with both directional grants and retains actor attribution', async () => {
     const a = await node('Alpha'),
       b = await node('Beta'),
       c = await node('Gamma');
     const device = phone();
-    a.instance.saveDevice(device);
+    await a.instance.saveDevice(device);
     await pair(a, b);
     const token = await a.sessions.access(b.id, device.id);
-    expect(b.sessions.authorize(token)).toMatchObject({ peerId: a.id, relay: true, actor: device.id });
-    expect(a.service.manager(device.id).peers.map((peer) => peer.peerId)).toEqual([b.id]);
-    expect(() => a.sessions.target(c.id, device.id)).toThrow();
-    a.instance.revokeDevice(device.id);
-    expect(() => a.sessions.target(b.id, device.id)).toThrow();
+    expect(await b.sessions.authorize(token)).toMatchObject({ peerId: a.id, relay: true, actor: device.id });
+    expect((await a.service.manager(device.id)).peers.map((peer) => peer.peerId)).toEqual([b.id]);
+    await expect((async () => await a.sessions.target(c.id, device.id))()).rejects.toThrow();
+    await a.instance.revokeDevice(device.id);
+    await expect((async () => await a.sessions.target(b.id, device.id))()).rejects.toThrow();
     const nativeOnlyA = await node('Delta'),
       nativeOnlyB = await node('Epsilon');
     await pair(nativeOnlyA, nativeOnlyB, false);
     const other = phone();
-    nativeOnlyA.instance.saveDevice(other);
+    await nativeOnlyA.instance.saveDevice(other);
     await expect(nativeOnlyA.sessions.access(nativeOnlyB.id, other.id)).rejects.toThrow();
     for (const method of ['GET', 'POST', 'DELETE'])
       expect(isReviewedRemoteApi('/api/instances/' + c.id + '/proxy/api/workspaces', method)).toBe(false);
@@ -278,29 +278,29 @@ describe('reciprocal instance control plane', () => {
     offline.add(a.origin);
     await b.service.unpair(a.id);
     expect(abort).toHaveBeenCalledOnce();
-    expect(() => b.sessions.authorize(token)).toThrow();
-    expect(b.records.get(a.id)).toMatchObject({ state: 'revoked', unpairPending: true });
+    await expect((async () => await b.sessions.authorize(token))()).rejects.toThrow();
+    expect(await b.records.get(a.id)).toMatchObject({ state: 'revoked', unpairPending: true });
     const proof = await a.signer.instanceSign(a.id, { aud: b.id, purpose: 'pair-ack', nonce: pairId, pairId });
     await expect(b.service.acknowledge(pairId, proof)).rejects.toThrow();
     b.restart();
     offline.delete(a.origin);
     await (b.service as unknown as { refresh(): Promise<void> }).refresh();
-    expect(b.records.get(a.id)?.unpairPending).toBe(false);
-    expect(a.records.get(b.id)?.state).toBe('revoked');
+    expect((await b.records.get(a.id))?.unpairPending).toBe(false);
+    expect((await a.records.get(b.id))?.state).toBe('revoked');
   });
   it('updates advertised names without changing references, local aliases or grants', async () => {
     const a = await node('Alpha'),
       b = await node('Beta');
     const pairId = await pair(a, b);
-    a.records.rename(b.id, 'My work machine');
-    b.instance.rename('日本語 Work');
+    await a.records.rename(b.id, 'My work machine');
+    await b.instance.rename('日本語 Work');
     await a.sessions.access(b.id, undefined, true);
-    expect(a.records.get(b.id)).toMatchObject({
+    expect(await a.records.get(b.id)).toMatchObject({
       alias: 'My work machine',
       pairId,
       identity: { instanceId: b.id, name: '日本語 Work' },
     });
-    expect(a.service.manager().peers[0].name).toBe('My work machine');
+    expect((await a.service.manager()).peers[0].name).toBe('My work machine');
   });
   it('does not accept a replacement identity at an enrolled endpoint', async () => {
     const a = await node('Alpha'),
@@ -310,7 +310,7 @@ describe('reciprocal instance control plane', () => {
     await replacement.service.invitation();
     nodes.set(b.origin, replacement);
     await expect(a.sessions.access(b.id, undefined, true)).rejects.toThrow(/identity changed/i);
-    expect(a.records.get(b.id)?.state).toBe('active');
+    expect((await a.records.get(b.id))?.state).toBe('active');
     const sent = calls.filter((call) => call.origin === b.origin);
     expect(sent.at(-1)?.path).toBe('/peer/identity');
   });

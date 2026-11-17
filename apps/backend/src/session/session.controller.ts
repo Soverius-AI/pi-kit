@@ -113,8 +113,8 @@ export class SessionController {
   })
   @Responds(CommandSchema, { array: true })
   @Fails({ 404: NO_THREAD })
-  listCommands(@Param('id') id: string): Promise<Command[]> {
-    return this.commands.list(id);
+  async listCommands(@Param('id') id: string): Promise<Command[]> {
+    return await this.commands.list(id);
   }
 
   @Remote()
@@ -161,7 +161,7 @@ export class SessionController {
   @Responds(ThreadUsageSchema)
   @Fails({ 404: NO_THREAD })
   async usage(@Param('id') id: string): Promise<ThreadUsage> {
-    return readThreadUsage(this.threads.sessionPathOf(id), id);
+    return await readThreadUsage(await this.threads.sessionPathOf(id), id);
   }
 
   @Remote()
@@ -178,7 +178,7 @@ export class SessionController {
     @Query({ schema: ModelListQuerySchema }) query: z.infer<typeof ModelListQuerySchema>,
   ): Promise<ModelList> {
     await this.threads.openSession(query.thread);
-    return this.sessions.models(query.thread);
+    return await this.sessions.models(query.thread);
   }
 
   @Remote()
@@ -264,7 +264,7 @@ export class SessionController {
     await this.threads.openSession(id);
     const result = await this.sessions.exportSession(id, body.path);
     // Everything that leaves through pi-kit runs the redaction pass first: the file pi wrote is rewritten with key shapes masked, unless the folder has the pass switched off.
-    const cwd = this.threadRows.get(id)?.cwd;
+    const cwd = (await this.threadRows.get(id))?.cwd;
     const written = readFileSync(result.path, 'utf8');
     const redacted = result.format === 'jsonl' ? this.redaction.jsonl(cwd, written) : this.redaction.html(cwd, written);
     if (redacted.count > 0) writeFileSync(result.path, redacted.text);
@@ -375,7 +375,7 @@ export class SessionController {
     @Param('id') id: string,
     @Query({ schema: FilesQuerySchema }) query: z.infer<typeof FilesQuerySchema>,
   ): Promise<FileMatch[]> {
-    return this.files.search(this.workspace(id), query.q ?? '', query.limit ?? 50);
+    return await this.files.search(await this.workspace(id), query.q ?? '', query.limit ?? 50);
   }
 
   /** The Files panel: the entries under `dir` (default: the root), ignore-aware, folders first; `ignored=1` lists what git ignores too. */
@@ -394,10 +394,10 @@ export class SessionController {
     @Param('id') id: string,
     @Query({ schema: FileTreeQuerySchema }) query: z.infer<typeof FileTreeQuerySchema>,
   ): Promise<FileNode[]> {
-    const cwd = this.workspace(id);
+    const cwd = await this.workspace(id);
     const dir = query.dir ?? '';
     if (dir) insideWorkspace(cwd, dir);
-    return this.files.children(cwd, dir, { showIgnored: flagOn(query.ignored) });
+    return await this.files.children(cwd, dir, { showIgnored: flagOn(query.ignored) });
   }
 
   /**
@@ -415,8 +415,8 @@ export class SessionController {
   })
   @Streams(WatchEventSchema, 'The stream stays open until the client closes it.')
   @Fails({ 404: 'The folder is not a known project.' })
-  watchWorkspace(@Param('id') id: string, @Res() res: Response): void {
-    const cwd = this.workspace(id);
+  async watchWorkspace(@Param('id') id: string, @Res() res: Response): Promise<void> {
+    const cwd = await this.workspace(id);
     res.status(200);
     res.setHeader('Content-Type', 'application/x-ndjson');
     res.setHeader('Cache-Control', 'no-cache');
@@ -452,10 +452,10 @@ export class SessionController {
     @Param('id') id: string,
     @Body({ schema: OpenPathRequestSchema }) body: z.infer<typeof OpenPathRequestSchema>,
   ): Promise<OpenPathResult> {
-    const cwd = this.workspace(id);
+    const cwd = await this.workspace(id);
     const absolute = insideWorkspace(cwd, body.path);
     if (!existsSync(absolute)) throw new NotFoundException(`${body.path} does not exist.`);
-    return this.desktop.revealPath(absolute);
+    return await this.desktop.revealPath(absolute);
   }
 
   /** New file or folder, rename and delete of the Files panel's context menu. */
@@ -474,11 +474,11 @@ export class SessionController {
     404: 'The folder is not a known project.',
     409: 'The entry exists already or could not be created.',
   })
-  createEntry(
+  async createEntry(
     @Param('id') id: string,
     @Body({ schema: FsCreateSchema }) body: z.infer<typeof FsCreateSchema>,
-  ): { path: string } {
-    return this.fs.create(this.workspace(id), body.path, body.dir);
+  ): Promise<{ path: string }> {
+    return this.fs.create(await this.workspace(id), body.path, body.dir);
   }
 
   @Remote()
@@ -496,11 +496,11 @@ export class SessionController {
     404: 'The folder is not a known project, or the source does not exist.',
     409: 'The target exists already or the rename failed.',
   })
-  renameEntry(
+  async renameEntry(
     @Param('id') id: string,
     @Body({ schema: FsRenameSchema }) body: z.infer<typeof FsRenameSchema>,
-  ): { path: string } {
-    return this.fs.rename(this.workspace(id), body.from, body.to);
+  ): Promise<{ path: string }> {
+    return this.fs.rename(await this.workspace(id), body.from, body.to);
   }
 
   @Remote()
@@ -517,8 +517,11 @@ export class SessionController {
     400: 'The path is outside the folder or names `.git`.',
     404: 'The folder is not a known project, or the path does not exist.',
   })
-  deleteEntry(@Param('id') id: string, @Body({ schema: FsDeleteSchema }) body: z.infer<typeof FsDeleteSchema>): void {
-    this.fs.delete(this.workspace(id), body.path);
+  async deleteEntry(
+    @Param('id') id: string,
+    @Body({ schema: FsDeleteSchema }) body: z.infer<typeof FsDeleteSchema>,
+  ): Promise<void> {
+    this.fs.delete(await this.workspace(id), body.path);
   }
 
   /** "Open in editor": the desktop app opens the file with the system's default application (`shell.openPath`). */
@@ -539,10 +542,10 @@ export class SessionController {
     @Param('id') id: string,
     @Body({ schema: OpenPathRequestSchema }) body: z.infer<typeof OpenPathRequestSchema>,
   ): Promise<OpenPathResult> {
-    const cwd = this.workspace(id);
+    const cwd = await this.workspace(id);
     const absolute = insideWorkspace(cwd, body.path);
     if (!existsSync(absolute)) throw new NotFoundException(`${body.path} does not exist.`);
-    return this.desktop.openPath(absolute);
+    return await this.desktop.openPath(absolute);
   }
 
   /** pi's own changelog, for `/changelog`. */
@@ -563,8 +566,8 @@ export class SessionController {
     };
   }
 
-  private workspace(id: string): string {
-    return this.meta.requireWorkspace(id);
+  private async workspace(id: string): Promise<string> {
+    return await this.meta.requireWorkspace(id);
   }
 
   private requireIdle(id: string, what: string): void {

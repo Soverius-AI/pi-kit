@@ -38,7 +38,7 @@ export class BgAgentsController {
   @Responds(BgAgentSchema, { array: true })
   async list(@Param('id') id: string): Promise<BgAgent[]> {
     await this.agents.warm(id);
-    return this.agents.list(id).map((row) => this.agents.toAgent(row));
+    return (await this.agents.list(id)).map((row) => this.agents.toAgent(row));
   }
 
   @Remote()
@@ -58,8 +58,8 @@ export class BgAgentsController {
     @Body({ schema: AgentMessageBodySchema }) body: AgentMessageBody,
   ): Promise<BgAgent> {
     const { text, mode } = body;
-    await this.agents.send(this.find(id, agent).id, text, mode, `panel:${Date.now()}`);
-    return this.agents.toAgent(this.find(id, agent));
+    await this.agents.send((await this.find(id, agent)).id, text, mode, `panel:${Date.now()}`);
+    return this.agents.toAgent(await this.find(id, agent));
   }
 
   @Remote()
@@ -81,7 +81,7 @@ export class BgAgentsController {
     @Param('agent') agent: string,
     @Body({ schema: AgentAnswerBodySchema }) body: AgentAnswerBody,
   ): Promise<BgAgent> {
-    const row = this.find(id, agent);
+    const row = await this.find(id, agent);
     try {
       await this.agents.answer(
         row.id,
@@ -92,7 +92,7 @@ export class BgAgentsController {
     } catch (error) {
       throw new ConflictException(error instanceof Error ? error.message : String(error));
     }
-    return this.agents.toAgent(this.find(id, agent));
+    return this.agents.toAgent(await this.find(id, agent));
   }
 
   @Remote()
@@ -106,11 +106,11 @@ export class BgAgentsController {
   })
   @Responds(BgAgentSchema)
   @Fails({ 404: 'There is no such agent in this thread.' })
-  resume(@Param('id') id: string, @Param('agent') agent: string): BgAgent {
-    const row = this.find(id, agent);
-    if (row.cleanup) this.agents.discardCleanup(row.id);
-    else this.agents.resumeAgent(row.id);
-    return this.agents.toAgent(this.find(id, agent));
+  async resume(@Param('id') id: string, @Param('agent') agent: string): Promise<BgAgent> {
+    const row = await this.find(id, agent);
+    if (row.cleanup) await this.agents.discardCleanup(row.id);
+    else await this.agents.resumeAgent(row.id);
+    return this.agents.toAgent(await this.find(id, agent));
   }
 
   @Remote()
@@ -124,8 +124,8 @@ export class BgAgentsController {
   @Responds(BgAgentSchema)
   @Fails({ 404: 'There is no such agent in this thread.' })
   async stop(@Param('id') id: string, @Param('agent') agent: string): Promise<BgAgent> {
-    await this.agents.stop(this.find(id, agent).id);
-    return this.agents.toAgent(this.find(id, agent));
+    await this.agents.stop((await this.find(id, agent)).id);
+    return this.agents.toAgent(await this.find(id, agent));
   }
 
   @Delete(':agent')
@@ -139,11 +139,11 @@ export class BgAgentsController {
   @ApiNoContentResponse({ description: 'The agent is deleted.' })
   @Fails({ 404: 'There is no such agent in this thread.' })
   async remove(@Param('id') id: string, @Param('agent') agent: string): Promise<void> {
-    await this.agents.deleteAgent(this.find(id, agent).id);
+    await this.agents.deleteAgent((await this.find(id, agent)).id);
   }
 
-  private find(threadId: string, agentId: string) {
-    const row = this.agents.get(agentId);
+  private async find(threadId: string, agentId: string) {
+    const row = await this.agents.get(agentId);
     if (!row || row.threadId !== threadId) throw new NotFoundException('There is no such agent in this thread.');
     return row;
   }

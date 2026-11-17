@@ -170,6 +170,16 @@ export const settingsCatalog = (translate: Translate): readonly SettingEntry[] =
   },
   // ---- General
   {
+    id: 'watchdog',
+    section: 'general',
+    group: translate('settings.watchdog.heading'),
+    name: translate('settings.watchdog.name'),
+    description: translate('settings.watchdog.hint'),
+    storage: 'pi-kit',
+    file: 'watchdog.json',
+    keywords: 'watchdog recovery crash hang restart automatic backend health monitoring',
+  },
+  {
     id: 'background-service',
     section: 'general',
     group: translate('settings.background.heading'),
@@ -1003,7 +1013,8 @@ export function sectionById(translate: Translate, id: SettingsSectionId): Settin
 
 /** The chip text: `pi settings.json`, `pi-kit database`, `project .pi/settings.json`. */
 export function storageLabel(translate: Translate, entry: Pick<SettingEntry, 'storage' | 'file'>): string {
-  if (entry.storage === 'pi-kit') return translate('shared.catalog.piKitDatabase');
+  if (entry.storage === 'pi-kit')
+    return entry.file ? `pi-kit ${entry.file}` : translate('shared.catalog.piKitDatabase');
   if (entry.storage === 'macos') return 'macOS';
   if (entry.storage === 'system') return translate('shared.catalog.signInItems');
   if (entry.storage === 'project')
@@ -1013,7 +1024,10 @@ export function storageLabel(translate: Translate, entry: Pick<SettingEntry, 'st
 
 /** The tooltip of the chip: the place in words. */
 export function storageTitle(translate: Translate, entry: Pick<SettingEntry, 'storage' | 'file'>): string {
-  if (entry.storage === 'pi-kit') return translate('shared.catalog.storedInPiKitSOwnSQLite');
+  if (entry.storage === 'pi-kit')
+    return entry.file
+      ? translate('shared.catalog.storedInPiKitFile', { value1: entry.file })
+      : translate('shared.catalog.storedInPiKitSOwnSQLite');
   if (entry.storage === 'macos') return translate('shared.catalog.grantedByMacOS');
   if (entry.storage === 'system') return translate('shared.catalog.registeredToStartAtSignIn');
   if (entry.storage === 'project')

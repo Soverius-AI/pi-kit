@@ -41,22 +41,25 @@ export class AttendantRepository {
 
   // ---- thread_meta
 
-  meta(threadId: string): ThreadMetaRow | undefined {
-    const r = this.db.prepare('SELECT * FROM thread_meta WHERE thread_id = ?').get(threadId) as RawMeta | undefined;
+  async meta(threadId: string): Promise<ThreadMetaRow | undefined> {
+    const r = (await this.db.prepare('SELECT * FROM thread_meta WHERE thread_id = ?').get(threadId)) as
+      RawMeta | undefined;
     return r && toMeta(r);
   }
 
   /** Summaries of every thread that has one (the sidebar's meta line), by thread id. */
-  summaries(): Map<string, string> {
-    const rows = this.db.prepare('SELECT thread_id, summary FROM thread_meta WHERE summary IS NOT NULL').all() as {
+  async summaries(): Promise<Map<string, string>> {
+    const rows = (await this.db
+      .prepare('SELECT thread_id, summary FROM thread_meta WHERE summary IS NOT NULL')
+      .all()) as {
       thread_id: string;
       summary: string;
     }[];
     return new Map(rows.map((r) => [r.thread_id, r.summary]));
   }
 
-  setSummary(threadId: string, summary: string, fileMtime: number | null): void {
-    this.db
+  async setSummary(threadId: string, summary: string, fileMtime: number | null): Promise<void> {
+    await this.db
       .prepare(
         `INSERT INTO thread_meta (thread_id, summary, summary_for) VALUES (?, ?, ?)
          ON CONFLICT (thread_id) DO UPDATE SET summary = excluded.summary, summary_for = excluded.summary_for`,
@@ -64,8 +67,8 @@ export class AttendantRepository {
       .run(threadId, summary, fileMtime);
   }
 
-  markLooked(threadId: string, fileMtime: number | null): void {
-    this.db
+  async markLooked(threadId: string, fileMtime: number | null): Promise<void> {
+    await this.db
       .prepare(
         `INSERT INTO thread_meta (thread_id, looked_for) VALUES (?, ?)
          ON CONFLICT (thread_id) DO UPDATE SET looked_for = excluded.looked_for`,
@@ -75,8 +78,8 @@ export class AttendantRepository {
 
   // ---- actions
 
-  addAction(action: NewAction): number {
-    const result = this.db
+  async addAction(action: NewAction): Promise<number> {
+    const result = await this.db
       .prepare(
         `INSERT INTO attendant_actions (at, kind, status, thread_id, thread_title, text, model, input_tokens, output_tokens, cost)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -96,8 +99,8 @@ export class AttendantRepository {
     return Number(result.lastInsertRowid);
   }
 
-  actions(limit = 100): AttendantAction[] {
-    const rows = this.db.prepare('SELECT * FROM attendant_actions ORDER BY id DESC LIMIT ?').all(limit) as {
+  async actions(limit = 100): Promise<AttendantAction[]> {
+    const rows = (await this.db.prepare('SELECT * FROM attendant_actions ORDER BY id DESC LIMIT ?').all(limit)) as {
       id: number;
       at: number;
       kind: AttendantKind;
@@ -126,112 +129,119 @@ export class AttendantRepository {
   }
 
   /** What the model requests since `since` (local midnight) cost and used. */
-  usageSince(since: number): AttendantUsage {
-    const row = this.db
+  async usageSince(since: number): Promise<AttendantUsage> {
+    const row = (await this.db
       .prepare(
         `SELECT COALESCE(SUM(cost), 0) AS cost, COUNT(*) AS calls, COALESCE(SUM(input_tokens), 0) AS input, COALESCE(SUM(output_tokens), 0) AS output
          FROM attendant_actions WHERE at >= ? AND status != 'skipped' AND model IS NOT NULL`,
       )
-      .get(since) as { cost: number; calls: number; input: number; output: number };
+      .get(since)) as { cost: number; calls: number; input: number; output: number };
     return { cost: row.cost, calls: row.calls, inputTokens: row.input, outputTokens: row.output };
   }
 
   // ---- suggestions
 
-  addSuggestion(suggestion: {
+  async addSuggestion(suggestion: {
     threadId: string;
     kind: ThreadSuggestion['kind'];
     target: string;
     text: string;
     reason?: string;
-  }): number {
-    // One open suggestion per target: a newer proposal replaces the older one.
-    this.db
-      .prepare(
-        "UPDATE thread_suggestions SET state = 'dismissed' WHERE thread_id = ? AND kind = ? AND target = ? AND state = 'open'",
-      )
-      .run(suggestion.threadId, suggestion.kind, suggestion.target);
-    const result = this.db
-      .prepare(
-        'INSERT INTO thread_suggestions (thread_id, kind, target, text, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      )
-      .run(
-        suggestion.threadId,
-        suggestion.kind,
-        suggestion.target,
-        suggestion.text,
-        suggestion.reason ?? null,
-        Date.now(),
-      );
-    return Number(result.lastInsertRowid);
+  }): Promise<number> {
+    return await this.database.db
+      .transaction(async () => {
+        // One open suggestion per target: a newer proposal replaces the older one.
+        await this.db
+          .prepare(
+            "UPDATE thread_suggestions SET state = 'dismissed' WHERE thread_id = ? AND kind = ? AND target = ? AND state = 'open'",
+          )
+          .run(suggestion.threadId, suggestion.kind, suggestion.target);
+        const result = await this.db
+          .prepare(
+            'INSERT INTO thread_suggestions (thread_id, kind, target, text, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          )
+          .run(
+            suggestion.threadId,
+            suggestion.kind,
+            suggestion.target,
+            suggestion.text,
+            suggestion.reason ?? null,
+            Date.now(),
+          );
+        return Number(result.lastInsertRowid);
+      })
+      .immediate();
   }
 
   /** A suggestion for this target was made before (open, accepted or dismissed): the attendant does not propose it again. */
-  hasSuggestion(threadId: string, kind: ThreadSuggestion['kind'], target: string): boolean {
+  async hasSuggestion(threadId: string, kind: ThreadSuggestion['kind'], target: string): Promise<boolean> {
     return (
-      this.db
+      (await this.db
         .prepare('SELECT 1 FROM thread_suggestions WHERE thread_id = ? AND kind = ? AND target = ? LIMIT 1')
-        .get(threadId, kind, target) !== undefined
+        .get(threadId, kind, target)) !== undefined
     );
   }
 
   /** Open suggestions of one thread, newest first. */
-  openSuggestions(threadId: string): ThreadSuggestion[] {
-    return this.suggestionRows(
+  async openSuggestions(threadId: string): Promise<ThreadSuggestion[]> {
+    return await this.suggestionRows(
       "SELECT * FROM thread_suggestions WHERE thread_id = ? AND state = 'open' ORDER BY id DESC",
       threadId,
     );
   }
 
   /** Open suggestions of every thread, by thread id. */
-  allOpenSuggestions(): Map<string, ThreadSuggestion[]> {
-    const rows = this.db
+  async allOpenSuggestions(): Promise<Map<string, ThreadSuggestion[]>> {
+    const rows = (await this.db
       .prepare("SELECT * FROM thread_suggestions WHERE state = 'open' ORDER BY id DESC")
-      .all() as RawSuggestion[];
+      .all()) as RawSuggestion[];
     const out = new Map<string, ThreadSuggestion[]>();
     for (const r of rows) out.set(r.thread_id, [...(out.get(r.thread_id) ?? []), toSuggestion(r)]);
     return out;
   }
 
-  suggestion(id: number): (ThreadSuggestion & { threadId: string; state: string }) | undefined {
-    const r = this.db.prepare('SELECT * FROM thread_suggestions WHERE id = ?').get(id) as RawSuggestion | undefined;
+  async suggestion(id: number): Promise<(ThreadSuggestion & { threadId: string; state: string }) | undefined> {
+    const r = (await this.db.prepare('SELECT * FROM thread_suggestions WHERE id = ?').get(id)) as
+      RawSuggestion | undefined;
     return r && { ...toSuggestion(r), threadId: r.thread_id, state: r.state };
   }
 
-  setSuggestionState(id: number, state: 'accepted' | 'dismissed'): void {
-    this.db.prepare('UPDATE thread_suggestions SET state = ? WHERE id = ?').run(state, id);
+  async setSuggestionState(id: number, state: 'accepted' | 'dismissed'): Promise<void> {
+    await this.db.prepare('UPDATE thread_suggestions SET state = ? WHERE id = ?').run(state, id);
   }
 
   /** The `learn` suggestion of a skill draft is settled with the draft: approved is accepted, discarded is dismissed. */
-  closeLearn(draftId: string, state: 'accepted' | 'dismissed'): void {
-    this.db
+  async closeLearn(draftId: string, state: 'accepted' | 'dismissed'): Promise<void> {
+    await this.db
       .prepare("UPDATE thread_suggestions SET state = ? WHERE kind = 'learn' AND target = ? AND state = 'open'")
       .run(state, draftId);
   }
 
   /** An answer suggestion goes stale when its dialog is gone: every open one of the thread that is not in `liveDialogIds` is dismissed. Returns how many. */
-  expireAnswers(threadId: string, liveDialogIds: readonly string[]): number {
-    const open = this.openSuggestions(threadId).filter((s) => s.kind === 'answer' && !liveDialogIds.includes(s.target));
-    for (const s of open) this.setSuggestionState(s.id, 'dismissed');
+  async expireAnswers(threadId: string, liveDialogIds: readonly string[]): Promise<number> {
+    const open = (await this.openSuggestions(threadId)).filter(
+      (s) => s.kind === 'answer' && !liveDialogIds.includes(s.target),
+    );
+    for (const s of open) await this.setSuggestionState(s.id, 'dismissed');
     return open.length;
   }
 
   /** Prompt predictions belong to a particular conversation state, never to the next run or branch. */
-  expirePrompts(threadId?: string): void {
+  async expirePrompts(threadId?: string): Promise<void> {
     if (threadId)
-      this.db
+      await this.db
         .prepare(
           "UPDATE thread_suggestions SET state = 'dismissed' WHERE kind = 'prompt' AND state = 'open' AND thread_id = ?",
         )
         .run(threadId);
     else
-      this.db
+      await this.db
         .prepare("UPDATE thread_suggestions SET state = 'dismissed' WHERE kind = 'prompt' AND state = 'open'")
         .run();
   }
 
-  private suggestionRows(sql: string, ...args: unknown[]): ThreadSuggestion[] {
-    return (this.db.prepare(sql).all(...args) as RawSuggestion[]).map(toSuggestion);
+  private async suggestionRows(sql: string, ...args: unknown[]): Promise<ThreadSuggestion[]> {
+    return ((await this.db.prepare(sql).all(...args)) as RawSuggestion[]).map(toSuggestion);
   }
 }
 

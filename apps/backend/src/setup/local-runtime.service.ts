@@ -64,15 +64,18 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
     @Inject(CONFIG) private readonly config: Pick<BackendConfig, 'localRuntime'>,
     readonly managed: LocalLlamaSwapProcessService,
   ) {
-    const previous = LocalRuntimeJobSchema.safeParse(meta.getSetting('local-runtime-job'));
-    if (previous.success) this.job = previous.data;
     // The providers learn the managed llama-swap's models as soon as it answers (the existing-provider refresh).
     managed.onChange((state) => {
       if (state === 'running') void this.refreshProviders().catch(() => undefined);
     });
   }
 
-  onApplicationBootstrap(): void {
+  async onModuleInit(): Promise<void> {
+    const previous = LocalRuntimeJobSchema.safeParse(await this.meta.getSetting('local-runtime-job'));
+    if (previous.success) this.job = previous.data;
+  }
+
+  async onApplicationBootstrap(): Promise<void> {
     if (this.job?.state === 'running' || this.job?.state === 'cancelling') {
       this.job = {
         ...this.job,
@@ -81,15 +84,17 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
         detail: 'The previous setup was interrupted.',
         error: 'The app stopped before this job finished. Retry the action; incomplete downloads are not used.',
       };
-      this.persist(true);
+      await this.persist(true);
     }
     // "Start llama-swap with pi-kit": the saved choice starts the user's own config; the older private-engine recipe is dropped.
-    void this.managed.startSaved();
-    const owner = this.meta.getSetting('local-runtime-provider');
+    void this.managed
+      .startSaved()
+      .catch((error: unknown) => this.logger.warn(`Could not read llama-swap startup preferences: ${String(error)}`));
+    const owner = await this.meta.getSetting('local-runtime-provider');
     if (owner) {
       try {
         removeLegacyLocalProvider(agentDirOf(process.env), owner);
-        this.meta.setSetting('local-runtime-provider', null);
+        await this.meta.setSetting('local-runtime-provider', null);
       } catch {
         this.logger.warn('The old private-engine provider could not be removed. Existing providers were kept.');
       }
@@ -103,7 +108,7 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
   async detect(directory?: string): Promise<LocalHardware> {
     const [facts, configs] = await Promise.all([
       this.hardware.detect(directory, [
-        { kind: 'llama-swap', name: 'llama-swap (started by pi-kit)', baseUrl: this.managed.baseUrl() },
+        { kind: 'llama-swap', name: 'llama-swap (started by pi-kit)', baseUrl: await this.managed.baseUrl() },
       ]),
       this.swap.readConfigs(true),
     ]);
@@ -121,9 +126,9 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
   stopManaged(): Promise<ManagedLlamaSwap> {
     return this.managed.stop();
   }
-  setAutostart(enabled: boolean): LocalRuntimeStatus {
-    this.managed.setAutostart(enabled);
-    return this.status();
+  async setAutostart(enabled: boolean): Promise<LocalRuntimeStatus> {
+    await this.managed.setAutostart(enabled);
+    return await this.status();
   }
   doctor(path?: string): Promise<LocalDoctor> {
     return this.swap.doctor(path);
@@ -159,31 +164,35 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
   saveModelOptions(input: LocalModelOptionsSave): Promise<LocalModelOptions> {
     return this.exclusive(() => this.swap.saveModelOptions(input));
   }
-  reloadModel(input: LocalModelReload): LocalRuntimeJob {
-    return this.run({ kind: 'reload', ...input }, `Preparing to reload ${input.model}…`, async (signal, progress) => {
-      await this.swap.reloadModel(input, signal, (detail) => progress({ detail }));
-      await this.refreshProviders();
-    });
+  async reloadModel(input: LocalModelReload): Promise<LocalRuntimeJob> {
+    return await this.run(
+      { kind: 'reload', ...input },
+      `Preparing to reload ${input.model}…`,
+      async (signal, progress) => {
+        await this.swap.reloadModel(input, signal, (detail) => progress({ detail }));
+        await this.refreshProviders();
+      },
+    );
   }
   saveConfigFile(input: { path: string; text: string; version: string }): Promise<LocalConfigFile> {
     return this.exclusive(() => this.swap.saveConfigFile(input));
   }
 
-  status(): LocalRuntimeStatus {
+  async status(): Promise<LocalRuntimeStatus> {
     return {
       ...this.swap.status(),
       ...(this.job ? { job: this.job } : {}),
       ...(this.persistenceError ? { error: this.persistenceError } : {}),
-      autostart: this.managed.autostart(),
-      managed: this.managed.status(),
+      autostart: await this.managed.autostart(),
+      managed: await this.managed.status(),
     };
   }
 
-  private persist(force = false): void {
+  private async persist(force = false): Promise<void> {
     if (this.stopping || !this.job || (!force && Date.now() - this.lastPersisted < 500)) return;
     this.lastPersisted = Date.now();
     try {
-      this.meta.setSetting('local-runtime-job', this.job);
+      await this.meta.setSetting('local-runtime-job', this.job);
       this.persistenceError = undefined;
     } catch {
       if (!this.persistenceError)
@@ -193,11 +202,11 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
     }
   }
 
-  private run(
+  private async run(
     action: LocalRuntimeAction,
     detail: string,
     work: (signal: AbortSignal, progress: JobProgress, log: (line: string) => void) => Promise<void>,
-  ): LocalRuntimeJob {
+  ): Promise<LocalRuntimeJob> {
     if (this.abort || this.stopping || this.mutating)
       throw new ConflictException(
         'Another local setup action is still running. Wait or cancel it before starting another.',
@@ -206,18 +215,22 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
     const id = randomUUID();
     this.abort = abort;
     this.job = { id, kind: action.kind, action, state: 'running', detail, startedAt: Date.now(), logs: [] };
-    this.persist(true);
+    const persisted = this.persist(true);
+    let progressWrites = Promise.resolve();
     const progress: JobProgress = (patch) => {
       if (this.job?.id !== id || this.stopping || (this.job.state !== 'running' && this.job.state !== 'cancelling'))
         return;
       this.job = { ...this.job, ...patch };
-      this.persist();
+      progressWrites = progressWrites.then(() => this.persist());
     };
     const log = (line: string): void => {
       if (this.job?.id === id) progress({ logs: [...this.job.logs, line.slice(0, 1000)].slice(-80) });
     };
-    this.pending = Promise.resolve()
-      .then(() => work(abort.signal, progress, log))
+    this.pending = persisted
+      .then(() => {
+        abort.signal.throwIfAborted();
+        return work(abort.signal, progress, log);
+      })
       .then(() => {
         if (this.job?.id === id)
           this.job = {
@@ -239,15 +252,17 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
               : { error: error instanceof Error ? error.message : String(error) }),
           };
       })
-      .finally(() => {
+      .finally(async () => {
+        await progressWrites;
         if (this.abort === abort) this.abort = undefined;
-        this.persist(true);
+        await this.persist(true);
       });
+    await persisted;
     return this.job;
   }
 
-  install(tools: ('llama.cpp' | 'llama-swap')[]): LocalRuntimeJob {
-    return this.run({ kind: 'install', tools }, 'Checking installed tools…', async (signal, progress, log) => {
+  async install(tools: ('llama.cpp' | 'llama-swap')[]): Promise<LocalRuntimeJob> {
+    return await this.run({ kind: 'install', tools }, 'Checking installed tools…', async (signal, progress, log) => {
       const facts = await this.hardware.detect();
       const requested = [...new Set(tools)];
       const missing = requested.filter(
@@ -294,12 +309,12 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
     });
   }
 
-  download(selection: string): LocalRuntimeJob {
-    return this.downloadCandidate(this.catalog.selection(selection));
+  async download(selection: string): Promise<LocalRuntimeJob> {
+    return await this.downloadCandidate(this.catalog.selection(selection));
   }
 
-  private downloadCandidate(candidate: LocalModelCandidate): LocalRuntimeJob {
-    return this.run(
+  private async downloadCandidate(candidate: LocalModelCandidate): Promise<LocalRuntimeJob> {
+    return await this.run(
       { kind: 'download', candidate },
       'Preparing the selected model download…',
       async (signal, progress) => {
@@ -321,7 +336,7 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
         agentDirOf(process.env),
         await probeLocalServers([
           ...defaultProbes(),
-          { kind: 'llama-swap', name: 'llama-swap (started by pi-kit)', baseUrl: this.managed.baseUrl() },
+          { kind: 'llama-swap', name: 'llama-swap (started by pi-kit)', baseUrl: await this.managed.baseUrl() },
         ]),
       );
     } catch {
@@ -329,24 +344,24 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
     }
   }
 
-  retry(): LocalRuntimeJob {
+  async retry(): Promise<LocalRuntimeJob> {
     const action = this.job?.action;
     if (!this.job || !['cancelled', 'failed'].includes(this.job.state) || !action)
       throw new BadRequestException(
         'This older job has no saved retry details. Find the model again to start a new download.',
       );
     if (this.job.model) this.hardware.remember(this.job.model);
-    if (action.kind === 'download') return this.downloadCandidate(action.candidate);
-    if (action.kind === 'install') return this.install(action.tools);
-    if (action.kind === 'reload') return this.reloadModel(action);
+    if (action.kind === 'download') return await this.downloadCandidate(action.candidate);
+    if (action.kind === 'install') return await this.install(action.tools);
+    if (action.kind === 'reload') return await this.reloadModel(action);
     throw new BadRequestException('Private engine startup has been removed. Use your existing llama-swap service.');
   }
 
-  dismiss(): LocalRuntimeStatus {
+  async dismiss(): Promise<LocalRuntimeStatus> {
     this.assertIdle();
-    this.meta.setSetting('local-runtime-job', null);
+    await this.meta.setSetting('local-runtime-job', null);
     this.job = undefined;
-    return this.status();
+    return await this.status();
   }
 
   storage(): Promise<LocalStorage> {
@@ -372,7 +387,7 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
     return this.exclusive(async () => {
       await this.swap.register(await this.hardware.model(modelId));
       await this.refreshProviders();
-      return this.status();
+      return await this.status();
     });
   }
 
@@ -391,7 +406,7 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
     return this.exclusive(() => this.files.cleanup());
   }
 
-  cancel(): LocalRuntimeStatus {
+  async cancel(): Promise<LocalRuntimeStatus> {
     if (this.abort && this.job) {
       this.job = {
         ...this.job,
@@ -401,10 +416,10 @@ export class LocalRuntimeService implements OnApplicationBootstrap, OnModuleDest
             ? 'Stopping the reload wait. The existing instance stays running…'
             : 'Cancelling and cleaning up partial work…',
       };
-      this.persist(true);
+      await this.persist(true);
       this.abort.abort();
     }
-    return this.status();
+    return await this.status();
   }
 
   async onModuleDestroy(): Promise<void> {

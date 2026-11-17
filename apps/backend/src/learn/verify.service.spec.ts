@@ -78,7 +78,7 @@ const message = (i: number, body: unknown): PiSessionEntry => ({
   message: body,
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-verify-')));
   project = join(base, 'project');
   root = join(base, 'worktrees');
@@ -108,15 +108,21 @@ beforeEach(() => {
     baseSource: 'start',
   };
 
-  db = new DatabaseService({ dataDir: join(base, 'data') });
+  db = await DatabaseService.create({ dataDir: join(base, 'data') });
   meta = new MetaRepository(db);
-  meta.touchWorkspace(project);
+  await meta.touchWorkspace(project);
   rows = new ThreadsRepository(db);
   drafts = new SkillDraftsRepository(db);
   const sessionPath = join(base, 'origin.jsonl');
   writeFileSync(sessionPath, '{}\n');
-  rows.insertDraft({ id: 'origin', sessionPath, cwd: project, title: 'Add two notes', baseCommit });
-  draft = drafts.insert({ threadId: 'origin', name: 'add-notes', text: SKILL, scope: 'project', madeBy: 'person' });
+  await rows.insertDraft({ id: 'origin', sessionPath, cwd: project, title: 'Add two notes', baseCommit });
+  draft = await drafts.insert({
+    threadId: 'origin',
+    name: 'add-notes',
+    text: SKILL,
+    scope: 'project',
+    madeBy: 'person',
+  });
 
   runs = [];
   archived = [];
@@ -149,16 +155,16 @@ beforeEach(() => {
       title: string,
       worktree: { base: string },
       _local: unknown,
-      options: { onId?: (id: string) => void },
+      options: { onId?: (id: string) => void | Promise<void> },
     ) => {
       const id = `verify-${++n}`;
-      options.onId?.(id);
+      await options.onId?.(id);
       const path = join(root, 'project', `verify-${n}`);
       mkdirSync(join(root, 'project'), { recursive: true });
       git(cwd, 'worktree', 'add', '-q', path, '-b', `pi-kit/verify-${n}`, worktree.base);
       const sessionFile = join(base, `${id}.jsonl`);
       writeFileSync(sessionFile, '{}\n');
-      rows.insertDraft({
+      await rows.insertDraft({
         id,
         sessionPath: sessionFile,
         cwd: path,
@@ -183,7 +189,7 @@ beforeEach(() => {
         git(row.cwd, 'worktree', 'remove', '--force', row.worktreePath);
         if (branch) git(row.cwd, 'branch', '-D', branch);
       }
-      rows.clearWorktree(row.id);
+      await rows.clearWorktree(row.id);
       return { removed: true };
     },
   };
@@ -231,8 +237,8 @@ beforeEach(() => {
   attendantNote.mockClear();
 });
 
-afterEach(() => {
-  db.onApplicationShutdown();
+afterEach(async () => {
+  await db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
   if (previousAgentDir === undefined) delete process.env['PI_CODING_AGENT_DIR'];
   else process.env['PI_CODING_AGENT_DIR'] = previousAgentDir;
@@ -293,9 +299,9 @@ describe('the plan', () => {
     });
     entries = [message(0, { role: 'user', content: 'Do it' })];
     expect((await service.plan(draft.id)).model).toBeNull();
-    drafts.setState(draft.id, 'discarded');
+    await drafts.setState(draft.id, 'discarded');
     expect(await service.plan(draft.id)).toMatchObject({ canVerify: false, reason: expect.stringContaining('Reopen') });
-    drafts.setState(draft.id, 'pending');
+    await drafts.setState(draft.id, 'pending');
     await expect(service.plan('nope')).rejects.toThrow(/no such draft/);
   });
 });
@@ -330,7 +336,7 @@ describe('starting a replay', () => {
     }
     expect(runs).toHaveLength(1);
     expect(runs[0].pinned).toContain('Write the first notes');
-    expect(drafts.get(draft.id)?.text).toContain('Write the first notes');
+    expect((await drafts.get(draft.id))?.text).toContain('Write the first notes');
   });
 });
 
@@ -374,19 +380,19 @@ describe('a replay that reproduces the thread', () => {
     expect(sessionCalls.slice(0, 2)).toEqual(['open verify-1', 'model verify-1 p/m']);
 
     // The record, the text, the thread's mark.
-    const stored = drafts.get(draft.id) as SkillDraft;
+    const stored = (await drafts.get(draft.id)) as SkillDraft;
     expect(stored.verification).toEqual(done);
     expect(stored.text).toContain('verified:\n    result: pass');
     expect(stored.text).toContain('files: 2/2');
-    expect(meta.isVerificationThread('verify-1')).toBe(true);
-    expect(meta.isVerificationThread('origin')).toBe(false);
+    expect(await meta.isVerificationThread('verify-1')).toBe(true);
+    expect(await meta.isVerificationThread('origin')).toBe(false);
 
     // Afterwards: no worktree, no branch, the thread archived, the main checkout as it was.
     expect(scratchFolders()).toEqual([]);
     expect(git(project, 'branch', '--list', 'pi-kit/verify-*')).toBe('');
     expect(git(project, 'worktree', 'list').trim().split('\n')).toHaveLength(1);
     expect(archived).toEqual(['verify-1']);
-    expect(rows.get('verify-1')?.worktreePath).toBeNull();
+    expect((await rows.get('verify-1'))?.worktreePath).toBeNull();
     expect(git(project, 'status', '--porcelain')).toBe('');
     expect(existsSync(join(project, '.pi'))).toBe(false);
     expect(sessionCalls).toContain('dispose verify-1');
@@ -418,13 +424,13 @@ describe('a replay that reproduces the thread', () => {
     expect(runs[0].text).toBe('Write the two notes.');
     expect(runs[0].pinned).toContain('carefully');
     expect(done.prompt).toBe('Write the two notes.');
-    expect(drafts.get(draft.id)?.text).toContain('Write the notes carefully');
+    expect((await drafts.get(draft.id))?.text).toContain('Write the notes carefully');
   });
 
   it('refuses edits that are not a skill, and edits to a skill that is approved already', async () => {
     await expect(service.start(draft.id, { text: 'no frontmatter' })).rejects.toThrow(/frontmatter/);
-    expect(drafts.get(draft.id)?.verification).toBeNull();
-    drafts.setState(draft.id, 'approved', { path: join(base, 'skills', 'add-notes', 'SKILL.md') });
+    expect((await drafts.get(draft.id))?.verification).toBeNull();
+    await drafts.setState(draft.id, 'approved', { path: join(base, 'skills', 'add-notes', 'SKILL.md') });
     await expect(service.start(draft.id, { text: SKILL })).rejects.toThrow(/approved/);
   });
 
@@ -457,8 +463,8 @@ describe('a replay that reproduces the thread', () => {
     const file = join(base, 'agent', 'skills', 'add-notes', 'SKILL.md');
     mkdirSync(join(base, 'agent', 'skills', 'add-notes'), { recursive: true });
     writeFileSync(file, SKILL);
-    drafts.edit(draft.id, {});
-    drafts.setState(draft.id, 'approved', { path: file });
+    await drafts.edit(draft.id, {});
+    await drafts.setState(draft.id, 'approved', { path: file });
     await verify();
     expect(readFileSync(file, 'utf8')).toContain('verified:\n    result: pass');
     expect(readFileSync(file, 'utf8').replace(/verified:[\s\S]*?\n---/, 'verified: null\n---')).toBe(SKILL);
@@ -483,7 +489,7 @@ describe('a replay that does not', () => {
       ['notes/one.md', 'same'],
       ['notes/two.md', 'missing'],
     ]);
-    expect(drafts.get(draft.id)?.text).toContain('result: partial');
+    expect((await drafts.get(draft.id))?.text).toContain('result: partial');
   });
 
   it('is partial when an earlier check regresses even after more than five later checks pass', async () => {
@@ -550,7 +556,7 @@ describe('complete verification evidence', () => {
     const done = await verify();
     expect(done).toMatchObject({ state: 'done', result: 'pass', files: { reproduced: 67, expected: 67, extra: 0 } });
     expect(done.fileList?.map((file) => file.path).sort()).toEqual(['notes/one.md', 'notes/two.md', ...paths].sort());
-    expect(drafts.get(draft.id)?.verification?.fileList).toEqual(done.fileList);
+    expect((await drafts.get(draft.id))?.verification?.fileList).toEqual(done.fileList);
   });
 });
 
@@ -576,13 +582,13 @@ describe('a replay that cannot be carried out, or is stopped', () => {
       await entered;
       await vi.advanceTimersByTimeAsync(31 * 60_000);
       expect(sessionCalls).not.toContain('abort verify-1');
-      expect(drafts.get(draft.id)?.verification).toMatchObject({ state: 'running', phase: 'run' });
+      expect((await drafts.get(draft.id))?.verification).toMatchObject({ state: 'running', phase: 'run' });
     } finally {
       release();
       vi.useRealTimers();
       await service.whenDone(draft.id);
     }
-    expect(drafts.get(draft.id)?.verification).toMatchObject({ state: 'done', result: 'pass' });
+    expect((await drafts.get(draft.id))?.verification).toMatchObject({ state: 'done', result: 'pass' });
   });
 
   it('drains verbose checks without killing them at the former output buffer limit', async () => {
@@ -611,12 +617,12 @@ describe('a replay that cannot be carried out, or is stopped', () => {
       let pid: number | undefined;
       try {
         await service.start(draft.id);
-        await vi.waitFor(() => {
-          const path = rows.get('verify-1')?.worktreePath;
+        await vi.waitFor(async () => {
+          const path = (await rows.get('verify-1'))?.worktreePath;
           expect(path && existsSync(join(path, 'owned-child.pid'))).toBe(true);
           pid = Number(readFileSync(join(path!, 'owned-child.pid'), 'utf8'));
         });
-        if (action === 'Stop') service.stop(draft.id);
+        if (action === 'Stop') await service.stop(draft.id);
         else await service.onModuleDestroy();
         expect(await service.whenDone(draft.id)).toMatchObject({ state: 'stopped' });
         let status = '';
@@ -628,7 +634,7 @@ describe('a replay that cannot be carried out, or is stopped', () => {
         expect(!status || status.startsWith('Z'), `check descendant ${pid} remains alive: ${status}`).toBe(true);
         expect(scratchFolders()).toEqual([]);
       } finally {
-        if (drafts.get(draft.id)?.verification?.state === 'running') service.stop(draft.id);
+        if ((await drafts.get(draft.id))?.verification?.state === 'running') await service.stop(draft.id);
         if (pid) {
           try {
             process.kill(pid, 'SIGKILL');
@@ -648,7 +654,7 @@ describe('a replay that cannot be carried out, or is stopped', () => {
     expect(runs).toHaveLength(0);
     expect(scratchFolders()).toEqual([]);
     expect(archived).toEqual(['verify-1']);
-    expect(drafts.get(draft.id)?.text).not.toContain('result:');
+    expect((await drafts.get(draft.id))?.text).not.toContain('result:');
   });
 
   it('says the model failed, with its message, and cleans up', async () => {
@@ -684,7 +690,7 @@ describe('a replay that cannot be carried out, or is stopped', () => {
     expect(done).toMatchObject({ state: 'stopped' });
     expect(done.result).toBeUndefined();
     expect(scratchFolders()).toEqual([]);
-    expect(drafts.get(draft.id)?.text).toContain('verified: null');
+    expect((await drafts.get(draft.id))?.text).toContain('verified: null');
   });
 
   it('stop() aborts the run that is going and ends the verification as stopped', async () => {
@@ -693,13 +699,13 @@ describe('a replay that cannot be carried out, or is stopped', () => {
     const started = await service.start(draft.id, {});
     expect(started.verification?.state).toBe('running');
     await vi.waitFor(() => expect(runs).toHaveLength(1));
-    expect(drafts.get(draft.id)?.verification?.phase).toBe('run');
+    expect((await drafts.get(draft.id))?.verification?.phase).toBe('run');
     await expect(service.start(draft.id, {})).rejects.toThrow(/being verified already/);
-    service.stop(draft.id);
+    await service.stop(draft.id);
     expect(sessionCalls).toContain('abort verify-1');
     finish({ status: 'aborted' });
     expect(await service.whenDone(draft.id)).toMatchObject({ state: 'stopped' });
-    expect(() => service.stop(draft.id)).toThrow(/not being verified/);
+    await expect((async () => await service.stop(draft.id))()).rejects.toThrow(/not being verified/);
     expect(scratchFolders()).toEqual([]);
   });
 
@@ -715,8 +721,8 @@ describe('a replay that cannot be carried out, or is stopped', () => {
     };
     const sessionPath = join(base, 'origin-2.jsonl');
     writeFileSync(sessionPath, '{}\n');
-    rows.insertDraft({ id: 'origin-2', sessionPath, cwd: project, title: 'Another notes thread', baseCommit });
-    const other = drafts.insert({
+    await rows.insertDraft({ id: 'origin-2', sessionPath, cwd: project, title: 'Another notes thread', baseCommit });
+    const other = await drafts.insert({
       threadId: 'origin-2',
       name: 'other-skill',
       text: stampProvenance(SKILL.replace('name: add-notes', 'name: other-skill'), {
@@ -733,14 +739,14 @@ describe('a replay that cannot be carried out, or is stopped', () => {
       await service.start(other.id);
       await vi.waitFor(() => expect(runs).toHaveLength(2));
       expect(runs[0].cwd).not.toBe(runs[1].cwd);
-      service.stop(draft.id);
-      const first = drafts.get(draft.id)?.verification?.threadId as string;
-      const second = drafts.get(other.id)?.verification?.threadId as string;
+      await service.stop(draft.id);
+      const first = (await drafts.get(draft.id))?.verification?.threadId as string;
+      const second = (await drafts.get(other.id))?.verification?.threadId as string;
       expect(sessionCalls).toContain(`abort ${first}`);
       expect(sessionCalls).not.toContain(`abort ${second}`);
       finish.get(first)?.('aborted');
       expect(await service.whenDone(draft.id)).toMatchObject({ state: 'stopped' });
-      expect(drafts.get(other.id)?.verification?.state).toBe('running');
+      expect((await drafts.get(other.id))?.verification?.state).toBe('running');
       finish.get(second)?.('finished');
       expect(await service.whenDone(other.id)).toMatchObject({ state: 'done', result: 'pass' });
       expect(scratchFolders()).toEqual([]);
@@ -752,13 +758,13 @@ describe('a replay that cannot be carried out, or is stopped', () => {
   });
 
   it('refuses a draft that was discarded, one without an outcome, and one that does not exist', async () => {
-    drafts.setState(draft.id, 'discarded');
+    await drafts.setState(draft.id, 'discarded');
     await expect(service.start(draft.id, {})).rejects.toThrow(/Reopen/);
-    drafts.setState(draft.id, 'pending');
+    await drafts.setState(draft.id, 'pending');
     outcome = undefined;
     await expect(service.start(draft.id, {})).rejects.toThrow(/no outcome yet/);
     await expect(service.start('nope', {})).rejects.toThrow(/no such draft/);
-    expect(drafts.get(draft.id)?.verification).toBeNull();
+    expect((await drafts.get(draft.id))?.verification).toBeNull();
   });
 
   it('warns when something changed in the project folder while the replay ran', async () => {
@@ -779,7 +785,7 @@ describe('after a restart', () => {
     const path = join(root, 'project', 'verify-left');
     mkdirSync(join(root, 'project'), { recursive: true });
     git(project, 'worktree', 'add', '-q', path, '-b', 'pi-kit/verify-left', baseCommit);
-    rows.insertDraft({
+    await rows.insertDraft({
       id: 'left',
       sessionPath: join(base, 'left.jsonl'),
       cwd: path,
@@ -787,10 +793,10 @@ describe('after a restart', () => {
       baseCommit,
       worktree: { path, branch: 'pi-kit/verify-left', projectCwd: project, base: baseCommit },
     });
-    drafts.setVerification(draft.id, { state: 'running', phase: 'run', threadId: 'left', startedAt: 1 });
-    service.onModuleInit();
-    await vi.waitFor(() => expect(drafts.get(draft.id)?.verification?.state).toBe('error'));
-    expect(drafts.get(draft.id)?.verification?.error).toContain('closed while the skill was being verified');
+    await drafts.setVerification(draft.id, { state: 'running', phase: 'run', threadId: 'left', startedAt: 1 });
+    await service.onModuleInit();
+    await vi.waitFor(async () => expect((await drafts.get(draft.id))?.verification?.state).toBe('error'));
+    expect((await drafts.get(draft.id))?.verification?.error).toContain('closed while the skill was being verified');
     await vi.waitFor(() => expect(existsSync(path)).toBe(false));
     expect(git(project, 'branch', '--list', 'pi-kit/verify-*')).toBe('');
   });

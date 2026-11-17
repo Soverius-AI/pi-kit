@@ -42,8 +42,8 @@ export class ScoreController {
   })
   @Responds(OutcomeScoreViewSchema)
   @Fails({ 404: 'There is no such thread, it has not been scored, or the meat-proxy package is not installed.' })
-  get(@Param('id') id: string): OutcomeScoreView {
-    return this.score.view(id);
+  async get(@Param('id') id: string): Promise<OutcomeScoreView> {
+    return await this.score.view(id);
   }
 
   @Post('threads/:id/score')
@@ -107,7 +107,7 @@ export class ScoreController {
       'Returns, per project, how many scored threads fall in each tenth of the steered share, their average and the newest ones. Empty while the meat-proxy package is not installed.',
   })
   @Responds(ScoreOverviewSchema)
-  overview(): ScoreOverview {
-    return this.score.overview();
+  async overview(): Promise<ScoreOverview> {
+    return await this.score.overview();
   }
 }

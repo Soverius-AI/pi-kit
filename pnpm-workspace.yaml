@@ -16,6 +16,8 @@ allowBuilds:
   unrs-resolver: true
   electron-winstaller: true
   better-sqlite3-multiple-ciphers: false
+  # AppThreat ships N-API prebuilds for every release target; runtime loading needs no install script.
+  '@appthreat/sqlite3': false
   '@scarf/scarf': false
   protobufjs: false
   '@google/genai': false

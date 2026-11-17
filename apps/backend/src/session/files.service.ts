@@ -110,7 +110,7 @@ export class FilesService {
       ...(entry.ignored ? { ignored: true } : {}),
     }));
     nodes.sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
-    return nodes.length <= STAT_LIMIT ? Promise.all(nodes.map((node) => withStat(cwd, node))) : nodes;
+    return nodes.length <= STAT_LIMIT ? await Promise.all(nodes.map(async (node) => await withStat(cwd, node))) : nodes;
   }
 
   /** Forget the cached index (after a revert or a write the panel should see, and when the watcher saw a change). */
@@ -119,7 +119,7 @@ export class FilesService {
   }
 
   /** The folder's index, cached for `CACHE_MS` (`@` completion types fast); `fresh` takes only a read that has not finished yet. */
-  private index(cwd: string, options: { fresh?: boolean } = {}): Promise<Index> {
+  private async index(cwd: string, options: { fresh?: boolean } = {}): Promise<Index> {
     const hit = this.cache.get(cwd);
     if (hit && (options.fresh ? !hit.settled : Date.now() - hit.at < CACHE_MS)) return hit.index;
     const entry = { at: Date.now(), index: listFiles(cwd), settled: false };
@@ -129,7 +129,7 @@ export class FilesService {
   }
 
   /** Ignored files and folders (`dist/`, `.env`, `src/gen/a.js`) of a git folder, folders collapsed to their name with a trailing slash. */
-  private ignoredPaths(cwd: string): Promise<string[]> {
+  private async ignoredPaths(cwd: string): Promise<string[]> {
     const pending = this.ignoredReads.get(cwd);
     if (pending) return pending;
     const list = run(

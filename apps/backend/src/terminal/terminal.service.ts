@@ -99,12 +99,15 @@ export class TerminalService implements OnModuleDestroy {
   ) {}
 
   /** The workspace's terminal, started if it has none. A running one is resized to the caller's size. */
-  start(cwd: string, cols: number, rows: number): TerminalInfo {
+  async start(cwd: string, cols: number, rows: number): Promise<TerminalInfo> {
     const existing = this.terminals.get(cwd);
     if (existing) {
       this.resize(cwd, cols, rows);
       return { ...existing.info, cols, rows, created: false };
     }
+    const previous = await this.replay?.get(cwd);
+    // Another request may have started this terminal while its replay was read.
+    if (this.terminals.has(cwd)) return await this.start(cwd, cols, rows);
     ensureSpawnHelper();
     const { file, args } = defaultShell();
     const pty = spawn(file, args, { name: 'xterm-256color', cols, rows, cwd, env: shellEnvironment() });
@@ -119,7 +122,6 @@ export class TerminalService implements OnModuleDestroy {
     };
     this.terminals.set(cwd, terminal);
     // What the terminal of this folder last showed (before the backend restarted) comes first, marked as over.
-    const previous = this.replay?.get(cwd);
     if (previous?.data)
       terminal.scrollback = `${previous.data}${PREVIOUS_SESSION_INPUT_RESET}\r\n\x1b[2m--- end of the previous terminal session ---\x1b[0m\r\n`;
     pty.onData((data) => {
@@ -127,9 +129,9 @@ export class TerminalService implements OnModuleDestroy {
       this.emit(terminal, { type: 'data', data });
       this.scheduleSave(cwd, terminal);
     });
-    pty.onExit(({ exitCode, signal }) => {
+    pty.onExit(async ({ exitCode, signal }) => {
       this.logger.log(`Terminal in ${cwd} ended (${exitCode})`);
-      this.saveNow(cwd, terminal);
+      await this.saveNow(cwd, terminal);
       if (this.terminals.get(cwd) === terminal) this.terminals.delete(cwd);
       this.emit(terminal, { type: 'exit', exitCode, signal: signal ?? null });
       terminal.listeners.clear();
@@ -182,9 +184,9 @@ export class TerminalService implements OnModuleDestroy {
     return this.terminals.has(cwd);
   }
 
-  onModuleDestroy(): void {
+  async onModuleDestroy(): Promise<void> {
     for (const [cwd, terminal] of this.terminals) {
-      this.saveNow(cwd, terminal);
+      await this.saveNow(cwd, terminal);
       terminal.pty.kill();
     }
     this.terminals.clear();
@@ -193,17 +195,17 @@ export class TerminalService implements OnModuleDestroy {
   /** The screen is saved a moment after output stops, not on every chunk. */
   private scheduleSave(cwd: string, terminal: Terminal): void {
     if (!this.replay || terminal.saveTimer) return;
-    terminal.saveTimer = setTimeout(() => this.saveNow(cwd, terminal), REPLAY_SAVE_MS);
+    terminal.saveTimer = setTimeout(async () => await this.saveNow(cwd, terminal), REPLAY_SAVE_MS);
     terminal.saveTimer.unref();
   }
 
-  private saveNow(cwd: string, terminal: Terminal): void {
+  private async saveNow(cwd: string, terminal: Terminal): Promise<void> {
     if (terminal.saveTimer) clearTimeout(terminal.saveTimer);
     terminal.saveTimer = undefined;
     if (!this.replay) return;
     try {
       // Key shapes are masked before the screen is kept (a cut at the 256 KB edge may split one; the next write sees the whole).
-      this.replay.set(cwd, this.redaction ? this.redaction.text(cwd, terminal.scrollback) : terminal.scrollback);
+      await this.replay.set(cwd, this.redaction ? this.redaction.text(cwd, terminal.scrollback) : terminal.scrollback);
     } catch (error) {
       this.logger.warn(
         `Could not save the terminal's last screen: ${error instanceof Error ? error.message : String(error)}`,

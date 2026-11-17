@@ -64,8 +64,8 @@ export class PeersController {
     description: 'Self and reciprocal peers, filtered to the requesting device; this is not tailnet-wide discovery.',
   })
   @Responds(PeerManagerSchema)
-  list(@Req() req: Request): PeerManager {
-    return this.peers.manager(PeersController.device(req));
+  async list(@Req() req: Request): Promise<PeerManager> {
+    return await this.peers.manager(PeersController.device(req));
   }
 
   @Post('invitations')
@@ -94,7 +94,7 @@ export class PeersController {
   ): Promise<PeerManager> {
     PeersController.owner(req);
     await this.peers.connect(body.invitation, body.allowRelay);
-    return this.peers.manager();
+    return await this.peers.manager();
   }
 
   @Post('requests/:pairId/approve')
@@ -105,14 +105,14 @@ export class PeersController {
       'Owner explicitly approves both directions and chooses whether approved phones may relay through the pair.',
   })
   @Responds(PeerManagerSchema)
-  approve(
+  async approve(
     @Req() req: Request,
     @Param('pairId') pairId: string,
     @Body({ schema: PeerConsentSchema }) body: z.infer<typeof PeerConsentSchema>,
-  ): PeerManager {
+  ): Promise<PeerManager> {
     PeersController.owner(req);
-    this.peers.approvePair(PeersController.uuid(pairId), body.allowRelay);
-    return this.peers.manager();
+    await this.peers.approvePair(PeersController.uuid(pairId), body.allowRelay);
+    return await this.peers.manager();
   }
 
   @Delete('requests/:pairId')
@@ -121,10 +121,10 @@ export class PeersController {
     description: 'Owner rejects pending enrollment without granting access or changing publication.',
   })
   @Responds(PeerManagerSchema)
-  reject(@Req() req: Request, @Param('pairId') pairId: string): PeerManager {
+  async reject(@Req() req: Request, @Param('pairId') pairId: string): Promise<PeerManager> {
     PeersController.owner(req);
     this.peers.reject(PeersController.uuid(pairId));
-    return this.peers.manager();
+    return await this.peers.manager();
   }
 
   @Delete(':peerId')
@@ -136,7 +136,7 @@ export class PeersController {
   async unpair(@Req() req: Request, @Param('peerId') peerId: string): Promise<PeerManager> {
     PeersController.owner(req);
     await this.peers.unpair(PeersController.uuid(peerId));
-    return this.peers.manager();
+    return await this.peers.manager();
   }
 
   @Patch(':peerId')
@@ -145,14 +145,14 @@ export class PeersController {
     description: 'Owner changes a display alias, never the peer identity, endpoint or project ownership.',
   })
   @Responds(PeerManagerSchema)
-  rename(
+  async rename(
     @Req() req: Request,
     @Param('peerId') peerId: string,
     @Body({ schema: RenameEnvironmentSchema }) body: z.infer<typeof RenameEnvironmentSchema>,
-  ): PeerManager {
+  ): Promise<PeerManager> {
     PeersController.owner(req);
-    this.records.rename(PeersController.uuid(peerId), body.name);
-    return this.peers.manager();
+    await this.records.rename(PeersController.uuid(peerId), body.name);
+    return await this.peers.manager();
   }
 
   @Get(':peerId/projects')

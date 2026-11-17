@@ -24,8 +24,9 @@ let uses: SkillUsesRepository;
 let rows: ThreadsRepository;
 let meta: MetaRepository;
 let service: LearnedSkillsService;
-let useListener: ((threadId: string, used: SkillUse[]) => void) | undefined;
-let outcomeListener: ((threadId: string, kind: 'merged' | 'committed' | 'pr', firstTime: boolean) => void) | undefined;
+let useListener: ((threadId: string, used: SkillUse[]) => Promise<void>) | undefined;
+let outcomeListener:
+  ((threadId: string, kind: 'merged' | 'committed' | 'pr', firstTime: boolean) => Promise<void>) | undefined;
 let running: Set<string>;
 let learn: {
   retire: ReturnType<typeof vi.fn>;
@@ -35,29 +36,29 @@ let learn: {
 };
 let verify: { start: ReturnType<typeof vi.fn> };
 
-function addThread(id: string, title?: string): void {
+async function addThread(id: string, title?: string): Promise<void> {
   const path = join(base, `${id}.jsonl`);
   writeFileSync(path, '{}\n');
-  rows.insertDraft({ id, sessionPath: path, cwd: project, baseCommit: BASE, ...(title ? { title } : {}) });
+  await rows.insertDraft({ id, sessionPath: path, cwd: project, baseCommit: BASE, ...(title ? { title } : {}) });
 }
 
 /** An approved skill written the way Approve writes it, with its draft. */
-function approvedSkill(threadId = 'origin', name = 'add-notes'): { id: string; file: string } {
+async function approvedSkill(threadId = 'origin', name = 'add-notes'): Promise<{ id: string; file: string }> {
   const folder = join(project, '.pi', 'skills', name);
   mkdirSync(folder, { recursive: true });
   const text = stampProvenance(SKILL.replace('add-notes', name), { learnedFrom: threadId, base: BASE, head: HEAD });
   const file = join(folder, 'SKILL.md');
   writeFileSync(file, text);
-  const draft = drafts.insert({ threadId, name, text, scope: 'project', madeBy: 'attendant', model: null });
-  drafts.setState(draft.id, 'approved', { path: file });
+  const draft = await drafts.insert({ threadId, name, text, scope: 'project', madeBy: 'attendant', model: null });
+  await drafts.setState(draft.id, 'approved', { path: file });
   return { id: draft.id, file };
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-learned-')));
   project = join(base, 'project');
   mkdirSync(project);
-  db = new DatabaseService({ dataDir: join(base, 'data') });
+  db = await DatabaseService.create({ dataDir: join(base, 'data') });
   drafts = new SkillDraftsRepository(db);
   uses = new SkillUsesRepository(db);
   rows = new ThreadsRepository(db);
@@ -93,25 +94,25 @@ beforeEach(() => {
     verify as never,
   );
   service.onModuleInit();
-  addThread('origin', 'Add six notes');
-  for (const id of ['u1', 'u2', 'u3', 'u4']) addThread(id);
+  await addThread('origin', 'Add six notes');
+  for (const id of ['u1', 'u2', 'u3', 'u4']) await addThread(id);
 });
 
-afterEach(() => {
-  db.onApplicationShutdown();
+afterEach(async () => {
+  await db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
 });
 
-const used = (threadId: string, file: string, name = 'add-notes'): void =>
+const used = (threadId: string, file: string, name = 'add-notes'): Promise<void> | undefined =>
   useListener?.(threadId, [{ name, path: file }]);
 
 describe('recording the uses of a learned skill', () => {
-  it('counts a prompt that used a skill whose file carries x-pi-kit.learnedFrom, per prompt and per thread', () => {
-    const { id, file } = approvedSkill();
-    used('u1', file);
-    used('u1', file);
-    used('u2', file);
-    const [skill] = service.list();
+  it('counts a prompt that used a skill whose file carries x-pi-kit.learnedFrom, per prompt and per thread', async () => {
+    const { id, file } = await approvedSkill();
+    await used('u1', file);
+    await used('u1', file);
+    await used('u2', file);
+    const [skill] = await service.list();
     expect(skill).toMatchObject({
       id,
       name: 'add-notes',
@@ -125,29 +126,29 @@ describe('recording the uses of a learned skill', () => {
     expect(skill.learnedFrom).toEqual({ threadId: 'origin', title: 'Add six notes', base: BASE, head: HEAD });
   });
 
-  it('leaves a skill alone that is not learned (no provenance), and a file that cannot be read', () => {
-    approvedSkill();
+  it('leaves a skill alone that is not learned (no provenance), and a file that cannot be read', async () => {
+    await approvedSkill();
     const own = join(project, '.pi', 'skills', 'mine');
     mkdirSync(own, { recursive: true });
     writeFileSync(join(own, 'SKILL.md'), SKILL.replace('add-notes', 'mine'));
-    used('u1', join(own, 'SKILL.md'), 'mine');
-    used('u1', join(project, 'gone', 'SKILL.md'), 'gone');
-    expect(service.list()[0].uses).toBe(0);
+    await used('u1', join(own, 'SKILL.md'), 'mine');
+    await used('u1', join(project, 'gone', 'SKILL.md'), 'gone');
+    expect((await service.list())[0].uses).toBe(0);
   });
 
-  it('counts a copy of the skill in a worktree for the thread it was learned from, and not a replay', () => {
-    const { file } = approvedSkill();
+  it('counts a copy of the skill in a worktree for the thread it was learned from, and not a replay', async () => {
+    const { file } = await approvedSkill();
     const copy = join(base, 'worktree', '.pi', 'skills', 'add-notes');
     mkdirSync(copy, { recursive: true });
     writeFileSync(join(copy, 'SKILL.md'), stampProvenance(SKILL, { learnedFrom: 'origin', base: BASE, head: HEAD }));
-    used('u1', join(copy, 'SKILL.md'));
-    meta.markVerificationThread('u2', 'some-draft');
-    used('u2', file);
-    expect(service.list()[0].uses).toBe(1);
+    await used('u1', join(copy, 'SKILL.md'));
+    await meta.markVerificationThread('u2', 'some-draft');
+    await used('u2', file);
+    expect((await service.list())[0].uses).toBe(1);
   });
 
-  it('treats a path through a symlink as the same file', () => {
-    const { file } = approvedSkill();
+  it('treats a path through a symlink as the same file', async () => {
+    const { file } = await approvedSkill();
     const link = join(base, 'link');
     symlinkSync(project, link);
     expect(canonicalPath(join(link, '.pi', 'skills', 'add-notes', 'SKILL.md'))).toBe(file);
@@ -158,51 +159,51 @@ describe('recording the uses of a learned skill', () => {
 });
 
 describe('merged after use: the outcome of the using thread marks its uses', () => {
-  it('counts the uses whose thread merged, and follows a later outcome of the thread', () => {
-    const { file } = approvedSkill();
-    used('u1', file);
-    used('u1', file);
-    used('u2', file);
-    used('u3', file);
-    outcomeListener?.('u1', 'merged', true);
-    outcomeListener?.('u2', 'committed', true);
-    expect(service.list()[0]).toMatchObject({ uses: 4, mergedAfterUse: 2, threads: 3 });
+  it('counts the uses whose thread merged, and follows a later outcome of the thread', async () => {
+    const { file } = await approvedSkill();
+    await used('u1', file);
+    await used('u1', file);
+    await used('u2', file);
+    await used('u3', file);
+    await outcomeListener?.('u1', 'merged', true);
+    await outcomeListener?.('u2', 'committed', true);
+    expect((await service.list())[0]).toMatchObject({ uses: 4, mergedAfterUse: 2, threads: 3 });
     // A commit that is later merged: the thread's latest outcome counts.
-    outcomeListener?.('u2', 'merged', false);
-    expect(service.list()[0].mergedAfterUse).toBe(3);
+    await outcomeListener?.('u2', 'merged', false);
+    expect((await service.list())[0].mergedAfterUse).toBe(3);
   });
 
-  it('a use after the outcome is not followed by it', () => {
-    const { file } = approvedSkill();
-    used('u1', file);
-    outcomeListener?.('u1', 'merged', true);
-    used('u1', file);
-    expect(service.list()[0]).toMatchObject({ uses: 2, mergedAfterUse: 1 });
+  it('a use after the outcome is not followed by it', async () => {
+    const { file } = await approvedSkill();
+    await used('u1', file);
+    await outcomeListener?.('u1', 'merged', true);
+    await used('u1', file);
+    expect((await service.list())[0]).toMatchObject({ uses: 2, mergedAfterUse: 1 });
   });
 
-  it('ignores an outcome of a thread that never used a learned skill', () => {
-    approvedSkill();
-    outcomeListener?.('u4', 'merged', true);
-    expect(service.list()[0].mergedAfterUse).toBe(0);
+  it('ignores an outcome of a thread that never used a learned skill', async () => {
+    await approvedSkill();
+    await outcomeListener?.('u4', 'merged', true);
+    expect((await service.list())[0].mergedAfterUse).toBe(0);
   });
 });
 
 describe('the flag', () => {
-  it('flags a skill whose last three threads all ended without an outcome; a thread still running is not counted', () => {
-    const { file } = approvedSkill();
+  it('flags a skill whose last three threads all ended without an outcome; a thread still running is not counted', async () => {
+    const { file } = await approvedSkill();
     for (const id of ['u1', 'u2', 'u3']) used(id, file);
-    expect(service.list()[0].flag).toMatchObject({ reason: 'no-outcomes' });
-    outcomeListener?.('u2', 'committed', true);
-    expect(service.list()[0].flag).toBeNull();
+    expect((await service.list())[0].flag).toMatchObject({ reason: 'no-outcomes' });
+    await outcomeListener?.('u2', 'committed', true);
+    expect((await service.list())[0].flag).toBeNull();
     // u4 runs: it is not one of the three yet, so with u2 now done only two ended threads without an outcome are left.
     running.add('u4');
-    used('u4', file);
-    expect(service.list()[0].flag).toBeNull();
+    await used('u4', file);
+    expect((await service.list())[0].flag).toBeNull();
   });
 
-  it('flags a failed verification when none of the last three merged', () => {
-    const { id, file } = approvedSkill();
-    drafts.setVerification(id, {
+  it('flags a failed verification when none of the last three merged', async () => {
+    const { id, file } = await approvedSkill();
+    await drafts.setVerification(id, {
       state: 'done',
       result: 'failed',
       finishedAt: 5000,
@@ -210,54 +211,54 @@ describe('the flag', () => {
       score: 0.1,
     } as SkillVerification);
     for (const t of ['u1', 'u2', 'u3']) {
-      used(t, file);
-      outcomeListener?.(t, 'committed', true);
+      await used(t, file);
+      await outcomeListener?.(t, 'committed', true);
     }
-    expect(service.list()[0].flag).toMatchObject({ reason: 'failed-verification' });
-    outcomeListener?.('u3', 'merged', false);
-    expect(service.list()[0].flag).toBeNull();
+    expect((await service.list())[0].flag).toMatchObject({ reason: 'failed-verification' });
+    await outcomeListener?.('u3', 'merged', false);
+    expect((await service.list())[0].flag).toBeNull();
   });
 
   it('does not flag a retired skill', async () => {
-    const { id, file } = approvedSkill();
+    const { id, file } = await approvedSkill();
     for (const t of ['u1', 'u2', 'u3']) used(t, file);
-    drafts.setRetired(id, 1000);
-    expect(service.list()[0].flag).toBeNull();
+    await drafts.setRetired(id, 1000);
+    expect((await service.list())[0].flag).toBeNull();
   });
 });
 
 describe('the last verification', () => {
-  it('comes from the draft’s record, and says when the skill was edited after it', () => {
-    const { id } = approvedSkill();
-    expect(service.list()[0].verification).toBeNull();
-    drafts.setVerification(id, {
+  it('comes from the draft’s record, and says when the skill was edited after it', async () => {
+    const { id } = await approvedSkill();
+    expect((await service.list())[0].verification).toBeNull();
+    await drafts.setVerification(id, {
       state: 'done',
       result: 'pass',
       finishedAt: 7000,
       skillHash: skillHash(SKILL),
       summary: 'Reproduced 6 of 6 files.',
     } as SkillVerification);
-    expect(service.list()[0].verification).toEqual({
+    expect((await service.list())[0].verification).toEqual({
       state: 'done',
       result: 'pass',
       at: 7000,
       summary: 'Reproduced 6 of 6 files.',
       stale: false,
     });
-    drafts.setVerification(id, {
+    await drafts.setVerification(id, {
       state: 'done',
       result: 'pass',
       finishedAt: 7000,
       skillHash: 'another-text',
       summary: 's',
     } as SkillVerification);
-    expect(service.list()[0].verification?.stale).toBe(true);
-    drafts.setVerification(id, { state: 'running', phase: 'run' });
-    expect(service.list()[0].verification).toEqual({ state: 'running', phase: 'run', stale: false });
+    expect((await service.list())[0].verification?.stale).toBe(true);
+    await drafts.setVerification(id, { state: 'running', phase: 'run' });
+    expect((await service.list())[0].verification).toEqual({ state: 'running', phase: 'run', stale: false });
   });
 
-  it('falls back to the x-pi-kit.verified block of the file when the record says only that a later try did not finish', () => {
-    const { id, file } = approvedSkill();
+  it('falls back to the x-pi-kit.verified block of the file when the record says only that a later try did not finish', async () => {
+    const { id, file } = await approvedSkill();
     const done = {
       state: 'done',
       result: 'partial',
@@ -266,21 +267,25 @@ describe('the last verification', () => {
       hunks: { matched: 1, expected: 2, actual: 1 },
     } as SkillVerification;
     writeFileSync(file, stampVerified(stampProvenance(SKILL, { learnedFrom: 'origin', base: BASE, head: HEAD }), done));
-    drafts.setVerification(id, { state: 'error', error: 'The app was closed.', finishedAt: 9000 } as SkillVerification);
-    expect(service.list()[0].verification).toEqual({
+    await drafts.setVerification(id, {
+      state: 'error',
+      error: 'The app was closed.',
+      finishedAt: 9000,
+    } as SkillVerification);
+    expect((await service.list())[0].verification).toEqual({
       state: 'done',
       result: 'partial',
       at: Date.UTC(2026, 9, 17, 9),
       stale: false,
     });
-    drafts.setVerification(id, null);
-    expect(service.list()[0].verification?.result).toBe('partial');
+    await drafts.setVerification(id, null);
+    expect((await service.list())[0].verification?.result).toBe('partial');
   });
 
-  it('says why a try ended without a result when the file states none', () => {
-    const { id } = approvedSkill();
-    drafts.setVerification(id, { state: 'stopped', finishedAt: 9000 } as SkillVerification);
-    expect(service.list()[0].verification).toMatchObject({
+  it('says why a try ended without a result when the file states none', async () => {
+    const { id } = await approvedSkill();
+    await drafts.setVerification(id, { state: 'stopped', finishedAt: 9000 } as SkillVerification);
+    expect((await service.list())[0].verification).toMatchObject({
       state: 'stopped',
       at: 9000,
       summary: expect.stringContaining('Stopped'),
@@ -289,44 +294,44 @@ describe('the last verification', () => {
 });
 
 describe('the list and the actions', () => {
-  it('lists approved skills only, retired ones with their time, by name; a deleted thread leaves the title null', () => {
-    approvedSkill('origin', 'b-skill');
-    const a = approvedSkill('u1', 'a-skill');
-    const pending = drafts.insert({
+  it('lists approved skills only, retired ones with their time, by name; a deleted thread leaves the title null', async () => {
+    await approvedSkill('origin', 'b-skill');
+    const a = await approvedSkill('u1', 'a-skill');
+    const pending = await drafts.insert({
       threadId: 'u2',
       name: 'pending-skill',
       text: SKILL,
       scope: 'project',
       madeBy: 'person',
     });
-    drafts.setRetired(a.id, 4242);
-    rows.delete('u1');
-    expect(service.list().map((s) => s.name)).toEqual(['a-skill', 'b-skill']);
-    expect(service.list()[0]).toMatchObject({ retiredAt: 4242, learnedFrom: { threadId: 'u1', title: null } });
-    expect(() => service.detail(pending.id)).toThrow(/no such learned skill/);
-    expect(() => service.detail('nope')).toThrow(/no such learned skill/);
+    await drafts.setRetired(a.id, 4242);
+    await rows.delete('u1');
+    expect((await service.list()).map((s) => s.name)).toEqual(['a-skill', 'b-skill']);
+    expect((await service.list())[0]).toMatchObject({ retiredAt: 4242, learnedFrom: { threadId: 'u1', title: null } });
+    await expect((async () => await service.detail(pending.id))()).rejects.toThrow(/no such learned skill/);
+    await expect((async () => await service.detail('nope'))()).rejects.toThrow(/no such learned skill/);
   });
 
-  it('keeps an approved draft when its thread is deleted, and drops a pending one', () => {
-    const { id } = approvedSkill('u1');
-    drafts.insert({ threadId: 'u2', name: 'pending-skill', text: SKILL, scope: 'project', madeBy: 'person' });
-    rows.delete('u1');
-    rows.delete('u2');
-    expect(drafts.get(id)?.state).toBe('approved');
-    expect(drafts.forThread('u2')).toBeUndefined();
+  it('keeps an approved draft when its thread is deleted, and drops a pending one', async () => {
+    const { id } = await approvedSkill('u1');
+    await drafts.insert({ threadId: 'u2', name: 'pending-skill', text: SKILL, scope: 'project', madeBy: 'person' });
+    await rows.delete('u1');
+    await rows.delete('u2');
+    expect((await drafts.get(id))?.state).toBe('approved');
+    expect(await drafts.forThread('u2')).toBeUndefined();
   });
 
-  it('reports a missing file, and the detail has the text as it is on disk', () => {
-    const { id, file } = approvedSkill();
+  it('reports a missing file, and the detail has the text as it is on disk', async () => {
+    const { id, file } = await approvedSkill();
     writeFileSync(file, `${SKILL}2. Hand edit\n`);
-    expect(service.detail(id).text).toContain('2. Hand edit');
+    expect((await service.detail(id)).text).toContain('2. Hand edit');
     rmSync(join(project, '.pi', 'skills', 'add-notes'), { recursive: true });
-    expect(service.list()[0].missing).toBe(true);
+    expect((await service.list())[0].missing).toBe(true);
   });
 
   it('retire, restore and save go through the learn service; re-verify syncs the file into the draft and starts the replay, and refuses a retired skill', async () => {
-    const { id } = approvedSkill();
-    const draft = drafts.get(id)!;
+    const { id } = await approvedSkill();
+    const draft = (await drafts.get(id))!;
     learn.retire.mockResolvedValue(draft);
     learn.unretire.mockResolvedValue(draft);
     learn.saveApproved.mockResolvedValue(draft);
@@ -340,7 +345,7 @@ describe('the list and the actions', () => {
     await service.reverify(id);
     expect(learn.syncApprovedText).toHaveBeenCalledWith(id);
     expect(verify.start).toHaveBeenCalledWith(id, {});
-    drafts.setRetired(id, 1);
+    await drafts.setRetired(id, 1);
     await expect(service.reverify(id)).rejects.toThrow(/retired/);
   });
 });

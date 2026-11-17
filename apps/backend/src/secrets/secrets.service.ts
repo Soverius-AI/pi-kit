@@ -61,8 +61,8 @@ export class SecretsService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     // Permission to resolve an existing reference is independent of saving new credentials.
     // Reading configuration here never executes a resolver or accesses Keychain.
-    this.retainedHelperReferences = this.hasCredentialReference(/!pi-kit-secret get [A-Za-z0-9._-]+/);
-    if (!this.credentialsEnabled() && !this.retainedHelperReferences) return;
+    this.retainedHelperReferences = await this.hasCredentialReference(/!pi-kit-secret get [A-Za-z0-9._-]+/);
+    if (!(await this.credentialsEnabled()) && !this.retainedHelperReferences) return;
     try {
       const launcher = this.ensureLauncher();
       if (this.store.helperResolver && !launcher)
@@ -165,8 +165,8 @@ export class SecretsService implements OnModuleInit {
    * The resolver `auth.json` gets for a provider, or undefined when there is no store to keep the key in. A scratch store (tests: `file`, `memory`) is read by the helper only,
    * whatever the platform, because `security` cannot see it. The helper is also the answer where the platform has none of its own and the CLI bundle does not exist.
    */
-  resolver(provider: string): string | undefined {
-    if (!this.credentialsEnabled() || !this.store.available() || !isProviderAccount(provider)) return undefined;
+  async resolver(provider: string): Promise<string | undefined> {
+    if (!(await this.credentialsEnabled()) || !this.store.available() || !isProviderAccount(provider)) return undefined;
     if (this.store.helperResolver) return this.cliBundle() ? resolverCommand('win32', provider) : undefined;
     if (this.store.kind === 'keychain') {
       const platform = this.platform();
@@ -179,8 +179,8 @@ export class SecretsService implements OnModuleInit {
 
   /** Stores the key and returns what pi's login should write instead of it. When there is no store, or it refuses, the key itself goes to `auth.json` (pi's own 0600 file), and the caller says so. */
   async keep(provider: string, key: string): Promise<KeptKey> {
-    if (!this.credentialsEnabled()) return { value: key, storage: 'auth.json' };
-    let resolver = this.resolver(provider);
+    if (!(await this.credentialsEnabled())) return { value: key, storage: 'auth.json' };
+    let resolver = await this.resolver(provider);
     if (!resolver) {
       if (this.store.protected) throw new Error('Touch ID storage requires the signed pi-kit-secret helper.');
       return { value: key, storage: 'auth.json' };
@@ -229,7 +229,7 @@ export class SecretsService implements OnModuleInit {
   /** Signing out of a provider whose key was in the store removes the entry. */
   async forget(provider: string): Promise<void> {
     // Direct-storage mode must not authenticate just to disconnect or remove a provider.
-    if (!this.credentialsEnabled()) return;
+    if (!(await this.credentialsEnabled())) return;
     try {
       await this.store.delete(provider);
     } catch (error) {
@@ -240,10 +240,10 @@ export class SecretsService implements OnModuleInit {
     }
   }
 
-  credentialsEnabled(): boolean {
+  async credentialsEnabled(): Promise<boolean> {
     const configured = readSecurityPreferences(this.config.dataDir)?.credentialStoreEnabled;
     if (configured !== undefined) return configured;
-    const previous = this.meta.getSetting('credentialStoreEnabled');
+    const previous = await this.meta.getSetting('credentialStoreEnabled');
     if (typeof previous === 'boolean') return previous;
     // Scratch stores remain explicit opt-ins; a new macOS profile starts with no store.
     return (
@@ -266,10 +266,11 @@ export class SecretsService implements OnModuleInit {
     return store;
   }
 
-  private hasCredentialReference(pattern: RegExp): boolean {
+  private async hasCredentialReference(pattern: RegExp): Promise<boolean> {
     const agent = agentDirOf(process.env);
     const files = ['auth.json', 'models.json', 'mcp.json'].map((name) => join(agent, name));
-    for (const workspace of this.meta.listWorkspaces?.() ?? []) files.push(join(workspace.cwd, '.pi', 'mcp.json'));
+    for (const workspace of (await this.meta.listWorkspaces?.()) ?? [])
+      files.push(join(workspace.cwd, '.pi', 'mcp.json'));
     return files.some((path) => {
       try {
         return pattern.test(readFileSync(path, 'utf8'));
@@ -294,14 +295,14 @@ export class SecretsService implements OnModuleInit {
         this.store = previous;
         throw error;
       }
-      this.meta.setSetting('credentialStoreEnabled', true);
+      await this.meta.setSetting('credentialStoreEnabled', true);
       return result;
     }
     // Copies readable without Touch ID never outlive the storage they copy.
     if (this.store.unattendedKeys) await this.store.setUnattended?.(false);
     // Persist first, so a failed export or restart never silently resumes storing new keys.
     writeSecurityPreferences(this.config.dataDir, { credentialStoreEnabled: false });
-    this.meta.setSetting('credentialStoreEnabled', false);
+    await this.meta.setSetting('credentialStoreEnabled', false);
     const agent = agentDirOf(process.env);
     // This is an explicit export action, so existing references may authorize access to their old store.
     // Respect explicit test/automation overrides; default startup still never selects it for new saves.
@@ -309,9 +310,9 @@ export class SecretsService implements OnModuleInit {
       this.store.kind === 'none' &&
       this.platform() === 'darwin' &&
       !process.env['PI_KIT_SECRET_STORE'] &&
-      this.hasCredentialReference(
+      (await this.hasCredentialReference(
         /!(?:pi-kit-secret get |security find-generic-password -s pi-kit -a |echo Bearer \$\()/,
-      )
+      ))
         ? selectSecretStore({ ...process.env, PI_KIT_SECRET_STORE: 'macos' })
         : this.store;
     for (const name of ['auth.json', 'models.json', 'mcp.json']) {
@@ -333,10 +334,10 @@ export class SecretsService implements OnModuleInit {
 
   // ---- what Settings shows
 
-  status(): SecretsStatus {
-    const credentialsEnabled = this.credentialsEnabled();
+  async status(): Promise<SecretsStatus> {
+    const credentialsEnabled = await this.credentialsEnabled();
     const available = credentialsEnabled && this.store.available();
-    const resolver = available ? this.resolver('provider') : undefined;
+    const resolver = available ? await this.resolver('provider') : undefined;
     return {
       store: this.store.kind,
       label: this.store.label,
@@ -356,7 +357,7 @@ export class SecretsService implements OnModuleInit {
 
   /** Settings › General › Background: makes or removes the copies, keeps the choice in security.json and rewrites the pi-kit-secret launcher to match. */
   async setUnattended(enabled: boolean): Promise<SecretsStatus> {
-    if (!this.credentialsEnabled() || !this.store.setUnattended)
+    if (!(await this.credentialsEnabled()) || !this.store.setUnattended)
       throw new Error('Keys need no Touch ID here, so there is nothing to keep readable.');
     await this.store.setUnattended(enabled);
     writeSecurityPreferences(this.config.dataDir, {
@@ -364,25 +365,25 @@ export class SecretsService implements OnModuleInit {
       ...(enabled ? { unattendedKeys: true } : {}),
     });
     this.ensureLauncher();
-    return this.status();
+    return await this.status();
   }
 
-  retryAccess(): SecretsStatus {
+  async retryAccess(): Promise<SecretsStatus> {
     this.store.retryAccess?.();
-    return this.status();
+    return await this.status();
   }
 
-  databaseProtection(): DatabaseProtection {
-    return { ...this.database.protection, recoveryKeyShown: this.meta.getSetting('recoveryKeyShown') === true };
+  async databaseProtection(): Promise<DatabaseProtection> {
+    return { ...this.database.protection, recoveryKeyShown: (await this.meta.getSetting('recoveryKeyShown')) === true };
   }
 
   /** The recovery key, once: the first call returns it and records that it was shown, every later call refuses (the person saved it, or knows they did not). */
-  recoveryKey(): { key: string } {
-    if (this.meta.getSetting('recoveryKeyShown') === true)
+  async recoveryKey(): Promise<{ key: string }> {
+    if ((await this.meta.getSetting('recoveryKeyShown')) === true)
       throw new Error('The recovery key was shown once already and is not shown again.');
     const key = this.database.recoveryKey();
     if (!key) throw new Error('The database is not encrypted, so there is no key to export.');
-    this.meta.setSetting('recoveryKeyShown', true);
+    await this.meta.setSetting('recoveryKeyShown', true);
     return { key };
   }
 

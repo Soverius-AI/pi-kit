@@ -159,13 +159,14 @@ export class SessionLifecycle {
       timings.push(`${name}=${Math.round(now - phaseStartedAt)}ms`);
       phaseStartedAt = now;
     };
-    this.protection.assertAdmitted(threadId);
-    const { generation } = this.protection.binding(threadId);
     const admittedEpoch = this.epochs.get(threadId) ?? 0;
     const assertCurrent = (): void => {
       if ((this.epochs.get(threadId) ?? 0) !== admittedEpoch)
         throw new Error('The thread was closed or changed its protection while its session was opening.');
     };
+    await this.protection.assertAdmitted(threadId);
+    const { generation } = await this.protection.binding(threadId);
+    assertCurrent();
     const pi = await loadPi();
     finishPhase('sdk');
     const existing = target.sessionPath && existsSync(target.sessionPath);
@@ -213,7 +214,7 @@ export class SessionLifecycle {
           // The end-to-end tests are their own browser (they open the authorization URL themselves); a person's machine gets pi's own launcher.
           ...(process.env['PI_KIT_NO_BROWSER'] === '1' ? { openUrl: () => undefined } : {}),
           createTransport: (entry, transportCwd, authProvider) => {
-            this.protection.assertHostCapability(threadId, 'MCP servers');
+            this.protection.assertSessionCurrent(threadId, generation, false);
             return tap.wrap(
               entry.name,
               createMcpTransport(mcp as never, entry as never, transportCwd, authProvider) as never,
@@ -271,7 +272,7 @@ export class SessionLifecycle {
     finishPhase('sessionUiBind');
     try {
       assertCurrent();
-      this.protection.assertGeneration(threadId, generation);
+      await this.protection.assertGeneration(threadId, generation);
     } catch (error) {
       session.dispose();
       throw error;
@@ -281,7 +282,7 @@ export class SessionLifecycle {
       bus,
       queue: new SessionQueue(session),
       tap,
-      mcp: new SessionMcp(session, tap, () => this.protection.assertHostCapability(threadId, 'MCP App actions')),
+      mcp: new SessionMcp(session, tap, () => this.protection.assertSessionCurrent(threadId, generation, false)),
       session,
       bash: sandboxed?.bash,
       info: {

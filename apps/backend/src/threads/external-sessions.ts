@@ -221,8 +221,8 @@ export async function withCodex<T>(
       fail(new Error('Invalid response from the Codex session reader.'));
     }
   });
-  const call = (method: string, params: RecordValue): Promise<RecordValue> => {
-    if (failure) return Promise.reject(failure);
+  const call = async (method: string, params: RecordValue): Promise<RecordValue> => {
+    if (failure) return await Promise.reject(failure);
     return new Promise((resolve, reject) => {
       const id = ++sequence;
       const timer = setTimeout(() => {
@@ -451,7 +451,7 @@ export async function loadCodexSnapshot(
   snapshot: ExternalSnapshot,
   reader: typeof withCodex = withCodex,
 ): Promise<ExternalSnapshot> {
-  return reader(async (call) => {
+  return await reader(async (call) => {
     if (snapshot.file && (await sourceStamp(snapshot.file.path)) !== snapshot.file.stamp)
       throw new Error('The source session changed. Check again before importing.');
     const before = record((await call('thread/read', { threadId: snapshot.nativeId }))['thread']);

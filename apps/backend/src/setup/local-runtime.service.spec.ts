@@ -60,10 +60,11 @@ describe('backend-owned local setup jobs', () => {
     db = await DatabaseService.create({ dataDir: dir }, secrets);
     meta = new MetaRepository(db);
     runtime = create();
+    await runtime.onModuleInit();
   });
   afterEach(async () => {
     await runtime.onModuleDestroy();
-    db.onApplicationShutdown();
+    await db.onApplicationShutdown();
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
     rmSync(dir, { recursive: true, force: true });
@@ -95,8 +96,8 @@ describe('backend-owned local setup jobs', () => {
     expect(detected.servers).toEqual([server]);
     expect(detected.llamaSwapConfigPath).toContain('shared.yaml');
     expect(hardware.detect).toHaveBeenCalledWith('/models', [expect.objectContaining({ kind: 'llama-swap' })]);
-    expect(runtime.status().job).toBeUndefined();
-    expect(runtime.status().server).toBeUndefined();
+    expect((await runtime.status()).job).toBeUndefined();
+    expect((await runtime.status()).server).toBeUndefined();
   });
 
   it('runs the documented installer commands, exposes a failed install, and retries without reinstalling an existing tool', async () => {
@@ -129,13 +130,13 @@ describe('backend-owned local setup jobs', () => {
       ],
       installer: { supported: true, reason: 'Fixture Homebrew process', sources: [] },
     });
-    runtime.install(['llama.cpp', 'llama-swap']);
-    await vi.waitFor(() => expect(runtime.status().job?.state).toBe('failed'));
-    expect(runtime.status().job?.error).toContain('(9)');
-    expect(runtime.status().job?.logs).toContain('fixture: install interrupted');
+    await runtime.install(['llama.cpp', 'llama-swap']);
+    await vi.waitFor(async () => expect((await runtime.status()).job?.state).toBe('failed'));
+    expect((await runtime.status()).job?.error).toContain('(9)');
+    expect((await runtime.status()).job?.logs).toContain('fixture: install interrupted');
     writeFileSync(retryMarker, 'retry');
-    runtime.install(['llama.cpp', 'llama-swap']);
-    await vi.waitFor(() => expect(runtime.status().job?.state).toBe('complete'));
+    await runtime.install(['llama.cpp', 'llama-swap']);
+    await vi.waitFor(async () => expect((await runtime.status()).job?.state).toBe('complete'));
     expect(
       readFileSync(calls, 'utf8')
         .trim()
@@ -150,7 +151,7 @@ describe('backend-owned local setup jobs', () => {
     expect(readFileSync(swap, 'utf8')).toContain('version: fixture');
   });
 
-  it('keeps cancellation locked until cleanup ends, retries, and recovers terminal progress from encrypted storage', async () => {
+  it('keeps cancellation locked until cleanup ends, retries, and recovers terminal progress from plaintext SQLite storage', async () => {
     vi.spyOn(catalog, 'selection').mockReturnValue(candidate);
     let clean: (() => void) | undefined,
       aborted = false;
@@ -169,53 +170,56 @@ describe('backend-owned local setup jobs', () => {
         });
       })
       .mockResolvedValueOnce(model);
-    const job = runtime.download('choice');
-    await vi.waitFor(() => expect(runtime.status().job?.receivedBytes).toBe(12));
-    expect(runtime.cancel().job?.state).toBe('cancelling');
+    const job = await runtime.download('choice');
+    await vi.waitFor(async () => expect((await runtime.status()).job?.receivedBytes).toBe(12));
+    expect((await runtime.cancel()).job?.state).toBe('cancelling');
     expect(aborted).toBe(true);
-    expect(() => runtime.download('choice')).toThrow(ConflictException);
+    await expect((async () => await runtime.download('choice'))()).rejects.toThrow(ConflictException);
     clean?.();
-    await vi.waitFor(() => expect(runtime.status().job?.state).toBe('cancelled'));
-    runtime.download('choice');
-    await vi.waitFor(() => expect(runtime.status().job?.state).toBe('complete'));
-    expect(runtime.status().job).toMatchObject({ kind: 'download', model });
-    expect(runtime.status().job?.id).not.toBe(job.id);
+    await vi.waitFor(async () => expect((await runtime.status()).job?.state).toBe('cancelled'));
+    await runtime.download('choice');
+    await vi.waitFor(async () => expect((await runtime.status()).job?.state).toBe('complete'));
+    expect((await runtime.status()).job).toMatchObject({ kind: 'download', model });
+    expect((await runtime.status()).job?.id).not.toBe(job.id);
     await runtime.onModuleDestroy();
-    db.onApplicationShutdown();
-    expect(readFileSync(join(dir, DB_FILE)).includes(Buffer.from('private-model'))).toBe(false);
+    await db.onApplicationShutdown();
+    expect(readFileSync(join(dir, DB_FILE)).subarray(0, 16).toString()).toBe('SQLite format 3\0');
     db = await DatabaseService.create({ dataDir: dir }, secrets);
     meta = new MetaRepository(db);
     runtime = create();
-    runtime.onApplicationBootstrap();
-    expect(runtime.status().job).toMatchObject({ state: 'complete', model });
+    await runtime.onModuleInit();
+    await runtime.onApplicationBootstrap();
+    expect((await runtime.status()).job).toMatchObject({ state: 'complete', model });
   });
 
   it('persists the exact download identity and retries it after a restart without catalogue state', async () => {
     vi.spyOn(catalog, 'selection').mockReturnValue(candidate);
     vi.spyOn(files, 'download').mockRejectedValueOnce(new Error('network disconnected'));
-    runtime.download(candidate.id);
-    await vi.waitFor(() => expect(runtime.status().job?.state).toBe('failed'));
-    expect(runtime.status().job?.action).toEqual({ kind: 'download', candidate });
+    await runtime.download(candidate.id);
+    await vi.waitFor(async () => expect((await runtime.status()).job?.state).toBe('failed'));
+    expect((await runtime.status()).job?.action).toEqual({ kind: 'download', candidate });
     await runtime.onModuleDestroy();
     runtime = create();
+    await runtime.onModuleInit();
     const choose = vi.spyOn(catalog, 'selection').mockImplementation(() => {
       throw new Error('catalogue was not searched');
     });
     const download = vi.spyOn(files, 'download').mockResolvedValue(model);
-    runtime.onApplicationBootstrap();
-    runtime.retry();
-    await vi.waitFor(() => expect(runtime.status().job?.state).toBe('complete'));
+    await runtime.onApplicationBootstrap();
+    await runtime.retry();
+    await vi.waitFor(async () => expect((await runtime.status()).job?.state).toBe('complete'));
     expect(choose).not.toHaveBeenCalled();
     expect(download).toHaveBeenCalledWith(candidate, expect.any(AbortSignal), expect.any(Function));
-    expect(runtime.status().engine?.modelIds).toContain(model.id);
-    runtime.dismiss();
-    expect(runtime.status().job).toBeUndefined();
+    expect((await runtime.status()).engine?.modelIds).toContain(model.id);
+    await runtime.dismiss();
+    expect((await runtime.status()).job).toBeUndefined();
     runtime = create();
-    expect(runtime.status().job).toBeUndefined();
+    await runtime.onModuleInit();
+    expect((await runtime.status()).job).toBeUndefined();
   });
 
   it('disables legacy private-engine autostart without replacing a saved download or launching a process', async () => {
-    meta.setSetting('local-runtime-job', {
+    await meta.setSetting('local-runtime-job', {
       id: 'saved-download',
       kind: 'download',
       state: 'cancelled',
@@ -224,14 +228,15 @@ describe('backend-owned local setup jobs', () => {
       logs: [],
       action: { kind: 'download', candidate },
     });
-    meta.setSetting('local-runtime-autostart', { model, autostart: true });
+    await meta.setSetting('local-runtime-autostart', { model, autostart: true });
     runtime = create();
-    runtime.onApplicationBootstrap();
-    expect(runtime.status().job?.id).toBe('saved-download');
-    await vi.waitFor(() => expect(meta.getSetting('local-runtime-autostart')).toBeNull());
-    expect(runtime.status().autostart).toBe(false);
-    expect(runtime.status().server).toBeUndefined();
-    expect(runtime.status().managed?.state).toBe('stopped');
+    await runtime.onModuleInit();
+    await runtime.onApplicationBootstrap();
+    expect((await runtime.status()).job?.id).toBe('saved-download');
+    await vi.waitFor(async () => expect(await meta.getSetting('local-runtime-autostart')).toBeNull());
+    expect((await runtime.status()).autostart).toBe(false);
+    expect((await runtime.status()).server).toBeUndefined();
+    expect((await runtime.status()).managed?.state).toBe('stopped');
   });
 
   it('rejects cleanup and model removal while a download still owns its files', async () => {
@@ -243,17 +248,17 @@ describe('backend-owned local setup jobs', () => {
           finish = () => resolve(model);
         }),
     );
-    runtime.download(candidate.id);
+    await runtime.download(candidate.id);
     await vi.waitFor(() => expect(finish).toBeDefined());
     await expect(runtime.cleanup()).rejects.toThrow(ConflictException);
     await expect(runtime.removeModel(model.id)).rejects.toThrow(ConflictException);
-    expect(() => runtime.dismiss()).toThrow(ConflictException);
+    await expect((async () => await runtime.dismiss())()).rejects.toThrow(ConflictException);
     finish();
-    await vi.waitFor(() => expect(runtime.status().job?.state).toBe('complete'));
+    await vi.waitFor(async () => expect((await runtime.status()).job?.state).toBe('complete'));
   });
 
   it('marks interrupted persisted work failed on restart without silently restarting a download', async () => {
-    meta.setSetting('local-runtime-job', {
+    await meta.setSetting('local-runtime-job', {
       id: 'interrupted',
       kind: 'download',
       state: 'running',
@@ -264,16 +269,17 @@ describe('backend-owned local setup jobs', () => {
       totalBytes: 64,
     });
     runtime = create();
+    await runtime.onModuleInit();
     const download = vi.spyOn(files, 'download');
-    runtime.onApplicationBootstrap();
-    expect(runtime.status().job).toMatchObject({
+    await runtime.onApplicationBootstrap();
+    expect((await runtime.status()).job).toMatchObject({
       id: 'interrupted',
       state: 'failed',
       detail: expect.stringContaining('interrupted'),
       error: expect.stringContaining('stopped'),
     });
     expect(download).not.toHaveBeenCalled();
-    expect(meta.getSetting('local-runtime-job')).toMatchObject({ state: 'failed' });
+    expect(await meta.getSetting('local-runtime-job')).toMatchObject({ state: 'failed' });
   });
 
   it('rejects config changes while a download is active and leaves external services alone on shutdown', async () => {
@@ -284,11 +290,11 @@ describe('backend-owned local setup jobs', () => {
           signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true }),
         ),
     );
-    runtime.download('choice');
+    await runtime.download('choice');
     await vi.waitFor(() => expect(files.download).toHaveBeenCalled());
     await expect(runtime.readConfig(join(dir, 'shared.yaml'))).rejects.toThrow(ConflictException);
     await runtime.onModuleDestroy();
-    expect(runtime.status().job?.state).toBe('cancelled');
-    expect(runtime.status().server).toBeUndefined();
+    expect((await runtime.status()).job?.state).toBe('cancelled');
+    expect((await runtime.status()).server).toBeUndefined();
   });
 });
