@@ -1,6 +1,6 @@
 {
   "name": "pi-kit",
-  "version": "0.91.0",
+  "version": "0.92.0",
   "author": "Soverius.AI GmbH",
   "private": true,
   "license": "MIT",
@@ -147,6 +147,7 @@
     "cactus-needle": "0.3.0",
     "daisyui": "5.7.50",
     "diff": "9.0.0",
+    "dompurify": "3.4.17",
     "drizzle-orm": "0.45.4",
     "electron-updater": "6.8.9",
     "express": "5.2.1",
@@ -156,6 +157,7 @@
     "jose": "6.2.12",
     "katex": "0.16.47",
     "marked": "18.1.1",
+    "mermaid": "11.17.2",
     "node-pty": "1.1.0",
     "qrcode": "1.5.4",
     "reflect-metadata": "0.2.2",

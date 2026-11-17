@@ -8,6 +8,8 @@
 @import '../../../libs/shared/design-system/src/omarchy.css';
 @import '../../../node_modules/@xterm/xterm/css/xterm.css';
 @import '../../../node_modules/@angular/cdk/overlay-prebuilt.css';
+/* KaTeX is shared with CopilotKit, but Prose also appears outside assistant messages (e.g. dialogs). */
+@import '../../../node_modules/katex/dist/katex.min.css';
 @import '../../../libs/shared/design-system/src/mobile.css';
 @source "./";
 @source "../../../libs/shared/ui/src";

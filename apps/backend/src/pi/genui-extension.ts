@@ -103,12 +103,13 @@ export function createGenUiExtension(): ExtensionFactory {
       },
     });
     api.on('before_agent_start', (event) => {
-      const active = api.getActiveTools();
+      const active = event.systemPromptOptions.selectedTools ?? api.getActiveTools();
       const tools = ['render_a2ui', OPEN_GENERATIVE_UI_TOOL].filter((tool) => active.includes(tool));
-      if (tools.length)
-        event.systemPromptOptions.sections[GENUI_SECTION] =
-          `This chat can display generated UI. Available UI tools: ${tools.join(', ')}. Read the bundled pi-ui skill when a request benefits from an interface. Prefer render_a2ui for catalog-based tables/forms/cards, and generateSandboxedUi for custom charts, dashboards and interactive visuals. Gather real data with your tools first, then render it inline. The iframe cannot access Git, the filesystem, or pi-kit credentials; embed the collected data. UI generation does not require creating an HTML file.`;
-      else delete event.systemPromptOptions.sections[GENUI_SECTION];
+      event.systemPromptOptions.sections[GENUI_SECTION] =
+        'This chat natively renders rich Markdown, KaTeX math ($...$ inline, $$...$$ display), and fenced mermaid diagrams (flowchart LR/TD, sequenceDiagram, classDiagram, gantt). For static diagrams or math, write Markdown directly: no UI tool, HTML file, or CDN needed. Read the bundled pi-ui skill for syntax/examples and renderer restrictions, even when UI tools are disabled. Use real data; label illustrative dates and never invent schedules. Keep diagrams small; use app themes, not directives, custom styles, links/callbacks, metadata, or external resources.' +
+        (tools.length
+          ? ` Available UI tools: ${tools.join(', ')}. Prefer render_a2ui for catalog-based tables/forms/cards, and generateSandboxedUi for custom interactive charts, dashboards and simulations. Gather real data with your tools first, then render it inline. The iframe cannot access Git, the filesystem, or pi-kit credentials; embed the collected data. UI generation does not require creating an HTML file.`
+          : ' Generated UI tools are disabled; native Markdown diagrams and math remain available.');
     });
   };
 }

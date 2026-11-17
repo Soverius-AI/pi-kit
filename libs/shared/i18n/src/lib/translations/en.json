@@ -521,6 +521,32 @@
     }
   },
   "chat": {
+    "markdown": {
+      "code": "Code",
+      "copyCode": "Copy code",
+      "copied": "Copied",
+      "copyError": "Could not copy. Select the source and copy it manually.",
+      "diagram": "Diagram",
+      "source": "Source",
+      "renderingDiagram": "Rendering diagram…",
+      "diagramError": "Could not render diagram",
+      "diagramAlt": "Mermaid diagram. Use Source to read its text definition.",
+      "fullscreen": "Fullscreen",
+      "fullscreenTitle": "Fullscreen Mermaid diagram",
+      "snapshot": "Snapshot",
+      "snapshotHint": "The source is no longer on screen. This view keeps the last rendered image.",
+      "closeFullscreen": "Close",
+      "svg": "SVG",
+      "png": "PNG",
+      "downloadSvg": "Download SVG",
+      "downloadPng": "Download PNG",
+      "downloadError": "Could not download the diagram. Please try again.",
+      "zoomControls": "Diagram zoom",
+      "zoomIn": "Zoom in",
+      "zoomOut": "Zoom out",
+      "fitDiagram": "Fit diagram to window",
+      "panDiagram": "Diagram preview. Scroll to pan when zoomed in."
+    },
     "composerField": {
       "messagePiShort": "Message pi…",
       "messageToPi": "Message to pi"
