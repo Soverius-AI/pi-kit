@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ExtensionAPI, ToolDefinition } from '@earendil-works/pi-coding-agent' with {
@@ -57,6 +57,13 @@ describe('built-in UI tools', () => {
         { cwd: base, selectedTools: ['render_a2ui', 'generateSandboxedUi'] },
       );
       expect(before.systemPromptOptions.sections[GENUI_SECTION]).toContain('Gather real data');
+      const withoutTools = await session.extensionRunner.emitBeforeAgentStart(
+        { messageType: 'user', prompt: 'Draw a class diagram' },
+        { cwd: base, selectedTools: [] },
+      );
+      expect(withoutTools.systemPromptOptions.sections[GENUI_SECTION]).toContain('fenced mermaid');
+      expect(withoutTools.systemPromptOptions.sections[GENUI_SECTION]).toContain('KaTeX');
+      expect(withoutTools.systemPromptOptions.sections[GENUI_SECTION]).not.toContain('Available UI tools:');
     } finally {
       session?.dispose();
       rmSync(base, { recursive: true, force: true });
@@ -146,7 +153,38 @@ describe('built-in UI tools', () => {
     await expect(execute(mount().tools[1], { html: '' })).rejects.toThrow();
   });
 
-  it('advertises only enabled UI tools', () => {
+  it('bundles native diagram examples and security guidance without replacing UI contracts', () => {
+    const skill = readFileSync(genUiSkillPath(), 'utf8');
+    for (const syntax of ['flowchart LR', 'flowchart TD', 'sequenceDiagram', 'classDiagram', 'gantt']) {
+      expect(skill).toContain(`\x60\x60\x60mermaid\n${syntax}`);
+    }
+    for (const hint of [
+      'dateFormat YYYY-MM-DD',
+      'after req',
+      '2027-01-11',
+      'illustrative dates',
+      '"0..*"',
+      '%%{init...}%%',
+      'YAML frontmatter',
+      '`click`, `link`, `links`, or `callback`',
+      '@{...}',
+      'classDef',
+      'linkStyle',
+      'url()',
+      '@import',
+      '@font-face',
+      '`properties` and `details`',
+      '50,000 source characters and 500 edges',
+      '## Open Generative UI',
+      '## A2UI',
+      'WebSandbox',
+      'ask_user',
+    ]) {
+      expect(skill).toContain(hint);
+    }
+  });
+
+  it('advertises native Markdown even without UI tools and only names enabled tools', () => {
     const { getActiveTools, hooks } = mount();
     const event = { systemPromptOptions: { sections: {} as Record<string, string> } };
     getActiveTools.mockReturnValue(['render_a2ui']);
@@ -154,6 +192,13 @@ describe('built-in UI tools', () => {
     expect(event.systemPromptOptions.sections[GENUI_SECTION]).toContain('Available UI tools: render_a2ui.');
     getActiveTools.mockReturnValue([]);
     hooks.get('before_agent_start')?.(event);
-    expect(event.systemPromptOptions.sections[GENUI_SECTION]).toBeUndefined();
+    const native = event.systemPromptOptions.sections[GENUI_SECTION];
+    expect(native).toContain('fenced mermaid');
+    expect(native).toContain('KaTeX math ($...$ inline, $$...$$ display)');
+    expect(native).toContain('no UI tool, HTML file, or CDN needed');
+    expect(native).toContain('bundled pi-ui skill');
+    expect(native).toContain('Generated UI tools are disabled');
+    expect(native).not.toContain('Available UI tools:');
+    expect(native).not.toContain('Prefer render_a2ui');
   });
 });

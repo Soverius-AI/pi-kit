@@ -521,6 +521,32 @@
     }
   },
   "chat": {
+    "markdown": {
+      "code": "Code",
+      "copyCode": "Code kopieren",
+      "copied": "Kopiert",
+      "copyError": "Kopieren fehlgeschlagen. Wähle den Quelltext aus und kopiere ihn manuell.",
+      "diagram": "Diagramm",
+      "source": "Quelltext",
+      "renderingDiagram": "Diagramm wird erstellt…",
+      "diagramError": "Diagramm konnte nicht erstellt werden",
+      "diagramAlt": "Mermaid-Diagramm. Unter Quelltext findest du die Textdefinition.",
+      "fullscreen": "Vollbild",
+      "fullscreenTitle": "Mermaid-Diagramm im Vollbild",
+      "snapshot": "Momentaufnahme",
+      "snapshotHint": "Die Quelle ist nicht mehr sichtbar. Diese Ansicht behält das zuletzt gerenderte Bild.",
+      "closeFullscreen": "Schließen",
+      "svg": "SVG",
+      "png": "PNG",
+      "downloadSvg": "SVG herunterladen",
+      "downloadPng": "PNG herunterladen",
+      "downloadError": "Das Diagramm konnte nicht heruntergeladen werden. Bitte versuche es erneut.",
+      "zoomControls": "Diagramm vergrößern oder verkleinern",
+      "zoomIn": "Vergrößern",
+      "zoomOut": "Verkleinern",
+      "fitDiagram": "Diagramm an das Fenster anpassen",
+      "panDiagram": "Diagrammvorschau. Im vergrößerten Diagramm kannst du durch Scrollen navigieren."
+    },
     "composerField": {
       "messagePiShort": "Nachricht an pi …",
       "messageToPi": "Nachricht an pi"
