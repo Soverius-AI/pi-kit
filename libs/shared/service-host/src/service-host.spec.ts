@@ -94,6 +94,55 @@ async function startHost(
 }
 
 describe('ServiceHost with a desktop on its socket', () => {
+  it('forwards CLI app-update actions to the attached desktop without attaching the CLI', async () => {
+    const { path } = await startHost(fakeBackend(2000));
+    const desktop = await connectHostChannel(path, TOKEN);
+    const cli = await connectHostChannel(path, TOKEN);
+    cleanup.push(
+      async () => desktop.close(),
+      async () => cli.close(),
+    );
+    const native = vi.fn(async (request: unknown) => ({
+      result: { available: true, downloaded: true, version: '2.0.0', request },
+    }));
+    desktop.handle('backend-request', native);
+    await desktop.call('attach');
+    for (const action of ['check', 'download', 'install']) {
+      expect(await cli.call('app-update', action)).toMatchObject({
+        available: true,
+        version: '2.0.0',
+        request: { type: 'app-update', action },
+      });
+      expect(native).toHaveBeenLastCalledWith({ type: 'app-update', action });
+    }
+    expect(await cli.call('status')).toMatchObject({ desktopAttached: true });
+    expect(native).toHaveBeenCalledTimes(3);
+  });
+
+  it('rejects invalid app-update actions and valid actions without an attached desktop', async () => {
+    const { path } = await startHost(fakeBackend(2000));
+    const cli = await connectHostChannel(path, TOKEN);
+    cleanup.push(async () => cli.close());
+    for (const action of ['delete', '', null, { action: 'install' }])
+      await expect(cli.call('app-update', action)).rejects.toThrow('Invalid app update action');
+    for (const action of ['check', 'download', 'install'])
+      await expect(cli.call('app-update', action)).rejects.toThrow('No desktop app is attached');
+    expect(await cli.call('status')).toMatchObject({ desktopAttached: false });
+  });
+
+  it('propagates native updater errors rather than reporting success', async () => {
+    const { path } = await startHost(fakeBackend(2000));
+    const desktop = await connectHostChannel(path, TOKEN);
+    const cli = await connectHostChannel(path, TOKEN);
+    cleanup.push(
+      async () => desktop.close(),
+      async () => cli.close(),
+    );
+    desktop.handle('backend-request', async () => ({ error: 'native download failed' }));
+    await desktop.call('attach');
+    await expect(cli.call('app-update', 'download')).rejects.toThrow('native download failed');
+  });
+
   it('backs up over authenticated RPC before startup and refuses while running or stopping', async () => {
     const { host, desktop, dataDir } = await startHost(fakeBackend(2000));
     const { client } = await desktop();

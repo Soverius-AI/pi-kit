@@ -38,7 +38,7 @@ export function desktopAsset(target: string, version: string): { file: string; m
 }
 
 /** The sha512 (base64) electron-builder's update manifest gives `file`, under its `- url:` entry. */
-function manifestSha512(manifest: string, file: string): string | undefined {
+export function manifestSha512(manifest: string, file: string): string | undefined {
   const lines = manifest.split(/\r?\n/);
   const at = lines.findIndex((line) => line.trim() === `- url: ${file}`);
   for (const line of at < 0 ? [] : lines.slice(at + 1)) {

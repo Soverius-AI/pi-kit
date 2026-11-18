@@ -187,7 +187,8 @@ export class AppUpdater {
       case 'install': {
         if (!this.downloaded) return { available: !!this.latest, downloaded: false };
         // Quits the app, installs, restarts it. Called after the reply went out, so the backend hears "ok" first.
-        setTimeout(() => updater.quitAndInstall(false, true), 300);
+        // Silent NSIS installation on Windows; other platform updaters ignore the first argument.
+        setTimeout(() => updater.quitAndInstall(true, true), 300);
         return { available: true, downloaded: true, ...(this.latest ? { version: this.latest } : {}) };
       }
     }

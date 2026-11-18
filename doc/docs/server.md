@@ -47,13 +47,54 @@ flowchart LR
 
 | Install | Get it | Runs on | Updates |
 |---|---|---|---|
-| Desktop app | the release's `.dmg`/`.zip` (macOS, Apple Silicon), `.exe` (Windows x64, arm64), `.AppImage` (Linux x64, arm64) | Electron, as Node for the host | the app's own updater |
+| Desktop app | the release's `.dmg`/`.zip` (macOS, Apple Silicon), `.exe` (Windows x64, arm64), `.AppImage` (Linux x64, arm64) | Electron, as Node for the host | the app's updater or silent `pi-kit update` |
 | Server archive | the release's `pi-kit-server-<version>-<target>.tar.gz`, `.zip` on Windows, checked against `SHA256SUMS` | its own Node 24 in `runtime/` | `pi-kit update` |
 | npm | `npm install -g @soverius-ai/pi-kit` | the platform package's own Node 24; the launcher needs Node 18 or later | `pi-kit update`, which runs npm |
 
 npm installs only the package for the machine, `@soverius-ai/pi-kit-<os>-<arch>` for darwin, linux and win32 on arm64 and
 x64. On a server install, `pi-kit desktop install` adds the desktop app of the same version: it downloads it from the
 release, checks it against the sha512 the app's updater trusts, installs it for this user and starts it.
+
+### Silent desktop updates from a terminal
+
+After installing the desktop's `pi-kit` command, `pi-kit update --check` checks for a release and `pi-kit update`
+installs it silently, including over SSH or a remote terminal. An open desktop uses its native updater without an
+installer wizard. If only the background service (or nothing) is running, a detached platform updater owns the work;
+stopping the backend must not kill its updater along with a remote terminal. Remote access may disconnect briefly.
+The install path and profile stay the same, and a previously running service is started again afterward.
+
+| Desktop install | Update file and verification | Detached update |
+|---|---|---|
+| macOS `.dmg`/`.zip` | release ZIP, manifest SHA-512, matching bundle identifier/version and designated code-signing requirement | swap the `.app` at its existing path |
+| Linux AppImage | matching architecture's AppImage, manifest SHA-512, ELF/AppImage architecture and version | atomic file replacement, retaining ownership and executable mode |
+| Windows NSIS | matching architecture's installer EXE, manifest SHA-512, matching valid Authenticode signer when the installed app is signed | system PowerShell helper runs NSIS `/S`, preserves `/currentuser` or `/allusers` scope and the existing install directory |
+
+macOS and Linux keep a previous copy beside the install (`.previous`, or a unique suffix when that exists). A failed
+swap rolls back; failure to restart also attempts to restore and start the previous copy. Windows uses NSIS's install
+transaction and attempts to restart the service even if the installer fails. It never intentionally terminates a
+different pi-kit installation: unrelated or unverifiable running `pi-kit.exe` processes block the update.
+Unsigned Windows releases can update an unsigned installation using the verified manifest checksum; no code-signing
+identity is claimed. Invalid or mismatched signatures are rejected. This never bypasses macOS signing/notarization.
+
+Detached updater results are in `desktop-update.log` in the platform's log directory (below); Windows also retains
+`desktop-update.log.status.json`. If an older running desktop lacks terminal update support, close it and retry or
+use its Settings update action. Windows portable executables, a mounted macOS DMG/App Translocation, and unpacked
+Linux desktop builds cannot silently replace themselves. Use the installer or the system package manager instead.
+
+**When root or Administrator is needed:** silent means no installer wizard, not bypassing OS permissions. Write/admin
+checks fail before downloading or stopping the service, with an actionable error. Windows machine-wide NSIS installs
+require an already elevated terminal; remote updates never request UAC. An elevated Windows updater also refuses to
+stop a live per-user backend, because restarting it from that token would silently give the backend Administrator
+privileges. For a machine-wide update, stop the app/service first, update in an elevated terminal, and start it again
+as the normal user. Ordinary per-user updates should run from a normal-user terminal. Linux AppImages need write access to their file
+and parent directory; prefer a per-user writable install or have its administrator authorize the update. macOS needs
+write access to the app's parent directory; a user Applications folder avoids system-wide permissions. Do not run the
+whole desktop/backend as root just to update it, as that changes profile ownership and user-service context.
+
+A macOS boot-start LaunchDaemon additionally requires non-interactive authorization for a restricted restart helper.
+The detached updater obtains that authorization **before** stopping the service and keeps the helper until restart,
+so no password prompt or expired sudo timestamp can strand the service midway. If it cannot obtain authorization,
+it leaves the service running and records the reason. No automatic sudo/UAC elevation or credential storage occurs.
 
 **One machine, several installs.** Installs using the same profile coordinate through its service registration. Version
 checks prevent an older install from replacing a newer registered service. On startup, the desktop app checks that
@@ -104,7 +145,7 @@ Tailscale gateway described in [Remote access](remote-access.md).
 | `pi-kit service start`, `stop`, `restart` | start, stop or restart it |
 | `pi-kit service logs` | the end of `service.log`, and where the logs are |
 | `pi-kit serve` | run the host in this terminal, for a container or another supervisor |
-| `pi-kit update [--check]` | update a server install: a server archive is checked and swapped in place, an npm install is updated with npm |
+| `pi-kit update [--check]` | update this install: server archives are checked and swapped in place, npm uses npm, installed desktops use native or detached silent platform updates |
 | `pi-kit login [<provider>]` | sign in to a model provider (`--api-key` or `--oauth` where it offers both) |
 | `pi-kit login --local <url>` | add a local model server (llama.cpp, llama-swap, Ollama, any OpenAI-compatible one) |
 | `pi-kit logout <provider>` | remove a provider's stored sign-in |
@@ -126,4 +167,4 @@ Tailscale gateway described in [Remote access](remote-access.md).
 
 `PI_KIT_DATA_DIR` points a command or a host at another profile. In the logs, `service.log` is the host,
 `backend.log` the backend, `main.log` the desktop app, `supervisor.log` the Windows supervisor and `update.log` the
-updates.
+updates. Detached desktop updates write their result to `desktop-update.log`.

@@ -146,7 +146,7 @@ describe('matching a service that a newer install runs', () => {
       });
       expect(await new AppUpdater(vi.fn()).updateTo('0.12.0')).toBe(true);
       expect(autoUpdater.downloadUpdate).toHaveBeenCalledOnce();
-      await vi.waitFor(() => expect(autoUpdater.quitAndInstall).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(autoUpdater.quitAndInstall).toHaveBeenCalledExactlyOnceWith(true, true));
     },
   );
 

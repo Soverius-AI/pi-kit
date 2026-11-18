@@ -8,8 +8,9 @@ import { stopHost, waitFor } from './cli-host';
 import { isNewerVersion } from './discovery';
 import { download, getRelease, getText } from './release-feed';
 import type { CliContext, CliIo } from './service-cli';
+import { runDesktopUpdateCli } from './desktop-update-cli';
 
-export const UPDATE_USAGE = `  pi-kit update [--check]           Update this server install to the latest release (the desktop app updates itself)
+export const UPDATE_USAGE = `  pi-kit update [--check]           Update this install silently to the latest release (server, npm, or installed desktop)
 `;
 
 /** The CLI started as the Windows finisher, with the path of its plan (JSON) after the flag. */
@@ -142,8 +143,9 @@ export async function runUpdateCli(args: string[], io: CliIo, ctx: CliContext): 
     return 2;
   }
   const install = ctx.serverInstall;
+  if (!install && ctx.desktopUpdate) return runDesktopUpdateCli(check, io, ctx);
   if (!install) {
-    io.err('pi-kit: the desktop app updates itself; use "Check for updates" in it.\n');
+    io.err('pi-kit: this desktop build updates through "Check for updates" in the app.\n');
     return 2;
   }
   if (install.npm) return updateWithNpm(check, io, ctx, { ...install, npm: install.npm });
