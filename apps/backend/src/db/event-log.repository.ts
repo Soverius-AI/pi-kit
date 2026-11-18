@@ -32,6 +32,30 @@ export class EventLogRepository {
       );
     return Number(result.lastInsertRowid);
   }
+  async appendMany(threadId: string, runId: string | null, events: BaseEvent[]): Promise<number[]> {
+    const rows = await Promise.all(
+      events.map(async (event) => [
+        threadId,
+        runId,
+        JSON.stringify(this.redaction ? await this.redaction.event(threadId, event) : event),
+        event.type,
+      ]),
+    );
+    const chunkSize = 500;
+    return this.db.transaction(async () => {
+      const seqs: number[] = [];
+      for (let offset = 0; offset < rows.length; offset += chunkSize) {
+        const chunk = rows.slice(offset, offset + chunkSize);
+        const inserted = await this.db
+          .prepare(
+            `INSERT INTO thread_events(thread_id,run_id,event_json,type) VALUES ${chunk.map(() => '(?,?,?,?)').join(',')} RETURNING seq`,
+          )
+          .all<{ seq: number }>(...chunk.flat());
+        seqs.push(...inserted.map((row) => Number(row.seq)).sort((a, b) => a - b));
+      }
+      return seqs;
+    })();
+  }
   read(threadId: string): Promise<StoredEvent[]> {
     return this.readAfter(threadId, 0);
   }

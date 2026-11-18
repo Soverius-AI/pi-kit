@@ -71,6 +71,37 @@ describe('batched event deletion', () => {
   });
 });
 
+describe('batched event appends', () => {
+  it('appends across parameter-bounded chunks and returns each event’s sequence in order', async () => {
+    const { log } = await isolatedWriter();
+    await log.append('other', 'r', event);
+    const events = Array.from(
+      { length: 1200 },
+      (_, i) => ({ type: EventType.CUSTOM, name: 'batch', value: i }) as BaseEvent,
+    );
+    const seqs = await log.appendMany('t', 'r', events);
+    const stored = await log.read('t');
+    expect(seqs).toEqual(stored.map((row) => row.seq));
+    expect(stored.map((row) => (row.event as { value?: number }).value)).toEqual(events.map((_, i) => i));
+    expect(seqs[0]).toBe(2);
+    expect(await log.count('other')).toBe(1);
+  });
+
+  it('rolls back earlier chunks when a later insert fails', async () => {
+    const { database, log } = await isolatedWriter();
+    await database.db.exec(`
+      CREATE TRIGGER refuse_insert BEFORE INSERT ON thread_events WHEN NEW.event_json LIKE '%"value":700}'
+      BEGIN SELECT RAISE(ABORT, 'late insert failure'); END;
+    `);
+    const events = Array.from(
+      { length: 1200 },
+      (_, i) => ({ type: EventType.CUSTOM, name: 'batch', value: i }) as BaseEvent,
+    );
+    await expect(log.appendMany('t', 'r', events)).rejects.toThrow('late insert failure');
+    expect(await log.count('t')).toBe(0);
+  });
+});
+
 describe('event sequence allocation', async () => {
   it('allocates distinct sequences when independent writers share the database', async () => {
     const [first, second] = await writers();

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { AsyncSqlite } from './async-sqlite';
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -192,4 +192,105 @@ it('releases read and returning cursors before checkpoint, schema changes and cl
     await db.close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+describe('read connections', () => {
+  const slowRead =
+    'SELECT count(*) AS n FROM (WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c WHERE x < 3000000) SELECT x FROM c)';
+  const opened: { db: AsyncSqlite; dir: string }[] = [];
+  afterEach(async () => {
+    for (const { db, dir } of opened.splice(0)) {
+      await db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  async function pooled(readers = 2) {
+    const dir = mkdtempSync(join(tmpdir(), 'pk-async-readers-'));
+    const db = await AsyncSqlite.open(join(dir, 'pool.sqlite'));
+    opened.push({ db, dir });
+    await db.pragma('journal_mode = WAL');
+    await db.exec('CREATE TABLE t(value TEXT)');
+    await db.openReaders(readers);
+    return db;
+  }
+
+  it('runs consecutive reads side by side', async () => {
+    const timed = async (readers: number) => {
+      const db = await pooled(readers);
+      const started = performance.now();
+      await Promise.all([db.prepare(slowRead).get(), db.prepare(slowRead).get()]);
+      return performance.now() - started;
+    };
+    const serial = await timed(0);
+    const parallel = await timed(2);
+    expect(parallel).toBeLessThan(serial * 0.8);
+  });
+
+  it('settles reads and writes in the order they were issued, failures included', async () => {
+    const db = await pooled();
+    const order: string[] = [];
+    const settled = (name: string) => () => order.push(name);
+    await Promise.all([
+      db.prepare(slowRead).get().then(settled('slow read')),
+      db.prepare('SELECT * FROM missing').get().catch(settled('failed read')),
+      db.prepare('SELECT 1 AS one').get().then(settled('quick read')),
+      db.prepare('INSERT INTO t VALUES (?)').run('a').then(settled('write')),
+      db.prepare('SELECT value FROM t').all().then(settled('read after write')),
+    ]);
+    expect(order).toEqual(['slow read', 'failed read', 'quick read', 'write', 'read after write']);
+  });
+
+  it('never lets a read see a write issued after it', async () => {
+    const db = await pooled();
+    const slow = db.prepare(slowRead).get();
+    const before = db.prepare('SELECT count(*) AS n FROM t').get();
+    const write = db.prepare('INSERT INTO t VALUES (?)').run('later');
+    const after = db.prepare('SELECT count(*) AS n FROM t').get();
+    expect(await before).toEqual({ n: 0 });
+    expect(await after).toEqual({ n: 1 });
+    await Promise.all([slow, write]);
+  });
+
+  it('lets a read see every write queued before it, awaited or not', async () => {
+    const db = await pooled();
+    const write = db.prepare('INSERT INTO t VALUES (?)').run('queued');
+    expect(await db.prepare('SELECT value FROM t').all()).toEqual([{ value: 'queued' }]);
+    await write;
+  });
+
+  it('keeps reads inside a transaction on the writer and holds outside reads until it commits', async () => {
+    const db = await pooled();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const transaction = db
+      .transaction(async () => {
+        await db.prepare('INSERT INTO t VALUES (?)').run('uncommitted');
+        const inside = await db.prepare('SELECT value FROM t').all();
+        entered();
+        await gate;
+        return inside;
+      })
+      .immediate();
+    await started;
+    const outside = db.prepare('SELECT value FROM t').all();
+    release();
+    expect(await transaction).toEqual([{ value: 'uncommitted' }]);
+    expect(await outside).toEqual([{ value: 'uncommitted' }]);
+  });
+
+  it('drains routed reads on close and rejects new work', async () => {
+    const db = await pooled();
+    const read = db.prepare(slowRead).get();
+    const closing = db.close();
+    await expect(db.prepare('SELECT 1').get()).rejects.toThrow(/closed/);
+    expect(await read).toEqual({ n: 3000000 });
+    await closing;
+    expect(db.open).toBe(false);
+  });
 });

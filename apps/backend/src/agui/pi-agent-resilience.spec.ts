@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { type BaseEvent, EventType } from '@ag-ui/client';
+import { REPLAY_CURSOR_METADATA } from '@pi-kit/protocol';
 import { Observable, Subject, firstValueFrom, toArray, tap } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseService } from '../db/database.service';
@@ -126,9 +127,14 @@ describe('run failure containment', async () => {
       const follower = firstValueFrom(runner.connect({ threadId: 't1' } as never).pipe(toArray()));
       await vi.waitFor(async () => expect(await log.count('t1')).toBe(1));
       const append = log.append.bind(log);
+      const appendMany = log.appendMany.bind(log);
       vi.spyOn(log, 'append').mockImplementation((thread, ...args) => {
         if (thread === 't1') throw new Error('simulated event storage failure');
         return append(thread, ...args);
+      });
+      vi.spyOn(log, 'appendMany').mockImplementation((thread, ...args) => {
+        if (thread === 't1') throw new Error('simulated event storage failure');
+        return appendMany(thread, ...args);
       });
       if (trigger === 'next') broken.next({ type: EventType.CUSTOM, name: 'test', value: {} } as BaseEvent);
       else if (trigger === 'error') broken.error(new Error('upstream failed'));
@@ -226,6 +232,17 @@ it('serializes delayed event writes and never publishes an uncommitted event, in
       writing--;
     }
   });
+  const appendMany = log.appendMany.bind(log);
+  vi.spyOn(log, 'appendMany').mockImplementation(async (thread, runId, values) => {
+    peak = Math.max(peak, ++writing);
+    try {
+      const seqs = await appendMany(thread, runId, values);
+      committed.push(...values.map((value) => value.type));
+      return seqs;
+    } finally {
+      writing--;
+    }
+  });
   const delivered: BaseEvent[] = [];
   const done = firstValueFrom(
     run(
@@ -260,8 +277,14 @@ it('serializes delayed event writes and never publishes an uncommitted event, in
   expect((await log.lastRun('t1'))?.status).toBe('finished');
 });
 
-it('bounds a synchronous burst, drains every accepted event, and closes overflow durably', async () => {
+it('writes a synchronous burst as one batch and finishes the run', async () => {
   const { log, run, event, sessions } = await world();
+  const batches: number[] = [];
+  const appendMany = log.appendMany.bind(log);
+  vi.spyOn(log, 'appendMany').mockImplementation((thread, runId, values) => {
+    batches.push(values.length);
+    return appendMany(thread, runId, values);
+  });
   const result = await firstValueFrom(
     run(
       't1',
@@ -269,35 +292,79 @@ it('bounds a synchronous burst, drains every accepted event, and closes overflow
         subscriber.next(event('t1'));
         for (let i = 0; i < 2000; i++)
           subscriber.next({ type: EventType.CUSTOM, name: 'burst', value: i } as BaseEvent);
+        subscriber.next(event('t1', EventType.RUN_FINISHED));
         subscriber.complete();
       }),
     ).pipe(toArray()),
   );
-  expect(result.at(-1)).toMatchObject({ type: EventType.RUN_ERROR, code: 'EVENT_QUEUE_OVERFLOW' });
+  expect(result.at(-1)).toMatchObject({ type: EventType.RUN_FINISHED });
+  expect(batches).toEqual([2000]);
   const stored = await log.read('t1');
   expect(stored.map((row) => row.event.type)).toEqual(result.map((value) => value.type));
-  expect(stored.filter((row) => (row.event as { name?: string }).name === 'burst')).toHaveLength(255);
-  expect(stored.length).toBeLessThan(260);
-  expect((await log.lastRun('t1'))?.status).toBe('error');
-  // No more producer work remains attached after overload.
-  expect(sessions.abort).toHaveBeenCalledWith('t1');
+  expect(
+    stored
+      .filter((row) => (row.event as { name?: string }).name === 'burst')
+      .map((row) => (row.event as { value?: number }).value),
+  ).toEqual(Array.from({ length: 2000 }, (_, i) => i));
+  expect((await log.lastRun('t1'))?.status).toBe('finished');
+  expect(sessions.abort).not.toHaveBeenCalled();
+});
+
+it('keeps a producer that outruns a slow log alive and delivers the overflow in order once it is written', async () => {
+  const { log, run, event, sessions } = await world();
+  const batches: number[] = [];
+  const appendMany = log.appendMany.bind(log);
+  vi.spyOn(log, 'appendMany').mockImplementation(async (thread, runId, values) => {
+    batches.push(values.length);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    return appendMany(thread, runId, values);
+  });
+  const total = 5000;
+  const result = await firstValueFrom(
+    run(
+      't1',
+      new Observable<BaseEvent>((subscriber) => {
+        subscriber.next(event('t1'));
+        let sent = 0;
+        const timer = setInterval(() => {
+          for (let n = 0; n < 250 && sent < total; n++, sent++)
+            subscriber.next({ type: EventType.CUSTOM, name: 'burst', value: sent } as BaseEvent);
+          if (sent < total) return;
+          clearInterval(timer);
+          subscriber.next(event('t1', EventType.RUN_FINISHED));
+          subscriber.complete();
+        }, 1);
+        return () => clearInterval(timer);
+      }),
+    ).pipe(toArray()),
+  );
+  expect(result.at(-1)).toMatchObject({ type: EventType.RUN_FINISHED });
+  expect(sessions.abort).not.toHaveBeenCalled();
+  expect(batches.reduce((sum, size) => sum + size, 0)).toBe(total);
+  expect(batches.length).toBeLessThan(total / 10);
+  expect(Math.max(...batches)).toBeGreaterThan(256);
+  const burst = result.filter((value) => (value as { name?: string }).name === 'burst');
+  expect(burst.map((value) => (value as { value?: number }).value)).toEqual(Array.from({ length: total }, (_, i) => i));
+  const stored = await log.read('t1');
+  expect(result.map((value) => value.metadata?.[REPLAY_CURSOR_METADATA])).toEqual(
+    stored.map((row) => log.cursor('t1', row.seq)),
+  );
+  expect((await log.lastRun('t1'))?.status).toBe('finished');
 });
 
 it('shutdown waits for accepted writes before releasing the run lock', async () => {
   const { log, runner, run, event } = await world();
   const source = new Subject<BaseEvent>();
-  const append = log.append.bind(log);
+  const appendMany = log.appendMany.bind(log);
   let release!: () => void;
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
   let blocked = false;
-  vi.spyOn(log, 'append').mockImplementation(async (...args) => {
-    if (args[2].type === EventType.CUSTOM) {
-      blocked = true;
-      await gate;
-    }
-    return append(...args);
+  vi.spyOn(log, 'appendMany').mockImplementation(async (...args) => {
+    blocked = true;
+    await gate;
+    return appendMany(...args);
   });
   const result = firstValueFrom(run('t1', source).pipe(toArray()));
   await vi.waitFor(() => expect(source.observed).toBe(true));

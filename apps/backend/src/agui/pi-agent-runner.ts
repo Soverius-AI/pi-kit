@@ -272,12 +272,17 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       active.live.complete();
     };
 
-    const emit = async (event: BaseEvent): Promise<void> => {
-      const seq = await this.log.append(threadId, runId, event);
+    const publish = (seq: number, event: BaseEvent): void => {
       active.events.push(event);
       const delivered = this.withCursor(threadId, seq, event);
       active.live.next({ seq, event: delivered });
       out.next(delivered);
+    };
+    const emit = async (event: BaseEvent): Promise<void> =>
+      publish(await this.log.append(threadId, runId, event), event);
+    const emitAll = async (events: BaseEvent[]): Promise<void> => {
+      const seqs = await this.log.appendMany(threadId, runId, events);
+      events.forEach((event, index) => publish(seqs[index], event));
     };
     // Middleware can defer RUN_STARTED while session_start extensions already publish toolbar events.
     // AG-UI requires the run to start before any of those events reach the client or replay log.
@@ -321,26 +326,14 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       }
       active.close?.();
     };
-    // RxJS producers cannot await next(). Bound accepted work; overload cancels the producer,
-    // drains accepted writes, then closes the run rather than accumulating unbounded promises.
-    let pending = 0;
+    // RxJS producers cannot await next(). Events that arrive while a write is in flight overflow into one batch,
+    // written in a single transaction once that write commits, so a fast producer never outruns the log.
     let accepting = true;
     let tail = Promise.resolve();
+    let batch: BaseEvent[] | undefined;
     const enqueue = (work: () => Promise<void>): void => {
       if (!accepting) return;
-      if (pending >= 256) {
-        accepting = false;
-        active.upstream?.unsubscribe();
-        void Promise.resolve()
-          .then(() => this.sessions.abort(threadId))
-          .catch((error) => logger.warn(String(error)));
-        tail = tail
-          .then(() => fail('Event producer exceeded the durable queue capacity.', 'EVENT_QUEUE_OVERFLOW'))
-          .catch(storageFailed);
-        active.drain = tail;
-        return;
-      }
-      pending++;
+      batch = undefined;
       tail = tail
         .then(async () => {
           if (this.active.get(threadId) === active) await work();
@@ -348,23 +341,28 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
         .catch(async (error) => {
           accepting = false;
           await storageFailed(error);
-        })
-        .finally(() => {
-          pending--;
         });
       active.drain = tail;
+    };
+    const write = (event: BaseEvent): void => {
+      if (!accepting) return;
+      if (batch) {
+        batch.push(event);
+        return;
+      }
+      const events = [event];
+      enqueue(async () => {
+        if (batch === events) batch = undefined;
+        await emitAll(events);
+      });
+      batch = events;
     };
     active.emit = (event) => {
       if (!accepting || this.active.get(threadId) !== active) return;
       // Stage synchronously while RUN_STARTED is pending. Enqueueing this behind a terminal
       // already accepted from a burst would otherwise lose session_start registrations.
-      if (!started) {
-        if (beforeStart.length < 256) beforeStart.push(event);
-        else
-          enqueue(async () => {
-            throw new Error('Pre-start event queue exceeded capacity');
-          });
-      } else enqueue(() => emit(event));
+      if (!started) beforeStart.push(event);
+      else write(event);
     };
     const finish = async (terminal: BaseEvent): Promise<void> => {
       if (this.active.get(threadId) !== active) return;
@@ -408,16 +406,17 @@ export class PiAgentRunner extends AgentRunner implements OnModuleInit, OnModule
       try {
         const upstream = runWithMiddleware(agent, input);
         active.upstream = upstream.subscribe({
-          next: (event) =>
-            enqueue(async () => {
-              if (isTerminal(event)) return finish(event);
-              await emit(event.type === EventType.RUN_STARTED ? withInput(event, input) : event);
-              if (event.type === EventType.RUN_STARTED) {
+          next: (event) => {
+            if (isTerminal(event)) enqueue(() => finish(event));
+            else if (event.type === EventType.RUN_STARTED)
+              enqueue(async () => {
+                await emit(withInput(event, input));
                 started = true;
                 for (const queued of beforeStart.splice(0)) await emit(queued);
                 await this.flushComposer(threadId, emit);
-              }
-            }),
+              });
+            else write(event);
+          },
           error: (error) => enqueue(() => fail(error instanceof Error ? error.message : String(error), 'error')),
           complete: () => enqueue(() => fail('The run ended without a result.', 'INCOMPLETE_STREAM')),
         });
