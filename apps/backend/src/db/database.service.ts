@@ -88,6 +88,11 @@ export class DatabaseService implements OnApplicationShutdown {
           })
           .immediate(),
       );
+      await this.db
+        .openReaders(2)
+        .catch((error: unknown) =>
+          this.logger.warn(`Read connections unavailable, reads share the writer: ${String(error)}`),
+        );
       this.logger.log(`Database ready at ${this.path}`);
     } catch (error) {
       await this.db.close().catch(() => undefined);

@@ -12,22 +12,42 @@ export type AsyncTransaction<A extends unknown[], T> = ((...args: A) => Promise<
   exclusive(...args: A): Promise<T>;
 };
 
-/** Promise-only boundary. One queue owns the connection, including the entire awaited transaction body. */
+/** Promise-only boundary. One queue owns the writer, including the entire awaited transaction body; consecutive plain SELECTs outside a scope run side by side on read-only readers, and everything settles in issue order. */
 export class AsyncSqlite {
   private tail: Promise<unknown> = Promise.resolve();
+  private readTail: Promise<unknown> = Promise.resolve();
   private readonly context = new AsyncLocalStorage<{ active: boolean; transaction: boolean }>();
   private closing = false;
   private closed = false;
   private closePromise?: Promise<void>;
   private savepoint = 0;
+  private readers: AsyncSqlite[] = [];
+  private turn = 0;
   // Keep the native cache disabled: cached VMs can retain cursors across COMMIT/checkpoint.
   // Correct connection ownership takes precedence over avoiding statement preparation.
-  private constructor(private readonly connection: Connection) {}
+  private constructor(
+    private readonly connection: Connection,
+    private readonly path: string,
+  ) {}
   static async open(path: string, options?: Parameters<typeof sqlite3.open>[1]): Promise<AsyncSqlite> {
-    return new AsyncSqlite(await sqlite3.open(path, options));
+    return new AsyncSqlite(await sqlite3.open(path, options), path);
   }
   get open(): boolean {
     return !this.closed;
+  }
+  async openReaders(count: number): Promise<void> {
+    const readers: AsyncSqlite[] = [];
+    try {
+      while (readers.length < count) {
+        const reader = await AsyncSqlite.open(this.path, { mode: sqlite3.OPEN_READONLY });
+        readers.push(reader);
+        await reader.pragma('busy_timeout = 5000');
+      }
+    } catch (error) {
+      await Promise.allSettled(readers.map((reader) => reader.close()));
+      throw error;
+    }
+    this.readers = readers;
   }
 
   /** Exclusive scope also fences synchronous-mode changes around security-sensitive writes. */
@@ -55,7 +75,8 @@ export class AsyncSqlite {
       );
     if (scope?.active) return work();
     if (this.closing) return Promise.reject(new Error('The database is closed.'));
-    const next = this.tail.then(work);
+    const reads = this.readTail;
+    const next = this.tail.then(() => reads).then(work);
     this.tail = next.catch(() => undefined);
     return next;
   }
@@ -74,6 +95,20 @@ export class AsyncSqlite {
     });
   }
   query<T>(method: 'get' | 'all' | 'run', sql: string, args: unknown[]): Promise<T> {
+    if (
+      method !== 'run' &&
+      this.readers.length > 0 &&
+      !this.closing &&
+      !this.context.getStore() &&
+      /^\s*SELECT\b/i.test(sql)
+    ) {
+      const reader = this.readers[this.turn++ % this.readers.length];
+      const result = this.tail.then(() => reader.query<T>(method, sql, args));
+      result.catch(() => undefined);
+      const read = this.readTail.then(() => result);
+      this.readTail = read.catch(() => undefined);
+      return read;
+    }
     return this.schedule(async () => {
       const normalized = bindings(sql, args);
       const first = normalized[0];
@@ -138,7 +173,10 @@ export class AsyncSqlite {
       return Promise.reject(new Error('Cannot close SQLite inside an active exclusive scope.'));
     if (this.closePromise) return this.closePromise;
     this.closing = true;
+    const reads = this.readTail;
     this.closePromise = this.tail.then(async () => {
+      await reads;
+      await Promise.allSettled(this.readers.splice(0).map((reader) => reader.close()));
       await this.connection.close();
       this.closed = true;
     });
