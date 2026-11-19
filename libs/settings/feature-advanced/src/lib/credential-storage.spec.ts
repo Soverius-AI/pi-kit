@@ -29,7 +29,7 @@ describe('credential storage confirmation', () => {
         },
         { provide: SecretsStore, useValue: secrets },
         { provide: RedactionStore, useValue: { load: vi.fn() } },
-        { provide: ViewPrefs, useValue: {} },
+        { provide: ViewPrefs, useValue: { roomsPreview: () => false } },
         { provide: COPILOT_INSPECTOR_AT_START, useValue: false },
       ],
     });

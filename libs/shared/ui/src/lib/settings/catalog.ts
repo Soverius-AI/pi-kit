@@ -812,6 +812,15 @@ export const settingsCatalog = (translate: Translate): readonly SettingEntry[] =
     keywords: 'copilotkit inspector ag-ui agui events debug devtools developer runtime',
   },
   {
+    id: 'rooms-preview',
+    section: 'advanced',
+    group: translate('shared.catalog.collaboration'),
+    name: translate('shared.catalog.roomsPreview'),
+    description: translate('shared.catalog.roomsPreviewDescription'),
+    storage: 'pi-kit',
+    keywords: 'rooms preview collaboration paired machines workers remote tasks experimental',
+  },
+  {
     id: 'trust-list',
     section: 'advanced',
     group: translate('shared.catalog.savedTrustDecisions'),

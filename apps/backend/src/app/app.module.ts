@@ -15,6 +15,7 @@ import { DesktopModule } from '../desktop/desktop.module';
 import { McpModule } from '../mcp/mcp.module';
 import { PackagesModule } from '../packages/packages.module';
 import { PeersModule } from '../peers/peers.module';
+import { RoomsModule } from '../rooms/rooms.module';
 import { SkillsModule } from '../skills/skills.module';
 import { SecretsModule, SecretStoreModule } from '../secrets/secrets.module';
 import { SessionModule } from '../session/session.module';
@@ -71,6 +72,7 @@ const config = loadConfig();
     UsageModule,
     BgAgentsModule,
     PeersModule,
+    RoomsModule,
   ],
   controllers: [HealthController, InstanceController, ...(config.dev ? [DevController] : [])],
   providers: [

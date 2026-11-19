@@ -2,13 +2,14 @@ import type { BashOperations, ExtensionFactory } from '@earendil-works/pi-coding
   'resolution-mode': 'import',
 };
 import type { PiModule } from './load-pi';
+import { RoomTools } from './room-tools';
 import { type SandboxClient, SandboxPackage, type ThreadProtectionService } from './thread-protection.service';
 
 /** The tools of a sandboxed thread: pi's file and shell tools routed through its sandbox, every other tool refused unless reviewed. */
 export class ThreadProtectionExtension {
   static readonly NAME = 'thread-protection';
   static readonly SOURCE = `<inline:${ThreadProtectionExtension.NAME}>`;
-  private static readonly HOST_TOOLS = new Set([
+  private static readonly HOST_TOOLS = new Set<string>([
     'render_a2ui',
     'generateSandboxedUi',
     'ask_user',
@@ -19,6 +20,7 @@ export class ThreadProtectionExtension {
     'agent_stop',
     'agent_reply',
     'agent_forward',
+    ...RoomTools.NAMES,
   ]);
 
   /** `bash` serves the `!command` shell of the session, which pi runs without an extension event; `tools` are the names routed through the sandbox. */

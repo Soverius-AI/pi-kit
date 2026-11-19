@@ -2,7 +2,6 @@ import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import { NgTemplateOutlet } from '@angular/common';
 import {
-  ChangeDetectionStrategy,
   Component,
   DestroyRef,
   ElementRef,
@@ -38,8 +37,9 @@ import {
   UiStore,
   ViewPrefs,
 } from '@pi-kit/data-access';
-import { PkIcon, PkOutcomeBadge, PkRunRing, PkTip, PkViewportMenu } from '@pi-kit/design-system';
-import type { ProjectRef, ThreadSuggestion, ThreadSummary } from '@pi-kit/protocol';
+import { PkEmptyState, PkIcon, PkOutcomeBadge, PkRunRing, PkTip, PkViewportMenu } from '@pi-kit/design-system';
+import type { ProjectRef, Room, RoomDirectoryEntry, ThreadSuggestion, ThreadSummary } from '@pi-kit/protocol';
+import { OpenRoomStore, RoomsStore } from '@pi-kit/rooms/api';
 import { ConnectorsStore } from '@pi-kit/settings/api';
 import {
   type Project,
@@ -53,6 +53,7 @@ import {
   WorktreeStore,
 } from '@pi-kit/threads/data';
 import { FocusSelect } from '@pi-kit/threads/ui';
+import { StartRoomDialog } from './start-room-dialog';
 import {
   type AnswerChip,
   type CollapsedTag,
@@ -116,9 +117,19 @@ type ScrollTarget = { needs: true } | { project: string } | { thread: string };
  */
 @Component({
   selector: 'pk-thread-sidebar',
-  imports: [FocusSelect, NgTemplateOutlet, PkOutcomeBadge, PkRunRing, PkTip, PkViewportMenu, TranslocoPipe, PkIcon],
+  imports: [
+    FocusSelect,
+    NgTemplateOutlet,
+    PkEmptyState,
+    PkOutcomeBadge,
+    PkRunRing,
+    PkTip,
+    PkViewportMenu,
+    StartRoomDialog,
+    TranslocoPipe,
+    PkIcon,
+  ],
   templateUrl: './thread-sidebar.html',
-  changeDetection: ChangeDetectionStrategy.OnPush,
   // `.pk-threads` is the grid area and flex column from layout.css.
   host: { class: 'pk-threads' },
 })
@@ -306,6 +317,23 @@ export class ThreadSidebar {
 
   /** The threads waiting for the person across the projects the sidebar lists. */
   protected readonly needs = computed(() => needsYou(this.i18n.t, this.store.visibleProjects()));
+  protected readonly rooms = inject(RoomsStore);
+  protected readonly openRoom = inject(OpenRoomStore);
+  protected readonly showModeSwitch = computed(() => this.rooms.enabled());
+  protected readonly roomsMode = computed(() => this.showModeSwitch() && this.prefs.sidebarMode() === 'rooms');
+  protected readonly listViews = computed<ProjectView[]>(() => (this.roomsMode() ? [] : this.views()));
+  protected readonly quickProject = computed<Project | undefined>(() =>
+    this.roomsMode() ? undefined : this.current(),
+  );
+  protected readonly shownRooms = computed<RoomDirectoryEntry[]>(() => {
+    const query = this.query().trim().toLowerCase();
+    const entries = query
+      ? this.rooms.entries().filter((entry) => entry.room.title.toLowerCase().includes(query))
+      : this.rooms.entries();
+    return [...entries].sort(
+      (a, b) => Number(b.hostReachable && b.room.waiting > 0) - Number(a.hostReachable && a.room.waiting > 0),
+    );
+  });
 
   /** The project the quick actions work on: the open thread's, else the one picked last, else the first. */
   protected readonly current = computed<Project | undefined>(() => {
@@ -333,6 +361,27 @@ export class ThreadSidebar {
       };
     });
   });
+
+  protected readonly roomRail = computed(() =>
+    this.shownRooms().map((entry) => {
+      const waiting = entry.hostReachable && entry.room.waiting > 0;
+      const bits = [
+        entry.local ? '' : entry.hostName,
+        !entry.hostReachable ? this.i18n.t('threads.threadSidebar.hostOffline') : '',
+        waiting ? this.i18n.t('threads.threadSidebar.roomWaitsN', { value1: entry.room.waiting }) : '',
+      ].filter(Boolean);
+      return {
+        id: entry.room.id,
+        entry,
+        hue: tileHue(entry.room.title),
+        letter: tileLetter(entry.room.title),
+        waiting,
+        offline: !entry.hostReachable,
+        current: this.openRoom.roomId() === entry.room.id,
+        tip: bits.length ? `${entry.room.title} · ${bits.join(', ')}` : entry.room.title,
+      };
+    }),
+  );
 
   protected readonly backendLabel = computed(() => {
     if (this.store.error()) return this.store.error();
@@ -690,6 +739,32 @@ export class ThreadSidebar {
   protected closeDrawer(): void {
     const drawer = document.getElementById('t-threads') as HTMLInputElement | null;
     if (drawer) drawer.checked = false;
+  }
+
+  protected readonly startingRoom = signal<ThreadSummary | undefined>(undefined);
+
+  protected startRoom(event: Event, thread: ThreadSummary | undefined): void {
+    closeMenu(event);
+    if (thread) this.startingRoom.set(thread);
+  }
+
+  protected openRoomView(room: Room): void {
+    this.setMode('rooms');
+    this.store.select(undefined);
+    this.openRoom.open(room);
+    this.closeDrawer();
+  }
+
+  protected roomCreated(room: Room): void {
+    this.startingRoom.set(undefined);
+    this.openRoomView(room);
+    this.toasts.show('info', this.i18n.t('threads.startRoom.createdN', { value1: room.title }));
+  }
+
+  protected setMode(mode: 'threads' | 'rooms'): void {
+    if (this.prefs.sidebarMode() === mode) return;
+    this.query.set('');
+    void this.prefs.set('sidebarMode', mode);
   }
 
   /** A waiting badge or the waiting count of a project: the thread opens at its approval block. */

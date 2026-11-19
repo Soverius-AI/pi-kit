@@ -20,6 +20,8 @@ import { createSessionUi, type SessionUiHooks } from './session-ui';
 import type { TrustService } from './trust.service';
 import type { UiBridge } from './ui-bridge';
 import type { ThreadProtectionService } from './thread-protection.service';
+import { ReadOnlyTools } from './read-only-tools';
+import { RoomTools, type RoomToolsHook } from './room-tools';
 import { ThreadProtectionExtension } from './thread-protection-extension';
 
 export interface OpenTarget {
@@ -66,6 +68,8 @@ interface LifecycleHooks {
   ui(threadId: string, cwd: string): SessionUiHooks;
   /** A thread that is about to be registered: the facade follows its session's turns from here, before anyone can reach it. */
   opened(thread: OpenThread): void;
+  readOnly(threadId: string): Promise<boolean>;
+  room(): RoomToolsHook | undefined;
 }
 
 /** Session creation, open admission, ownership and shutdown for one backend. */
@@ -188,6 +192,7 @@ export class SessionLifecycle {
     finishPhase('history');
     // A dispose during loadPi released the sandbox already; one started now would never be released.
     assertCurrent();
+    const readOnly = await this.hooks.readOnly(threadId);
     const sandbox = await this.protection.prepare(threadId, cwd);
     const sandboxed = sandbox
       ? await ThreadProtectionExtension.create(pi, { threadId, cwd, client: sandbox, protection: this.protection })
@@ -240,6 +245,10 @@ export class SessionLifecycle {
         createGenUiExtension(),
         createAskUserExtension(),
         ...(sandboxed ? [{ name: ThreadProtectionExtension.NAME, factory: sandboxed.factory, hidden: true }] : []),
+        ...(readOnly ? [{ name: ReadOnlyTools.NAME, factory: ReadOnlyTools.factory(), hidden: true }] : []),
+        ...(readOnly
+          ? [{ name: RoomTools.NAME, factory: RoomTools.factory(threadId, () => this.hooks.room()), hidden: true }]
+          : []),
       ],
     });
     finishPhase('resourcesSetup');

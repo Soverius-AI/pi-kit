@@ -72,6 +72,7 @@ describe('ThreadProtectionExtension', () => {
     await f.start();
     expect(f.call('agent_spawn')).toBeUndefined();
     expect(f.call('ask_user')).toBeUndefined();
+    expect(f.call('room_propose_task')).toBeUndefined();
     expect(f.call('browser_navigate')).toMatchObject({ block: true });
     expect(f.call('custom_exec')).toMatchObject({ block: true });
   });

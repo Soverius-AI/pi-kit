@@ -25,6 +25,9 @@ importers:
 
   .:
     dependencies:
+      '@a2a-js/sdk':
+        specifier: 1.3.0
+        version: 1.3.0(@bufbuild/protobuf@2.16.0)(express@5.2.1(supports-color@10.2.2))
       '@a2ui/web_core':
         specifier: 0.15.0
         version: 0.15.0(patch_hash=a7529c162ea914c53c75cef56b53ee88a093f91364953c6e75db8ddcef5d2339)
@@ -256,7 +259,7 @@ importers:
         version: 23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(nx@23.3.0)(supports-color@10.2.2)
       '@nx/nest':
         specifier: 23.3.0
-        version: 23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(@nestjs/common@12.2.0(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@10.2.2))(@nestjs/core@12.2.0)(@nx/jest@23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(@types/node@24.19.2)(babel-plugin-macros@3.1.0)(nx@23.3.0)(supports-color@10.2.2)(typescript@6.0.3))(@types/node@24.19.2)(@zkochan/js-yaml@0.0.7)(babel-plugin-macros@3.1.0)(eslint@10.12.0(jiti@2.7.0)(supports-color@10.2.2))(express@5.2.1(supports-color@10.2.2))(nx@23.3.0)(prettier@3.9.10)(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@10.2.2)(typescript@6.0.3)
+        version: 23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(@nestjs/common@12.2.0(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@10.2.2))(@nestjs/core@12.2.0)(@nx/jest@23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(@types/node@24.19.2)(babel-plugin-macros@3.1.0)(nx@23.3.0)(supports-color@10.2.2)(typescript@6.0.3))(@types/node@24.19.2)(@zkochan/js-yaml@0.0.7)(babel-plugin-macros@3.1.0)(chokidar@5.0.0)(eslint@10.12.0(jiti@2.7.0)(supports-color@10.2.2))(express@5.2.1(supports-color@10.2.2))(nx@23.3.0)(prettier@3.9.10)(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@10.2.2)(typescript@6.0.3)
       '@nx/node':
         specifier: 23.3.0
         version: 23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(@types/node@24.19.2)(@zkochan/js-yaml@0.0.7)(babel-plugin-macros@3.1.0)(eslint@10.12.0(jiti@2.7.0)(supports-color@10.2.2))(express@5.2.1(supports-color@10.2.2))(nx@23.3.0)(supports-color@10.2.2)(typescript@6.0.3)
@@ -380,6 +383,34 @@ importers:
         version: 1.0.0
 
 packages:
+
+  '@a2a-js/sdk@1.3.0':
+    resolution: {integrity: sha512-OpK4nygUnLKlpTFZlM2IrYu7f3c/B7c4u4Z14+vgMq24lEINTVCxH/BqZx+GL92rNf7CoBL5oTP5UhNsl75yyg==}
+    engines: {node: '>=20'}
+    hasBin: true
+    peerDependencies:
+      '@bufbuild/protobuf': ^2.10.2
+      '@grpc/grpc-js': ^1.11.0
+      better-sqlite3: ^12.0.0 || ^13.0.0
+      express: ^4.21.2 || ^5.1.0
+      kysely: ^0.28.17 || ^0.29.0
+      mysql2: ^3.0.0
+      pg: ^8.0.0
+    peerDependenciesMeta:
+      '@bufbuild/protobuf':
+        optional: true
+      '@grpc/grpc-js':
+        optional: true
+      better-sqlite3:
+        optional: true
+      express:
+        optional: true
+      kysely:
+        optional: true
+      mysql2:
+        optional: true
+      pg:
+        optional: true
 
   '@a2ui/web_core@0.15.0':
     resolution: {integrity: sha512-S3k9rAJ9O55z5TlDeWy22ly3yQnDLO+XBWihlL5JQSuyxaCUmd7jgFnxO4eq/Bn6dSgdBF0WG8cve/euMoz8SA==}
@@ -11546,6 +11577,13 @@ packages:
 
 snapshots:
 
+  '@a2a-js/sdk@1.3.0(@bufbuild/protobuf@2.16.0)(express@5.2.1(supports-color@10.2.2))':
+    dependencies:
+      jose: 6.2.12
+    optionalDependencies:
+      '@bufbuild/protobuf': 2.16.0
+      express: 5.2.1(supports-color@10.2.2)
+
   '@a2ui/web_core@0.15.0(patch_hash=a7529c162ea914c53c75cef56b53ee88a093f91364953c6e75db8ddcef5d2339)':
     dependencies:
       '@lit/context': 1.1.6
@@ -11741,7 +11779,7 @@ snapshots:
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@angular-devkit/architect': 0.2202.3(chokidar@5.0.0)
-      '@angular-devkit/build-webpack': 0.2202.3(webpack-dev-server@6.0.0(supports-color@10.2.2)(webpack-cli@7.2.3)(webpack@5.111.0(cssnano@7.1.9(postcss@8.5.30))(csso@5.0.5)(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(svgo@4.1.0)(webpack-cli@7.2.3)))(webpack@5.111.0(cssnano@7.1.9(postcss@8.5.30))(csso@5.0.5)(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(svgo@4.1.0)(webpack-cli@7.2.3))
+      '@angular-devkit/build-webpack': 0.2202.3(chokidar@5.0.0)(webpack-dev-server@6.0.0(supports-color@10.2.2)(webpack-cli@7.2.3)(webpack@5.111.0(cssnano@7.1.9(postcss@8.5.30))(csso@5.0.5)(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(svgo@4.1.0)(webpack-cli@7.2.3)))(webpack@5.111.0(cssnano@7.1.9(postcss@8.5.30))(csso@5.0.5)(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(svgo@4.1.0)(webpack-cli@7.2.3))
       '@angular-devkit/core': 22.2.3(chokidar@5.0.0)
       '@angular/build': 22.2.3(5f407eea08c02f6b1faf8fb3f4fda7a5)
       '@angular/compiler-cli': 22.2.3(@angular/compiler@22.2.3)(typescript@6.0.3)
@@ -11836,7 +11874,7 @@ snapshots:
       - webpack-cli
       - yaml
 
-  '@angular-devkit/build-webpack@0.2202.3(webpack-dev-server@6.0.0(supports-color@10.2.2)(webpack-cli@7.2.3)(webpack@5.111.0(cssnano@7.1.9(postcss@8.5.30))(csso@5.0.5)(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(svgo@4.1.0)(webpack-cli@7.2.3)))(webpack@5.111.0(cssnano@7.1.9(postcss@8.5.30))(csso@5.0.5)(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(svgo@4.1.0)(webpack-cli@7.2.3))':
+  '@angular-devkit/build-webpack@0.2202.3(chokidar@5.0.0)(webpack-dev-server@6.0.0(supports-color@10.2.2)(webpack-cli@7.2.3)(webpack@5.111.0(cssnano@7.1.9(postcss@8.5.30))(csso@5.0.5)(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(svgo@4.1.0)(webpack-cli@7.2.3)))(webpack@5.111.0(cssnano@7.1.9(postcss@8.5.30))(csso@5.0.5)(esbuild@0.28.2)(lightningcss@1.33.0)(postcss@8.5.28)(svgo@4.1.0)(webpack-cli@7.2.3))':
     dependencies:
       '@angular-devkit/architect': 0.2202.3(chokidar@5.0.0)
       rxjs: 7.8.2
@@ -11845,7 +11883,7 @@ snapshots:
     transitivePeerDependencies:
       - chokidar
 
-  '@angular-devkit/core@19.2.24':
+  '@angular-devkit/core@19.2.24(chokidar@5.0.0)':
     dependencies:
       ajv: 8.18.0
       ajv-formats: 3.0.1
@@ -11853,6 +11891,8 @@ snapshots:
       picomatch: 4.0.4
       rxjs: 7.8.1
       source-map: 0.7.4
+    optionalDependencies:
+      chokidar: 5.0.0
 
   '@angular-devkit/core@22.2.3(chokidar@5.0.0)':
     dependencies:
@@ -11865,9 +11905,9 @@ snapshots:
     optionalDependencies:
       chokidar: 5.0.0
 
-  '@angular-devkit/schematics@19.2.24':
+  '@angular-devkit/schematics@19.2.24(chokidar@5.0.0)':
     dependencies:
-      '@angular-devkit/core': 19.2.24
+      '@angular-devkit/core': 19.2.24(chokidar@5.0.0)
       jsonc-parser: 3.3.1
       magic-string: 0.30.17
       ora: 5.4.1
@@ -15583,10 +15623,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@nestjs/schematics@11.1.0(prettier@3.9.10)(typescript@6.0.3)':
+  '@nestjs/schematics@11.1.0(chokidar@5.0.0)(prettier@3.9.10)(typescript@6.0.3)':
     dependencies:
-      '@angular-devkit/core': 19.2.24
-      '@angular-devkit/schematics': 19.2.24
+      '@angular-devkit/core': 19.2.24(chokidar@5.0.0)
+      '@angular-devkit/schematics': 19.2.24(chokidar@5.0.0)
       comment-json: 5.0.0
       jsonc-parser: 3.3.1
       pluralize: 8.0.0
@@ -15849,9 +15889,9 @@ snapshots:
       - nx
       - supports-color
 
-  '@nx/nest@23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(@nestjs/common@12.2.0(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@10.2.2))(@nestjs/core@12.2.0)(@nx/jest@23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(@types/node@24.19.2)(babel-plugin-macros@3.1.0)(nx@23.3.0)(supports-color@10.2.2)(typescript@6.0.3))(@types/node@24.19.2)(@zkochan/js-yaml@0.0.7)(babel-plugin-macros@3.1.0)(eslint@10.12.0(jiti@2.7.0)(supports-color@10.2.2))(express@5.2.1(supports-color@10.2.2))(nx@23.3.0)(prettier@3.9.10)(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@10.2.2)(typescript@6.0.3)':
+  '@nx/nest@23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(@nestjs/common@12.2.0(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@10.2.2))(@nestjs/core@12.2.0)(@nx/jest@23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(@types/node@24.19.2)(babel-plugin-macros@3.1.0)(nx@23.3.0)(supports-color@10.2.2)(typescript@6.0.3))(@types/node@24.19.2)(@zkochan/js-yaml@0.0.7)(babel-plugin-macros@3.1.0)(chokidar@5.0.0)(eslint@10.12.0(jiti@2.7.0)(supports-color@10.2.2))(express@5.2.1(supports-color@10.2.2))(nx@23.3.0)(prettier@3.9.10)(reflect-metadata@0.2.2)(rxjs@7.8.1)(supports-color@10.2.2)(typescript@6.0.3)':
     dependencies:
-      '@nestjs/schematics': 11.1.0(prettier@3.9.10)(typescript@6.0.3)
+      '@nestjs/schematics': 11.1.0(chokidar@5.0.0)(prettier@3.9.10)(typescript@6.0.3)
       '@nx/devkit': 23.3.0(nx@23.3.0)
       '@nx/eslint': 23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(@nx/jest@23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(@types/node@24.19.2)(babel-plugin-macros@3.1.0)(nx@23.3.0)(supports-color@10.2.2)(typescript@6.0.3))(@zkochan/js-yaml@0.0.7)(eslint@10.12.0(jiti@2.7.0)(supports-color@10.2.2))(nx@23.3.0)(supports-color@10.2.2)
       '@nx/js': 23.3.0(@babel/traverse@7.29.10(supports-color@10.2.2))(nx@23.3.0)(supports-color@10.2.2)

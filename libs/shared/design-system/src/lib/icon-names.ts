@@ -67,6 +67,7 @@ export const PK_ICON_NAMES = [
   'pushpin',
   'refresh',
   'reload',
+  'room',
   'search',
   'settings',
   'settings-advanced',

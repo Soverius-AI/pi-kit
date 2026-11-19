@@ -1,12 +1,12 @@
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import { Component, inject, signal } from '@angular/core';
+import { Component, effect, inject, signal, untracked } from '@angular/core';
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { COPILOT_INSPECTOR_AT_START, RedactionStore, UiStore, ViewPrefs } from '@pi-kit/data-access';
 import { PkLogo, PkTip, PkTabs, PkTabPanel } from '@pi-kit/design-system';
 import { type RedactionConfig, type UserRedactionPattern, compileUserPatterns } from '@pi-kit/protocol';
 import { PkSetting } from '@pi-kit/settings/api';
-import { AdvancedSettingsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/data';
+import { A2aAgentsStore, AdvancedSettingsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/data';
 import { PkAdvanced } from './advanced-block';
 
 function size(bytes: number): string {
@@ -433,7 +433,7 @@ function size(bytes: number): string {
             </section>
           </pk-tab-panel>
         }
-        @if (dialog.shows('pi-release', 'copilot-inspector')) {
+        @if (dialog.shows('pi-release', 'copilot-inspector', 'rooms-preview')) {
           <pk-tab-panel value="runtime" [label]="'settings.sectionTabs.runtime' | transloco">
             <div class="flex flex-col gap-5">
               @if (dialog.shows('pi-release')) {
@@ -469,6 +469,128 @@ function size(bytes: number): string {
                     />
                   </div>
                 </section>
+              }
+
+              @if (dialog.shows('rooms-preview')) {
+                <section
+                  class="pk-group"
+                  [attr.aria-label]="'settings.advancedSection.collaboration' | transloco"
+                  data-testid="collaboration"
+                >
+                  <header>
+                    <div>
+                      <h4>{{ 'settings.advancedSection.collaboration' | transloco }}</h4>
+                      <p>{{ 'settings.advancedSection.collaborationIntro' | transloco }}</p>
+                    </div>
+                  </header>
+                  <div pkSetting="rooms-preview">
+                    <input
+                      type="checkbox"
+                      class="toggle toggle-primary"
+                      aria-labelledby="lbl-rooms-preview"
+                      aria-describedby="hint-rooms-preview"
+                      data-testid="rooms-preview"
+                      [checked]="prefs.roomsPreview()"
+                      (change)="dialog.setPref('roomsPreview', $any($event.target).checked)"
+                    />
+                  </div>
+                </section>
+                @if (prefs.roomsPreview()) {
+                  <section
+                    class="pk-group"
+                    [attr.aria-label]="'settings.advancedSection.a2aAgents' | transloco"
+                    data-testid="a2a-agents"
+                  >
+                    <header>
+                      <div>
+                        <h4>{{ 'settings.advancedSection.a2aAgents' | transloco }}</h4>
+                        <p>{{ 'settings.advancedSection.a2aAgentsIntro' | transloco }}</p>
+                      </div>
+                    </header>
+                    @for (agent of agents.agents(); track agent.id) {
+                      <div class="row" [attr.data-testid]="'a2a-agent-' + agent.id">
+                        <div class="min-w-0">
+                          <div class="lbl">
+                            <span>{{ agent.name }}</span>
+                            @if (agent.tokenStorage !== 'none') {
+                              <span class="chip" [class.warn]="agent.tokenStorage === 'database'">{{
+                                (agent.tokenStorage === 'keychain'
+                                  ? 'settings.advancedSection.agentTokenKeychain'
+                                  : 'settings.advancedSection.agentTokenDatabase'
+                                ) | transloco
+                              }}</span>
+                            }
+                          </div>
+                          <div class="hint mono break-all">{{ agent.url }}</div>
+                        </div>
+                        <div class="ctl ctl-w">
+                          <button
+                            type="button"
+                            class="btn btn-sm"
+                            data-testid="remove-a2a-agent"
+                            [disabled]="agents.busy()"
+                            [attr.aria-label]="
+                              'settings.advancedSection.removeAgentN' | transloco: { value1: agent.name }
+                            "
+                            (click)="agents.remove(agent.id)"
+                          >
+                            {{ 'settings.advancedSection.removeAgent' | transloco }}
+                          </button>
+                        </div>
+                      </div>
+                    } @empty {
+                      <div class="row">
+                        <div class="hint">{{ 'settings.advancedSection.noAgents' | transloco }}</div>
+                      </div>
+                    }
+                    <form class="row" data-testid="add-a2a-agent" (submit)="addAgent($event)">
+                      <div class="min-w-0">
+                        <div class="lbl">{{ 'settings.advancedSection.addAgent' | transloco }}</div>
+                        <div class="hint">{{ 'settings.advancedSection.addAgentHint' | transloco }}</div>
+                        @if (agents.error(); as error) {
+                          <div class="hint text-error" role="alert" data-testid="a2a-agent-error">{{ error }}</div>
+                        }
+                      </div>
+                      <div class="ctl ctl-w flex-col items-stretch">
+                        <label class="sr-only" for="a2a-agent-url">{{
+                          'settings.advancedSection.agentUrl' | transloco
+                        }}</label>
+                        <input
+                          id="a2a-agent-url"
+                          name="url"
+                          type="url"
+                          class="input input-sm mono"
+                          [placeholder]="'settings.advancedSection.agentUrlPlaceholder' | transloco"
+                          autocomplete="off"
+                          spellcheck="false"
+                          [value]="agentUrl()"
+                          (input)="agentUrl.set($any($event.target).value)"
+                        />
+                        <label class="sr-only" for="a2a-agent-token">{{
+                          'settings.advancedSection.agentToken' | transloco
+                        }}</label>
+                        <input
+                          id="a2a-agent-token"
+                          name="token"
+                          type="password"
+                          class="input input-sm"
+                          autocomplete="off"
+                          [placeholder]="'settings.advancedSection.agentToken' | transloco"
+                          [value]="agentToken()"
+                          (input)="agentToken.set($any($event.target).value)"
+                        />
+                        <button
+                          type="submit"
+                          class="btn btn-sm self-end"
+                          data-testid="add-a2a-agent-button"
+                          [disabled]="!agentUrl().trim() || agents.busy()"
+                        >
+                          {{ 'settings.advancedSection.addAgentButton' | transloco }}
+                        </button>
+                      </div>
+                    </form>
+                  </section>
+                }
               }
             </div>
           </pk-tab-panel>
@@ -623,6 +745,9 @@ export class AdvancedSection {
   protected readonly secrets = inject(SecretsStore);
   protected readonly redaction = inject(RedactionStore);
   protected readonly prefs = inject(ViewPrefs);
+  protected readonly agents = inject(A2aAgentsStore);
+  protected readonly agentUrl = signal('');
+  protected readonly agentToken = signal('');
   /** What this window runs with; the toggle offers a reload while they differ. */
   protected readonly inspectorAtStart = inject(COPILOT_INSPECTOR_AT_START);
   /** The pattern being typed (local to this page: nothing is saved until Add). */
@@ -632,6 +757,9 @@ export class AdvancedSection {
 
   constructor() {
     void this.secrets.loadStatus();
+    effect(() => {
+      if (this.prefs.roomsPreview()) untracked(() => void this.agents.load());
+    });
     void this.secrets.loadProtection();
     void this.redaction.load();
   }
@@ -661,6 +789,14 @@ export class AdvancedSection {
     const current = this.redaction.config();
     const offFor = on ? current.offFor.filter((c) => c !== cwd) : [...current.offFor.filter((c) => c !== cwd), cwd];
     return this.saveConfig({ ...current, offFor });
+  }
+
+  protected async addAgent(event: Event): Promise<void> {
+    event.preventDefault();
+    if (await this.agents.add(this.agentUrl(), this.agentToken())) {
+      this.agentUrl.set('');
+      this.agentToken.set('');
+    }
   }
 
   protected addPattern(event: Event): Promise<void> {

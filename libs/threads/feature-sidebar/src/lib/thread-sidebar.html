@@ -33,7 +33,48 @@
       {{ needs().total }}
     </button>
   }
-  @for (tile of rail(); track tile.cwd) {
+  @if (showModeSwitch()) {
+    <button
+      class="btn btn-ghost btn-sm btn-square pk-rail-mode"
+      type="button"
+      data-testid="rail-mode"
+      [attr.data-attention]="(roomsMode() ? needs().total > 0 : rooms.waiting() > 0) ? 'wait' : null"
+      [pkTip]="(roomsMode() ? 'threads.threadSidebar.threads' : 'threads.threadSidebar.rooms') | transloco"
+      [attr.aria-label]="
+        (roomsMode()
+          ? needs().total > 0
+            ? 'threads.threadSidebar.threadsSomethingWaits'
+            : 'threads.threadSidebar.threads'
+          : rooms.waiting() > 0
+            ? 'threads.threadSidebar.roomsSomethingWaits'
+            : 'threads.threadSidebar.rooms'
+        ) | transloco
+      "
+      (click)="setMode(roomsMode() ? 'threads' : 'rooms')"
+    >
+      <pk-icon [name]="roomsMode() ? 'code' : 'room'" size="16" />
+    </button>
+  }
+  @if (roomsMode()) {
+    @for (tile of roomRail(); track tile.id) {
+      <button
+        class="pk-rail-tile"
+        type="button"
+        data-testid="rail-room"
+        [attr.aria-current]="tile.current ? 'true' : null"
+        [attr.data-offline]="tile.offline ? '' : null"
+        [pkTip]="tile.tip"
+        [attr.aria-label]="tile.tip"
+        (click)="openRoomView(tile.entry.room)"
+      >
+        <span class="pk-ptile" [attr.data-hue]="tile.hue" aria-hidden="true">{{ tile.letter }}</span>
+        @if (tile.waiting) {
+          <span class="dot" data-kind="wait" data-testid="rail-dot"></span>
+        }
+      </button>
+    }
+  }
+  @for (tile of roomsMode() ? [] : rail(); track tile.cwd) {
     <button
       class="pk-rail-tile"
       type="button"
@@ -64,7 +105,7 @@
 </nav>
 
 <div class="pk-side-full">
-  <!-- The top: the search takes the width, the amber "+" with its chevron menu stays. -->
+  <!-- The top: the search takes the width, the amber "+" with its chevron menu stays; with Rooms (preview) on, the Rooms / Threads switch sits before the search. -->
   <div class="pk-side-top">
     <button
       type="button"
@@ -76,125 +117,192 @@
     >
       <pk-icon name="sidebar" size="16" />
     </button>
+    @if (showModeSwitch()) {
+      <div
+        class="pk-seg pk-seg-icons"
+        role="radiogroup"
+        data-testid="sidebar-mode"
+        [attr.aria-label]="'threads.threadSidebar.sidebarContent' | transloco"
+      >
+        <button
+          type="button"
+          role="radio"
+          data-testid="mode-rooms"
+          [attr.aria-checked]="roomsMode()"
+          [attr.data-attention]="!roomsMode() && rooms.waiting() > 0 ? 'wait' : null"
+          [pkTip]="'threads.threadSidebar.rooms' | transloco"
+          [attr.aria-label]="
+            (!roomsMode() && rooms.waiting() > 0
+              ? 'threads.threadSidebar.roomsSomethingWaits'
+              : 'threads.threadSidebar.rooms'
+            ) | transloco
+          "
+          (click)="setMode('rooms')"
+        >
+          <pk-icon name="room" />
+        </button>
+        <button
+          type="button"
+          role="radio"
+          data-testid="mode-threads"
+          [attr.aria-checked]="!roomsMode()"
+          [attr.data-attention]="roomsMode() && needs().total > 0 ? 'wait' : null"
+          [pkTip]="'threads.threadSidebar.threads' | transloco"
+          [attr.aria-label]="
+            (roomsMode() && needs().total > 0
+              ? 'threads.threadSidebar.threadsSomethingWaits'
+              : 'threads.threadSidebar.threads'
+            ) | transloco
+          "
+          (click)="setMode('threads')"
+        >
+          <pk-icon name="code" />
+        </button>
+      </div>
+    }
     <label class="pk-search">
       <pk-icon name="search" size="14" />
       <input
         #search
         type="search"
-        [placeholder]="'threads.threadSidebar.searchThreads' | transloco"
-        [attr.aria-label]="'threads.threadSidebar.searchThreads' | transloco"
+        [placeholder]="
+          (roomsMode() ? 'threads.threadSidebar.searchRooms' : 'threads.threadSidebar.searchThreads') | transloco
+        "
+        [attr.aria-label]="
+          (roomsMode() ? 'threads.threadSidebar.searchRooms' : 'threads.threadSidebar.searchThreads') | transloco
+        "
         [pkTip]="('threads.threadSidebar.searchThreads54fa9' | transloco) + key('search-threads') + ')'"
         [value]="query()"
         (input)="query.set($any($event.target).value)"
       />
-      <details pkViewportMenu class="dropdown dropdown-end">
-        <summary
-          class="btn btn-ghost btn-xs btn-square list-none"
-          [attr.data-on]="store.showArchived() || store.hiddenProjects().length > 0"
-          [pkTip]="'threads.threadSidebar.filter' | transloco"
-          [attr.aria-label]="'threads.threadSidebar.filter' | transloco"
-          data-testid="filter-menu"
-        >
-          <pk-icon name="filter" size="14" />
-        </summary>
-        <ul
-          class="dropdown-content menu menu-sm bg-base-100 rounded-box border border-base-300 shadow-lg w-64 p-1 z-40"
-        >
-          <li>
-            <button
-              type="button"
-              role="menuitemcheckbox"
-              [attr.aria-checked]="store.showArchived()"
-              (click)="toggleArchived($event)"
-            >
-              <span class="flex-1 text-left">{{ 'threads.threadSidebar.showArchivedThreads' | transloco }}</span>
-              @if (store.showArchived()) {
-                <pk-icon name="check" size="14" />
+      @if (!roomsMode()) {
+        <details pkViewportMenu class="dropdown dropdown-end">
+          <summary
+            class="btn btn-ghost btn-xs btn-square list-none"
+            [attr.data-on]="store.showArchived() || store.hiddenProjects().length > 0"
+            [pkTip]="'threads.threadSidebar.filter' | transloco"
+            [attr.aria-label]="'threads.threadSidebar.filter' | transloco"
+            data-testid="filter-menu"
+          >
+            <pk-icon name="filter" size="14" />
+          </summary>
+          <ul
+            class="dropdown-content menu menu-sm bg-base-100 rounded-box border border-base-300 shadow-lg w-64 p-1 z-40"
+          >
+            <li>
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                [attr.aria-checked]="store.showArchived()"
+                (click)="toggleArchived($event)"
+              >
+                <span class="flex-1 text-left">{{ 'threads.threadSidebar.showArchivedThreads' | transloco }}</span>
+                @if (store.showArchived()) {
+                  <pk-icon name="check" size="14" />
+                }
+              </button>
+            </li>
+            @if (store.hiddenProjects().length > 0) {
+              <li class="menu-title">{{ 'threads.threadSidebar.hiddenProjects' | transloco }}</li>
+              @for (hidden of store.hiddenProjects(); track hidden.workspace.cwd) {
+                <li>
+                  <button
+                    type="button"
+                    [title]="hidden.workspace.cwd"
+                    (click)="showHidden($event, hidden.workspace.cwd)"
+                  >
+                    <span class="flex-1 text-left truncate">{{ hidden.workspace.name }}</span>
+                    <span class="text-xs text-muted">{{ 'threads.threadSidebar.show' | transloco }}</span>
+                  </button>
+                </li>
               }
-            </button>
-          </li>
-          @if (store.hiddenProjects().length > 0) {
-            <li class="menu-title">{{ 'threads.threadSidebar.hiddenProjects' | transloco }}</li>
-            @for (hidden of store.hiddenProjects(); track hidden.workspace.cwd) {
-              <li>
-                <button type="button" [title]="hidden.workspace.cwd" (click)="showHidden($event, hidden.workspace.cwd)">
-                  <span class="flex-1 text-left truncate">{{ hidden.workspace.name }}</span>
-                  <span class="text-xs text-muted">{{ 'threads.threadSidebar.show' | transloco }}</span>
-                </button>
-              </li>
             }
-          }
-          <li class="mt-1 border-t border-base-300 pt-1">
-            <button type="button" (click)="openAttendantActivity($event)">
-              {{ 'threads.threadSidebar.attendantActivity' | transloco }}
-            </button>
-          </li>
-        </ul>
-      </details>
+            <li class="mt-1 border-t border-base-300 pt-1">
+              <button type="button" (click)="openAttendantActivity($event)">
+                {{ 'threads.threadSidebar.attendantActivity' | transloco }}
+              </button>
+            </li>
+          </ul>
+        </details>
+      }
     </label>
-    <div class="inline-flex shrink-0 items-center rounded-lg bg-primary text-primary-content">
+    @if (!roomsMode()) {
+      <div class="inline-flex shrink-0 items-center rounded-lg bg-primary text-primary-content">
+        <button
+          class="btn btn-sm btn-primary btn-square rounded-l-lg rounded-r-none border-0 shadow-none"
+          type="button"
+          data-testid="new-thread"
+          [attr.aria-label]="'threads.threadSidebar.newThread' | transloco"
+          [pkTip]="('threads.threadSidebar.newThread' | transloco) + key('new-thread') + ')'"
+          [disabled]="!store.workspace()"
+          (click)="create()"
+        >
+          <pk-icon name="plus" size="16" />
+        </button>
+        <details pkViewportMenu class="dropdown dropdown-end border-l border-primary-content/20">
+          <summary
+            class="btn btn-sm btn-primary min-h-8 w-7 rounded-l-none rounded-r-lg border-0 px-0 shadow-none list-none"
+            [pkTip]="'threads.threadSidebar.newThreadOptions' | transloco"
+            [attr.aria-label]="'threads.threadSidebar.newThreadOptions' | transloco"
+            data-testid="new-thread-menu"
+            [attr.aria-disabled]="!store.workspace()"
+          >
+            <pk-icon name="chevron-down" size="14" />
+          </summary>
+          <ul
+            class="dropdown-content menu menu-sm bg-base-100 rounded-box border border-base-300 shadow-lg w-60 p-1 z-40"
+          >
+            <li>
+              <button type="button" data-testid="new-in-folder" (click)="menuNewLocal($event, store.workspace()!)">
+                <span class="flex-1 text-left"
+                  >{{ 'threads.threadSidebar.inThisFolder' | transloco
+                  }}<span class="block text-xs text-muted">{{
+                    'threads.threadSidebar.worksInItselfN'
+                      | transloco: { value1: store.workspaceName() ?? ('threads.threadSidebar.theProject' | transloco) }
+                  }}</span></span
+                >
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                data-testid="new-in-worktree"
+                [disabled]="!canWorktree()"
+                [title]="canWorktree() ? '' : ('threads.threadSidebar.aWorktreeNeedsAGitRepository' | transloco)"
+                (click)="menuNewWorktree($event, store.workspace()!)"
+              >
+                <span class="flex-1 text-left"
+                  >{{ 'threads.threadSidebar.inANewWorktree' | transloco
+                  }}<span class="block text-xs text-muted">{{
+                    canWorktree()
+                      ? ('threads.threadSidebar.itsOwnBranchAndFolderCutFrom' | transloco) +
+                        worktreeBase() +
+                        ('threads.threadSidebar.mergedBackWhenDoneNa7c41' | transloco)
+                      : ('threads.threadSidebar.thisProjectIsNotAGitRepository' | transloco)
+                  }}</span></span
+                >
+              </button>
+            </li>
+          </ul>
+        </details>
+      </div>
+    } @else {
       <button
-        class="btn btn-sm btn-primary btn-square rounded-l-lg rounded-r-none border-0 shadow-none"
         type="button"
-        data-testid="new-thread"
-        [attr.aria-label]="'threads.threadSidebar.newThread' | transloco"
-        [pkTip]="('threads.threadSidebar.newThread' | transloco) + key('new-thread') + ')'"
-        [disabled]="!store.workspace()"
-        (click)="create()"
+        class="btn btn-sm btn-primary btn-square rounded-lg border-0 shadow-none"
+        data-testid="start-room-plus"
+        [disabled]="!store.selected()"
+        [pkTip]="'threads.startRoom.startARoomFromThisThread' | transloco"
+        [attr.aria-label]="'threads.startRoom.startARoomFromThisThread' | transloco"
+        (click)="startRoom($event, store.selected())"
       >
         <pk-icon name="plus" size="16" />
       </button>
-      <details pkViewportMenu class="dropdown dropdown-end border-l border-primary-content/20">
-        <summary
-          class="btn btn-sm btn-primary min-h-8 w-7 rounded-l-none rounded-r-lg border-0 px-0 shadow-none list-none"
-          [pkTip]="'threads.threadSidebar.newThreadOptions' | transloco"
-          [attr.aria-label]="'threads.threadSidebar.newThreadOptions' | transloco"
-          data-testid="new-thread-menu"
-          [attr.aria-disabled]="!store.workspace()"
-        >
-          <pk-icon name="chevron-down" size="14" />
-        </summary>
-        <ul
-          class="dropdown-content menu menu-sm bg-base-100 rounded-box border border-base-300 shadow-lg w-60 p-1 z-40"
-        >
-          <li>
-            <button type="button" data-testid="new-in-folder" (click)="menuNewLocal($event, store.workspace()!)">
-              <span class="flex-1 text-left"
-                >{{ 'threads.threadSidebar.inThisFolder' | transloco
-                }}<span class="block text-xs text-muted">{{
-                  'threads.threadSidebar.worksInItselfN'
-                    | transloco: { value1: store.workspaceName() ?? ('threads.threadSidebar.theProject' | transloco) }
-                }}</span></span
-              >
-            </button>
-          </li>
-          <li>
-            <button
-              type="button"
-              data-testid="new-in-worktree"
-              [disabled]="!canWorktree()"
-              [title]="canWorktree() ? '' : ('threads.threadSidebar.aWorktreeNeedsAGitRepository' | transloco)"
-              (click)="menuNewWorktree($event, store.workspace()!)"
-            >
-              <span class="flex-1 text-left"
-                >{{ 'threads.threadSidebar.inANewWorktree' | transloco
-                }}<span class="block text-xs text-muted">{{
-                  canWorktree()
-                    ? ('threads.threadSidebar.itsOwnBranchAndFolderCutFrom' | transloco) +
-                      worktreeBase() +
-                      ('threads.threadSidebar.mergedBackWhenDoneNa7c41' | transloco)
-                    : ('threads.threadSidebar.thisProjectIsNotAGitRepository' | transloco)
-                }}</span></span
-              >
-            </button>
-          </li>
-        </ul>
-      </details>
-    </div>
+    }
   </div>
 
   <!-- Quick actions for the current project: always visible, never behind a hover. -->
-  @if (current(); as project) {
+  @if (quickProject(); as project) {
     <div class="pk-quick" data-testid="quick-actions" [attr.data-project]="project.workspace.name">
       <details pkViewportMenu class="dropdown">
         <summary
@@ -374,7 +482,7 @@
         }
       </section>
     }
-    @for (view of views(); track view.project.workspace.cwd) {
+    @for (view of listViews(); track view.project.workspace.cwd) {
       @let project = view.project; @let cwd = project.workspace.cwd;
       <div
         class="pk-project"
@@ -883,6 +991,13 @@
                               {{ 'threads.threadSidebar.clone' | transloco }}
                             </button>
                           </li>
+                          @if (prefs.roomsPreview()) {
+                            <li>
+                              <button type="button" data-testid="start-room" (click)="startRoom($event, thread)">
+                                {{ 'threads.startRoom.startARoomFromThisThread' | transloco }}
+                              </button>
+                            </li>
+                          }
                           @if (thread.worktree?.exists) {
                             <li>
                               <button
@@ -1003,27 +1118,121 @@
         }
       </div>
     } @empty {
-      <p class="text-sm text-muted pt-3 px-2">
-        @if (store.workspaces().length === 0) {
-          {{ 'threads.threadSidebar.noProjectYetStartTheBackendIn' | transloco }}
-          <code>pi</code>
-          {{ 'threads.threadSidebar.there' | transloco }}
-        } @else if (query()) {
-          {{ 'threads.threadSidebar.noThreadMatches' | transloco: { value1: query() } }}
-        } @else {
-          {{ 'threads.threadSidebar.everyProjectIsHiddenShowOneFrom' | transloco }}
-        }
-      </p>
+      @if (!roomsMode()) {
+        <p class="text-sm text-muted pt-3 px-2">
+          @if (store.workspaces().length === 0) {
+            {{ 'threads.threadSidebar.noProjectYetStartTheBackendIn' | transloco }}
+            <code>pi</code>
+            {{ 'threads.threadSidebar.there' | transloco }}
+          } @else if (query()) {
+            {{ 'threads.threadSidebar.noThreadMatches' | transloco: { value1: query() } }}
+          } @else {
+            {{ 'threads.threadSidebar.everyProjectIsHiddenShowOneFrom' | transloco }}
+          }
+        </p>
+      }
     }
 
     <!-- Add/Open is a fresh local-first project choice; existing projects retain their owner. -->
-    <button type="button" class="pk-add" data-testid="add-project" (click)="openFolder($event)">
-      <pk-icon name="folder-plus" />
-      {{ 'threads.threadSidebar.addAProject' | transloco }}
-    </button>
+    @if (!roomsMode()) {
+      <button type="button" class="pk-add" data-testid="add-project" (click)="openFolder($event)">
+        <pk-icon name="folder-plus" />
+        {{ 'threads.threadSidebar.addAProject' | transloco }}
+      </button>
+    }
+    @if (roomsMode()) {
+      <section class="pk-rooms" data-testid="rooms" [attr.aria-label]="'threads.threadSidebar.rooms' | transloco">
+        @for (entry of shownRooms(); track entry.room.id) {
+          <button
+            type="button"
+            class="pk-room-row"
+            data-testid="room-row"
+            [attr.data-room]="entry.room.id"
+            [attr.data-offline]="entry.hostReachable ? null : 'true'"
+            [attr.aria-current]="openRoom.roomId() === entry.room.id ? 'true' : null"
+            (click)="openRoomView(entry.room)"
+          >
+            <span class="pk-room-tile" aria-hidden="true"><pk-icon name="room" /></span>
+            <span class="pk-room-main">
+              <span class="pk-room-title">{{ entry.room.title }}</span>
+              <span class="pk-room-meta"
+                >{{ entry.room.repository }} ·
+                {{
+                  'threads.threadSidebar.hostN'
+                    | transloco
+                      : { value1: entry.local ? ('environments.switch.thisComputer' | transloco) : entry.hostName }
+                }}</span
+              >
+            </span>
+            @if (!entry.hostReachable) {
+              <span class="pk-room-offline" data-testid="room-offline">{{
+                'threads.threadSidebar.hostOffline' | transloco
+              }}</span>
+            } @else if (entry.room.waiting > 0) {
+              <span
+                class="pk-room-waiting"
+                data-testid="room-waiting"
+                [attr.aria-label]="'threads.threadSidebar.roomWaitsN' | transloco: { value1: entry.room.waiting }"
+                >{{ entry.room.waiting }}</span
+              >
+            }
+          </button>
+        } @empty {
+          @if (query().trim()) {
+            <p class="pk-rooms-empty" data-testid="rooms-empty">
+              {{ 'threads.threadSidebar.noRoomsMatch' | transloco }}
+            </p>
+          } @else {
+            <pk-empty-state
+              class="pk-rooms-welcome"
+              data-testid="rooms-welcome"
+              [art]="true"
+              [heading]="'threads.roomsWelcome.heading' | transloco"
+              [text]="'threads.roomsWelcome.text' | transloco"
+            >
+              <span art class="pk-rooms-hero" aria-hidden="true">
+                <span class="orbit"
+                  ><span class="sat a"></span><span class="sat b"></span><span class="sat c"></span
+                ></span>
+                <span class="core"><pk-icon name="room" size="22" /></span>
+              </span>
+              <span actions>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  data-testid="rooms-welcome-start"
+                  [disabled]="!store.selected()"
+                  (click)="startRoom($event, store.selected())"
+                >
+                  <pk-icon name="plus" />
+                  {{ 'threads.roomsWelcome.start' | transloco }}
+                </button>
+              </span>
+              <p class="pk-rooms-welcome-from" data-testid="rooms-welcome-from">
+                @if (store.selected(); as thread) {
+                  {{ 'threads.roomsWelcome.fromN' | transloco: { value1: label(thread) } }}
+                } @else {
+                  {{ 'threads.roomsWelcome.openAThreadFirst' | transloco }}
+                }
+              </p>
+              <ol class="pk-rooms-steps">
+                <li><span class="n">1</span>{{ 'threads.roomsWelcome.step1' | transloco }}</li>
+                <li><span class="n">2</span>{{ 'threads.roomsWelcome.step2' | transloco }}</li>
+                <li><span class="n">3</span>{{ 'threads.roomsWelcome.step3' | transloco }}</li>
+              </ol>
+            </pk-empty-state>
+          }
+        }
+      </section>
+    }
   </div>
 
-  @if (environments.hasPeers() || environments.context.remote) {
+  @if (roomsMode()) {
+    <div class="pk-rooms-note" data-testid="rooms-note">
+      <pk-icon name="globe" size="14" />
+      <span>{{ 'threads.threadSidebar.roomsSpanAllPairedEnvironments' | transloco }}</span>
+    </div>
+  } @else if (environments.hasPeers() || environments.context.remote) {
     <div class="pk-quick pk-env-switch" data-testid="environment-switch">
       <details pkViewportMenu class="dropdown" (toggle)="onEnvironmentMenu($event)">
         <summary
@@ -1269,3 +1478,13 @@
     </button>
   </fieldset>
 </ng-template>
+
+@if (startingRoom(); as thread) {
+  <pk-start-room-dialog
+    [threadId]="thread.id"
+    [threadTitle]="label(thread)"
+    [ownerId]="environments.ownerId()"
+    (closed)="startingRoom.set(undefined)"
+    (created)="roomCreated($event)"
+  />
+}

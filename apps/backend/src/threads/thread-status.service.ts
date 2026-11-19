@@ -140,7 +140,7 @@ export class ThreadStatusService implements OnModuleInit {
     const revisions = new Map(this.revisions);
     const lookups = await this.lookups();
     const states: Record<string, ThreadState> = {};
-    for (const row of await this.threads.all()) {
+    for (const row of await this.threads.visible()) {
       const state = await this.stateOf(row, lookups);
       states[row.id] = state;
       if (revisions.get(row.id) === this.revisions.get(row.id)) this.last.set(row.id, JSON.stringify(state));
@@ -178,7 +178,7 @@ export class ThreadStatusService implements OnModuleInit {
     const revisions = new Map(this.revisions);
     const lookups = await this.lookups();
     const known = new Set<string>();
-    for (const row of await this.threads.all()) {
+    for (const row of await this.threads.visible()) {
       known.add(row.id);
       const state = await this.stateOf(row, lookups);
       const key = JSON.stringify(state);

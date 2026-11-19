@@ -1,6 +1,6 @@
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import { AgentsPanel } from '@pi-kit/agents/feature-agents';
 import { ArtifactsPanel } from '@pi-kit/artifacts/feature-artifacts';
 import { ChatStore, CommandRegistry } from '@pi-kit/chat/api';
@@ -48,9 +48,12 @@ import { ShellStore } from './shell.store';
  * (tree, files, changes, terminal, agents, artifacts), the status bar, and every dialog and overlay. It renders what `ShellStore`,
  * `UiStore` and `ViewPrefs` say and forwards intent; its own code is the panel resize handle and the theme, onboarding and redaction start-up.
  */
+import { OpenRoomStore } from '@pi-kit/rooms/api';
+import { RoomView } from '@pi-kit/rooms/feature-room';
 @Component({
   selector: 'pk-root',
   imports: [
+    RoomView,
     AgentsPanel,
     ArtifactsPanel,
     ChangesPanel,
@@ -90,13 +93,13 @@ import { ShellStore } from './shell.store';
     '(window:pointercancel)': 'cancelPanelResize()',
     '(window:keydown.escape)': 'cancelPanelResize()',
   },
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class App {
   protected readonly i18n = inject(Language);
   private readonly isMac = inject(IS_MAC);
   protected readonly shell = inject(ShellStore);
   protected readonly threads = inject(ThreadsStore);
+  protected readonly openRoom = inject(OpenRoomStore);
   protected readonly session = inject(ChatStore);
   protected readonly bus = inject(UiStore);
   protected readonly review = inject(ChangesStore);
@@ -177,6 +180,9 @@ export class App {
         }
         if (id && open) this.iframeMounted.set(true);
       });
+    });
+    effect(() => {
+      if (this.threads.selectedId()) untracked(() => this.openRoom.close());
     });
     effect(() => {
       const source = this.learningSource();

@@ -4,3 +4,4 @@ export * from './lib/agent-input-container';
 export * from './lib/chat-state';
 export * from './lib/model-picker';
 export * from './lib/palette';
+export * from './lib/thread-model-picker';

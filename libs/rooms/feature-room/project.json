@@ -1,0 +1,25 @@
+{
+  "name": "rooms-feature-room",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/rooms/feature-room/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": ["scope:rooms", "type:feature"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "inputs": ["default", "^production"],
+      "options": {
+        "tsConfig": "libs/rooms/feature-room/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": ["libs/rooms/feature-room/src/**/*.spec.ts"],
+        "setupFiles": ["libs/rooms/feature-room/src/test-setup.ts"]
+      }
+    }
+  }
+}

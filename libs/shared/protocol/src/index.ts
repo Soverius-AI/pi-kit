@@ -2,6 +2,8 @@ export * from './activities';
 export * from './agent-live';
 export * from './environments';
 export * from './peers';
+export * from './rooms';
+export * from './a2a';
 export * from './remote-api';
 export * from './commands';
 export * from './composer';

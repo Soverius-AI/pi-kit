@@ -19,6 +19,9 @@ import { SkillUsesRepository } from './skill-uses.repository';
 import { MaintenanceRepository } from './maintenance.repository';
 import { TerminalReplayRepository } from './terminal-replay.repository';
 import { ThreadProtectionRepository } from './thread-protection.repository';
+import { RoomsRepository } from './rooms.repository';
+import { A2aTasksRepository } from './a2a-tasks.repository';
+import { A2aAgentsRepository } from './a2a-agents.repository';
 import { ThreadsRepository } from './threads.repository';
 
 /**
@@ -50,6 +53,9 @@ import { ThreadsRepository } from './threads.repository';
     AgentSpansRepository,
     MaintenanceRepository,
     ThreadProtectionRepository,
+    RoomsRepository,
+    A2aTasksRepository,
+    A2aAgentsRepository,
   ],
   exports: [
     DatabaseService,
@@ -70,6 +76,9 @@ import { ThreadsRepository } from './threads.repository';
     SignalsRepository,
     AgentSpansRepository,
     ThreadProtectionRepository,
+    RoomsRepository,
+    A2aTasksRepository,
+    A2aAgentsRepository,
   ],
 })
 export class DbModule {}

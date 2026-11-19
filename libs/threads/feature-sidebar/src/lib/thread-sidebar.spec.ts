@@ -10,7 +10,8 @@ import {
   worktreeState,
 } from '@pi-kit/api';
 import { HealthStore, SIDEBAR_WIDTH, ThemeStore, ToastStore, UiStore, ViewPrefs } from '@pi-kit/data-access';
-import type { ThreadSummary, Workspace } from '@pi-kit/protocol';
+import type { Room, ThreadSummary, Workspace } from '@pi-kit/protocol';
+import { OpenRoomStore, RoomsStore } from '@pi-kit/rooms/api';
 import { ConnectorsStore } from '@pi-kit/settings/api';
 import { idleState, thread } from '@pi-kit/testing';
 import {
@@ -61,6 +62,7 @@ describe('ThreadSidebar', () => {
   let projects: ReturnType<typeof signal<Project[]>>;
   let selectedId: ReturnType<typeof signal<string | undefined>>;
   const store = {
+    select: vi.fn(),
     visibleProjects: () => projects().filter((p) => !p.workspace.hidden),
     hiddenProjects: () => projects().filter((p) => p.workspace.hidden),
     workspaces: () => projects().map((p) => p.workspace),
@@ -1077,11 +1079,278 @@ describe('ThreadSidebar', () => {
     });
   });
 
+  describe('rooms', () => {
+    const room = (id: string, title: string): Room => ({
+      id,
+      title,
+      repository: 'github.com/acme/pi-kit',
+      hostInstanceId: '0b6c5bb4-3b1e-4a36-9ad2-7f6f8a1c2d01',
+      baseCommit: 'a'.repeat(40),
+      createdAt: 1,
+      waiting: 0,
+    });
+    const start = vi.fn(async (_threadId: string, _ownerId?: string) => ({
+      title: 'First thread',
+      repository: 'github.com/acme/pi-kit',
+      branch: 'feature/x',
+      baseCommit: 'a'.repeat(40),
+      uncommittedFiles: 2,
+    }));
+    const create = vi.fn(async (input: { title: string }) => room('c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f', input.title));
+    const hosts = vi.fn(async () => [
+      { environmentId: 'local', name: 'Server', local: true, ready: true, reason: null },
+      { environmentId: 'desktop', name: 'Desktop', local: false, ready: true, reason: null },
+    ]);
+    const openRoomStore = { roomId: signal<string | undefined>(undefined), open: vi.fn(), close: vi.fn() };
+    const useRooms = (rooms: Room[], enabled = true) =>
+      TestBed.overrideProvider(OpenRoomStore, { useValue: openRoomStore }).overrideProvider(RoomsStore, {
+        useValue: {
+          enabled: signal(enabled),
+          rooms: signal(rooms),
+          entries: signal(
+            rooms.map((value) => ({
+              room: value,
+              hostName: value.title === 'On the desktop' ? 'Desktop' : 'Server',
+              local: value.title !== 'On the desktop',
+              hostReachable: value.title !== 'Offline host',
+              lastSeenAt: 1,
+            })),
+          ),
+          waiting: signal(rooms.reduce((total, value) => total + value.waiting, 0)),
+          hasRooms: signal(enabled && rooms.length > 0),
+          start,
+          create,
+          hosts,
+          clones: vi.fn(async () => [{ folder: '/srv/pi-kit', clean: true }]),
+        },
+      });
+
+    it('starts a room from a thread menu: reads the repository, shares only the summary, then shows the rooms', async () => {
+      two();
+      useRooms([room('a6f1d2c3-4b5e-4f6a-8b7c-9d0e1f2a3b4c', 'Watcher fix on Linux')]);
+      const fixture = render();
+      expect(el(fixture).querySelector('[data-testid=start-room]')).toBeNull();
+      await TestBed.inject(ViewPrefs).set('roomsPreview', true);
+      fixture.detectChanges();
+      (el(fixture).querySelector('[data-testid=start-room]') as HTMLButtonElement).click();
+      await flush(fixture);
+      const dialog = () => el(fixture).querySelector('[data-testid=start-room-dialog]');
+      expect(start.mock.calls.at(-1)?.[0]).toBe('t1');
+      expect(dialog()?.querySelector('[data-testid=start-room-facts]')?.textContent).toContain(
+        'github.com/acme/pi-kit',
+      );
+      expect(dialog()?.querySelector('[data-testid=start-room-facts]')?.textContent).toMatch(
+        /aaaaaaa\s+·\s+feature\/x/,
+      );
+      expect(dialog()?.querySelector('[data-testid=start-room-dirty]')).not.toBeNull();
+      expect((dialog()?.querySelector('[data-testid=start-room-name]') as HTMLInputElement).value).toBe('First thread');
+      expect(dialog()?.querySelector('[data-testid=start-room-preview]')?.textContent).toContain('Nothing');
+      const summary = dialog()?.querySelector('[data-testid=start-room-summary]') as HTMLTextAreaElement;
+      summary.value = 'Run the watcher tests on Linux.';
+      summary.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      expect(dialog()?.querySelector('[data-testid=start-room-preview]')?.textContent).toContain(
+        'Run the watcher tests on Linux.',
+      );
+      (dialog()?.querySelector('[data-testid=start-room-create]') as HTMLButtonElement).click();
+      await flush(fixture);
+      expect(create).toHaveBeenCalledWith(
+        { threadId: 't1', title: 'First thread', summary: 'Run the watcher tests on Linux.' },
+        expect.objectContaining({ environmentId: 'local' }),
+      );
+      expect(dialog()).toBeNull();
+      expect(uiSettings.set).toHaveBeenCalledWith('sidebarMode', 'rooms');
+      expect(toasts.show).toHaveBeenCalledWith('info', 'Room “First thread” created.');
+      expect(store.select).toHaveBeenCalledWith(undefined);
+      expect(openRoomStore.open).toHaveBeenCalledWith(expect.objectContaining({ title: 'First thread' }));
+    });
+
+    it('keeps Create room off and says why when the thread has no repository', async () => {
+      two();
+      useRooms([]);
+      start.mockRejectedValueOnce(new Error('A room needs a git repository with at least one commit.'));
+      const fixture = render();
+      await TestBed.inject(ViewPrefs).set('roomsPreview', true);
+      fixture.detectChanges();
+      (el(fixture).querySelector('[data-testid=start-room]') as HTMLButtonElement).click();
+      await flush(fixture);
+      expect(el(fixture).querySelector('[data-testid=start-room-error]')?.textContent).toContain('git repository');
+      expect((el(fixture).querySelector('[data-testid=start-room-create]') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('shows no Rooms / Threads switch while Rooms (preview) is off', () => {
+      two();
+      useRooms([], false);
+      const fixture = render();
+      expect(el(fixture).querySelector('[data-testid=sidebar-mode]')).toBeNull();
+      expect(el(fixture).querySelectorAll('.pk-project')).toHaveLength(2);
+    });
+
+    it('shows the switch as soon as Rooms (preview) is on, and a welcome that starts a room while there is none', async () => {
+      two();
+      useRooms([]);
+      const fixture = render();
+      expect(el(fixture).querySelector('[data-testid=sidebar-mode]')).not.toBeNull();
+      (el(fixture).querySelector('[data-testid=mode-rooms]') as HTMLButtonElement).click();
+      await flush(fixture);
+      const welcome = el(fixture).querySelector('[data-testid=rooms-welcome]') as HTMLElement;
+      expect(welcome.querySelector('h2')?.textContent?.trim()).toBe('Your first room');
+      expect(welcome.querySelector('.pk-rooms-hero')).not.toBeNull();
+      expect(welcome.querySelector('[data-testid=rooms-welcome-from]')?.textContent?.trim()).toBe(
+        'From “First thread”',
+      );
+      expect(el(fixture).querySelector('[data-testid=start-room-plus]')).not.toBeNull();
+      (welcome.querySelector('[data-testid=rooms-welcome-start]') as HTMLButtonElement).click();
+      await flush(fixture);
+      expect(start.mock.calls.at(-1)?.[0]).toBe('t1');
+      expect(el(fixture).querySelector('[data-testid=start-room-dialog]')).not.toBeNull();
+    });
+
+    it('keeps the search bar beside the switch: the filter and new thread in Threads, a room search and + in Rooms', async () => {
+      two();
+      useRooms([room('a6f1d2c3-4b5e-4f6a-8b7c-9d0e1f2a3b4c', 'Watcher fix on Linux')]);
+      const fixture = render();
+      const top = () => el(fixture).querySelector('.pk-side-top') as HTMLElement;
+      expect(top().querySelector('[data-testid=sidebar-mode] + .pk-search input[type=search]')).not.toBeNull();
+      expect(top().querySelector('.pk-search [data-testid=filter-menu]')).not.toBeNull();
+      expect(top().querySelector('[data-testid=new-thread]')).not.toBeNull();
+      (el(fixture).querySelector('[data-testid=mode-rooms]') as HTMLButtonElement).click();
+      await flush(fixture);
+      expect(top().querySelector('input[type=search]')?.getAttribute('aria-label')).toBe('Search rooms');
+      expect(top().querySelector('[data-testid=filter-menu]')).toBeNull();
+      expect(top().querySelector('[data-testid=new-thread]')).toBeNull();
+      expect(top().querySelector('[data-testid=start-room-plus]')).not.toBeNull();
+    });
+
+    it('starts a room on another paired computer from the repository and base commit', async () => {
+      two();
+      useRooms([]);
+      create.mockClear();
+      const fixture = render();
+      await TestBed.inject(ViewPrefs).set('roomsPreview', true);
+      fixture.detectChanges();
+      (el(fixture).querySelector('[data-testid=start-room]') as HTMLButtonElement).click();
+      await flush(fixture);
+      const select = el(fixture).querySelector('[data-testid=start-room-host]') as HTMLSelectElement;
+      expect(Array.from(select.options).map((option) => option.textContent?.trim())).toEqual([
+        'This computer',
+        'Desktop',
+      ]);
+      select.value = 'desktop';
+      select.dispatchEvent(new Event('change'));
+      await flush(fixture);
+      expect(el(fixture).querySelector('[data-testid=start-room-host-note]')?.textContent).toContain('Desktop');
+      expect(el(fixture).querySelector('[data-testid=start-room-folder-only]')?.textContent).toBe('/srv/pi-kit');
+      (el(fixture).querySelector('[data-testid=start-room-create]') as HTMLButtonElement).click();
+      await flush(fixture);
+      expect(create).toHaveBeenCalledWith(
+        {
+          title: 'First thread',
+          summary: '',
+          repository: 'github.com/acme/pi-kit',
+          baseCommit: 'a'.repeat(40),
+          projectFolder: '/srv/pi-kit',
+        },
+        expect.objectContaining({ environmentId: 'desktop' }),
+      );
+    });
+
+    it('shows each room’s host, a waiting count first, and Host offline for a host that does not answer', async () => {
+      two();
+      useRooms([
+        room('a6f1d2c3-4b5e-4f6a-8b7c-9d0e1f2a3b4c', 'Offline host'),
+        room('5f0c6a43-8f1e-4a7b-9d4e-2c1b0a9f8e7d', 'Here'),
+        { ...room('c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f', 'On the desktop'), waiting: 2 },
+      ]);
+      const fixture = render();
+      expect(el(fixture).querySelector('[data-testid=mode-rooms]')?.getAttribute('data-attention')).toBe('wait');
+      (el(fixture).querySelector('[data-testid=mode-rooms]') as HTMLButtonElement).click();
+      await flush(fixture);
+      const rows = Array.from(el(fixture).querySelectorAll('[data-testid=room-row]'));
+      expect(rows.map((row) => row.querySelector('.pk-room-title')?.textContent?.trim())).toEqual([
+        'On the desktop',
+        'Offline host',
+        'Here',
+      ]);
+      expect(rows[0].querySelector('.pk-room-meta')?.textContent).toContain('host Desktop');
+      expect(rows[0].querySelector('[data-testid=room-waiting]')?.textContent?.trim()).toBe('2');
+      expect(rows[1].querySelector('[data-testid=room-offline]')?.textContent?.trim()).toBe('Host offline');
+      expect(rows[2].querySelector('.pk-room-meta')?.textContent).toContain('host This computer');
+    });
+
+    it('shows rooms on the rail: a mode button with attention, room tiles, and a click opens the room', async () => {
+      two();
+      useRooms([
+        room('a6f1d2c3-4b5e-4f6a-8b7c-9d0e1f2a3b4c', 'Offline host'),
+        { ...room('c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f', 'On the desktop'), waiting: 2 },
+      ]);
+      const fixture = render();
+      const mode = () => el(fixture).querySelector('[data-testid=rail-mode]') as HTMLButtonElement;
+      expect(mode().getAttribute('data-attention')).toBe('wait');
+      expect(el(fixture).querySelectorAll('[data-testid=rail-room]')).toHaveLength(0);
+      mode().click();
+      await flush(fixture);
+      const tiles = Array.from(el(fixture).querySelectorAll<HTMLElement>('[data-testid=rail-room]'));
+      expect(tiles.map((tile) => tile.getAttribute('aria-label'))).toEqual([
+        'On the desktop · Desktop, 2 waiting for you',
+        'Offline host · Host offline',
+      ]);
+      expect(tiles[0].querySelector('[data-testid=rail-dot]')).not.toBeNull();
+      expect(tiles[1].hasAttribute('data-offline')).toBe(true);
+      expect(el(fixture).querySelectorAll('[data-testid=rail-project]')).toHaveLength(0);
+      tiles[0].click();
+      expect(openRoomStore.open).toHaveBeenCalledWith(expect.objectContaining({ title: 'On the desktop' }));
+    });
+
+    it('switches the list to rooms and back, keeps Needs you, and searches room titles', async () => {
+      two();
+      useRooms([
+        room('a6f1d2c3-4b5e-4f6a-8b7c-9d0e1f2a3b4c', 'Watcher fix on Linux'),
+        room('5f0c6a43-8f1e-4a7b-9d4e-2c1b0a9f8e7d', 'Event batching'),
+      ]);
+      const fixture = render();
+      const mode = (name: string) =>
+        el(fixture).querySelector<HTMLButtonElement>(`[data-testid=mode-${name}]`) as HTMLButtonElement;
+      expect(mode('threads').getAttribute('aria-checked')).toBe('true');
+      mode('rooms').click();
+      await flush(fixture);
+      expect(uiSettings.set).toHaveBeenCalledWith('sidebarMode', 'rooms');
+      expect(mode('rooms').getAttribute('aria-checked')).toBe('true');
+      expect(mode('threads').getAttribute('data-attention')).toBe('wait');
+      expect(
+        Array.from(el(fixture).querySelectorAll('[data-testid=room-row] .pk-room-title')).map((e) =>
+          e.textContent?.trim(),
+        ),
+      ).toEqual(['Watcher fix on Linux', 'Event batching']);
+      expect(el(fixture).querySelectorAll('.pk-project')).toHaveLength(0);
+      expect(el(fixture).querySelector('[data-testid=needs-you]')).not.toBeNull();
+      expect(el(fixture).querySelector('[data-testid=quick-actions]')).toBeNull();
+      expect(el(fixture).querySelector('[data-testid=new-thread]')).toBeNull();
+      expect(el(fixture).querySelector('[data-testid=filter-menu]')).toBeNull();
+      expect(el(fixture).querySelector('[data-testid=rooms-note]')).not.toBeNull();
+      const input = el(fixture).querySelector<HTMLInputElement>('input[type=search]') as HTMLInputElement;
+      expect(input.getAttribute('aria-label')).toBe('Search rooms');
+      input.value = 'batch';
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      expect(el(fixture).querySelectorAll('[data-testid=room-row]')).toHaveLength(1);
+      input.value = 'nothing';
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+      expect(el(fixture).querySelector('[data-testid=rooms-empty]')?.textContent?.trim()).toBe('No rooms match.');
+      mode('threads').click();
+      await flush(fixture);
+      expect(uiSettings.set).toHaveBeenCalledWith('sidebarMode', 'threads');
+      expect(el(fixture).querySelectorAll('.pk-project')).toHaveLength(2);
+      expect(el(fixture).querySelector('[data-testid=rooms-note]')).toBeNull();
+    });
+  });
+
   it('the right edge resizes the sidebar: a drag saves once at the end, arrows step, a double-click resets', async () => {
     const fixture = render();
     const prefs = TestBed.inject(ViewPrefs);
     const edge = el(fixture).querySelector<HTMLElement>('[data-testid=sidebar-resize]') as HTMLElement;
-    edge.dispatchEvent(new MouseEvent('pointerdown', { clientX: 280, button: 0, bubbles: true }));
+    edge.dispatchEvent(new MouseEvent('pointerdown', { clientX: 320, button: 0, bubbles: true }));
     edge.dispatchEvent(new MouseEvent('pointermove', { clientX: 340, bubbles: true }));
     fixture.detectChanges();
     expect(prefs.sidebarWidth()).toBe(340);
