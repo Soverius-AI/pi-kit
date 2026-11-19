@@ -213,7 +213,7 @@ describe('Windows detached desktop updater (injected operations; no installers)'
     const script = windowsDesktopUpdateScript('C:\\plan.json');
     expect(script).toContain("-ArgumentList ('/S ' + $scope + ' /D=' + $o.root) -PassThru -Wait");
     expect(script).toContain('$process.ExitCode -ne 0');
-    expect(script).toContain('& $o.executable $o.cliScript @arguments');
+    expect(script).toContain('Start-Process -FilePath $o.executable -ArgumentList $commandArguments');
     expect(script).toContain("$env:ELECTRON_RUN_AS_NODE = '1'");
     expect(script.indexOf("Cli @('--version')")).toBeGreaterThan(script.indexOf('Start-Process -FilePath'));
     expect(script).toContain("$version -cne ('pi-kit ' + $p.version)");
@@ -229,6 +229,52 @@ describe('Windows detached desktop updater (injected operations; no installers)'
     expect(script).toContain('[IO.File]::Delete($lockPath)');
     expect(script).toContain('Remove-Item -LiteralPath $p.staging -Recurse -Force');
     expect(script).not.toContain('Remove-Item -LiteralPath $p.log');
+  });
+
+  it('polls authenticated service JSON for bounded backend readiness and expected identity/version', () => {
+    const script = windowsDesktopUpdateScript('C:\\plan.json');
+    const poll = script.slice(script.indexOf('function Wait-Backend'), script.indexOf('# Let the initiating'));
+    expect(poll).toContain('[DateTime]::UtcNow.AddSeconds(60)');
+    expect(poll).toContain("Cli @('service', 'status', '--json') @(0, 1, 3) $remaining");
+    expect(poll).toContain('($deadline - [DateTime]::UtcNow).TotalMilliseconds');
+    expect(poll).toContain('$state.host.version -ceq $expectedVersion');
+    expect(poll).toContain("$state.host.level -eq 'login'");
+    expect(poll).toContain('[IO.Path]::GetFullPath($state.host.install)');
+    expect(poll).toContain("$state.status.state -eq 'running'");
+    expect(poll).toContain("$state.status.state -eq 'failed'");
+    expect(poll).toContain('Start-Sleep -Milliseconds 200');
+    expect(poll).toContain("throw ('Service backend did not become ready");
+    expect(script).toContain('$restartVersion = $state.host.version');
+    expect(script).toContain('$restartVersion = $p.version');
+    expect(script.indexOf('$state = Wait-Backend $restartVersion')).toBeGreaterThan(
+      script.indexOf("Cli @('service', 'start')"),
+    );
+    expect(script).toContain("Status 'failed' ('Service restart failed: '");
+    expect(script).not.toContain('Service start returned without a running host.');
+  });
+
+  it('bounds every CLI child, drains output to unique files, kills on timeout and cleans resources', () => {
+    const script = windowsDesktopUpdateScript('C:\\plan.json');
+    const cli = script.slice(script.indexOf('function Cli('), script.indexOf('function Host-State'));
+    expect(cli).toContain('[int] $timeoutMs = 60000');
+    expect(cli).toContain("if ($timeoutMs -le 0) { throw 'CLI deadline expired before launch.' }");
+    expect(cli).toContain("$argument -notmatch '^[a-zA-Z0-9-]+$'");
+    expect(cli).toContain(`$commandArguments = '"' + $o.cliScript + '" ' + ($arguments -join ' ')`);
+    expect(cli.match(/\[IO.Path\]::GetTempFileName\(\)/g)).toHaveLength(2);
+    expect(cli).toContain('-RedirectStandardOutput $stdout -RedirectStandardError $stderr');
+    expect(cli).toContain('if (!$process.WaitForExit($timeoutMs))');
+    expect(cli).toContain('$process.Kill(); $null = $process.WaitForExit(1000)');
+    expect(cli).toContain('timed out after {1} ms.');
+    expect(cli).toContain('$code = $process.ExitCode');
+    expect(cli).toContain('[IO.File]::ReadAllText($stdout)');
+    expect(cli).toContain('[IO.File]::ReadAllText($stderr)');
+    expect(cli).toContain('if ($allowed -notcontains $code)');
+    expect(cli).toContain('} finally {');
+    expect(cli).toContain('$process.Dispose()');
+    expect(cli).toContain('foreach ($file in @($stdout, $stderr))');
+    expect(cli).toContain('Remove-Item -LiteralPath $file -Force');
+    expect(cli).not.toContain('$LASTEXITCODE');
+    expect(cli).not.toContain('-Wait');
   });
 
   it('restarts only a previously running service in finally, preserving diagnostics on installer failure', () => {

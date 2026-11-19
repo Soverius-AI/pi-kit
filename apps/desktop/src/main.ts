@@ -488,11 +488,6 @@ async function answerBackend(value: unknown): Promise<DesktopAnswer> {
   // pi-kit's own update: the backend decides when, this process does it with electron-updater.
   if (message.type === 'app-update') {
     const updater = appUpdates();
-    // Windows' installer cannot replace a pi-kit.exe that still runs, and the host and backend are pi-kit.exe too.
-    if (message.action === 'install' && process.platform === 'win32' && updater.pending) {
-      switching = true;
-      await stopHost();
-    }
     return updater.run(message.action ?? 'check').then(
       (result) => ({ result }),
       (error: Error) => ({ error: error.message }),
@@ -514,10 +509,20 @@ async function answerBackend(value: unknown): Promise<DesktopAnswer> {
 
 /** The one updater: electron-updater's events go to the log and to the backend's update job. */
 function appUpdates(): AppUpdater {
-  return (appUpdater ??= new AppUpdater((event) => {
-    mainLog?.line(`app update: ${JSON.stringify(event)}`);
-    host?.appUpdateEvent(event);
-  }));
+  return (appUpdater ??= new AppUpdater(
+    (event) => {
+      mainLog?.line(`app update: ${JSON.stringify(event)}`);
+      host?.appUpdateEvent(event);
+    },
+    async () => {
+      // Run only after the install RPC has been acknowledged. Windows cannot replace
+      // the host/backend pi-kit.exe processes while they are still running.
+      if (process.platform === 'win32') {
+        switching = true;
+        await stopHost();
+      }
+    },
+  ));
 }
 
 /** Quit was chosen in a startup dialog. */

@@ -6,6 +6,7 @@ export * from './daemon-update-restart';
 export * from './daemon-update-restart';
 export * from './mac-app-update';
 export * from './linux-app-update';
+export * from './linux-desktop-finisher';
 export * from './windows-desktop-update';
 export * from './discovery';
 export * from './database-reset';

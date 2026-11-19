@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { stopHost, waitFor } from './cli-host';
+import { stopHost } from './cli-host';
 import { desktopAsset, manifestSha512 } from './desktop-cli';
 import { isNewerVersion, type HostDiscovery } from './discovery';
 import type { HostStatus } from './host-protocol';
@@ -154,6 +154,60 @@ export async function runDesktopUpdateCli(check: boolean, io: CliIo, ctx: CliCon
   }
 }
 
+/** Discovery advertises a host before its backend is healthy. Authenticate and wait for readiness. */
+async function waitForDesktopBackend(
+  ctx: CliContext,
+  install: DesktopUpdateInstall,
+  version: string,
+): Promise<HostDiscovery> {
+  const identity = resolve(install.hostInstall ?? join(install.root, 'Contents', 'Resources'));
+  const deadline = Date.now() + 60_000;
+  // Keep the iteration budget too: injected sleeps need not advance the wall clock.
+  for (let waited = 0; waited < 60_000 && Date.now() < deadline; waited += 200) {
+    const host = ctx.discover();
+    if (host?.version === version && host.level === 'login' && host.install && resolve(host.install) === identity) {
+      let status: HostStatus | undefined;
+      let peer: Awaited<ReturnType<CliContext['connect']>> | undefined;
+      let expired = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        status = await Promise.race([
+          (async () => {
+            const connected = await ctx.connect(host);
+            // A connection may resolve after the deadline. Never leak it or issue a late RPC.
+            if (expired) {
+              connected.close();
+              return undefined;
+            }
+            peer = connected;
+            return await peer.call<HostStatus>('status');
+          })(),
+          new Promise<undefined>((resolve) => {
+            timer = setTimeout(
+              () => {
+                expired = true;
+                resolve(undefined);
+              },
+              Math.max(0, deadline - Date.now()),
+            );
+          }),
+        ]);
+      } catch {
+        // Discovery may precede the socket accepting authenticated requests.
+      } finally {
+        if (timer) clearTimeout(timer);
+        peer?.close();
+      }
+      if (expired) break;
+      if (status?.status?.state === 'running') return host;
+      if (status?.status?.state === 'failed' || status?.status?.state === 'stopped')
+        throw new Error(`the service backend ${status.status.state}; see "pi-kit service logs".`);
+    }
+    await ctx.sleep(200);
+  }
+  throw new Error('the service backend did not become ready in time; see "pi-kit service logs".');
+}
+
 /** Runs detached: stopping the service must not kill the updater along with a remote terminal. */
 export async function finishDesktopUpdate(plan: DesktopUpdatePlan, io: CliIo, ctx: CliContext): Promise<number> {
   let staged: Awaited<ReturnType<DesktopUpdateOperations['stage']>> | undefined;
@@ -198,11 +252,7 @@ export async function finishDesktopUpdate(plan: DesktopUpdatePlan, io: CliIo, ct
       try {
         await (ctx.restartDesktopService ? ctx.restartDesktopService() : manager.start());
         const expected = replacementError ? current : plan.version;
-        const running = await waitFor(ctx, () => {
-          const found = ctx.discover();
-          return found?.version === expected ? found : undefined;
-        });
-        if (!running) throw new Error('the service did not start in time; see "pi-kit service logs".');
+        const running = await waitForDesktopBackend(ctx, install, expected);
         io.out(`Running ${running.version}, pid ${running.pid}.\n`);
       } catch (error) {
         if (replacementError)
@@ -212,18 +262,17 @@ export async function finishDesktopUpdate(plan: DesktopUpdatePlan, io: CliIo, ct
         if (staged.rollback) {
           try {
             const failedHost = ctx.discover();
+            if (failedHost) {
+              const identity = resolve(install.hostInstall ?? join(install.root, 'Contents', 'Resources'));
+              if (!failedHost.install || resolve(failedHost.install) !== identity || failedHost.level !== 'login')
+                throw new Error('another host owns this profile; refusing to stop it for rollback.', { cause: error });
+            }
             if (failedHost && !(await stopHost(ctx, failedHost)))
               throw new Error('the failed service could not stop for rollback.', { cause: error });
             staged.rollback();
             io.err('The updated service could not start; restored the previous app. Restarting it…\n');
             await (ctx.restartDesktopService ? ctx.restartDesktopService() : manager.start());
-            if (
-              !(await waitFor(ctx, () => {
-                const found = ctx.discover();
-                return found?.version === current ? found : undefined;
-              }))
-            )
-              throw new Error('the previous service did not start.', { cause: error });
+            await waitForDesktopBackend(ctx, install, current);
           } catch (rollback) {
             throw new AggregateError(
               [error, rollback],

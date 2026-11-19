@@ -100,7 +100,7 @@ function background(ctx: CliContext, steps: string[], attached = false, restarte
     ({
       call: async (method: string, action?: string) => {
         steps.push(action ? `${method}:${action}` : method);
-        if (method === 'status') return { desktopAttached: attached };
+        if (method === 'status') return { desktopAttached: attached, status: { state: 'running' } };
         if (method === 'stop') {
           running = undefined;
           return {};
@@ -284,7 +284,7 @@ describe('macOS desktop pi-kit update', () => {
       });
       const output = io();
       expect(await finishDesktopUpdate(plan, output, ctx)).toBe(fails ? 1 : 0);
-      expect(steps).toEqual(['stage and verify', 'status', 'stop', 'replace', 'start', 'cleanup']);
+      expect(steps).toEqual(['stage and verify', 'status', 'stop', 'replace', 'start', 'status', 'cleanup']);
       expect(ctx.discover()).toMatchObject({ pid: 2 });
       expect(existsSync(plan.staging)).toBe(false);
       if (fails) expect(output.err).toHaveBeenCalledWith(expect.stringContaining('rolled back'));
@@ -309,6 +309,158 @@ describe('macOS desktop pi-kit update', () => {
     expect(starts).toBe(2);
     expect(ctx.discover()).toMatchObject({ pid: 2 });
     expect(staged.cleanup).toHaveBeenCalledOnce();
+  });
+
+  it('waits for authenticated backend readiness, closing each polling connection', async () => {
+    const { ctx } = await world();
+    background(ctx, []);
+    const connect = ctx.connect;
+    const close = vi.fn();
+    let polls = 0;
+    ctx.connect = async (host) => {
+      if (host.version !== '2.0.0') return connect(host);
+      return {
+        call: async () => ({ status: { state: ++polls < 3 ? 'starting' : 'running' } }),
+        close,
+      } as never;
+    };
+    const sleep = vi.fn(async () => undefined);
+    ctx.sleep = sleep;
+    expect(await finishDesktopUpdate(await planFor(ctx), io(), ctx)).toBe(0);
+    expect(polls).toBe(3);
+    expect(close).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['starting', 'restarting', 'failed', 'unreachable'])(
+    'rolls back a discovered updated host whose backend is %s and authenticates recovery',
+    async (state) => {
+      const { ctx, stage } = await world();
+      background(ctx, []);
+      const discover = ctx.discover;
+      const connect = ctx.connect;
+      const start = ctx.manager!.start.bind(ctx.manager);
+      let starts = 0;
+      let recoveryPolls = 0;
+      ctx.restartDesktopService = async () => {
+        starts++;
+        await start();
+      };
+      ctx.discover = () => {
+        const host = discover();
+        if (!host || host.pid === 1) return host;
+        return {
+          ...host,
+          version: starts > 1 ? '1.0.0' : '2.0.0',
+          install: starts === 1 && state === 'wrong identity' ? '/another/install' : host.install,
+        };
+      };
+      ctx.connect = async (host) => {
+        const peer = await connect(host);
+        return {
+          call: async (method: string) => {
+            if (method !== 'status' || host.pid === 1) return peer.call(method);
+            if (starts > 1) {
+              recoveryPolls++;
+              return { status: { state: recoveryPolls < 2 ? 'starting' : 'running' } };
+            }
+            if (state === 'unreachable') throw new Error('socket not ready');
+            return { status: { state } };
+          },
+          close: () => peer.close(),
+        } as never;
+      };
+      const staged = { replace: vi.fn(), rollback: vi.fn(), cleanup: vi.fn() };
+      stage.mockResolvedValue(staged);
+      expect(await finishDesktopUpdate(await planFor(ctx), io(), ctx)).toBe(1);
+      expect(staged.rollback).toHaveBeenCalledOnce();
+      expect(starts).toBe(2);
+      expect(recoveryPolls).toBe(2);
+    },
+  );
+
+  it.each(['status', 'connect'])('bounds a hanging %s by wall clock and closes late peers', async (hang) => {
+    const { ctx, stage } = await world();
+    background(ctx, []);
+    const plan = await planFor(ctx);
+    const connect = ctx.connect;
+    const start = ctx.manager!.start.bind(ctx.manager);
+    let starts = 0;
+    ctx.restartDesktopService = async () => {
+      if (++starts === 1) await start();
+      else background(ctx, [], false, '1.0.0');
+    };
+    const close = vi.fn();
+    let resolveConnection!: (peer: Awaited<ReturnType<CliContext['connect']>>) => void;
+    let attempted = false;
+    ctx.connect = async (host) => {
+      if (host.pid === 1 || attempted) return connect(host);
+      attempted = true;
+      if (hang === 'connect')
+        return new Promise((resolve) => {
+          resolveConnection = resolve;
+        });
+      return { call: () => new Promise(() => undefined), close } as never;
+    };
+    const staged = { replace: vi.fn(), rollback: vi.fn(), cleanup: vi.fn() };
+    stage.mockResolvedValue(staged);
+    vi.useFakeTimers();
+    try {
+      const result = finishDesktopUpdate(plan, io(), ctx);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(await result).toBe(1);
+      expect(staged.rollback).toHaveBeenCalledOnce();
+      if (hang === 'connect') {
+        const call = vi.fn();
+        resolveConnection({ call, close } as never);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(call).not.toHaveBeenCalled();
+      }
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('refuses to stop an unrelated host or roll back under it after readiness failure', async () => {
+    const { ctx, stage } = await world();
+    const steps: string[] = [];
+    background(ctx, steps);
+    const discover = ctx.discover;
+    ctx.discover = () => {
+      const host = discover();
+      return host?.pid === 2 ? { ...host, install: '/another/install' } : host;
+    };
+    const staged = { replace: vi.fn(), rollback: vi.fn(), cleanup: vi.fn() };
+    stage.mockResolvedValue(staged);
+    const output = io();
+    expect(await finishDesktopUpdate(await planFor(ctx), output, ctx)).toBe(1);
+    expect(steps.filter((step) => step === 'stop')).toHaveLength(1);
+    expect(staged.rollback).not.toHaveBeenCalled();
+    expect(output.err).toHaveBeenCalledWith(expect.stringContaining('refusing to stop it for rollback'));
+    expect(ctx.discover()).toMatchObject({ pid: 2, install: '/another/install' });
+  });
+
+  it('reports recovery failure when the restored host exists but its backend never becomes ready', async () => {
+    const { ctx, stage } = await world();
+    background(ctx, [], false, '1.0.0');
+    const connect = ctx.connect;
+    ctx.connect = async (host) => {
+      if (host.pid === 1) return connect(host);
+      const peer = await connect(host);
+      return {
+        call: async (method: string) => (method === 'status' ? { status: { state: 'starting' } } : peer.call(method)),
+        close: () => peer.close(),
+      } as never;
+    };
+    const staged = { replace: vi.fn(), rollback: vi.fn(), cleanup: vi.fn() };
+    stage.mockResolvedValue(staged);
+    const output = io();
+    expect(await finishDesktopUpdate(await planFor(ctx), output, ctx)).toBe(1);
+    expect(staged.rollback).toHaveBeenCalledOnce();
+    expect(output.err).toHaveBeenCalledWith(expect.stringContaining('recovery failed'));
+    expect(output.out).not.toHaveBeenCalledWith(expect.stringContaining('Running '));
   });
 
   it('does not stop a service whose privileged restart cannot be authorized', async () => {

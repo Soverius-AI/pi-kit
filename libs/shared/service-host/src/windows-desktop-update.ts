@@ -143,11 +143,40 @@ function Status([string] $state, [string] $message) {
     ConvertTo-Json | Set-Content -LiteralPath ($p.log + '.status.json') -Encoding UTF8
   Log ($state + ': ' + $message)
 }
-function Cli([string[]] $arguments, [int[]] $allowed = @(0)) {
-  $output = & $o.executable $o.cliScript @arguments 2>&1
-  $code = $LASTEXITCODE
-  if ($allowed -notcontains $code) { throw ('CLI {0} failed ({1}): {2}' -f ($arguments -join ' '), $code, ($output -join [Environment]::NewLine)) }
-  return ($output -join [Environment]::NewLine)
+function Cli([string[]] $arguments, [int[]] $allowed = @(0), [int] $timeoutMs = 60000) {
+  if ($timeoutMs -le 0) { throw 'CLI deadline expired before launch.' }
+  # Arguments are internal literals; only the validated CLI script path needs quoting.
+  foreach ($argument in $arguments) {
+    if ($argument -notmatch '^[a-zA-Z0-9-]+$') { throw 'Unsafe internal CLI argument.' }
+  }
+  $stdout = $null
+  $stderr = $null
+  $process = $null
+  try {
+    $stdout = [IO.Path]::GetTempFileName()
+    $stderr = [IO.Path]::GetTempFileName()
+    $commandArguments = '"' + $o.cliScript + '" ' + ($arguments -join ' ')
+    # Redirect to files, not pipes: a full output buffer must never deadlock the timeout wait.
+    $process = Start-Process -FilePath $o.executable -ArgumentList $commandArguments -PassThru -WindowStyle Hidden -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+    $null = $process.Handle
+    if (!$process.WaitForExit($timeoutMs)) {
+      try { $process.Kill(); $null = $process.WaitForExit(1000) } catch { Log ('Could not terminate timed-out CLI: ' + $_.Exception.Message) }
+      throw ('CLI {0} timed out after {1} ms.' -f ($arguments -join ' '), $timeoutMs)
+    }
+    $code = $process.ExitCode
+    $output = [IO.File]::ReadAllText($stdout)
+    $errorOutput = [IO.File]::ReadAllText($stderr)
+    if ($allowed -notcontains $code) { throw ('CLI {0} failed ({1}): {2} {3}' -f ($arguments -join ' '), $code, $output, $errorOutput) }
+    return $output
+  } finally {
+    if ($process) { $process.Dispose() }
+    foreach ($file in @($stdout, $stderr)) {
+      if ($file) {
+        try { Remove-Item -LiteralPath $file -Force -ErrorAction Stop }
+        catch { Log ('Could not remove CLI output file: ' + $_.Exception.Message) }
+      }
+    }
+  }
 }
 function Host-State {
   $state = Cli @('service', 'status', '--json') @(0, 3) | ConvertFrom-Json
@@ -161,6 +190,25 @@ function Host-State {
   }
   return $state
 }
+function Wait-Backend([string] $expectedVersion) {
+  $deadline = [DateTime]::UtcNow.AddSeconds(60)
+  do {
+    try {
+      $remaining = [int][Math]::Max(0, [Math]::Floor(($deadline - [DateTime]::UtcNow).TotalMilliseconds))
+      $state = Cli @('service', 'status', '--json') @(0, 1, 3) $remaining | ConvertFrom-Json
+    } catch { $state = $null }
+    if ($state.host -and $state.host.version -ceq $expectedVersion -and $state.host.level -eq 'login' -and
+        $state.host.install -and [string]::Equals([IO.Path]::GetFullPath($state.host.install).TrimEnd('\'), (Join-Path $o.root 'resources').TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)) {
+      if ($state.status.state -eq 'running') { return $state }
+      if ($state.status.state -eq 'failed' -or $state.status.state -eq 'stopped') {
+        throw ('Service backend is ' + $state.status.state)
+      }
+    }
+    Start-Sleep -Milliseconds 200
+  } while ([DateTime]::UtcNow -lt $deadline)
+  throw ('Service backend did not become ready within 60 seconds for version ' + $expectedVersion)
+}
+
 try {
   # Let the initiating remote CLI print its acknowledgement before stopping the backend that owns its terminal.
   Start-Sleep -Milliseconds 1000
@@ -196,6 +244,7 @@ try {
   $state = Host-State
   if ($state.host) {
     $restart = $true
+    $restartVersion = $state.host.version
     Status 'stopping' ('Stopping expected background host ' + $o.hostPid)
     $null = Cli @('service', 'stop')
     $after = Cli @('service', 'status', '--json') @(0, 3) | ConvertFrom-Json
@@ -208,6 +257,7 @@ try {
   if ($process.ExitCode -ne 0) { throw ('NSIS installer exited with ' + $process.ExitCode) }
   $version = (Cli @('--version')).Trim()
   if ($version -cne $p.version -and $version -cne ('pi-kit ' + $p.version)) { throw ('Installed CLI version does not match expected release: ' + $version) }
+  $restartVersion = $p.version
   Status 'installed' ('Verified installed version ' + $p.version)
 } catch {
   $failed = $true
@@ -217,8 +267,7 @@ try {
     try {
       Log 'Restarting background service using the installed CLI (also attempted after installation failure).'
       $null = Cli @('service', 'start')
-      $state = Cli @('service', 'status', '--json') | ConvertFrom-Json
-      if (!$state.host) { throw 'Service start returned without a running host.' }
+      $state = Wait-Backend $restartVersion
       Log ('Service restarted, pid ' + $state.host.pid)
     } catch {
       $failed = $true

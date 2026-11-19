@@ -36,8 +36,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Check silent AppImage updates and permission handling
-        working-directory: libs/shared/service-host
-        run: pnpm exec vitest run src/linux-app-update.spec.ts src/desktop-update-cli.spec.ts
+        run: pnpm exec vitest run --root libs/shared/service-host src/linux-app-update.spec.ts src/linux-desktop-finisher.spec.ts src/desktop-update-cli.spec.ts
 
   windows-install:
     runs-on: windows-latest
@@ -53,5 +52,4 @@ jobs:
       - run: pnpm install --frozen-lockfile --node-linker=isolated --shamefully-hoist
       - run: node --test scripts/dependency-contract.spec.mjs
       - name: Check silent desktop updates and parse the Windows helper
-        working-directory: libs/shared/service-host
-        run: pnpm exec vitest run src/windows-desktop-update.spec.ts src/desktop-update-cli.spec.ts
+        run: pnpm exec vitest run --root libs/shared/service-host src/windows-desktop-update.spec.ts src/desktop-update-cli.spec.ts

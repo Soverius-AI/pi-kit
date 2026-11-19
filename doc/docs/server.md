@@ -60,8 +60,10 @@ release, checks it against the sha512 the app's updater trusts, installs it for 
 After installing the desktop's `pi-kit` command, `pi-kit update --check` checks for a release and `pi-kit update`
 installs it silently, including over SSH or a remote terminal. An open desktop uses its native updater without an
 installer wizard. If only the background service (or nothing) is running, a detached platform updater owns the work;
-stopping the backend must not kill its updater along with a remote terminal. Remote access may disconnect briefly.
-The install path and profile stay the same, and a previously running service is started again afterward.
+stopping the backend must not kill its updater along with a remote terminal. On Linux, the finisher runs in a separate
+transient systemd user service, not the backend's control group. This requires an available systemd user manager and
+systemd 254 or later; if that launch cannot be confirmed, the update fails without stopping the backend.
+Remote access may disconnect briefly. The install path and profile stay the same, and a previously running service is started again afterward.
 
 | Desktop install | Update file and verification | Detached update |
 |---|---|---|
@@ -70,7 +72,9 @@ The install path and profile stay the same, and a previously running service is 
 | Windows NSIS | matching architecture's installer EXE, manifest SHA-512, matching valid Authenticode signer when the installed app is signed | system PowerShell helper runs NSIS `/S`, preserves `/currentuser` or `/allusers` scope and the existing install directory |
 
 macOS and Linux keep a previous copy beside the install (`.previous`, or a unique suffix when that exists). A failed
-swap rolls back; failure to restart also attempts to restore and start the previous copy. Windows uses NSIS's install
+swap rolls back; failure to restart also attempts to restore and start the previous copy. Restart success requires the
+expected install and version with an authenticated, running backend, not just a published host discovery file.
+Windows uses NSIS's install
 transaction and attempts to restart the service even if the installer fails. It never intentionally terminates a
 different pi-kit installation: unrelated or unverifiable running `pi-kit.exe` processes block the update.
 Unsigned Windows releases can update an unsigned installation using the verified manifest checksum; no code-signing

@@ -16,6 +16,7 @@ import {
   macAppUpdate,
   reserveDaemonUpdateRestart,
   linuxAppUpdate,
+  startLinuxDesktopFinisher,
   preflightWindowsDesktopUpdate,
   startWindowsDesktopUpdate,
   type FinishPlan,
@@ -235,6 +236,16 @@ async function startDesktopFinisher(plan: DesktopUpdatePlan): Promise<void> {
         planFile,
       ]
     : [__filename, FINISH_DESKTOP_UPDATE_FLAG, planFile];
+  if (process.platform === 'linux') {
+    // A detached process still belongs to the host service's cgroup, where
+    // KillMode=mixed kills it as soon as the update stops the host.
+    startLinuxDesktopFinisher({
+      program: image ?? process.execPath,
+      args: childArgs,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    });
+    return;
+  }
   const child = spawn(image ?? process.execPath, childArgs, {
     detached: true,
     stdio: 'ignore',

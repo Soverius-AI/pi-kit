@@ -81,7 +81,10 @@ export class AppUpdater {
   /** Settles once electron-updater reports a download ready to install (on macOS, once Squirrel has it). */
   private readonly ready = new Promise<void>((resolve) => (this.markReady = resolve));
 
-  constructor(private readonly emit: (event: AppUpdateEvent) => void) {}
+  constructor(
+    private readonly emit: (event: AppUpdateEvent) => void,
+    private readonly beforeInstall: () => Promise<void> = async () => undefined,
+  ) {}
 
   /** A downloaded update waits: it installs on "Restart to update" or when the app quits. */
   get pending(): boolean {
@@ -138,15 +141,7 @@ export class AppUpdater {
       undefined,
     );
     if (!found?.available || !found.version || isNewerVersion(version, found.version)) return false;
-    await this.run('download');
-    if (
-      !(await within(
-        this.ready.then(() => true),
-        READY_MS,
-        false,
-      ))
-    )
-      return false;
+    if (!(await this.run('download')).downloaded) return false;
     return (await this.run('install')).downloaded === true;
   }
 
@@ -182,13 +177,23 @@ export class AppUpdater {
       }
       case 'download': {
         if (!this.downloaded) await updater.downloadUpdate();
-        return { available: true, ...(this.latest ? { version: this.latest } : {}), downloaded: true };
+        // On macOS downloadUpdate resolves before Squirrel emits update-downloaded.
+        const downloaded = await within(
+          this.ready.then(() => true),
+          READY_MS,
+          false,
+        );
+        return { available: true, ...(this.latest ? { version: this.latest } : {}), downloaded };
       }
       case 'install': {
         if (!this.downloaded) return { available: !!this.latest, downloaded: false };
         // Quits the app, installs, restarts it. Called after the reply went out, so the backend hears "ok" first.
         // Silent NSIS installation on Windows; other platform updaters ignore the first argument.
-        setTimeout(() => updater.quitAndInstall(true, true), 300);
+        setTimeout(() => {
+          void this.beforeInstall()
+            .then(() => updater.quitAndInstall(true, true))
+            .catch((error: unknown) => this.emit({ kind: 'error', message: String(error) }));
+        }, 300);
         return { available: true, downloaded: true, ...(this.latest ? { version: this.latest } : {}) };
       }
     }
