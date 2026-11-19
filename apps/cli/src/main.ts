@@ -1,14 +1,24 @@
 import { execFileSync, execSync, spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, join } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { createRequire } from 'node:module';
 import { createInterface } from 'node:readline';
+import { parse as parseYaml } from 'yaml';
 import {
   appFolders,
   type CliContext,
   FileLog,
   FINISH_UPDATE_FLAG,
+  FINISH_DESKTOP_UPDATE_FLAG,
+  type DesktopUpdatePlan,
+  finishDesktopUpdate,
+  macAppUpdate,
+  reserveDaemonUpdateRestart,
+  linuxAppUpdate,
+  startLinuxDesktopFinisher,
+  preflightWindowsDesktopUpdate,
+  startWindowsDesktopUpdate,
   type FinishPlan,
   finishWindowsUpdate,
   removeStagingAfterExit,
@@ -49,7 +59,11 @@ const logDir = process.env['PI_KIT_LOG_DIR'] || (scratch ? join(dataDir, 'logs')
 const version = packaged
   ? bundledVersion(__dirname)
   : `${process.versions['electron'] ?? process.versions.node} (development)`;
-const name = serviceName(dataDir, packaged && !scratch && !process.env['PI_KIT_SMOKE']);
+// Remote terminals inherit PI_KIT_DATA_DIR even for the normal installed profile. Its registration keeps the fixed name.
+const name = serviceName(
+  dataDir,
+  packaged && resolve(dataDir) === resolve(folders.dataDir) && !process.env['PI_KIT_SMOKE'],
+);
 const path = (packaged ? loginShellPath() : undefined) ?? process.env['PATH'];
 
 // A checkout names what a packaged host finds beside itself; a development desktop started by `pnpm dev` names its dev server as the origin instead.
@@ -83,6 +97,54 @@ function serverInstall(): CliContext['serverInstall'] {
     releases,
     ...(typeof npm === 'string' ? { npm } : {}),
   };
+}
+
+/** Desktop installs use the embedded feed and update this exact bundle/image, never a separate server install. */
+function desktopUpdateInstall(): CliContext['desktopUpdate'] {
+  if (!packaged || !process.versions['electron'] || serverInstall()) return undefined;
+  if (process.env['PORTABLE_EXECUTABLE_FILE'])
+    throw new Error(
+      'The Windows portable build cannot update itself; download a new portable build or install pi-kit.',
+    );
+  const resources = join(__dirname, '..');
+  const feed = parseYaml(readFileSync(join(resources, 'app-update.yml'), 'utf8')) as {
+    provider?: string;
+    owner?: string;
+    repo?: string;
+  };
+  if (feed.provider !== 'github' || !/^[\w.-]+$/.test(feed.owner ?? '') || !/^[\w.-]+$/.test(feed.repo ?? ''))
+    throw new Error('This desktop install has no supported GitHub update feed.');
+  const common = {
+    target: `${process.platform}-${process.arch}`,
+    releases: `https://api.github.com/repos/${feed.owner}/${feed.repo}/releases/latest`,
+  };
+  if (process.platform === 'darwin') {
+    const root = join(resources, '..', '..');
+    if (!root.endsWith('.app')) return undefined;
+    return { ...macAppUpdate(root), ...common, root, hostInstall: resources };
+  }
+  if (process.platform === 'linux') {
+    const image = ownAppImage(__dirname);
+    if (!image)
+      throw new Error(
+        'Only the installed AppImage updates itself; update other Linux packages with their package manager.',
+      );
+    return { ...linuxAppUpdate(image), ...common, root: image, hostInstall: image };
+  }
+  if (process.platform === 'win32') {
+    const root = dirname(process.execPath);
+    return {
+      ...common,
+      root,
+      hostInstall: resources,
+      version: () => bundledVersion(__dirname),
+      preflight: () => preflightWindowsDesktopUpdate(root, undefined, !!discover()),
+      stage: async () => {
+        throw new Error('Windows desktop updates use the external silent installer helper.');
+      },
+    };
+  }
+  return undefined;
 }
 
 const discover = (): HostDiscovery | undefined => liveDiscovery(dataDir);
@@ -145,6 +207,56 @@ const registration = {
 };
 const manager = serviceManager(registration);
 const bootManager = process.platform === 'darwin' ? serviceManager({ ...registration, level: 'boot' }) : undefined;
+
+/** A remote terminal dies when its backend stops. Finishers must outlive its process group/session. */
+async function startDesktopFinisher(plan: DesktopUpdatePlan): Promise<void> {
+  mkdirSync(logDir, { recursive: true });
+  const planFile = join(plan.staging, 'plan.json');
+  writeFileSync(planFile, JSON.stringify(plan), { mode: 0o600 });
+  if (process.platform === 'win32') {
+    return startWindowsDesktopUpdate(plan, {
+      root: dirname(process.execPath),
+      executable: process.execPath,
+      cliScript: __filename,
+      dataDir,
+      logDir,
+      serviceName: name,
+      hostPid: discover()?.pid,
+    });
+  }
+  // Start a fresh AppImage mount: this CLI's temporary mount can disappear when the initiating command exits.
+  const image = ownAppImage(__dirname);
+  const childArgs = image
+    ? [
+        '-e',
+        `require(require('path').join(process.execPath, '..', 'resources', 'backend', 'pi-kit.cjs'))`,
+        '--',
+        '--no-sandbox',
+        FINISH_DESKTOP_UPDATE_FLAG,
+        planFile,
+      ]
+    : [__filename, FINISH_DESKTOP_UPDATE_FLAG, planFile];
+  if (process.platform === 'linux') {
+    // A detached process still belongs to the host service's cgroup, where
+    // KillMode=mixed kills it as soon as the update stops the host.
+    startLinuxDesktopFinisher({
+      program: image ?? process.execPath,
+      args: childArgs,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    });
+    return;
+  }
+  const child = spawn(image ?? process.execPath, childArgs, {
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+  });
+  await new Promise<void>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('spawn', resolve);
+  });
+  child.unref();
+}
 
 /** A line from the terminal (the prompt on stderr, so stdout stays data) or from piped stdin. */
 async function readLine(prompt: string): Promise<string | undefined> {
@@ -303,41 +415,73 @@ if (args[0] === FINISH_UPDATE_FLAG) {
     () => spawnServiceHost(hostEntry, { ...process.env, PI_KIT_SERVICE_LEVEL: 'login' }),
     (line) => log.line(line),
   ).then(() => process.exit(0));
-} else
-  void runCli(
-    args,
-    {
-      out: (text) => void process.stdout.write(text),
-      err: (text) => void process.stderr.write(text),
-      readLine,
-      readSecret,
-      interactive: !!process.stdin.isTTY,
+} else {
+  const context: CliContext = {
+    version,
+    serviceName: name,
+    dataDir,
+    logDir,
+    manager,
+    ...(bootManager ? { bootManager } : {}),
+    discover,
+    connect,
+    tail: (file, lines) => {
+      const at = join(logDir, file);
+      if (!existsSync(at)) return undefined;
+      return readFileSync(at, 'utf8')
+        .split('\n')
+        .slice(-lines - 1)
+        .join('\n');
     },
-    {
-      version,
-      serviceName: name,
-      dataDir,
-      logDir,
-      manager,
-      ...(bootManager ? { bootManager } : {}),
-      discover,
-      connect,
-      tail: (file, lines) => {
-        const at = join(logDir, file);
-        if (!existsSync(at)) return undefined;
-        return readFileSync(at, 'utf8')
-          .split('\n')
-          .slice(-lines - 1)
-          .join('\n');
+    sleep,
+    openUrl,
+    ...(desktop ? { desktop } : {}),
+    npm,
+    serve,
+    otherInstall: () => (manager ? otherInstall(manager, ownAppImage(__dirname) ?? hostEntry) : undefined),
+    ...(serverInstall() ? { serverInstall: serverInstall() } : {}),
+    ...(process.platform === 'win32' ? { startFinisher } : {}),
+    putOnPath,
+  };
+  const run = async (): Promise<number> => {
+    if (args[0] === 'update' || args[0] === FINISH_DESKTOP_UPDATE_FLAG) {
+      context.desktopUpdate = desktopUpdateInstall();
+      context.startDesktopFinisher = startDesktopFinisher;
+      let daemonRestart: Awaited<ReturnType<typeof reserveDaemonUpdateRestart>> | undefined;
+      context.prepareDesktopServiceRestart = async () => {
+        if (bootManager?.installed()) daemonRestart = await reserveDaemonUpdateRestart(name);
+      };
+      if (bootManager?.installed())
+        context.restartDesktopService = async () => {
+          if (!daemonRestart)
+            throw new Error('Boot-service restart authorization was not obtained; refusing to prompt.');
+          await daemonRestart.restart();
+        };
+      context.closeDesktopServiceRestart = () => daemonRestart?.close();
+    }
+    if (args[0] === FINISH_DESKTOP_UPDATE_FLAG) {
+      const plan = JSON.parse(readFileSync(args[1] ?? '', 'utf8')) as DesktopUpdatePlan;
+      const log = (text: string) => appendFileSync(plan.log, `${new Date().toISOString()} ${text}`);
+      // Let the initiating command print its acknowledgement before a remote terminal is stopped.
+      await sleep(1_000);
+      return finishDesktopUpdate(plan, { out: log, err: log }, context);
+    }
+    return runCli(
+      args,
+      {
+        out: (text) => void process.stdout.write(text),
+        err: (text) => void process.stderr.write(text),
+        readLine,
+        readSecret,
+        interactive: !!process.stdin.isTTY,
       },
-      sleep,
-      openUrl,
-      ...(desktop ? { desktop } : {}),
-      npm,
-      serve,
-      otherInstall: () => (manager ? otherInstall(manager, ownAppImage(__dirname) ?? hostEntry) : undefined),
-      ...(serverInstall() ? { serverInstall: serverInstall() } : {}),
-      ...(process.platform === 'win32' ? { startFinisher } : {}),
-      putOnPath,
-    },
-  ).then((code) => process.exit(code));
+      context,
+    );
+  };
+  void run()
+    .then((code) => process.exit(code))
+    .catch((error: Error) => {
+      process.stderr.write(`pi-kit: ${error.message}\n`);
+      process.exit(1);
+    });
+}

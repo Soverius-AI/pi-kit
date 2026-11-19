@@ -15,6 +15,7 @@ import { DESKTOP_USAGE, type DesktopApp, runDesktopCli } from './desktop-cli';
 import { runLoginCli, runLogoutCli, runModelCli, SETTINGS_USAGE } from './settings-cli';
 import { type FinishPlan, runUpdateCli, UPDATE_USAGE } from './update-cli';
 import { runWatchdogCli, WATCHDOG_USAGE } from './watchdog-cli';
+import type { DesktopUpdateInstall, DesktopUpdatePlan } from './desktop-update-cli';
 
 export interface CliIo {
   out(text: string): void;
@@ -50,6 +51,16 @@ export interface CliContext {
   /** This server install (a tarball with its own runtime): where it is, its version, target and release feed. */
   /** `npm`: the npm package that installed it, which npm updates instead of `pi-kit update`. */
   serverInstall?: { root: string; version: string; target: string; releases: string; npm?: string };
+  /** A desktop install updated silently, including when only its background service is running. */
+  desktopUpdate?: DesktopUpdateInstall;
+  /** In the detached updater, ensure a privileged boot service can be restarted before taking it down. */
+  prepareDesktopServiceRestart?: () => void | Promise<void>;
+  /** Non-interactive restart implementation for a privileged boot service. */
+  restartDesktopService?: () => Promise<void>;
+  /** Release any privileged restart helper held across replacement/recovery. */
+  closeDesktopServiceRestart?: () => void;
+  /** Detached native/platform helper: restarting the backend also ends terminals opened through remote access. */
+  startDesktopFinisher?: (plan: DesktopUpdatePlan) => void | Promise<void>;
   /** Windows: starts the finisher that swaps the install once this command has exited (`pi-kit update`). */
   startFinisher?: (plan: FinishPlan) => void;
   /** A server install: makes `pi-kit` reachable from new terminals unless one already is, and says what it did. */

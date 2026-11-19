@@ -1,6 +1,12 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { autoUpdater } from 'electron-updater';
 import { AppUpdater } from './app-updater';
+
+vi.mock('node:timers/promises', async (importOriginal) => {
+  const original = await importOriginal<typeof import('node:timers/promises')>();
+  return { ...original, setTimeout: vi.fn(original.setTimeout) };
+});
 
 const electron = vi.hoisted(() => ({ isPackaged: true }));
 vi.mock('electron', () => ({
@@ -131,6 +137,72 @@ describe('release notes', () => {
   });
 });
 
+describe('native installation readiness and acknowledgement', () => {
+  afterEach(() => vi.useRealTimers());
+
+  const ready = () => {
+    const listener = vi.mocked(autoUpdater.on).mock.calls.find(([event]) => event === 'update-downloaded')?.[1];
+    (listener as (info: { version: string }) => void)({ version: '0.12.0' });
+  };
+
+  it('waits for native readiness after the download promise resolves', async () => {
+    vi.mocked(autoUpdater.downloadUpdate).mockResolvedValueOnce([]);
+    const updater = new AppUpdater(vi.fn());
+    let answered = false;
+    const download = updater.run('download').then((result) => {
+      answered = true;
+      return result;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(answered).toBe(false);
+    expect(updater.pending).toBe(false);
+    ready();
+    expect(await download).toMatchObject({ downloaded: true });
+    expect(updater.pending).toBe(true);
+  });
+
+  it('does not claim download readiness when the native-ready deadline expires', async () => {
+    vi.mocked(autoUpdater.downloadUpdate).mockResolvedValueOnce([]);
+    vi.mocked(delay).mockResolvedValueOnce(false);
+    const updater = new AppUpdater(vi.fn());
+    expect(await updater.run('download')).toMatchObject({ downloaded: false });
+    expect(delay).toHaveBeenCalledWith(120_000, false, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(await updater.run('install')).toMatchObject({ downloaded: false });
+    expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('acknowledges installation before stopping the host, and waits for stop before quitting', async () => {
+    vi.useFakeTimers();
+    let stopped!: () => void;
+    const beforeInstall = vi.fn(() => new Promise<void>((resolve) => (stopped = resolve)));
+    const updater = new AppUpdater(vi.fn(), beforeInstall);
+    await updater.run('check');
+    ready();
+    expect(await updater.run('install')).toMatchObject({ downloaded: true });
+    expect(beforeInstall).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(beforeInstall).toHaveBeenCalledOnce();
+    expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled();
+    stopped();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(autoUpdater.quitAndInstall).toHaveBeenCalledExactlyOnceWith(true, true);
+  });
+
+  it('reports shutdown failure without running the installer', async () => {
+    vi.useFakeTimers();
+    const emit = vi.fn();
+    const updater = new AppUpdater(emit, async () => {
+      throw new Error('host could not stop');
+    });
+    await updater.run('check');
+    ready();
+    await updater.run('install');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(autoUpdater.quitAndInstall).not.toHaveBeenCalled();
+    expect(emit).toHaveBeenCalledWith({ kind: 'error', message: expect.stringContaining('host could not stop') });
+  });
+});
+
 describe('matching a service that a newer install runs', () => {
   const published = (version: string) => ({ isUpdateAvailable: true, updateInfo: { version, releaseNotes: '' } });
 
@@ -146,7 +218,7 @@ describe('matching a service that a newer install runs', () => {
       });
       expect(await new AppUpdater(vi.fn()).updateTo('0.12.0')).toBe(true);
       expect(autoUpdater.downloadUpdate).toHaveBeenCalledOnce();
-      await vi.waitFor(() => expect(autoUpdater.quitAndInstall).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(autoUpdater.quitAndInstall).toHaveBeenCalledExactlyOnceWith(true, true));
     },
   );
 

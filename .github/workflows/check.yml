@@ -24,6 +24,20 @@ jobs:
       - run: pnpm run check
       - run: node --test e2e/backend-lifecycle.e2e.mjs e2e/browser.desktop.e2e.mjs
 
+  linux-desktop-updates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check silent AppImage updates and permission handling
+        run: pnpm exec vitest run --root libs/shared/service-host src/linux-app-update.spec.ts src/linux-desktop-finisher.spec.ts src/desktop-update-cli.spec.ts
+
   windows-install:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -37,3 +51,5 @@ jobs:
       # Keep the linker flags aligned with the Windows release job.
       - run: pnpm install --frozen-lockfile --node-linker=isolated --shamefully-hoist
       - run: node --test scripts/dependency-contract.spec.mjs
+      - name: Check silent desktop updates and parse the Windows helper
+        run: pnpm exec vitest run --root libs/shared/service-host src/windows-desktop-update.spec.ts src/desktop-update-cli.spec.ts

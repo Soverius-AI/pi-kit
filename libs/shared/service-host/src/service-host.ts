@@ -193,6 +193,16 @@ export class ServiceHost {
         throw new RpcError('The backend is not running.');
       return { ...this.endpoint };
     });
+    // The authenticated CLI may use the same native updater as Settings, without becoming the attached desktop.
+    peer.handle('app-update', async (action) => {
+      if (action !== 'check' && action !== 'download' && action !== 'install')
+        throw new RpcError('Invalid app update action.');
+      if (!this.desktop) throw new RpcError('No desktop app is attached.');
+      const answer = await this.desktop.call<DesktopAnswer>('backend-request', { type: 'app-update', action });
+      if (answer?.['error']) throw new RpcError(String(answer['error']));
+      if (!answer?.['result']) throw new RpcError('The desktop did not answer the update request.');
+      return answer['result'];
+    });
     peer.handle('watchdog.status', () => this.watchdogSettings());
     peer.handle('watchdog.set', (enabled) => {
       if (typeof enabled !== 'boolean') throw new RpcError('Invalid watchdog preference.');
