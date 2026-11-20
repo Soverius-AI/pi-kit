@@ -1,7 +1,7 @@
 import type { Translate } from '@pi-kit/i18n';
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import {
   CONNECTOR_EXPOSURE_TEXT,
   CONNECTOR_EXPOSURES,
@@ -13,10 +13,17 @@ import {
 import { ChatStore } from '@pi-kit/chat/api';
 import { IS_MAC } from '@pi-kit/data-access';
 import { PkIcon, PkItem, PkScrollArea, PkTabPanel, PkTabs, PkTip } from '@pi-kit/design-system';
-import { ConnectorsStore, type EditorSource, FileEditorDialog, SettingsStore } from '@pi-kit/settings/api';
+import {
+  ComposioStore,
+  ConnectorsStore,
+  type EditorSource,
+  FileEditorDialog,
+  SettingsStore,
+} from '@pi-kit/settings/api';
 import { type McpRow, fileRows } from '@pi-kit/settings/util';
 import { PkContextMenu, type PkMenuItem } from '@pi-kit/ui';
 import { AddServerWizard } from './add-server-wizard';
+import { ComposioDialog } from './composio-dialog';
 import { ConnectorLogo } from './connector-logo';
 import { EditServerDialog } from './edit-server-dialog';
 
@@ -39,6 +46,7 @@ const serverActions = (translate: Translate): Record<string, string> => ({
   selector: 'pk-mcp-section',
   imports: [
     AddServerWizard,
+    ComposioDialog,
     ConnectorLogo,
     EditServerDialog,
     FileEditorDialog,
@@ -51,7 +59,6 @@ const serverActions = (translate: Translate): Record<string, string> => ({
     TranslocoPipe,
     PkIcon,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-5" data-testid="section-mcp">
       @if (mcp.notice(); as notice) {
@@ -182,11 +189,6 @@ const serverActions = (translate: Translate): Record<string, string> => ({
                                   : ('settings.mcpSection.apps' | transloco)
                               }}</span
                             >
-                          }
-                          @if (row.connector?.verification?.status === 'unverified') {
-                            <span class="chip warn" [pkTip]="row.connector?.verification?.note ?? ''">{{
-                              'settings.mcpSection.unverified' | transloco
-                            }}</span>
                           }
                         </ng-container>
                         <ng-container ds>{{ row.detail }}</ng-container>
@@ -523,6 +525,11 @@ const serverActions = (translate: Translate): Record<string, string> => ({
         <pk-add-server-wizard />
       }
     }
+    @defer (when composio.visible(); prefetch on idle) {
+      @if (composio.visible()) {
+        <pk-composio-dialog />
+      }
+    }
     @defer (when mcp.edit() !== undefined; prefetch on idle) {
       @if (mcp.edit()) {
         <pk-edit-server-dialog />
@@ -538,6 +545,7 @@ const serverActions = (translate: Translate): Record<string, string> => ({
 export class McpSection {
   protected readonly i18n = inject(Language);
   protected readonly mcp = inject(ConnectorsStore);
+  protected readonly composio = inject(ComposioStore);
   protected readonly store = inject(SettingsStore);
   private readonly session = inject(ChatStore);
 

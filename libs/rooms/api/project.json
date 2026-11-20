@@ -1,0 +1,13 @@
+{
+  "name": "rooms-api",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/rooms/api/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": ["scope:rooms", "type:api"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    }
+  }
+}

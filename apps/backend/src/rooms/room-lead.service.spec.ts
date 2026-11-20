@@ -1,0 +1,345 @@
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { ConflictException } from '@nestjs/common';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { RoomStreamLine } from '@pi-kit/protocol';
+import type { AguiService, HeadlessRun } from '../agui/agui.service';
+import { DatabaseService } from '../db/database.service';
+import { InstanceRepository } from '../db/instance.repository';
+import { MetaRepository } from '../db/meta.repository';
+import { RoomsRepository } from '../db/rooms.repository';
+import { ThreadsRepository } from '../db/threads.repository';
+import type { PiSessionService } from '../pi/pi-session.service';
+import type { ThreadsService } from '../threads/threads.service';
+import { RoomAgents } from './room-agents';
+import { RoomBus } from './room-bus';
+import { RoomLeadService } from './room-lead.service';
+import { RoomQuestions } from './room-questions';
+import { RoomsService } from './rooms.service';
+import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
+import { RoomPlaybookFiles } from './room-playbook-files.service';
+
+let base: string;
+let project: string;
+let db: DatabaseService;
+let rows: ThreadsRepository;
+let rooms: RoomsRepository;
+let lead: RoomLeadService;
+let bus: RoomBus;
+let roomId: string;
+let reply: string;
+let run: HeadlessRun;
+let sandboxState: string;
+let threads: ThreadsService;
+const runHeadless = vi.fn(async (): Promise<HeadlessRun> => run);
+const abort = vi.fn(async () => undefined);
+let dialogs: { id: string; request: { method: string; title: string; message?: string } }[];
+let resumed: HeadlessRun;
+const resumeHeadless = vi.fn(async (): Promise<HeadlessRun> => resumed);
+const pendingDialogs = vi.fn(() => dialogs);
+let readOnly: ((threadId: string) => Promise<boolean>) | undefined;
+const setReadOnlyThreads = vi.fn((hook: typeof readOnly) => (readOnly = hook));
+
+const settle = () => vi.waitFor(() => expect(lead.state(roomId)).not.toBe('working'), { timeout: 5000 });
+
+beforeEach(async () => {
+  base = realpathSync(mkdtempSync(join(tmpdir(), 'pk-room-lead-')));
+  project = join(base, 'pi-kit');
+  mkdirSync(project);
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-C', project, '-c', 'user.name=t', '-c', 'user.email=t@localhost', ...args]);
+  git('init', '-q', '-b', 'main');
+  writeFileSync(join(project, 'a.txt'), 'a\n');
+  git('add', '.');
+  git('commit', '-q', '-m', 'first');
+  db = await DatabaseService.create({ dataDir: join(base, 'data') });
+  rows = new ThreadsRepository(db);
+  rooms = new RoomsRepository(db);
+  const sessionPath = join(base, 'source.jsonl');
+  writeFileSync(sessionPath, '{}\n');
+  await rows.insertDraft({ id: 'source', sessionPath, cwd: project, baseCommit: null });
+  reply = 'I would split this into a Linux test task.';
+  run = { status: 'finished' };
+  sandboxState = 'active';
+  runHeadless.mockClear();
+  resumeHeadless.mockClear();
+  abort.mockClear();
+  dialogs = [];
+  resumed = { status: 'finished' };
+  let created = 0;
+  threads = {
+    create: vi.fn(
+      async (
+        cwd: string,
+        title: string,
+        _w: unknown,
+        _l: unknown,
+        options: { onId?: (id: string) => Promise<void> },
+      ) => {
+        const id = `lead-${++created}`;
+        await options.onId?.(id);
+        const path = join(base, `${id}.jsonl`);
+        writeFileSync(path, '{}\n');
+        await rows.insertDraft({ id, sessionPath: path, cwd, title, baseCommit: null });
+        return { id };
+      },
+    ),
+    setProtection: vi.fn(async (_id: string, change: { mode: string }) => ({
+      mode: change.mode,
+      state: change.mode === 'sandboxed' ? sandboxState : 'bypass',
+      reason: sandboxState === 'unavailable' ? 'srt missing' : null,
+    })),
+    protectionOf: vi.fn(async () => ({ mode: 'sandboxed', state: sandboxState, reason: null })),
+    treeSource: vi.fn(async () => ({
+      entries: [
+        { id: 'u', parentId: null, type: 'message', message: { role: 'user', content: 'hi' } },
+        {
+          id: 'a',
+          parentId: 'u',
+          type: 'message',
+          message: { role: 'assistant', content: [{ type: 'text', text: reply }] },
+        },
+      ],
+      leafId: 'a',
+      path: undefined,
+    })),
+  } as unknown as ThreadsService;
+  bus = new RoomBus(rooms);
+  lead = new RoomLeadService(
+    rooms,
+    threads,
+    { runHeadless, resumeHeadless } as unknown as AguiService,
+    { abort, setReadOnlyThreads, pendingDialogs } as unknown as PiSessionService,
+    bus,
+    new RoomAgents(rows, threads),
+    new RoomQuestions(),
+    new RoomPlaybooksRepository(db),
+  );
+  const room = await new RoomsService(
+    rooms,
+    rows,
+    new InstanceRepository(db),
+    new MetaRepository(db),
+    new RoomPlaybookFiles(),
+  ).create({
+    threadId: 'source',
+    title: 'Watcher fix on Linux',
+    summary: 'Run the watcher tests on Linux.',
+  });
+  roomId = room.id;
+});
+
+afterEach(async () => {
+  await db.onApplicationShutdown();
+  rmSync(base, { recursive: true, force: true });
+});
+
+describe('the room lead', () => {
+  it('makes every room lead a read-only session, and only leads', async () => {
+    await lead.onModuleInit();
+    const leadId = await lead.prepare(roomId);
+    expect(await readOnly?.(leadId)).toBe(true);
+    expect(await readOnly?.('source')).toBe(false);
+  });
+
+  it('creates the lead on the first message, seeds it with the summary, and posts its answer', async () => {
+    const lines: RoomStreamLine[] = [];
+    bus.subscribe(roomId, (line) => lines.push(line));
+    await lead.post(roomId, { text: 'Can Desktop check this on Linux?', route: 'lead' });
+    expect(lead.state(roomId)).toBe('working');
+    await settle();
+    const prompt = runHeadless.mock.calls[0] as unknown as [string, string, { cwd: string }];
+    expect(prompt[0]).toBe('lead-1');
+    expect(prompt[1]).toContain('Run the watcher tests on Linux.');
+    expect(prompt[1]).toContain('Can Desktop check this on Linux?');
+    expect(prompt[2].cwd).toBe(project);
+    const detail = await lead.detail(roomId);
+    expect(detail.lead).toBe('idle');
+    expect(detail.events.map((e) => [e.seq, e.actor, e.text])).toEqual([
+      [1, 'owner', 'Can Desktop check this on Linux?'],
+      [2, 'lead', reply],
+    ]);
+    expect(lines.map((l) => (l.type === 'lead' ? l.state : l.type === 'event' ? l.event.actor : 'task'))).toEqual([
+      'owner',
+      'working',
+      'lead',
+      'idle',
+    ]);
+  });
+
+  it('sandboxes the lead when the sandbox runs here', async () => {
+    await lead.prepare(roomId);
+    expect(threads.setProtection).toHaveBeenCalledWith('lead-1', expect.objectContaining({ mode: 'sandboxed' }));
+    expect(threads.setProtection).not.toHaveBeenCalledWith('lead-1', expect.objectContaining({ mode: 'bypass' }));
+    expect((await lead.detail(roomId)).events).toEqual([]);
+  });
+
+  it('keeps a read-only lead on the host and says so when the sandbox is unavailable', async () => {
+    sandboxState = 'unavailable';
+    await lead.prepare(roomId);
+    expect(threads.setProtection).toHaveBeenLastCalledWith('lead-1', { mode: 'bypass', confirmBypass: true });
+    const note = (await lead.detail(roomId)).events.at(-1);
+    expect(note).toMatchObject({ actor: 'coordinator', kind: 'note' });
+    expect(note?.text).toContain('srt missing');
+    expect(note?.text).toContain('read-only');
+  });
+
+  it('passes images to the lead and records how many came with the message', async () => {
+    const images = [
+      { mimeType: 'image/png' as const, data: 'iVBORw0KGgo=' },
+      { mimeType: 'image/jpeg' as const, data: '/9j/4AAQ' },
+    ];
+    const event = await lead.post(roomId, { text: 'What is wrong here?', route: 'lead', images });
+    expect(event.images).toBe(2);
+    await settle();
+    const call = runHeadless.mock.calls[0] as unknown as [string, string, { images: unknown }];
+    expect(call[2].images).toEqual(images);
+    expect((await lead.detail(roomId)).events[0].images).toBe(2);
+  });
+
+  it('reuses the lead and sends later messages as they are', async () => {
+    await lead.post(roomId, { text: 'First', route: 'lead' });
+    await settle();
+    await lead.post(roomId, { text: 'Second', route: 'lead' });
+    await settle();
+    const calls = runHeadless.mock.calls as unknown as [string, string][];
+    expect(calls.map((c) => c[0])).toEqual(['lead-1', 'lead-1']);
+    expect(calls[1][1]).toBe('Second');
+  });
+
+  it('keeps the lead out of the thread list', async () => {
+    await lead.post(roomId, { text: 'Hello', route: 'lead' });
+    await settle();
+    expect((await rows.list()).map((row) => row.id)).toEqual(['source']);
+    expect((await rows.visible()).map((row) => row.id)).toEqual(['source']);
+    expect((await rows.all()).map((row) => row.id).sort()).toEqual(['lead-1', 'source']);
+  });
+
+  it('keeps consultant threads out of the thread list too', async () => {
+    const path = join(base, 'consultant.jsonl');
+    writeFileSync(path, '{}\n');
+    await rows.insertDraft({ id: 'consultant', sessionPath: path, cwd: project, baseCommit: null });
+    await new RoomPlaybooksRepository(db).addConsultThread('consultant', roomId, 'security');
+    expect((await rows.list()).map((row) => row.id)).toEqual(['source']);
+    expect((await rows.visible()).map((row) => row.id)).toEqual(['source']);
+  });
+
+  it('posts without prompting anyone, and refuses a second prompt while the lead works', async () => {
+    await lead.post(roomId, { text: 'A note', route: 'none' });
+    expect(runHeadless).not.toHaveBeenCalled();
+    let release: (value: HeadlessRun) => void = () => undefined;
+    runHeadless.mockImplementationOnce(() => new Promise<HeadlessRun>((resolve) => (release = resolve)));
+    await lead.post(roomId, { text: 'Busy?', route: 'lead' });
+    await vi.waitFor(() => expect(runHeadless).toHaveBeenCalled(), { timeout: 5000 });
+    await expect(lead.post(roomId, { text: 'Again', route: 'lead' })).rejects.toBeInstanceOf(ConflictException);
+    release({ status: 'finished' });
+    await settle();
+    expect(lead.state(roomId)).toBe('idle');
+  });
+
+  it('cancels a turn that stops without a question it can show, and says so', async () => {
+    run = { status: 'interrupted' };
+    await lead.post(roomId, { text: 'Edit the file', route: 'lead' });
+    await settle();
+    expect(abort).toHaveBeenCalledWith('lead-1');
+    const events = (await lead.detail(roomId)).events;
+    expect(events.at(-1)).toMatchObject({ actor: 'coordinator', kind: 'note' });
+    expect(lead.state(roomId)).toBe('idle');
+  });
+
+  it('asks the owner when the lead stops for an approval and goes on with the answer', async () => {
+    run = { status: 'interrupted' };
+    dialogs = [{ id: 'd1', request: { method: 'confirm', title: 'Read the logs?', message: 'tail -n 50 app.log' } }];
+    const lines: RoomStreamLine[] = [];
+    bus.subscribe(roomId, (line) => lines.push(line));
+    await lead.post(roomId, { text: 'Why does it crash?', route: 'lead' });
+    await vi.waitFor(async () => expect((await lead.detail(roomId)).leadQuestions).toHaveLength(1), { timeout: 5000 });
+    const waiting = await lead.detail(roomId);
+    expect(waiting.leadQuestions[0]).toMatchObject({ id: 'd1', method: 'confirm', title: 'Read the logs?' });
+    expect(waiting.room.waiting).toBe(1);
+    expect(waiting.events.at(-1)?.text).toBe('The lead needs you: Read the logs?');
+    expect(lines.some((line) => line.type === 'lead' && line.questions?.length === 1)).toBe(true);
+    await expect(lead.post(roomId, { text: 'Hello?', route: 'lead' })).rejects.toBeInstanceOf(ConflictException);
+    await expect(lead.answerQuestions(roomId, { answers: [{ id: 'other', confirmed: true }] })).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    const answered = await lead.answerQuestions(roomId, { answers: [{ id: 'd1', confirmed: true }] });
+    expect(answered.leadQuestions).toEqual([]);
+    await settle();
+    expect(resumeHeadless).toHaveBeenCalledWith(
+      'lead-1',
+      [{ interruptId: 'd1', status: 'resolved', payload: { confirmed: true } }],
+      { cwd: project },
+    );
+    const detail = await lead.detail(roomId);
+    expect(detail.events.at(-1)).toMatchObject({ actor: 'lead', text: reply });
+    expect(detail.room.waiting).toBe(0);
+    expect(abort).not.toHaveBeenCalled();
+  });
+
+  it('passes a skipped question on as declined', async () => {
+    run = { status: 'interrupted' };
+    dialogs = [{ id: 'd1', request: { method: 'input', title: 'Which log file?' } }];
+    await lead.post(roomId, { text: 'Look at the logs', route: 'lead' });
+    await vi.waitFor(async () => expect((await lead.detail(roomId)).leadQuestions).toHaveLength(1), { timeout: 5000 });
+    await lead.answerQuestions(roomId, { answers: [{ id: 'd1', cancelled: true }] });
+    await settle();
+    expect(resumeHeadless).toHaveBeenCalledWith('lead-1', [{ interruptId: 'd1', status: 'cancelled' }], {
+      cwd: project,
+    });
+  });
+
+  it('forgets questions nobody can answer after a restart', async () => {
+    await rooms.setLeadQuestions(roomId, [{ id: 'd1', method: 'confirm', title: 'Old' }]);
+    expect((await lead.detail(roomId)).room.waiting).toBe(1);
+    await lead.onModuleInit();
+    const detail = await lead.detail(roomId);
+    expect(detail.leadQuestions).toEqual([]);
+    expect(detail.room.waiting).toBe(0);
+  });
+
+  it('queues agent messages behind a busy lead instead of dropping them', async () => {
+    let release: (value: HeadlessRun) => void = () => undefined;
+    runHeadless.mockImplementationOnce(() => new Promise<HeadlessRun>((resolve) => (release = resolve)));
+    await lead.post(roomId, { text: 'Plan it', route: 'lead' });
+    await vi.waitFor(() => expect(runHeadless).toHaveBeenCalledTimes(1), { timeout: 5000 });
+    await lead.nudge(roomId, 'Result of the task X');
+    expect(lead.pending(roomId)).toBe(1);
+    release({ status: 'finished' });
+    await vi.waitFor(() => expect(runHeadless).toHaveBeenCalledTimes(2), { timeout: 5000 });
+    expect((runHeadless.mock.calls[1] as unknown as [string, string])[1]).toBe('Result of the task X');
+    await settle();
+    expect(lead.pending(roomId)).toBe(0);
+  });
+
+  it('pauses the room when agents wake the lead too often in a row, and resumes on the owner’s word', async () => {
+    const lines: RoomStreamLine[] = [];
+    bus.subscribe(roomId, (line) => lines.push(line));
+    await rooms.setAgentTurns(roomId, RoomLeadService.AGENT_TURN_LIMIT);
+    await lead.nudge(roomId, 'One more');
+    expect(runHeadless).not.toHaveBeenCalled();
+    const detail = await lead.detail(roomId);
+    expect(detail.paused).toBe(true);
+    expect(detail.events.at(-1)?.text).toContain('Paused');
+    expect(lines.some((line) => line.type === 'room' && line.paused)).toBe(true);
+    expect((await lead.update(roomId, { paused: false })).paused).toBe(false);
+    await vi.waitFor(() => expect(runHeadless).toHaveBeenCalledTimes(1), { timeout: 5000 });
+    await settle();
+  });
+
+  it('switches the room to assisted and says so in the room', async () => {
+    const detail = await lead.update(roomId, { mode: 'assisted' });
+    expect(detail.mode).toBe('assisted');
+    expect(detail.events.at(-1)?.text).toContain('Assisted');
+  });
+
+  it('reports a failed turn', async () => {
+    run = { status: 'error', error: 'No model.' };
+    await lead.post(roomId, { text: 'Hello', route: 'lead' });
+    await settle();
+    expect((await lead.detail(roomId)).events.at(-1)?.text).toBe('The lead could not answer: No model.');
+    expect(lead.state(roomId)).toBe('error');
+  });
+});

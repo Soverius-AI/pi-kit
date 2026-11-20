@@ -11,7 +11,9 @@ import { PkLogo } from './logo';
   imports: [PkIcon, PkLogo],
   host: { class: 'pk-empty-state' },
   template: `
-    @if (icon(); as name) {
+    @if (art()) {
+      <ng-content select="[art]" />
+    } @else if (icon(); as name) {
       <span class="mark" aria-hidden="true"><pk-icon [name]="name" size="24" /></span>
     } @else {
       <pk-logo class="brand" tone="gold" [size]="56" />
@@ -28,4 +30,5 @@ export class PkEmptyState {
   readonly heading = input.required<string>();
   readonly text = input<string>();
   readonly icon = input<PkIconName>();
+  readonly art = input(false);
 }

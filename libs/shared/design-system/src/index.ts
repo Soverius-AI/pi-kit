@@ -37,3 +37,4 @@ export * from './lib/dialog-focus';
 export * from './lib/ansi-text';
 export * from './lib/tabs';
 export * from './lib/scroll-area';
+export * from './lib/avatar';

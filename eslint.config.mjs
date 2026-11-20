@@ -23,6 +23,7 @@ const domains = [
   'update',
   'artifacts',
   'agents',
+  'rooms',
 ];
 
 const depConstraints = [

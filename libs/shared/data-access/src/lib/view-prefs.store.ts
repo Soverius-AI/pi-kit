@@ -15,7 +15,7 @@ export type Density = 'comfortable' | 'compact';
 export const PROSE_SIZES = [14, 15, 16, 17, 18] as const;
 export const CODE_SIZES = [12, 13, 14, 15] as const;
 /** The sidebar's width range in px; the default is the `--pk-threads` token (doc/docs/design-system.md, "Layout"). */
-export const SIDEBAR_WIDTH = { min: 220, max: 480, default: 280 } as const;
+export const SIDEBAR_WIDTH = { min: 220, max: 480, default: 320 } as const;
 export const PANEL_WIDTH = { min: 320, max: 960, default: 400, step: 16 } as const;
 
 export function clampPanelWidth(value: unknown): number {
@@ -55,12 +55,15 @@ interface ViewPrefsState {
   panelWidth: number;
   /** CopilotKit's web inspector over the window (Settings › Advanced); read when the window loads, so a change applies after a reload. */
   copilotInspector: boolean;
+  roomsPreview: boolean;
+  sidebarMode: SidebarMode;
   screenshotFormat: NonNullable<BrowserAction['format']>;
   screenshotQuality: number;
   browserAllowInvalidLocalCertificates: boolean;
 }
 
 export type PrefKey = keyof ViewPrefsState;
+export type SidebarMode = 'threads' | 'rooms';
 
 const DEFAULTS: ViewPrefsState = {
   language: 'en',
@@ -76,6 +79,8 @@ const DEFAULTS: ViewPrefsState = {
   sidebarWidth: SIDEBAR_WIDTH.default,
   panelWidth: PANEL_WIDTH.default,
   copilotInspector: false,
+  roomsPreview: false,
+  sidebarMode: 'threads',
   screenshotFormat: DEFAULT_SCREENSHOT_FORMAT,
   screenshotQuality: DEFAULT_SCREENSHOT_QUALITY,
   browserAllowInvalidLocalCertificates: false,
@@ -184,6 +189,8 @@ function parseRemote(saved: Record<string, unknown>): Partial<ViewPrefsState> {
   if (typeof saved['sidebarWidth'] === 'number') patch.sidebarWidth = clampSidebarWidth(saved['sidebarWidth']);
   if (typeof saved['panelWidth'] === 'number') patch.panelWidth = clampPanelWidth(saved['panelWidth']);
   if (typeof saved['copilotInspector'] === 'boolean') patch.copilotInspector = saved['copilotInspector'];
+  if (typeof saved['collaboration.rooms'] === 'boolean') patch.roomsPreview = saved['collaboration.rooms'];
+  if (saved['sidebarMode'] === 'rooms' || saved['sidebarMode'] === 'threads') patch.sidebarMode = saved['sidebarMode'];
   if (typeof saved['browserAllowInvalidLocalCertificates'] === 'boolean')
     patch.browserAllowInvalidLocalCertificates = saved['browserAllowInvalidLocalCertificates'];
   const format = ScreenshotFormatSchema.safeParse(saved['screenshotFormat']);
@@ -237,6 +244,8 @@ const KEYS: Record<keyof ViewPrefsState, string> = {
   sidebarWidth: 'sidebarWidth',
   panelWidth: 'panelWidth',
   copilotInspector: 'copilotInspector',
+  roomsPreview: 'collaboration.rooms',
+  sidebarMode: 'sidebarMode',
   screenshotFormat: 'screenshotFormat',
   screenshotQuality: 'screenshotQuality',
   browserAllowInvalidLocalCertificates: 'browserAllowInvalidLocalCertificates',

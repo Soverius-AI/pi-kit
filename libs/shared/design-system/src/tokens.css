@@ -173,7 +173,7 @@
   --pk-font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   /* Chat fills its column; --pk-gutter supplies the fixed horizontal inset. */
   --pk-measure: none;
-  --pk-threads: 280px;
+  --pk-threads: 320px;
   --pk-rail: 48px;
   --pk-panel: 400px;
   --pk-header: 48px;

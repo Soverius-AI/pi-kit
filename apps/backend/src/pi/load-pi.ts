@@ -24,6 +24,7 @@ import { createApiKeyOnlyRuntime } from './anthropic-api-key-policy';
 const nativeImport = new Function('specifier', 'return import(specifier)') as <T>(specifier: string) => Promise<T>;
 let piModule: Promise<PiModule> | undefined;
 let piMcpModule: Promise<PiMcpModule> | undefined;
+let piInternals: Promise<PiInternals> | undefined;
 let resolution: PiResolution | undefined;
 
 /** Preserve the SDK's per-session credential/model paths when supplying our runtime. */
@@ -86,12 +87,43 @@ export function resetPiResolution(): void {
   resolution = undefined;
   piModule = undefined;
   piMcpModule = undefined;
+  piInternals = undefined;
 }
 
 /** pi's MCP client package (a dependency of pi); the transports in it are what pi's own MCP extension connects with. */
 export function loadPiMcp(): Promise<PiMcpModule> {
   piMcpModule ??= nativeImport<PiMcpModule>(pathToFileURL(piMcpEntry(piResolution())).href);
   return piMcpModule;
+}
+export interface PiInternals {
+  oauth: {
+    McpOAuthCredentialStore: new () => {
+      forServer(name: string, serverUrl: string): unknown;
+      tokens(name: string, serverUrl: string): unknown;
+    };
+    createMcpAuthProvider(options: {
+      serverUrl: string;
+      store: unknown;
+      settings: () => Record<string, unknown>;
+      onChallenge: (challenge: unknown) => void;
+    }): unknown;
+  };
+  config: {
+    resolveConfigValueOrThrow(value: string, description: string): string;
+    resolveHeadersOrThrow(
+      headers: Record<string, string> | undefined,
+      description: string,
+    ): Record<string, string> | undefined;
+  };
+}
+
+export function loadPiInternals(): Promise<PiInternals> {
+  const file = (...parts: string[]) => pathToFileURL(join(piResolution().packageDir, 'dist', ...parts)).href;
+  piInternals ??= Promise.all([
+    nativeImport<PiInternals['oauth']>(file('extensions', 'mcp', 'oauth.js')),
+    nativeImport<PiInternals['config']>(file('core', 'resolve-config-value.js')),
+  ]).then(([oauth, config]) => ({ oauth, config }));
+  return piInternals;
 }
 export function loadPi(): Promise<PiModule> {
   piModule ??= nativeImport<PiModule>(pathToFileURL(join(piResolution().packageDir, 'dist', 'index.js')).href).then(

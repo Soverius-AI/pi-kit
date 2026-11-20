@@ -2,7 +2,6 @@ import type { Translate } from '@pi-kit/i18n';
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import {
-  ChangeDetectionStrategy,
   Component,
   ElementRef,
   Injector,
@@ -25,7 +24,7 @@ import {
   connectorById,
 } from '@pi-kit/protocol';
 import { keepFocusInside, PkChoice, PkIcon, PkTip } from '@pi-kit/design-system';
-import { ConnectorsStore, SecretsStore } from '@pi-kit/settings/api';
+import { ComposioStore, ConnectorsStore, SecretsStore } from '@pi-kit/settings/api';
 import { type ServerForm, addServer, blankForm, letters, validateForm } from '@pi-kit/settings/util';
 import { ConnectorLogo } from './connector-logo';
 import { PkServerForm } from './server-form';
@@ -48,7 +47,6 @@ const exposureDescriptions = (translate: Translate): Record<ConnectorExposure, s
 @Component({
   selector: 'pk-add-server-wizard',
   imports: [ConnectorLogo, PkChoice, PkServerForm, PkTip, TranslocoPipe, PkIcon],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="pk-wf" data-testid="add-server-wizard">
       <button
@@ -134,13 +132,18 @@ const exposureDescriptions = (translate: Translate): Record<ConnectorExposure, s
                         @if (added(c.id)) {
                           <span class="chip ok">{{ 'settings.addServerWizard.added' | transloco }}</span>
                         }
-                        @if (c.verification.status === 'unverified') {
-                          <span class="chip warn" [pkTip]="c.verification.note">{{
-                            'settings.addServerWizard.unverified' | transloco
-                          }}</span>
-                        }
                       </ng-container>
                       <ng-container d>{{ c.summary }}</ng-container>
+                    </button>
+                  }
+                  @if (showsComposio()) {
+                    <button pkChoice data-testid="tile-composio-apps" (click)="composio.open()">
+                      <ng-container tile><pk-icon name="extension" /></ng-container>
+                      <ng-container t
+                        >{{ 'settings.composio.tile' | transloco }}
+                        <span class="chip">{{ 'settings.composio.optional' | transloco }}</span>
+                      </ng-container>
+                      <ng-container d>{{ 'settings.composio.tileHint' | transloco }}</ng-container>
                     </button>
                   }
                   @if (showsCustom()) {
@@ -234,8 +237,10 @@ const exposureDescriptions = (translate: Translate): Record<ConnectorExposure, s
                         data-testid="connector-client-secret"
                       />
                       <div class="hint">{{ whereTokenGoes() }}</div>
+                    } @else if (connector()?.auth?.type === 'device') {
+                      <div class="hint" data-testid="connector-device-setup">{{ setupText() }}</div>
                     }
-                    @if (connector()?.endpoint?.variants; as variants) {
+                    @if (connector()?.endpoint?.variants ?? connector()?.local?.variants; as variants) {
                       <label for="srv-variant">{{ 'settings.addServerWizard.access' | transloco }}</label>
                       <select
                         id="srv-variant"
@@ -369,6 +374,7 @@ export class AddServerWizard implements OnInit {
   protected readonly i18n = inject(Language);
   protected readonly store = inject(ConnectorsStore);
   private readonly secrets = inject(SecretsStore);
+  protected readonly composio = inject(ComposioStore);
   private readonly win = viewChild<ElementRef<HTMLElement>>('win');
   private readonly customForm = viewChild<PkServerForm>('customForm');
   readonly closed = output<void>();
@@ -448,6 +454,10 @@ export class AddServerWizard implements OnInit {
     this.custom.set({ ...blankForm(this.state().scope), scope: this.state().scope });
   }
 
+  protected showsComposio(): boolean {
+    const query = this.state().query.trim().toLowerCase();
+    return !query || 'composio'.includes(query) || this.services().length === 0;
+  }
   protected showsCustom(): boolean {
     return addServer.showsCustom(this.state().query);
   }
@@ -503,13 +513,15 @@ export class AddServerWizard implements OnInit {
         return this.i18n.t('settings.addServerWizard.needsATokenYouCreateAt', { value1: c.vendor });
       case 'oauth-client':
         return this.i18n.t('settings.addServerWizard.needsYourOwnAppAClientId', { value1: c.vendor });
+      case 'device':
+        return this.i18n.t('settings.addServerWizard.runsHereAndSignsInWithACode');
       default:
         return this.i18n.t('settings.addServerWizard.signsInInYourBrowserOnceIt');
     }
   }
   protected setupText(): string {
     const auth = this.connector()?.auth;
-    return auth && (auth.type === 'bearer' || auth.type === 'oauth-client') ? auth.setup : '';
+    return auth && 'setup' in auth ? auth.setup : '';
   }
   protected projectWhy(): string {
     if (!this.hasThread()) return this.i18n.t('settings.addServerWizard.thisProjectOnlyNeedsAThreadOpen');

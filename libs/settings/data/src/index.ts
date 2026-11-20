@@ -18,3 +18,5 @@ export * from './lib/litellm.store';
 export * from './lib/background-service.store';
 export * from './lib/computer-use.store';
 export * from './lib/watchdog.store';
+export * from './lib/a2a-agents.store';
+export * from './lib/composio.store';

@@ -71,14 +71,28 @@ export class AguiService {
   runHeadless(
     threadId: string,
     text: string,
-    options: { cwd: string; chips?: readonly ComposerChip[] },
+    options: { cwd: string; chips?: readonly ComposerChip[]; images?: readonly { mimeType: string; data: string }[] },
   ): Promise<HeadlessRun> {
     const runId = `headless-${randomUUID()}`;
     const input: RunAgentInput = {
       threadId,
       runId,
       state: {},
-      messages: [{ id: randomUUID(), role: 'user', content: text }],
+      messages: [
+        {
+          id: randomUUID(),
+          role: 'user',
+          content: options.images?.length
+            ? [
+                { type: 'text', text },
+                ...options.images.map((image) => ({
+                  type: 'image' as const,
+                  source: { type: 'data' as const, value: image.data, mimeType: image.mimeType },
+                })),
+              ]
+            : text,
+        },
+      ],
       tools: [],
       context: [],
       forwardedProps: {
@@ -86,6 +100,27 @@ export class AguiService {
         ...(options.chips && options.chips.length > 0 ? { skills: options.chips } : {}),
       },
     };
+    return this.execute(threadId, input);
+  }
+
+  resumeHeadless(
+    threadId: string,
+    answers: readonly { interruptId: string; status: 'resolved' | 'cancelled'; payload?: unknown }[],
+    options: { cwd: string },
+  ): Promise<HeadlessRun> {
+    return this.execute(threadId, {
+      threadId,
+      runId: `headless-${randomUUID()}`,
+      state: {},
+      messages: [],
+      tools: [],
+      context: [],
+      forwardedProps: { cwd: options.cwd },
+      resume: [...answers],
+    } as RunAgentInput);
+  }
+
+  private execute(threadId: string, input: RunAgentInput): Promise<HeadlessRun> {
     return new Promise<HeadlessRun>((resolve) => {
       let result: HeadlessRun = { status: 'error', error: 'The run ended without a result.' };
       const note = (event: BaseEvent): void => {

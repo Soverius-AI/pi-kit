@@ -4,6 +4,20 @@ export type ClientOptions = {
     baseUrl: string;
 };
 
+export type A2aAgent = {
+    id: string;
+    name: string;
+    url: string;
+    tokenStorage: 'none' | 'keychain' | 'database';
+    createdAt: number;
+};
+
+export type A2aAgentList = Array<A2aAgent>;
+
+export type A2aJson = {
+    [key: string]: unknown;
+};
+
 export type About = {
     app: {
         name: string;
@@ -22,6 +36,11 @@ export type About = {
         notes: Array<string>;
     };
     node: string;
+};
+
+export type AddA2aAgent = {
+    url: string;
+    token?: string;
 };
 
 export type AgentAnswer = {
@@ -63,6 +82,10 @@ export type AgentTokens = {
 export type ApprovedSkillDraft = {
     draft: SkillDraft;
     path: string;
+};
+
+export type ApproveRoomTask = {
+    environmentId?: string;
 };
 
 export type ApproveSkillDraft = {
@@ -312,6 +335,43 @@ export type ComposerRegistration = {
     id: string;
 };
 
+export type ComposioAddRequest = {
+    toolkit: string;
+    name: string;
+    readOnly?: boolean;
+};
+
+export type ComposioConnection = {
+    server: string;
+    toolkit: string;
+    name: string;
+    readOnly: boolean;
+    connected: boolean;
+    signInUrl: string | null;
+};
+
+export type ComposioConnectionList = Array<ComposioConnection>;
+
+export type ComposioKeyRequest = {
+    apiKey: string;
+};
+
+export type ComposioStatus = {
+    configured: boolean;
+    storage: 'keychain' | 'plain' | null;
+};
+
+export type ComposioToolkit = {
+    slug: string;
+    name: string;
+    description: string;
+    logo: string | null;
+    tools: number;
+    noAuth: boolean;
+};
+
+export type ComposioToolkitList = Array<ComposioToolkit>;
+
 export type ComputerUseState = {
     installed: boolean;
     supported: boolean;
@@ -338,12 +398,28 @@ export type Connector = {
         paths: Array<string>;
         style: 'fill' | 'stroke';
     };
-    endpoint: {
+    endpoint?: {
         url: string;
         variants?: Array<{
             id: string;
             label: string;
             url: string;
+            note: string;
+        }>;
+    };
+    local?: {
+        command: string;
+        args: Array<string>;
+        env?: {
+            [key: string]: string;
+        };
+        variants?: Array<{
+            id: string;
+            label: string;
+            args?: Array<string>;
+            env?: {
+                [key: string]: string;
+            };
             note: string;
         }>;
     };
@@ -355,6 +431,9 @@ export type Connector = {
     } | {
         type: 'oauth-client';
         callbackPort: number;
+        setup: string;
+    } | {
+        type: 'device';
         setup: string;
     } | {
         type: 'bearer';
@@ -435,6 +514,16 @@ export type Coordination = {
         state: 'running' | 'idle' | 'waiting' | 'terminal';
         relation: 'same-folder' | 'worktree';
     }>;
+};
+
+export type CreateRoom = {
+    threadId?: string;
+    repository?: string;
+    baseCommit?: string;
+    title: string;
+    summary: string;
+    projectFolder?: string;
+    playbook?: string;
 };
 
 export type CreateThread = {
@@ -1770,6 +1859,26 @@ export type PiUpdateCheck = {
     command: string;
 };
 
+export type PlaybookList = Array<PlaybookSummary>;
+
+export type PlaybookSummary = {
+    name: string;
+    description: string;
+    path: string;
+    roles: Array<string>;
+    tools: Array<string>;
+    outputs: Array<string>;
+    triggers: number;
+    stages: Array<string>;
+    error: string | null;
+};
+
+export type PostRoomMessage = {
+    text: string;
+    route: 'lead' | 'none';
+    images?: Array<RoomImage>;
+};
+
 export type Problem = {
     statusCode: number;
     message: string | Array<string>;
@@ -1995,6 +2104,190 @@ export type RevokeTrustResult = {
     reopened: number;
     running: number;
 };
+
+export type Room = {
+    id: string;
+    title: string;
+    repository: string;
+    hostInstanceId: string;
+    baseCommit: string;
+    waiting: number;
+    createdAt: number;
+};
+
+export type RoomAction = {
+    id: string;
+    kind: 'call' | 'advance';
+    name: string;
+    summary: string;
+    payload: {
+        [key: string]: unknown;
+    };
+    state: 'pending' | 'done' | 'failed' | 'discarded';
+    result: string | null;
+    createdAt: number;
+    decidedAt: number | null;
+};
+
+export type RoomActionDecision = {
+    decision: 'approve' | 'discard';
+};
+
+export type RoomClone = {
+    folder: string;
+    clean: boolean;
+};
+
+export type RoomCloneList = Array<RoomClone>;
+
+export type RoomDetail = {
+    room: Room;
+    summary: string;
+    lead: RoomLeadState;
+    leadThreadId: string | null;
+    projectFolder: string | null;
+    mode: 'supervised' | 'assisted';
+    paused: boolean;
+    playbook: string | null;
+    stage: string | null;
+    stages: Array<string>;
+    actions: Array<RoomAction>;
+    memory: Array<RoomMemoryEntry>;
+    leadQuestions: Array<RoomTaskQuestion>;
+    events: Array<RoomEvent>;
+    tasks: Array<RoomTask>;
+};
+
+export type RoomDirectory = Array<RoomDirectoryEntry>;
+
+export type RoomDirectoryEntry = {
+    room: Room;
+    hostName: string;
+    local: boolean;
+    hostReachable: boolean;
+    lastSeenAt: number;
+};
+
+export type RoomEvent = {
+    roomId: string;
+    seq: number;
+    kind: 'message' | 'note' | 'task';
+    actor: 'owner' | 'lead' | 'coordinator' | 'worker' | 'consultant';
+    text: string;
+    images: number;
+    taskId: string | null;
+    environmentId?: string | null;
+    role?: string | null;
+    createdAt: number;
+};
+
+export type RoomImage = {
+    mimeType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+    data: string;
+};
+
+export type RoomLeadState = 'idle' | 'working' | 'error';
+
+export type RoomList = Array<Room>;
+
+export type RoomMemoryEntry = {
+    scope: 'room' | 'playbook';
+    key: string;
+    text: string;
+    updatedBy: string;
+    updatedAt: number;
+};
+
+export type RoomMode = 'supervised' | 'assisted';
+
+export type RoomStartPreview = {
+    title: string;
+    repository: string;
+    branch: string | null;
+    baseCommit: string;
+    uncommittedFiles: number;
+};
+
+export type RoomStreamLine = {
+    type: 'event';
+    event: RoomEvent;
+} | {
+    type: 'lead';
+    state: RoomLeadState;
+    questions?: Array<RoomTaskQuestion>;
+} | {
+    type: 'room';
+    mode: RoomMode;
+    paused: boolean;
+    stage?: string | null;
+} | {
+    type: 'action';
+    action: RoomAction;
+} | {
+    type: 'memory';
+    entry: RoomMemoryEntry;
+} | {
+    type: 'task';
+    task: RoomTask;
+};
+
+export type RoomTask = {
+    id: string;
+    roomId: string;
+    title: string;
+    brief: string;
+    acceptance: string;
+    state: RoomTaskState;
+    environmentId: string;
+    attempt: number;
+    base: string;
+    branch: string | null;
+    head: string | null;
+    report: string | null;
+    files: Array<RoomTaskFile>;
+    questions: Array<RoomTaskQuestion>;
+    review: 'none' | 'pending' | 'accepted';
+    reviewRounds: number;
+    createdAt: number;
+    updatedAt: number;
+};
+
+export type RoomTaskAnswer = {
+    answers: Array<{
+        id: string;
+        confirmed?: boolean;
+        value?: string;
+        cancelled?: boolean;
+    }>;
+};
+
+export type RoomTaskFile = {
+    path: string;
+    added: number;
+    removed: number;
+};
+
+export type RoomTaskQuestion = {
+    id: string;
+    method: 'confirm' | 'select' | 'input' | 'editor';
+    title: string;
+    message?: string;
+    options?: Array<string>;
+    placeholder?: string;
+    tool?: string;
+};
+
+export type RoomTaskState = 'proposed' | 'declined' | 'running' | 'submitted' | 'failed' | 'stopped' | 'integrated';
+
+export type RoomWorkerCandidate = {
+    environmentId: string;
+    name: string;
+    local: boolean;
+    ready: boolean;
+    reason: string | null;
+};
+
+export type RoomWorkerCandidateList = Array<RoomWorkerCandidate>;
 
 export type SaveLearnedSkill = {
     text: string;
@@ -2756,6 +3049,11 @@ export type UpdateJob = {
 
 export type UpdateRequest = {
     targets: Array<'pi' | 'packages' | 'models' | 'app'>;
+};
+
+export type UpdateRoom = {
+    mode?: RoomMode;
+    paused?: boolean;
 };
 
 export type UpdateRow = {
@@ -8350,6 +8648,236 @@ export type ConnectorsExposureResponses = {
 
 export type ConnectorsExposureResponse = ConnectorsExposureResponses[keyof ConnectorsExposureResponses];
 
+export type ComposioStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/composio/status';
+};
+
+export type ComposioStatusErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type ComposioStatusError = ComposioStatusErrors[keyof ComposioStatusErrors];
+
+export type ComposioStatusResponses = {
+    /**
+     * OK
+     */
+    200: ComposioStatus;
+};
+
+export type ComposioStatusResponse = ComposioStatusResponses[keyof ComposioStatusResponses];
+
+export type ComposioForgetKeyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/composio/key';
+};
+
+export type ComposioForgetKeyErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Composio apps still use the key.
+     */
+    409: Problem;
+};
+
+export type ComposioForgetKeyError = ComposioForgetKeyErrors[keyof ComposioForgetKeyErrors];
+
+export type ComposioForgetKeyResponses = {
+    /**
+     * OK
+     */
+    200: ComposioStatus;
+};
+
+export type ComposioForgetKeyResponse = ComposioForgetKeyResponses[keyof ComposioForgetKeyResponses];
+
+export type ComposioSetKeyData = {
+    body: ComposioKeyRequest;
+    path?: never;
+    query?: never;
+    url: '/api/composio/key';
+};
+
+export type ComposioSetKeyErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Composio refused the key.
+     */
+    409: Problem;
+    /**
+     * Composio did not answer.
+     */
+    502: Problem;
+};
+
+export type ComposioSetKeyError = ComposioSetKeyErrors[keyof ComposioSetKeyErrors];
+
+export type ComposioSetKeyResponses = {
+    /**
+     * OK
+     */
+    200: ComposioStatus;
+};
+
+export type ComposioSetKeyResponse = ComposioSetKeyResponses[keyof ComposioSetKeyResponses];
+
+export type ComposioToolkitsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        search?: string;
+    };
+    url: '/api/composio/toolkits';
+};
+
+export type ComposioToolkitsErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * No Composio API key yet.
+     */
+    409: Problem;
+    /**
+     * Composio did not answer.
+     */
+    502: Problem;
+};
+
+export type ComposioToolkitsError = ComposioToolkitsErrors[keyof ComposioToolkitsErrors];
+
+export type ComposioToolkitsResponses = {
+    /**
+     * OK
+     */
+    200: ComposioToolkitList;
+};
+
+export type ComposioToolkitsResponse = ComposioToolkitsResponses[keyof ComposioToolkitsResponses];
+
+export type ComposioConnectionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/composio/connections';
+};
+
+export type ComposioConnectionsErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type ComposioConnectionsError = ComposioConnectionsErrors[keyof ComposioConnectionsErrors];
+
+export type ComposioConnectionsResponses = {
+    /**
+     * OK
+     */
+    200: ComposioConnectionList;
+};
+
+export type ComposioConnectionsResponse = ComposioConnectionsResponses[keyof ComposioConnectionsResponses];
+
+export type ComposioAddData = {
+    body: ComposioAddRequest;
+    path?: never;
+    query?: never;
+    url: '/api/composio/connections';
+};
+
+export type ComposioAddErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * No Composio API key yet, or Composio refused it.
+     */
+    409: Problem;
+    /**
+     * Composio did not answer.
+     */
+    502: Problem;
+};
+
+export type ComposioAddError = ComposioAddErrors[keyof ComposioAddErrors];
+
+export type ComposioAddResponses = {
+    /**
+     * OK
+     */
+    200: ComposioConnection;
+};
+
+export type ComposioAddResponse = ComposioAddResponses[keyof ComposioAddResponses];
+
+export type ComposioLinkData = {
+    body?: never;
+    path: {
+        /**
+         * The server name of the Composio app.
+         */
+        server: string;
+    };
+    query?: never;
+    url: '/api/composio/connections/{server}/link';
+};
+
+export type ComposioLinkErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * pi-kit did not add that app.
+     */
+    404: Problem;
+    /**
+     * Composio did not answer.
+     */
+    502: Problem;
+};
+
+export type ComposioLinkError = ComposioLinkErrors[keyof ComposioLinkErrors];
+
+export type ComposioLinkResponses = {
+    /**
+     * OK
+     */
+    200: ComposioConnection;
+};
+
+export type ComposioLinkResponse = ComposioLinkResponses[keyof ComposioLinkResponses];
+
 export type PackagesListData = {
     body?: never;
     path?: never;
@@ -11973,3 +12501,972 @@ export type ProjectFoldersListResponses = {
 };
 
 export type ProjectFoldersListResponse = ProjectFoldersListResponses[keyof ProjectFoldersListResponses];
+
+export type RoomsHostedData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/rooms';
+};
+
+export type RoomsHostedErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment.
+     */
+    404: Problem;
+};
+
+export type RoomsHostedError = RoomsHostedErrors[keyof RoomsHostedErrors];
+
+export type RoomsHostedResponses = {
+    /**
+     * OK
+     */
+    200: RoomList;
+};
+
+export type RoomsHostedResponse = RoomsHostedResponses[keyof RoomsHostedResponses];
+
+export type RoomsCreateData = {
+    body: CreateRoom;
+    path?: never;
+    query?: never;
+    url: '/api/rooms';
+};
+
+export type RoomsCreateErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No thread with this id.
+     */
+    404: Problem;
+    /**
+     * A room needs a git repository with at least one commit. Commit in this thread’s folder first. Or: No project on this computer is a clone of that repository with the base commit. Or: Several projects here are clones of this repository; choose the folder the room integrates into:
+     */
+    409: Problem;
+};
+
+export type RoomsCreateError = RoomsCreateErrors[keyof RoomsCreateErrors];
+
+export type RoomsCreateResponses = {
+    /**
+     * Created
+     */
+    201: Room;
+};
+
+export type RoomsCreateResponse = RoomsCreateResponses[keyof RoomsCreateResponses];
+
+export type RoomsStartData = {
+    body?: never;
+    path?: never;
+    query: {
+        threadId: string;
+    };
+    url: '/api/rooms/start';
+};
+
+export type RoomsStartErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No thread with this id.
+     */
+    404: Problem;
+    /**
+     * A room needs a git repository with at least one commit. Commit in this thread’s folder first.
+     */
+    409: Problem;
+};
+
+export type RoomsStartError = RoomsStartErrors[keyof RoomsStartErrors];
+
+export type RoomsStartResponses = {
+    /**
+     * OK
+     */
+    200: RoomStartPreview;
+};
+
+export type RoomsStartResponse = RoomsStartResponses[keyof RoomsStartResponses];
+
+export type RoomsDirectoryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/rooms/directory';
+};
+
+export type RoomsDirectoryErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment.
+     */
+    404: Problem;
+};
+
+export type RoomsDirectoryError = RoomsDirectoryErrors[keyof RoomsDirectoryErrors];
+
+export type RoomsDirectoryResponses = {
+    /**
+     * OK
+     */
+    200: RoomDirectory;
+};
+
+export type RoomsDirectoryResponse = RoomsDirectoryResponses[keyof RoomsDirectoryResponses];
+
+export type RoomsHostsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/rooms/hosts';
+};
+
+export type RoomsHostsErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment.
+     */
+    404: Problem;
+};
+
+export type RoomsHostsError = RoomsHostsErrors[keyof RoomsHostsErrors];
+
+export type RoomsHostsResponses = {
+    /**
+     * OK
+     */
+    200: RoomWorkerCandidateList;
+};
+
+export type RoomsHostsResponse = RoomsHostsResponses[keyof RoomsHostsResponses];
+
+export type RoomsClonesData = {
+    body?: never;
+    path?: never;
+    query: {
+        repository: string;
+        baseCommit: string;
+    };
+    url: '/api/rooms/clones';
+};
+
+export type RoomsClonesErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment.
+     */
+    404: Problem;
+};
+
+export type RoomsClonesError = RoomsClonesErrors[keyof RoomsClonesErrors];
+
+export type RoomsClonesResponses = {
+    /**
+     * OK
+     */
+    200: RoomCloneList;
+};
+
+export type RoomsClonesResponse = RoomsClonesResponses[keyof RoomsClonesResponses];
+
+export type RoomsPlaybooksData = {
+    body?: never;
+    path?: never;
+    query: {
+        repository: string;
+        baseCommit?: string;
+        threadId?: string;
+    };
+    url: '/api/rooms/playbooks';
+};
+
+export type RoomsPlaybooksErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No thread with this id.
+     */
+    404: Problem;
+    /**
+     * A room needs a git repository with at least one commit. Commit in this thread’s folder first.
+     */
+    409: Problem;
+};
+
+export type RoomsPlaybooksError = RoomsPlaybooksErrors[keyof RoomsPlaybooksErrors];
+
+export type RoomsPlaybooksResponses = {
+    /**
+     * OK
+     */
+    200: PlaybookList;
+};
+
+export type RoomsPlaybooksResponse = RoomsPlaybooksResponses[keyof RoomsPlaybooksResponses];
+
+export type RoomsAgentsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/rooms/agents';
+};
+
+export type RoomsAgentsErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment.
+     */
+    404: Problem;
+};
+
+export type RoomsAgentsError = RoomsAgentsErrors[keyof RoomsAgentsErrors];
+
+export type RoomsAgentsResponses = {
+    /**
+     * OK
+     */
+    200: A2aAgentList;
+};
+
+export type RoomsAgentsResponse = RoomsAgentsResponses[keyof RoomsAgentsResponses];
+
+export type RoomsAddAgentData = {
+    body: AddA2aAgent;
+    path?: never;
+    query?: never;
+    url: '/api/rooms/agents';
+};
+
+export type RoomsAddAgentErrors = {
+    /**
+     * No A2A agent card at that address, or the agent speaks no binding pi-kit supports.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment.
+     */
+    404: Problem;
+};
+
+export type RoomsAddAgentError = RoomsAddAgentErrors[keyof RoomsAddAgentErrors];
+
+export type RoomsAddAgentResponses = {
+    /**
+     * Created
+     */
+    201: A2aAgent;
+};
+
+export type RoomsAddAgentResponse = RoomsAddAgentResponses[keyof RoomsAddAgentResponses];
+
+export type RoomsRemoveAgentData = {
+    body?: never;
+    path: {
+        /**
+         * The agent id.
+         */
+        agentId: string;
+    };
+    query?: never;
+    url: '/api/rooms/agents/{agentId}';
+};
+
+export type RoomsRemoveAgentErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No A2A agent with this id.
+     */
+    404: Problem;
+};
+
+export type RoomsRemoveAgentError = RoomsRemoveAgentErrors[keyof RoomsRemoveAgentErrors];
+
+export type RoomsRemoveAgentResponses = {
+    /**
+     * The agent was removed.
+     */
+    204: void;
+};
+
+export type RoomsRemoveAgentResponse = RoomsRemoveAgentResponses[keyof RoomsRemoveAgentResponses];
+
+export type RoomsDetailData = {
+    body?: never;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}';
+};
+
+export type RoomsDetailErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomsDetailError = RoomsDetailErrors[keyof RoomsDetailErrors];
+
+export type RoomsDetailResponses = {
+    /**
+     * OK
+     */
+    200: RoomDetail;
+};
+
+export type RoomsDetailResponse = RoomsDetailResponses[keyof RoomsDetailResponses];
+
+export type RoomsUpdateData = {
+    body: UpdateRoom;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}';
+};
+
+export type RoomsUpdateErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomsUpdateError = RoomsUpdateErrors[keyof RoomsUpdateErrors];
+
+export type RoomsUpdateResponses = {
+    /**
+     * OK
+     */
+    200: RoomDetail;
+};
+
+export type RoomsUpdateResponse = RoomsUpdateResponses[keyof RoomsUpdateResponses];
+
+export type RoomsPostData = {
+    body: PostRoomMessage;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/messages';
+};
+
+export type RoomsPostErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+    /**
+     * The lead is still answering. Send again when it is done, or post without prompting it. Or: The lead waits for your answer to its question first.
+     */
+    409: Problem;
+};
+
+export type RoomsPostError = RoomsPostErrors[keyof RoomsPostErrors];
+
+export type RoomsPostResponses = {
+    /**
+     * Created
+     */
+    201: RoomEvent;
+};
+
+export type RoomsPostResponse = RoomsPostResponses[keyof RoomsPostResponses];
+
+export type RoomsAnswerLeadData = {
+    body: RoomTaskAnswer;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/lead/answer';
+};
+
+export type RoomsAnswerLeadErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+    /**
+     * The lead asks nothing with this id.
+     */
+    409: Problem;
+};
+
+export type RoomsAnswerLeadError = RoomsAnswerLeadErrors[keyof RoomsAnswerLeadErrors];
+
+export type RoomsAnswerLeadResponses = {
+    /**
+     * OK
+     */
+    200: RoomDetail;
+};
+
+export type RoomsAnswerLeadResponse = RoomsAnswerLeadResponses[keyof RoomsAnswerLeadResponses];
+
+export type RoomsDecideData = {
+    body: RoomActionDecision;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+        /**
+         * The action id.
+         */
+        actionId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/actions/{actionId}';
+};
+
+export type RoomsDecideErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+    /**
+     * This action was decided already.
+     */
+    409: Problem;
+};
+
+export type RoomsDecideError = RoomsDecideErrors[keyof RoomsDecideErrors];
+
+export type RoomsDecideResponses = {
+    /**
+     * OK
+     */
+    200: RoomAction;
+};
+
+export type RoomsDecideResponse = RoomsDecideResponses[keyof RoomsDecideResponses];
+
+export type RoomsApproveData = {
+    body: ApproveRoomTask;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+        /**
+         * The task id.
+         */
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/tasks/{taskId}/approve';
+};
+
+export type RoomsApproveErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No task with this id in this room.
+     */
+    404: Problem;
+    /**
+     * The task is not in a state that allows this.
+     */
+    409: Problem;
+};
+
+export type RoomsApproveError = RoomsApproveErrors[keyof RoomsApproveErrors];
+
+export type RoomsApproveResponses = {
+    /**
+     * OK
+     */
+    200: RoomTask;
+};
+
+export type RoomsApproveResponse = RoomsApproveResponses[keyof RoomsApproveResponses];
+
+export type RoomsDeclineData = {
+    body?: never;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+        /**
+         * The task id.
+         */
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/tasks/{taskId}/decline';
+};
+
+export type RoomsDeclineErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No task with this id in this room.
+     */
+    404: Problem;
+    /**
+     * The task is not in a state that allows this.
+     */
+    409: Problem;
+};
+
+export type RoomsDeclineError = RoomsDeclineErrors[keyof RoomsDeclineErrors];
+
+export type RoomsDeclineResponses = {
+    /**
+     * OK
+     */
+    200: RoomTask;
+};
+
+export type RoomsDeclineResponse = RoomsDeclineResponses[keyof RoomsDeclineResponses];
+
+export type RoomsStopData = {
+    body?: never;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+        /**
+         * The task id.
+         */
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/tasks/{taskId}/stop';
+};
+
+export type RoomsStopErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No task with this id in this room.
+     */
+    404: Problem;
+    /**
+     * The task is not in a state that allows this.
+     */
+    409: Problem;
+};
+
+export type RoomsStopError = RoomsStopErrors[keyof RoomsStopErrors];
+
+export type RoomsStopResponses = {
+    /**
+     * OK
+     */
+    200: RoomTask;
+};
+
+export type RoomsStopResponse = RoomsStopResponses[keyof RoomsStopResponses];
+
+export type RoomsAnswerData = {
+    body: RoomTaskAnswer;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+        /**
+         * The task id.
+         */
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/tasks/{taskId}/answer';
+};
+
+export type RoomsAnswerErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No task with this id in this room.
+     */
+    404: Problem;
+    /**
+     * The task is not in a state that allows this. Or: The worker asks nothing with these ids.
+     */
+    409: Problem;
+    /**
+     * The worker’s environment is offline.
+     */
+    503: Problem;
+};
+
+export type RoomsAnswerError = RoomsAnswerErrors[keyof RoomsAnswerErrors];
+
+export type RoomsAnswerResponses = {
+    /**
+     * OK
+     */
+    200: RoomTask;
+};
+
+export type RoomsAnswerResponse = RoomsAnswerResponses[keyof RoomsAnswerResponses];
+
+export type RoomsIntegrateData = {
+    body?: never;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+        /**
+         * The task id.
+         */
+        taskId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/tasks/{taskId}/integrate';
+};
+
+export type RoomsIntegrateErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No task with this id in this room.
+     */
+    404: Problem;
+    /**
+     * The task is not in a state that allows this.
+     */
+    409: Problem;
+};
+
+export type RoomsIntegrateError = RoomsIntegrateErrors[keyof RoomsIntegrateErrors];
+
+export type RoomsIntegrateResponses = {
+    /**
+     * OK
+     */
+    200: RoomTask;
+};
+
+export type RoomsIntegrateResponse = RoomsIntegrateResponses[keyof RoomsIntegrateResponses];
+
+export type RoomsWorkersData = {
+    body?: never;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/workers';
+};
+
+export type RoomsWorkersErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomsWorkersError = RoomsWorkersErrors[keyof RoomsWorkersErrors];
+
+export type RoomsWorkersResponses = {
+    /**
+     * OK
+     */
+    200: RoomWorkerCandidateList;
+};
+
+export type RoomsWorkersResponse = RoomsWorkersResponses[keyof RoomsWorkersResponses];
+
+export type RoomsPushData = {
+    body: A2aJson;
+    path?: never;
+    query?: never;
+    url: '/api/rooms/a2a/push';
+};
+
+export type RoomsPushErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Only the environment running this task may report on it. Or: This push notification names no task of this room host, or its token does not match.
+     */
+    403: Problem;
+    /**
+     * Rooms are off on this environment. Or: This push notification names no task of this room host, or its token does not match.
+     */
+    404: Problem;
+    /**
+     * The task is not in a state that allows this.
+     */
+    409: Problem;
+};
+
+export type RoomsPushError = RoomsPushErrors[keyof RoomsPushErrors];
+
+export type RoomsPushResponses = {
+    /**
+     * The update was applied.
+     */
+    204: void;
+};
+
+export type RoomsPushResponse = RoomsPushResponses[keyof RoomsPushResponses];
+
+export type RoomsEventsData = {
+    body?: never;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+    };
+    query?: {
+        after?: number;
+    };
+    url: '/api/rooms/{roomId}/events';
+};
+
+export type RoomsEventsErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomsEventsError = RoomsEventsErrors[keyof RoomsEventsErrors];
+
+export type RoomsEventsResponses = {
+    /**
+     * One `RoomStreamLine` per line.
+     */
+    200: string;
+};
+
+export type RoomsEventsResponse = RoomsEventsResponses[keyof RoomsEventsResponses];
+
+export type A2aCardData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/a2a/.well-known/agent-card.json';
+};
+
+export type A2aCardErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment.
+     */
+    404: Problem;
+};
+
+export type A2aCardError = A2aCardErrors[keyof A2aCardErrors];
+
+export type A2aCardResponses = {
+    /**
+     * OK
+     */
+    200: A2aJson;
+};
+
+export type A2aCardResponse = A2aCardResponses[keyof A2aCardResponses];
+
+export type A2aRpcData = {
+    body: A2aJson;
+    path?: never;
+    query?: {
+        'A2A-Version'?: string;
+        'A2A-Extensions'?: string;
+    };
+    url: '/api/a2a';
+};
+
+export type A2aRpcErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment.
+     */
+    404: Problem;
+};
+
+export type A2aRpcError = A2aRpcErrors[keyof A2aRpcErrors];
+
+export type A2aRpcResponses = {
+    /**
+     * One `A2aJson` per event.
+     */
+    200: string;
+};
+
+export type A2aRpcResponse = A2aRpcResponses[keyof A2aRpcResponses];
+
+export type A2aWellKnownCardData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/.well-known/agent-card.json';
+};
+
+export type A2aWellKnownCardErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment.
+     */
+    404: Problem;
+};
+
+export type A2aWellKnownCardError = A2aWellKnownCardErrors[keyof A2aWellKnownCardErrors];
+
+export type A2aWellKnownCardResponses = {
+    /**
+     * OK
+     */
+    200: A2aJson;
+};
+
+export type A2aWellKnownCardResponse = A2aWellKnownCardResponses[keyof A2aWellKnownCardResponses];

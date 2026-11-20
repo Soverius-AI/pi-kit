@@ -1,4 +1,5 @@
 import { join, resolve } from 'node:path';
+import type { RoomToolsHook } from './room-tools';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { PendingDialog, PiSessionEntry, PiUiEvent } from '@pi-kit/pi-adapter';
 import {
@@ -143,6 +144,9 @@ export class PiSessionService implements OnModuleDestroy {
   private readonly unattachedUi = new Listeners<[threadId: string, event: PiUiEvent]>('unattached UI');
   private readonly skillsUsed = new Listeners<[threadId: string, uses: SkillUse[]]>('skill use');
 
+  private readOnlyThreads: ((threadId: string) => Promise<boolean>) | undefined;
+  private roomTools: RoomToolsHook | undefined;
+
   constructor(
     trust: TrustService,
     private readonly plugins: PiPluginService,
@@ -159,6 +163,8 @@ export class PiSessionService implements OnModuleDestroy {
         agents: () => this.agents,
         ui: (id, cwd) => this.uiHooks(id, cwd),
         opened: (thread) => this.followTurns(thread),
+        readOnly: async (id) => (await this.readOnlyThreads?.(id)) ?? false,
+        room: () => this.roomTools,
       },
       protection,
     );
@@ -167,6 +173,14 @@ export class PiSessionService implements OnModuleDestroy {
   /** The backend's answers for the coordination extension every session carries; sessions read it when they run, so it may arrive after they open. */
   setCoordination(hook: CoordinationHook | undefined): void {
     this.coordination = hook;
+  }
+
+  setReadOnlyThreads(hook: ((threadId: string) => Promise<boolean>) | undefined): void {
+    this.readOnlyThreads = hook;
+  }
+
+  setRoomTools(hook: RoomToolsHook | undefined): void {
+    this.roomTools = hook;
   }
 
   setBrowser(hook: BrowserHook | undefined): void {

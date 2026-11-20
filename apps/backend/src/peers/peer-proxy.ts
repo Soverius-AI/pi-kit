@@ -4,6 +4,9 @@ import type { IncomingMessage, IncomingHttpHeaders } from 'node:http';
 import { pipeline, type Readable } from 'node:stream';
 import type { Request, Response } from 'express';
 import {
+  A2A_EXTENSIONS_HEADER,
+  A2A_TOKEN_HEADER,
+  A2A_VERSION_HEADER,
   hopByHopHeaders,
   isRemoteApiPath,
   isRemoteDataType,
@@ -22,6 +25,8 @@ import type { PeerRecord } from '../db/peers.repository';
 /** Streaming data plane. Every request captures its target and is checked again by the executing instance. */
 @Injectable()
 export class PeerProxy {
+  static readonly CALLER_HEADER = 'x-pi-peer-id';
+
   constructor(
     private readonly peers: PeerSessions,
     private readonly network: PeerHttp,
@@ -30,7 +35,16 @@ export class PeerProxy {
 
   private static requestHeaders(input: IncomingHttpHeaders): Record<string, string> {
     const output: Record<string, string> = {};
-    for (const name of ['accept', 'content-type', 'last-event-id', 'x-pi-replay-cursor', 'x-pi-thread-hydration']) {
+    for (const name of [
+      'accept',
+      'content-type',
+      'last-event-id',
+      'x-pi-replay-cursor',
+      'x-pi-thread-hydration',
+      A2A_VERSION_HEADER,
+      A2A_TOKEN_HEADER,
+      A2A_EXTENSIONS_HEADER,
+    ]) {
       const value = input[name];
       if (typeof value === 'string') output[name] = value;
     }
@@ -117,6 +131,7 @@ export class PeerProxy {
             signal: controller.signal,
             headers: {
               ...PeerProxy.requestHeaders(req.headers),
+              ...(peerId ? { [PeerProxy.CALLER_HEADER]: peerId } : {}),
               authorization: `Bearer ${this.config.token}`,
               ...(body ? { 'content-length': body.length } : {}),
             },
@@ -131,6 +146,44 @@ export class PeerProxy {
     } finally {
       res.off('close', abort);
       untrack();
+    }
+  }
+
+  async call(
+    peerId: string,
+    path: string,
+    method: string,
+    body?: unknown,
+    options: { signal?: AbortSignal; limit?: number; headers?: Record<string, string> } = {},
+  ): Promise<{ status: number; body: unknown }> {
+    PeerProxy.checked(path, method);
+    const peer = await this.peers.target(peerId);
+    const bytes = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
+    const response = await this.fetch(peer, undefined, {
+      path,
+      method,
+      headers: { ...(bytes ? { 'content-type': 'application/json' } : {}), ...options.headers },
+      body: bytes,
+      signal: options.signal,
+      replayable: true,
+    });
+    const buffers: Buffer[] = [];
+    let length = 0;
+    const limit = options.limit ?? 4 * 1024 * 1024;
+    try {
+      for await (const part of response) {
+        const chunk = Buffer.from(part as Uint8Array);
+        length += chunk.length;
+        if (length > limit) throw new ServiceUnavailableException('The environment answered with too much data.');
+        buffers.push(chunk);
+      }
+      await this.assertTarget(peer, undefined);
+      const text = Buffer.concat(buffers).toString();
+      const json =
+        /json/.test(String(response.headers['content-type'] ?? '')) && text ? (JSON.parse(text) as unknown) : text;
+      return { status: response.statusCode ?? 0, body: json };
+    } finally {
+      response.destroy();
     }
   }
 

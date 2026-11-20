@@ -27,13 +27,18 @@ describe('the connector catalog', () => {
       'sentry',
       'atlassian',
       'figma',
+      'composio',
+      'gmail',
+      'google-calendar',
+      'outlook',
     ]);
   });
 
   it('every endpoint is https and every entry says what was checked and when', () => {
     for (const connector of CONNECTOR_CATALOG.connectors) {
-      expect(connector.endpoint.url, connector.id).toMatch(/^https:\/\//);
-      for (const variant of connector.endpoint.variants ?? [])
+      if (connector.local) expect(connector.local.args.join(' '), connector.id).toMatch(/@\d+\.\d+\.\d+/);
+      else expect(connector.endpoint?.url, connector.id).toMatch(/^https:\/\//);
+      for (const variant of connector.endpoint?.variants ?? [])
         expect(variant.url, `${connector.id}/${variant.id}`).toMatch(/^https:\/\//);
       expect(connector.docs, connector.id).toMatch(/^https:\/\//);
       expect(connector.verification.checkedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -43,7 +48,7 @@ describe('the connector catalog', () => {
   });
 
   it('the endpoints and sign-in modes are the ones the vendors document', () => {
-    const url = (id: string) => connectorById(id, CONNECTOR_CATALOG)?.endpoint.url;
+    const url = (id: string) => connectorById(id, CONNECTOR_CATALOG)?.endpoint?.url;
     expect(url('linear')).toBe('https://mcp.linear.app/mcp');
     expect(connectorUrl(connectorById('linear', CONNECTOR_CATALOG)!, 'readonly')).toBe(
       'https://mcp.linear.app/mcp/readonly',
@@ -54,6 +59,12 @@ describe('the connector catalog', () => {
     expect(url('sentry')).toBe('https://mcp.sentry.dev/mcp');
     expect(url('atlassian')).toBe('https://mcp.atlassian.com/v2/mcp');
     expect(url('figma')).toBe('https://mcp.figma.com/mcp');
+    expect(url('composio')).toBe('https://connect.composio.dev/mcp');
+    expect(connectorById('composio', CONNECTOR_CATALOG)?.auth).toEqual({ type: 'oauth' });
+    expect(url('gmail')).toBe('https://gmailmcp.googleapis.com/mcp/v1');
+    expect(url('google-calendar')).toBe('https://calendarmcp.googleapis.com/mcp/v1');
+    expect(connectorById('gmail', CONNECTOR_CATALOG)?.auth.type).toBe('oauth-client');
+    expect(connectorById('outlook', CONNECTOR_CATALOG)?.auth.type).toBe('device');
     expect(connectorById('linear', CONNECTOR_CATALOG)?.auth).toEqual({ type: 'oauth' });
     expect(connectorById('figma', CONNECTOR_CATALOG)?.auth).toEqual({ type: 'oauth', clientName: 'Claude Code' });
     expect(connectorById('github', CONNECTOR_CATALOG)?.auth.type).toBe('bearer');
@@ -132,6 +143,13 @@ describe('matching a server with its connector', () => {
     });
     expect(connectorOfServer(server('mine', 'https://example.com/mcp'), CONNECTOR_CATALOG)).toBeUndefined();
     expect(connectorOfServer(server('files', 'npx server-files', 'stdio'), CONNECTOR_CATALOG)).toBeUndefined();
+    const outlook = 'npx -y @softeria/ms-365-mcp-server@0.179.1 --preset outlook';
+    expect(connectorOfServer(server('outlook', outlook, 'stdio'), CONNECTOR_CATALOG)).toEqual({
+      connector: expect.objectContaining({ id: 'outlook' }),
+    });
+    expect(connectorOfServer(server('outlook', `${outlook} --read-only`, 'stdio'), CONNECTOR_CATALOG)).toMatchObject({
+      variant: 'readonly',
+    });
   });
 
   it('normalises a URL the way a comparison needs', () => {

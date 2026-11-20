@@ -13,6 +13,7 @@ import {
 import { createBashTool, createEditTool, createReadTool, createWriteTool } from '@earendil-works/pi-durable/tools';
 import { arr, lit, obj, opt, str, union } from '@earendil-works/pi-schema';
 import type { ProtectionBinding } from '../db/thread-protection.repository';
+import { ReadOnlyTools } from '../pi/read-only-tools';
 import type { AgentPermission } from './bg-agents.repository';
 import { type CleanupIntent, cleanupIntent, type Holds } from './process-job';
 import { answerLine, type AskInput, isOpen, newQuestion, type QuestionRecord } from './questions';
@@ -98,10 +99,6 @@ export const AGENT_MESSAGE = /^Message from agent "([^"]+)" \(agent (\d+)\): /;
 export const agentMessage = (from: { id: string; name: string }, text: string): string =>
   `Message from agent "${from.name}" (agent ${from.id}): ${text}`;
 
-/** Commands a read-only agent may run: one program from this list (the readers, the test and lint runners), no redirection, no second command. */
-const READ_ONLY_COMMANDS =
-  /^\s*(ls|cat|head|tail|wc|grep|rg|find|tree|pwd|echo|node --test|npm test|npm run (test|lint|check|typecheck)|pnpm (test|lint|check|typecheck)|pnpm run (test|lint|check|typecheck)|pnpm exec (vitest|jest|tsc|eslint|nx (test|lint))|npx (vitest|jest|tsc|eslint)|vitest|jest|tsc|eslint|pytest|python -m pytest|cargo (test|check|clippy)|go (test|vet)|git (status|diff|log|show|branch|ls-files|blame))(\s|$)/;
-const SHELL_OPERATORS = /[|;&>`]|\$\(/;
 /** The answers to a blocked action: this call, every call from now on (the agent becomes `edit`), or not this one. */
 export const BLOCK_CHOICES = ['Allow once', 'Allow all', 'Deny'];
 
@@ -115,7 +112,7 @@ export function permissionBlock(
     return `This agent is read-only: ${call.name} is not allowed. Report what you would change instead.`;
   if (call.name === 'bash') {
     const command = String((call.arguments as { command?: unknown } | undefined)?.command ?? '');
-    if (!READ_ONLY_COMMANDS.test(command) || SHELL_OPERATORS.test(command))
+    if (!ReadOnlyTools.commandAllowed(command))
       return 'This agent is read-only: only commands that read (ls, cat, grep, git status, node --test and the like) are allowed, without redirection.';
   }
   return undefined;

@@ -143,6 +143,9 @@ export interface SessionFacts {
  * `threads`: one row per pi session the app knows, with what the sidebar shows (title, preview, counts, pins,
  * archive), what the reconcile pass learnt from the session file, and the thread's worktree and base commit.
  */
+const NOT_A_ROOM_LEAD =
+  'id NOT IN (SELECT lead_thread_id FROM rooms WHERE lead_thread_id IS NOT NULL) AND id NOT IN (SELECT worker_thread_id FROM room_tasks WHERE worker_thread_id IS NOT NULL) AND id NOT IN (SELECT worker_thread_id FROM room_worker_tasks WHERE worker_thread_id IS NOT NULL) AND id NOT IN (SELECT thread_id FROM room_consult_threads)';
+
 @Injectable()
 export class ThreadsRepository {
   constructor(private readonly database: DatabaseService) {}
@@ -170,12 +173,17 @@ export class ThreadsRepository {
       args.push(options.cwd);
     }
     if (!options.includeArchived) where.push('archived = 0');
+    where.push(NOT_A_ROOM_LEAD);
     const sql = `SELECT * FROM threads ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY pinned DESC, updated_at DESC`;
     return ((await this.db.prepare(sql).all(...args)) as RawThread[]).map(toRow);
   }
 
   async all(): Promise<ThreadRow[]> {
     return ((await this.db.prepare('SELECT * FROM threads').all()) as RawThread[]).map(toRow);
+  }
+
+  async visible(): Promise<ThreadRow[]> {
+    return ((await this.db.prepare(`SELECT * FROM threads WHERE ${NOT_A_ROOM_LEAD}`).all()) as RawThread[]).map(toRow);
   }
 
   /** A thread the app creates: no session file yet, so counts are zero. */
