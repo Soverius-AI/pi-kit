@@ -47,6 +47,9 @@ import { RoomTasksService } from './room-tasks.service';
 import { RoomWorkerRunner } from './room-worker-runner';
 import { RoomWorkerService } from './room-worker.service';
 import { RoomsService } from './rooms.service';
+import { RoomPlaybookService } from './room-playbook.service';
+import { RoomConsultant } from './room-consultant.service';
+import { RoomPlaybookFiles } from './room-playbook-files.service';
 
 interface Instance {
   id: string;
@@ -335,6 +338,7 @@ const make = async (name: string, folder: string): Promise<Instance> => {
     new RoomEnvironments(new InstanceRepository(db), client, instance.outside, peers),
     questions,
     instance.outside,
+    {} as RoomPlaybookService,
     { dataDir } as BackendConfig,
   );
   const a2aTasks = new A2aTasksRepository(db);
@@ -352,6 +356,7 @@ const make = async (name: string, folder: string): Promise<Instance> => {
     store,
     sender,
     instance.outbox,
+    {} as RoomConsultant,
   );
   instance.a2a = new RoomA2aServer(instance.worker, store, sender, pushes, peers, new InstanceRepository(db));
   instance.restartA2a = () =>
@@ -363,7 +368,7 @@ const make = async (name: string, folder: string): Promise<Instance> => {
       peers,
       new InstanceRepository(db),
     );
-  instance.hosted = new RoomsService(rooms, rows, new InstanceRepository(db), meta);
+  instance.hosted = new RoomsService(rooms, rows, new InstanceRepository(db), meta, new RoomPlaybookFiles());
   instance.directory = new RoomDirectoryService(rooms, instance.hosted, proxy, peers);
   instance.tasks.onModuleInit();
   await meta.touchWorkspace(folder);
@@ -411,7 +416,13 @@ beforeEach(async () => {
     cwd: project,
     baseCommit: null,
   });
-  const room = await new RoomsService(host.rooms, host.rows, new InstanceRepository(host.db), host.meta).create({
+  const room = await new RoomsService(
+    host.rooms,
+    host.rows,
+    new InstanceRepository(host.db),
+    host.meta,
+    new RoomPlaybookFiles(),
+  ).create({
     threadId: 'source',
     title: 'Watcher fix',
     summary: '',
@@ -566,7 +577,13 @@ describe('room tasks on another machine', () => {
     expect((await host.rooms.task(task.id))?.state).toBe('proposed');
     offline.clear();
     git(project, 'commit', '-q', '--allow-empty', '-m', 'only on the server');
-    const newer = await new RoomsService(host.rooms, host.rows, new InstanceRepository(host.db), host.meta).create({
+    const newer = await new RoomsService(
+      host.rooms,
+      host.rows,
+      new InstanceRepository(host.db),
+      host.meta,
+      new RoomPlaybookFiles(),
+    ).create({
       threadId: 'source',
       title: 'Newer',
       summary: '',

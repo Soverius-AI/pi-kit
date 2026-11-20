@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AguiModule } from '../agui/agui.module';
 import { DbModule } from '../db/db.module';
+import { McpModule } from '../mcp/mcp.module';
 import { PeersModule } from '../peers/peers.module';
 import { PiModule } from '../pi/pi.module';
 import { ThreadsModule } from '../threads/threads.module';
@@ -23,9 +24,14 @@ import { RoomA2aTaskStore } from './room-a2a.task-store';
 import { RoomOutbox } from './room-outbox';
 import { RoomA2aAgents } from './room-a2a-agents';
 import { RoomsService } from './rooms.service';
+import { RoomPlaybookTools } from './room-playbook-tools.service';
+import { RoomSources } from './room-sources.service';
+import { RoomConsultant } from './room-consultant.service';
+import { RoomPlaybookService } from './room-playbook.service';
+import { RoomPlaybookFiles } from './room-playbook-files.service';
 
 @Module({
-  imports: [DbModule, PiModule, ThreadsModule, AguiModule, PeersModule],
+  imports: [DbModule, PiModule, ThreadsModule, AguiModule, PeersModule, McpModule],
   providers: [
     RoomsService,
     RoomBus,
@@ -45,6 +51,11 @@ import { RoomsService } from './rooms.service';
     RoomA2aTaskStore,
     RoomOutbox,
     RoomA2aAgents,
+    RoomPlaybookFiles,
+    RoomPlaybookTools,
+    RoomSources,
+    RoomConsultant,
+    RoomPlaybookService,
   ],
   controllers: [RoomsController, A2aController, A2aWellKnownController],
 })

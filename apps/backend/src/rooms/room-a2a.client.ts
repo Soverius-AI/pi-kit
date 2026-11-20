@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { AgentCard, type CancelTaskRequest, type SendMessageRequest, type Task, type Message } from '@a2a-js/sdk';
+import {
+  AgentCard,
+  type CancelTaskRequest,
+  type GetTaskRequest,
+  type SendMessageRequest,
+  type Task,
+  type Message,
+} from '@a2a-js/sdk';
 import {
   ClientFactory,
   ClientFactoryOptions,
@@ -50,6 +57,14 @@ export class RoomA2aClient {
     return await this.call(
       peerId,
       async (client, signal) => await client.sendMessage(request, this.options(signal)),
+      timeout,
+    );
+  }
+
+  async getTask(peerId: string, request: GetTaskRequest, timeout = 10_000): Promise<Task> {
+    return await this.call(
+      peerId,
+      async (client, signal) => await client.getTask(request, this.options(signal)),
       timeout,
     );
   }

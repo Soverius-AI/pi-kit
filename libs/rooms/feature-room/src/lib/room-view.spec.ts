@@ -1,6 +1,15 @@
 import { Component, input, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { Room, RoomEvent, RoomLeadState, RoomTask, RoomTaskQuestion, RoomWorkerCandidate } from '@pi-kit/protocol';
+import type {
+  Room,
+  RoomAction,
+  RoomEvent,
+  RoomLeadState,
+  RoomMemoryEntry,
+  RoomTask,
+  RoomTaskQuestion,
+  RoomWorkerCandidate,
+} from '@pi-kit/protocol';
 import { OpenRoomStore, ROOM_PROSE } from '@pi-kit/rooms/data';
 import { RoomView } from './room-view';
 
@@ -51,6 +60,12 @@ describe('RoomView', () => {
     projectFolder: signal<string | null>('/srv/pi-kit'),
     mode: signal<'supervised' | 'assisted'>('supervised'),
     paused: signal(false),
+    playbook: signal<string | null>(null),
+    stage: signal<string | null>(null),
+    stages: signal<string[]>([]),
+    memory: signal<RoomMemoryEntry[]>([]),
+    pendingActions: signal<RoomAction[]>([]),
+    decide: vi.fn(async () => undefined),
     update: vi.fn(async () => undefined),
     tasks: signal<RoomTask[]>([]),
     acting: signal<string | undefined>(undefined),
@@ -260,6 +275,53 @@ describe('RoomView', () => {
     expect(worker.querySelector('pk-avatar .letter')?.textContent).toBe('B');
     expect(worker.querySelector('[data-testid=room-message-machine]')?.textContent?.trim()).toBe('pi-kit B');
     expect(worker.querySelector('.text')?.textContent).toBe('Which language?');
+    events.set([]);
+  });
+
+  it('shows the playbook, its stages, the notebook, consultants by role and machine, and drafts to approve', () => {
+    store.playbook.set('pr-review');
+    store.stages.set(['review', 'verdict']);
+    store.stage.set('review');
+    store.memory.set([{ scope: 'room', key: 'decision', text: 'Ship it.', updatedBy: 'lead', updatedAt: 1 }]);
+    const action: RoomAction = {
+      id: 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+      kind: 'call',
+      name: 'post_review',
+      summary: 'Post the review on PR 25.',
+      payload: { argv: ['gh', 'pr', 'review', '25', '--body', 'Looks good'] },
+      state: 'pending',
+      result: null,
+      createdAt: 1,
+      decidedAt: null,
+    };
+    store.pendingActions.set([action]);
+    events.set([
+      event(1, 'lead', `Asks the security: ${'Is this safe? '.repeat(20)}`, 'note'),
+      { ...event(2, 'consultant', 'No secrets in the diff.'), role: 'security', environmentId: 'desk' },
+    ]);
+    const { fixture, el } = render();
+    expect(el.querySelector('[data-testid=room-playbook]')?.textContent).toContain('pr-review');
+    expect(el.querySelector('[data-testid=room-stage][aria-current=step]')?.textContent?.trim()).toBe('review');
+    expect(el.querySelector('[data-testid=room-notebook]')?.textContent).toContain('Ship it.');
+    expect(el.querySelector('[data-testid=room-lead-note] summary')?.textContent).toContain('Asks the security');
+    expect(el.querySelector('[data-actor=lead]')).toBeNull();
+    const consultant = el.querySelector('[data-actor=consultant]') as HTMLElement;
+    expect(consultant.querySelector('[data-testid=room-message-role]')?.textContent?.trim()).toBe('security');
+    expect(consultant.querySelector('[data-testid=room-message-machine]')?.textContent?.trim()).toBe('pi-kit B');
+    expect(el.querySelector('[data-testid=room-action-argv]')?.textContent).toBe("gh pr review 25 --body 'Looks good'");
+    store.pendingActions.set([
+      { ...action, payload: { mcp: { server: 'linear', tool: 'save_comment', args: { issue: 'T-1' } } } },
+    ]);
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid=room-action-argv]')?.textContent).toContain('linear · save_comment');
+    store.pendingActions.set([action]);
+    fixture.detectChanges();
+    (el.querySelector('[data-testid=room-action-approve]') as HTMLButtonElement).click();
+    expect(store.decide).toHaveBeenCalledWith(action.id, 'approve');
+    store.playbook.set(null);
+    store.stages.set([]);
+    store.memory.set([]);
+    store.pendingActions.set([]);
     events.set([]);
   });
 

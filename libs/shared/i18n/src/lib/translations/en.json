@@ -1414,7 +1414,10 @@
       "create": "Create room",
       "createdN": "Room “{{value1}}” created.",
       "startARoomFromThisThread": "Start a room from this thread…",
-      "remoteHostN": "The room runs on {{value1}}: its lead and tasks use that computer’s clone of this repository at the base commit. Push the base commit first if it is only here."
+      "remoteHostN": "The room runs on {{value1}}: its lead and tasks use that computer’s clone of this repository at the base commit. Push the base commit first if it is only here.",
+      "playbook": "Playbook",
+      "noPlaybook": "None: plan with the lead",
+      "playbookFacts": "{{value1}} · {{value2}}"
     },
     "threadSidebar": {
       "projects": "Projects",
@@ -2492,7 +2495,6 @@
       "thisProjectOnly": "This project only",
       "services": "Services",
       "added": "added",
-      "unverified": "unverified",
       "yourOwnServer": "Your own server",
       "aURLOrACommand": "A URL or a command",
       "noServiceMatchesYourOwnServerTakes": "No service matches “{{value1}}”. “Your own server” takes any URL or command.",
@@ -2523,6 +2525,7 @@
       "notFound": "not found",
       "needsATokenYouCreateAt": "Needs a token you create at {{value1}}.",
       "needsYourOwnAppAClientId": "Needs your own {{value1}} app (a client id).",
+      "runsHereAndSignsInWithACode": "Runs on this computer; signs in with a code the first time.",
       "signsInInYourBrowserOnceIt": "Signs in in your browser once it is added.",
       "thisProjectOnlyNeedsAThreadOpen": "“This project only” needs a thread open in the folder.",
       "aServerWithATokenOrA": "A server with a token or a client secret stays in your user file.",
@@ -2596,7 +2599,6 @@
       "toolsOfThisServerOpenAnInteractive": "Tools of this server open an interactive panel (MCP Apps) in the transcript.",
       "app": "app",
       "apps": "apps",
-      "unverified": "unverified",
       "working": "Working",
       "howToolsReachTheModel": "How tools reach the model",
       "toolExposure": " tool exposure",
@@ -2627,7 +2629,7 @@
       "editHere": "Edit here",
       "opensInYourDefaultEditor": "Opens in your default editor",
       "openInEditor": "Open in editor",
-      "catalogEndpointsWereReadFromEachVendor": "Catalog {{value1}}. Endpoints were read from each vendor’s own documentation; an entry marked “unverified” could not be.",
+      "catalogEndpointsWereReadFromEachVendor": "Catalog {{value1}}. Endpoints were read from each vendor’s own documentation.",
       "actionsFor": "Actions for ",
       "reconnect": "Reconnect",
       "turnOff": "Turn off",
@@ -4479,6 +4481,32 @@
       "name": "Restart backend automatically",
       "hint": "Off by default. Monitor the backend and restart it after a crash or failed health checks. Independent of the background service; explicit update restarts still work when off.",
       "unsupported": "Automatic recovery requires a service host."
+    },
+    "composio": {
+      "title": "Composio apps",
+      "optional": "optional",
+      "close": "Close",
+      "tile": "Composio, app by app",
+      "tileHint": "One server per app, read only by default. Needs a Composio project API key.",
+      "about": "Optional: Composio connects apps pi-kit has no card for. Sign-ins and whatever the tools read pass through Composio’s cloud, and each app becomes its own server here, read only unless you choose otherwise.",
+      "apiKey": "Composio project API key",
+      "apiKeyHint": "From your Composio project settings. It goes to the credential store and is checked with Composio first.",
+      "keepKey": "Keep key",
+      "yourApps": "Your Composio apps",
+      "readOnly": "read only",
+      "signedIn": "signed in",
+      "signInTo": "Sign in to {{value1}}",
+      "checkAgain": "Check again",
+      "signIn": "Sign in",
+      "searchApps": "Search Composio apps, e.g. sevDesk, HubSpot",
+      "apps": "Composio apps",
+      "readOnlyChoice": "Read only: leave out tools that create, change or delete",
+      "back": "Back",
+      "add": "Add app",
+      "added": "added",
+      "forgetKey": "Forget key",
+      "forgetHint": "Remove the Composio apps under MCP servers first.",
+      "done": "Done"
     }
   },
   "agents": {
@@ -4729,7 +4757,18 @@
         "supervised": "Worker questions and results come to you.",
         "assisted": "The lead answers workers and reviews results first; you still approve and integrate."
       },
-      "worker": "Worker"
+      "worker": "Worker",
+      "stages": "Stages",
+      "notebookN": "Notebook · {{value1}} note(s)",
+      "playbookNote": "playbook",
+      "consultant": "consultant"
+    },
+    "action": {
+      "call": "Draft",
+      "advance": "Next stage",
+      "run": "Run it",
+      "move": "Move on",
+      "discard": "Discard"
     }
   },
   "common": {

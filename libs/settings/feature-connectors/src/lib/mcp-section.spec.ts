@@ -3,7 +3,7 @@ import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CONNECTOR_CATALOG, type McpServer } from '@pi-kit/protocol';
 import { ChatStore } from '@pi-kit/chat/api';
-import { ConnectorsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/api';
+import { ComposioStore, ConnectorsStore, SecretsStore, SettingsStore } from '@pi-kit/settings/api';
 import { fileRows, mcpRows } from '@pi-kit/settings/util';
 import { McpSection } from './mcp-section';
 
@@ -111,6 +111,7 @@ describe('McpSection', () => {
         { provide: SettingsStore, useValue: settings },
         { provide: SecretsStore, useValue: { status: signal(undefined), loadStatus: vi.fn(async () => undefined) } },
         { provide: ChatStore, useValue: { running: signal(false) } },
+        { provide: ComposioStore, useValue: { visible: signal(false), open: vi.fn() } },
       ],
     });
   });

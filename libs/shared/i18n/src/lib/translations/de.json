@@ -1414,7 +1414,10 @@
       "create": "Raum erstellen",
       "createdN": "Raum „{{value1}}“ erstellt.",
       "startARoomFromThisThread": "Raum aus diesem Chat starten…",
-      "remoteHostN": "Der Raum läuft auf {{value1}}: Lead und Aufgaben nutzen den Klon dieses Repositorys dort, beim Basis-Commit. Pushe den Basis-Commit zuerst, falls er nur hier liegt."
+      "remoteHostN": "Der Raum läuft auf {{value1}}: Lead und Aufgaben nutzen den Klon dieses Repositorys dort, beim Basis-Commit. Pushe den Basis-Commit zuerst, falls er nur hier liegt.",
+      "playbook": "Playbook",
+      "noPlaybook": "Keins: mit dem Lead planen",
+      "playbookFacts": "{{value1}} · {{value2}}"
     },
     "threadSidebar": {
       "projects": "Projekte",
@@ -2492,7 +2495,6 @@
       "thisProjectOnly": "Nur dieses Projekt",
       "services": "Dienste",
       "added": "hinzugefügt",
-      "unverified": "unverifiziert",
       "yourOwnServer": "Dein eigener Server",
       "aURLOrACommand": "Eine URL oder ein Befehl",
       "noServiceMatchesYourOwnServerTakes": "Kein Dienst entspricht „{{value1}}“. „Dein eigener Server“ akzeptiert jede URL oder jeden Befehl.",
@@ -2523,6 +2525,7 @@
       "notFound": "nicht gefunden",
       "needsATokenYouCreateAt": "Benötigt ein Token, das du unter {{value1}} erstellst.",
       "needsYourOwnAppAClientId": "Benötigt deine eigene {{value1}}-App (eine Client-ID).",
+      "runsHereAndSignsInWithACode": "Läuft auf diesem Computer; meldet sich beim ersten Mal mit einem Code an.",
       "signsInInYourBrowserOnceIt": "Meldet dich in deinem Browser an, sobald es hinzugefügt wurde.",
       "thisProjectOnlyNeedsAThreadOpen": "„Nur dieses Projekt“ benötigt einen offenen Chat im Ordner.",
       "aServerWithATokenOrA": "Ein Server mit einem Token oder einem Client-Secret bleibt in deiner Benutzerdatei.",
@@ -2596,7 +2599,6 @@
       "toolsOfThisServerOpenAnInteractive": "Die Tools dieses Servers öffnen ein interaktives Panel (MCP-Apps) im Transkript.",
       "app": "App",
       "apps": "Apps",
-      "unverified": "unverifiziert",
       "working": "Wird bearbeitet",
       "howToolsReachTheModel": "Wie Tools das Modell erreichen",
       "toolExposure": " Tool-Freigabe",
@@ -2627,7 +2629,7 @@
       "editHere": "Hier bearbeiten",
       "opensInYourDefaultEditor": "Wird in deinem Standard-Editor geöffnet",
       "openInEditor": "Im Editor öffnen",
-      "catalogEndpointsWereReadFromEachVendor": "Katalog {{value1}}. Die Endpunkte wurden aus der jeweiligen Dokumentation der Anbieter ausgelesen; Einträge, die als „unverifiziert“ markiert sind, konnten nicht ausgelesen werden.",
+      "catalogEndpointsWereReadFromEachVendor": "Katalog {{value1}}. Die Endpunkte wurden aus der jeweiligen Dokumentation der Anbieter ausgelesen.",
       "actionsFor": "Aktionen für ",
       "reconnect": "Neu verbinden",
       "turnOff": "Ausschalten",
@@ -4479,6 +4481,32 @@
       "name": "Backend automatisch neu starten",
       "hint": "Standardmäßig aus. Überwacht das Backend und startet es nach einem Absturz oder fehlgeschlagenen Zustandsprüfungen neu. Unabhängig vom Hintergrunddienst; explizite Update-Neustarts funktionieren auch ohne diese Option.",
       "unsupported": "Die automatische Wiederherstellung erfordert einen Service-Host."
+    },
+    "composio": {
+      "title": "Composio-Apps",
+      "optional": "optional",
+      "close": "Schließen",
+      "tile": "Composio, App für App",
+      "tileHint": "Ein Server pro App, standardmäßig nur lesend. Benötigt einen Composio-Projekt-API-Schlüssel.",
+      "about": "Optional: Composio verbindet Apps, für die pi-kit keine eigene Karte hat. Anmeldungen und alles, was die Tools lesen, laufen über die Cloud von Composio, und jede App wird hier zu einem eigenen Server, nur lesend, außer du wählst es anders.",
+      "apiKey": "Composio-Projekt-API-Schlüssel",
+      "apiKeyHint": "Aus den Projekteinstellungen von Composio. Er kommt in den Anmeldedatenspeicher und wird vorher bei Composio geprüft.",
+      "keepKey": "Schlüssel speichern",
+      "yourApps": "Deine Composio-Apps",
+      "readOnly": "nur lesend",
+      "signedIn": "angemeldet",
+      "signInTo": "Bei {{value1}} anmelden",
+      "checkAgain": "Erneut prüfen",
+      "signIn": "Anmelden",
+      "searchApps": "Composio-Apps suchen, z. B. sevDesk, HubSpot",
+      "apps": "Composio-Apps",
+      "readOnlyChoice": "Nur lesend: Tools weglassen, die etwas anlegen, ändern oder löschen",
+      "back": "Zurück",
+      "add": "App hinzufügen",
+      "added": "hinzugefügt",
+      "forgetKey": "Schlüssel entfernen",
+      "forgetHint": "Entferne zuerst die Composio-Apps unter MCP-Server.",
+      "done": "Fertig"
     }
   },
   "agents": {
@@ -4729,7 +4757,18 @@
         "supervised": "Fragen und Ergebnisse der Worker kommen zu dir.",
         "assisted": "Der Lead beantwortet Worker und prüft Ergebnisse zuerst; du genehmigst und integrierst weiterhin."
       },
-      "worker": "Worker"
+      "worker": "Worker",
+      "stages": "Phasen",
+      "notebookN": "Notizbuch · {{value1}} Notiz(en)",
+      "playbookNote": "Playbook",
+      "consultant": "Berater"
+    },
+    "action": {
+      "call": "Entwurf",
+      "advance": "Nächste Phase",
+      "run": "Ausführen",
+      "move": "Weiter",
+      "discard": "Verwerfen"
     }
   },
   "common": {

@@ -13,6 +13,7 @@ import { ThreadsRepository } from '../db/threads.repository';
 import { RoomsEnabledGuard } from './rooms-enabled.guard';
 import { RepositoryIdentity } from './repository-identity';
 import { RoomsService } from './rooms.service';
+import { RoomPlaybookFiles } from './room-playbook-files.service';
 
 let base: string;
 let project: string;
@@ -43,7 +44,13 @@ beforeEach(async () => {
   db = await DatabaseService.create({ dataDir: join(base, 'data') });
   meta = new MetaRepository(db);
   threads = new ThreadsRepository(db);
-  service = new RoomsService(new RoomsRepository(db), threads, new InstanceRepository(db), meta);
+  service = new RoomsService(
+    new RoomsRepository(db),
+    threads,
+    new InstanceRepository(db),
+    meta,
+    new RoomPlaybookFiles(),
+  );
   await thread('t1', project);
 });
 

@@ -26,6 +26,8 @@ export interface NewRoom {
   summary: string;
   sourceThreadId: string | null;
   projectFolder: string;
+  playbook?: string | null;
+  stage?: string | null;
   createdAt: number;
 }
 
@@ -127,7 +129,7 @@ export class RoomsRepository {
     };
     await this.db
       .prepare(
-        'INSERT INTO rooms (id, title, repository, base_commit, summary, source_thread_id, project_folder, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO rooms (id, title, repository, base_commit, summary, source_thread_id, project_folder, playbook, stage, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       )
       .run(
         row.id,
@@ -137,6 +139,8 @@ export class RoomsRepository {
         redact(room.summary) as string,
         room.sourceThreadId,
         room.projectFolder,
+        room.playbook ?? null,
+        room.stage ?? null,
         row.created_at,
       );
     return this.toRoom(row);
@@ -153,12 +157,14 @@ export class RoomsRepository {
         mode: 'supervised' | 'assisted';
         paused: boolean;
         agentTurns: number;
+        playbook: string | null;
+        stage: string | null;
       }
     | undefined
   > {
     const row = (await this.db
       .prepare(
-        `SELECT id, title, repository, base_commit, created_at, summary, lead_thread_id, source_thread_id, project_folder, lead_questions_json, mode, paused, agent_turns, ${WAITING} FROM rooms WHERE id = ? AND archived_at IS NULL`,
+        `SELECT id, title, repository, base_commit, created_at, summary, lead_thread_id, source_thread_id, project_folder, lead_questions_json, mode, paused, agent_turns, playbook, stage, ${WAITING} FROM rooms WHERE id = ? AND archived_at IS NULL`,
       )
       .get(id)) as
       | (RoomRow & {
@@ -170,6 +176,8 @@ export class RoomsRepository {
           mode: 'supervised' | 'assisted';
           paused: number;
           agent_turns: number;
+          playbook: string | null;
+          stage: string | null;
         })
       | undefined;
     return row
@@ -183,12 +191,25 @@ export class RoomsRepository {
           mode: row.mode ?? 'supervised',
           paused: !!Number(row.paused ?? 0),
           agentTurns: Number(row.agent_turns ?? 0),
+          playbook: row.playbook ?? null,
+          stage: row.stage ?? null,
         }
       : undefined;
   }
 
   async setMode(id: string, mode: 'supervised' | 'assisted'): Promise<void> {
     await this.db.prepare('UPDATE rooms SET mode = ? WHERE id = ?').run(mode, id);
+  }
+
+  async setStage(id: string, stage: string | null): Promise<void> {
+    await this.db.prepare('UPDATE rooms SET stage = ? WHERE id = ?').run(stage, id);
+  }
+
+  async playbookRooms(): Promise<string[]> {
+    const rows = (await this.db
+      .prepare('SELECT id FROM rooms WHERE playbook IS NOT NULL AND archived_at IS NULL AND paused = 0')
+      .all()) as { id: string }[];
+    return rows.map((row) => row.id);
   }
 
   async setPaused(id: string, paused: boolean): Promise<void> {
@@ -228,6 +249,7 @@ export class RoomsRepository {
       images?: number;
       taskId?: string | null;
       environmentId?: string | null;
+      role?: string | null;
     },
     createdAt = Date.now(),
   ): Promise<RoomEvent> {
@@ -239,7 +261,7 @@ export class RoomsRepository {
       const seq = Number(last.seq) + 1;
       await this.db
         .prepare(
-          'INSERT INTO room_events (room_id, seq, kind, actor, text, images, task_id, environment_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO room_events (room_id, seq, kind, actor, text, images, task_id, environment_id, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         )
         .run(
           roomId,
@@ -250,6 +272,7 @@ export class RoomsRepository {
           event.images ?? 0,
           event.taskId ?? null,
           event.environmentId ?? null,
+          event.role ?? null,
           createdAt,
         );
       return {
@@ -261,6 +284,7 @@ export class RoomsRepository {
         images: event.images ?? 0,
         taskId: event.taskId ?? null,
         environmentId: event.environmentId ?? null,
+        role: event.role ?? null,
         createdAt,
       };
     })();
@@ -269,7 +293,7 @@ export class RoomsRepository {
   async events(roomId: string, afterSeq = 0): Promise<RoomEvent[]> {
     const rows = (await this.db
       .prepare(
-        'SELECT room_id, seq, kind, actor, text, images, task_id, environment_id, created_at FROM room_events WHERE room_id = ? AND seq > ? ORDER BY seq',
+        'SELECT room_id, seq, kind, actor, text, images, task_id, environment_id, role, created_at FROM room_events WHERE room_id = ? AND seq > ? ORDER BY seq',
       )
       .all(roomId, afterSeq)) as {
       room_id: string;
@@ -280,6 +304,7 @@ export class RoomsRepository {
       images: number;
       task_id: string | null;
       environment_id: string | null;
+      role: string | null;
       created_at: number;
     }[];
     return rows.map((row) => ({
@@ -291,6 +316,7 @@ export class RoomsRepository {
       images: Number(row.images),
       taskId: row.task_id,
       environmentId: row.environment_id,
+      role: row.role,
       createdAt: row.created_at,
     }));
   }

@@ -3,6 +3,7 @@ import {
   ApiClient,
   EntryApiClient,
   roomsApprove,
+  roomsDecide,
   roomsDecline,
   roomsDetail,
   roomsEvents,
@@ -18,6 +19,8 @@ import {
   type TypedClient,
 } from '@pi-kit/api';
 import type {
+  RoomAction,
+  RoomMemoryEntry,
   RoomTaskAnswer,
   RoomTaskQuestion,
   Room,
@@ -54,6 +57,12 @@ export class OpenRoomStore {
   readonly projectFolder = signal<string | null>(null);
   readonly mode = signal<RoomMode>('supervised');
   readonly paused = signal(false);
+  readonly playbook = signal<string | null>(null);
+  readonly stage = signal<string | null>(null);
+  readonly stages = signal<string[]>([]);
+  readonly actions = signal<RoomAction[]>([]);
+  readonly memory = signal<RoomMemoryEntry[]>([]);
+  readonly pendingActions = computed(() => this.actions().filter((action) => action.state === 'pending'));
   readonly protection = signal<ThreadProtection | undefined>(undefined);
   readonly loading = signal(false);
   readonly error = signal<string | undefined>(undefined);
@@ -86,6 +95,11 @@ export class OpenRoomStore {
     this.projectFolder.set(null);
     this.mode.set('supervised');
     this.paused.set(false);
+    this.playbook.set(null);
+    this.stage.set(null);
+    this.stages.set([]);
+    this.actions.set([]);
+    this.memory.set([]);
     this.protection.set(undefined);
     this.loading.set(false);
     this.error.set(undefined);
@@ -198,6 +212,23 @@ export class OpenRoomStore {
     }
   }
 
+  async decide(actionId: string, decision: 'approve' | 'discard'): Promise<void> {
+    const room = this.room();
+    if (!room) return;
+    this.acting.set(actionId);
+    this.error.set(undefined);
+    try {
+      const action = await unwrap(
+        roomsDecide({ client: this.client(room), path: { roomId: room.id, actionId }, body: { decision } }),
+      );
+      if (this.room()?.id === room.id) this.putAction(action);
+    } catch (error) {
+      if (this.room()?.id === room.id) this.error.set(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (this.acting() === actionId) this.acting.set(undefined);
+    }
+  }
+
   async answerLead(answers: RoomTaskAnswer['answers']): Promise<void> {
     const room = this.room();
     if (!room) return;
@@ -218,12 +249,25 @@ export class OpenRoomStore {
     }
   }
 
+  private putAction(action: RoomAction): void {
+    this.actions.update((actions) => this.upsert(actions, action));
+  }
+
+  private putMemory(entry: RoomMemoryEntry): void {
+    this.memory.update((memory) => {
+      const rest = memory.filter((existing) => !(existing.scope === entry.scope && existing.key === entry.key));
+      return entry.text.trim() ? [...rest, entry] : rest;
+    });
+  }
+
   private putTask(task: RoomTask): void {
-    this.tasks.update((tasks) =>
-      tasks.some((existing) => existing.id === task.id)
-        ? tasks.map((existing) => (existing.id === task.id ? task : existing))
-        : [...tasks, task],
-    );
+    this.tasks.update((tasks) => this.upsert(tasks, task));
+  }
+
+  private upsert<T extends { id: string }>(items: T[], item: T): T[] {
+    return items.some((existing) => existing.id === item.id)
+      ? items.map((existing) => (existing.id === item.id ? item : existing))
+      : [...items, item];
   }
 
   private client(room: Room): TypedClient {
@@ -244,6 +288,11 @@ export class OpenRoomStore {
       this.projectFolder.set(detail.projectFolder);
       this.mode.set(detail.mode);
       this.paused.set(detail.paused);
+      this.playbook.set(detail.playbook);
+      this.stage.set(detail.stage);
+      this.stages.set(detail.stages);
+      this.actions.set(detail.actions);
+      this.memory.set(detail.memory);
       this.error.set(undefined);
       if (detail.leadThreadId) void this.loadProtection(room, detail.leadThreadId, generation);
       void this.loadWorkers();
@@ -282,9 +331,12 @@ export class OpenRoomStore {
             this.connected.set(true);
             if (line.type === 'event') this.add(line.event);
             else if (line.type === 'task') this.putTask(line.task);
+            else if (line.type === 'action') this.putAction(line.action);
+            else if (line.type === 'memory') this.putMemory(line.entry);
             else if (line.type === 'room') {
               this.mode.set(line.mode);
               this.paused.set(line.paused);
+              if (line.stage !== undefined) this.stage.set(line.stage);
             } else {
               this.lead.set(line.state);
               if (line.questions) this.leadQuestions.set(line.questions);

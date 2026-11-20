@@ -32,6 +32,17 @@ const withExposure = (exposure: ConnectorExposure): Record<string, unknown> =>
 
 export function buildConnectorEntry(connector: Connector, options: EntryOptions): Record<string, unknown> {
   const { auth } = connector;
+  if (connector.local) {
+    const variant = connector.local.variants?.find((v) => v.id === options.variant);
+    const env = { ...connector.local.env, ...variant?.env };
+    return {
+      command: connector.local.command,
+      args: [...connector.local.args, ...(variant?.args ?? [])],
+      ...(Object.keys(env).length ? { env } : {}),
+      description: connector.summary,
+      ...withExposure(options.exposure),
+    };
+  }
   const entry: Record<string, unknown> = {
     url: options.url ?? connectorUrl(connector, options.variant),
     description: connector.summary,
@@ -55,6 +66,8 @@ export function buildConnectorEntry(connector: Connector, options: EntryOptions)
     case 'bearer':
       if (!options.authorization) throw new Error(`${connector.name} needs a token.`);
       entry['headers'] = { Authorization: options.authorization };
+      break;
+    case 'device':
       break;
   }
   return entry;
@@ -110,5 +123,6 @@ export function endpointFor(
   variant: string | undefined,
   overrides: Record<string, string>,
 ): string | undefined {
+  if (connector.local) return undefined;
   return (variant ? overrides[`${connector.id}/${variant}`] : undefined) ?? overrides[connector.id];
 }

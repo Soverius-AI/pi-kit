@@ -83,3 +83,18 @@ export const AddA2aAgentSchema = z
   .strict()
   .meta({ id: 'AddA2aAgent' });
 export type AddA2aAgent = z.infer<typeof AddA2aAgentSchema>;
+
+export const A2aRoomConsultSchema = z
+  .object({
+    consult: z.literal(true),
+    roomId: RoomIdSchema,
+    roomTitle: z.string().max(200),
+    repository: z.string().min(1).max(512),
+    base: z.string().regex(/^[0-9a-f]{40,64}$/),
+    role: z.string().min(1).max(40),
+    instructions: z.string().max(4000),
+    question: z.string().min(1).max(32000),
+  })
+  .strict()
+  .meta({ id: 'A2aRoomConsult' });
+export type A2aRoomConsult = z.infer<typeof A2aRoomConsultSchema>;

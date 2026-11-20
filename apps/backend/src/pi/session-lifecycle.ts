@@ -208,7 +208,11 @@ export class SessionLifecycle {
     const { ui, bus } = sessionUi;
     this.plugins.bind(threadId, bus);
     const resourceLoader = new pi.DefaultResourceLoader({
-      additionalSkillPaths: [genUiSkillPath(), ...(this.hooks.browser()?.available ? [browserSkillPath()] : [])],
+      additionalSkillPaths: [
+        genUiSkillPath(),
+        ...(this.hooks.browser()?.available ? [browserSkillPath()] : []),
+        ...(this.hooks.room() ? [RoomTools.skillPath()].filter((path): path is string => !!path) : []),
+      ],
       cwd,
       agentDir,
       settingsManager,

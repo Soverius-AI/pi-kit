@@ -335,6 +335,43 @@ export type ComposerRegistration = {
     id: string;
 };
 
+export type ComposioAddRequest = {
+    toolkit: string;
+    name: string;
+    readOnly?: boolean;
+};
+
+export type ComposioConnection = {
+    server: string;
+    toolkit: string;
+    name: string;
+    readOnly: boolean;
+    connected: boolean;
+    signInUrl: string | null;
+};
+
+export type ComposioConnectionList = Array<ComposioConnection>;
+
+export type ComposioKeyRequest = {
+    apiKey: string;
+};
+
+export type ComposioStatus = {
+    configured: boolean;
+    storage: 'keychain' | 'plain' | null;
+};
+
+export type ComposioToolkit = {
+    slug: string;
+    name: string;
+    description: string;
+    logo: string | null;
+    tools: number;
+    noAuth: boolean;
+};
+
+export type ComposioToolkitList = Array<ComposioToolkit>;
+
 export type ComputerUseState = {
     installed: boolean;
     supported: boolean;
@@ -361,12 +398,28 @@ export type Connector = {
         paths: Array<string>;
         style: 'fill' | 'stroke';
     };
-    endpoint: {
+    endpoint?: {
         url: string;
         variants?: Array<{
             id: string;
             label: string;
             url: string;
+            note: string;
+        }>;
+    };
+    local?: {
+        command: string;
+        args: Array<string>;
+        env?: {
+            [key: string]: string;
+        };
+        variants?: Array<{
+            id: string;
+            label: string;
+            args?: Array<string>;
+            env?: {
+                [key: string]: string;
+            };
             note: string;
         }>;
     };
@@ -378,6 +431,9 @@ export type Connector = {
     } | {
         type: 'oauth-client';
         callbackPort: number;
+        setup: string;
+    } | {
+        type: 'device';
         setup: string;
     } | {
         type: 'bearer';
@@ -467,6 +523,7 @@ export type CreateRoom = {
     title: string;
     summary: string;
     projectFolder?: string;
+    playbook?: string;
 };
 
 export type CreateThread = {
@@ -1802,6 +1859,20 @@ export type PiUpdateCheck = {
     command: string;
 };
 
+export type PlaybookList = Array<PlaybookSummary>;
+
+export type PlaybookSummary = {
+    name: string;
+    description: string;
+    path: string;
+    roles: Array<string>;
+    tools: Array<string>;
+    outputs: Array<string>;
+    triggers: number;
+    stages: Array<string>;
+    error: string | null;
+};
+
 export type PostRoomMessage = {
     text: string;
     route: 'lead' | 'none';
@@ -2044,6 +2115,24 @@ export type Room = {
     createdAt: number;
 };
 
+export type RoomAction = {
+    id: string;
+    kind: 'call' | 'advance';
+    name: string;
+    summary: string;
+    payload: {
+        [key: string]: unknown;
+    };
+    state: 'pending' | 'done' | 'failed' | 'discarded';
+    result: string | null;
+    createdAt: number;
+    decidedAt: number | null;
+};
+
+export type RoomActionDecision = {
+    decision: 'approve' | 'discard';
+};
+
 export type RoomClone = {
     folder: string;
     clean: boolean;
@@ -2059,6 +2148,11 @@ export type RoomDetail = {
     projectFolder: string | null;
     mode: 'supervised' | 'assisted';
     paused: boolean;
+    playbook: string | null;
+    stage: string | null;
+    stages: Array<string>;
+    actions: Array<RoomAction>;
+    memory: Array<RoomMemoryEntry>;
     leadQuestions: Array<RoomTaskQuestion>;
     events: Array<RoomEvent>;
     tasks: Array<RoomTask>;
@@ -2078,11 +2172,12 @@ export type RoomEvent = {
     roomId: string;
     seq: number;
     kind: 'message' | 'note' | 'task';
-    actor: 'owner' | 'lead' | 'coordinator' | 'worker';
+    actor: 'owner' | 'lead' | 'coordinator' | 'worker' | 'consultant';
     text: string;
     images: number;
     taskId: string | null;
     environmentId?: string | null;
+    role?: string | null;
     createdAt: number;
 };
 
@@ -2094,6 +2189,14 @@ export type RoomImage = {
 export type RoomLeadState = 'idle' | 'working' | 'error';
 
 export type RoomList = Array<Room>;
+
+export type RoomMemoryEntry = {
+    scope: 'room' | 'playbook';
+    key: string;
+    text: string;
+    updatedBy: string;
+    updatedAt: number;
+};
 
 export type RoomMode = 'supervised' | 'assisted';
 
@@ -2116,6 +2219,13 @@ export type RoomStreamLine = {
     type: 'room';
     mode: RoomMode;
     paused: boolean;
+    stage?: string | null;
+} | {
+    type: 'action';
+    action: RoomAction;
+} | {
+    type: 'memory';
+    entry: RoomMemoryEntry;
 } | {
     type: 'task';
     task: RoomTask;
@@ -8538,6 +8648,236 @@ export type ConnectorsExposureResponses = {
 
 export type ConnectorsExposureResponse = ConnectorsExposureResponses[keyof ConnectorsExposureResponses];
 
+export type ComposioStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/composio/status';
+};
+
+export type ComposioStatusErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type ComposioStatusError = ComposioStatusErrors[keyof ComposioStatusErrors];
+
+export type ComposioStatusResponses = {
+    /**
+     * OK
+     */
+    200: ComposioStatus;
+};
+
+export type ComposioStatusResponse = ComposioStatusResponses[keyof ComposioStatusResponses];
+
+export type ComposioForgetKeyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/composio/key';
+};
+
+export type ComposioForgetKeyErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Composio apps still use the key.
+     */
+    409: Problem;
+};
+
+export type ComposioForgetKeyError = ComposioForgetKeyErrors[keyof ComposioForgetKeyErrors];
+
+export type ComposioForgetKeyResponses = {
+    /**
+     * OK
+     */
+    200: ComposioStatus;
+};
+
+export type ComposioForgetKeyResponse = ComposioForgetKeyResponses[keyof ComposioForgetKeyResponses];
+
+export type ComposioSetKeyData = {
+    body: ComposioKeyRequest;
+    path?: never;
+    query?: never;
+    url: '/api/composio/key';
+};
+
+export type ComposioSetKeyErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Composio refused the key.
+     */
+    409: Problem;
+    /**
+     * Composio did not answer.
+     */
+    502: Problem;
+};
+
+export type ComposioSetKeyError = ComposioSetKeyErrors[keyof ComposioSetKeyErrors];
+
+export type ComposioSetKeyResponses = {
+    /**
+     * OK
+     */
+    200: ComposioStatus;
+};
+
+export type ComposioSetKeyResponse = ComposioSetKeyResponses[keyof ComposioSetKeyResponses];
+
+export type ComposioToolkitsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        search?: string;
+    };
+    url: '/api/composio/toolkits';
+};
+
+export type ComposioToolkitsErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * No Composio API key yet.
+     */
+    409: Problem;
+    /**
+     * Composio did not answer.
+     */
+    502: Problem;
+};
+
+export type ComposioToolkitsError = ComposioToolkitsErrors[keyof ComposioToolkitsErrors];
+
+export type ComposioToolkitsResponses = {
+    /**
+     * OK
+     */
+    200: ComposioToolkitList;
+};
+
+export type ComposioToolkitsResponse = ComposioToolkitsResponses[keyof ComposioToolkitsResponses];
+
+export type ComposioConnectionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/composio/connections';
+};
+
+export type ComposioConnectionsErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type ComposioConnectionsError = ComposioConnectionsErrors[keyof ComposioConnectionsErrors];
+
+export type ComposioConnectionsResponses = {
+    /**
+     * OK
+     */
+    200: ComposioConnectionList;
+};
+
+export type ComposioConnectionsResponse = ComposioConnectionsResponses[keyof ComposioConnectionsResponses];
+
+export type ComposioAddData = {
+    body: ComposioAddRequest;
+    path?: never;
+    query?: never;
+    url: '/api/composio/connections';
+};
+
+export type ComposioAddErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * No Composio API key yet, or Composio refused it.
+     */
+    409: Problem;
+    /**
+     * Composio did not answer.
+     */
+    502: Problem;
+};
+
+export type ComposioAddError = ComposioAddErrors[keyof ComposioAddErrors];
+
+export type ComposioAddResponses = {
+    /**
+     * OK
+     */
+    200: ComposioConnection;
+};
+
+export type ComposioAddResponse = ComposioAddResponses[keyof ComposioAddResponses];
+
+export type ComposioLinkData = {
+    body?: never;
+    path: {
+        /**
+         * The server name of the Composio app.
+         */
+        server: string;
+    };
+    query?: never;
+    url: '/api/composio/connections/{server}/link';
+};
+
+export type ComposioLinkErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * pi-kit did not add that app.
+     */
+    404: Problem;
+    /**
+     * Composio did not answer.
+     */
+    502: Problem;
+};
+
+export type ComposioLinkError = ComposioLinkErrors[keyof ComposioLinkErrors];
+
+export type ComposioLinkResponses = {
+    /**
+     * OK
+     */
+    200: ComposioConnection;
+};
+
+export type ComposioLinkResponse = ComposioLinkResponses[keyof ComposioLinkResponses];
+
 export type PackagesListData = {
     body?: never;
     path?: never;
@@ -12361,6 +12701,47 @@ export type RoomsClonesResponses = {
 
 export type RoomsClonesResponse = RoomsClonesResponses[keyof RoomsClonesResponses];
 
+export type RoomsPlaybooksData = {
+    body?: never;
+    path?: never;
+    query: {
+        repository: string;
+        baseCommit?: string;
+        threadId?: string;
+    };
+    url: '/api/rooms/playbooks';
+};
+
+export type RoomsPlaybooksErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No thread with this id.
+     */
+    404: Problem;
+    /**
+     * A room needs a git repository with at least one commit. Commit in this thread’s folder first.
+     */
+    409: Problem;
+};
+
+export type RoomsPlaybooksError = RoomsPlaybooksErrors[keyof RoomsPlaybooksErrors];
+
+export type RoomsPlaybooksResponses = {
+    /**
+     * OK
+     */
+    200: PlaybookList;
+};
+
+export type RoomsPlaybooksResponse = RoomsPlaybooksResponses[keyof RoomsPlaybooksResponses];
+
 export type RoomsAgentsData = {
     body?: never;
     path?: never;
@@ -12612,6 +12993,52 @@ export type RoomsAnswerLeadResponses = {
 };
 
 export type RoomsAnswerLeadResponse = RoomsAnswerLeadResponses[keyof RoomsAnswerLeadResponses];
+
+export type RoomsDecideData = {
+    body: RoomActionDecision;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+        /**
+         * The action id.
+         */
+        actionId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/actions/{actionId}';
+};
+
+export type RoomsDecideErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+    /**
+     * This action was decided already.
+     */
+    409: Problem;
+};
+
+export type RoomsDecideError = RoomsDecideErrors[keyof RoomsDecideErrors];
+
+export type RoomsDecideResponses = {
+    /**
+     * OK
+     */
+    200: RoomAction;
+};
+
+export type RoomsDecideResponse = RoomsDecideResponses[keyof RoomsDecideResponses];
 
 export type RoomsApproveData = {
     body: ApproveRoomTask;

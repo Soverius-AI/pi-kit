@@ -31,6 +31,7 @@ import { RoomBus } from './room-bus';
 import { RoomEnvironments } from './room-environments';
 import { RoomQuestions } from './room-questions';
 import { NO_ROOM, RoomLeadService } from './room-lead.service';
+import { RoomPlaybookService } from './room-playbook.service';
 import { RoomWorkerRunner, type WorkerOutcome } from './room-worker-runner';
 
 export const NO_TASK = 'No task with this id in this room.';
@@ -71,6 +72,7 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
     private readonly environments: RoomEnvironments,
     private readonly questions: RoomQuestions,
     private readonly outside: RoomA2aAgents,
+    private readonly playbook: RoomPlaybookService,
     @Inject(CONFIG) private readonly config: BackendConfig,
   ) {}
 
@@ -81,6 +83,11 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
       escalate: async (threadId, input) => await this.leadEscalate(threadId, input.taskId, input.reason),
       accept: async (threadId, input) => await this.leadAccept(threadId, input.taskId, input.note),
       requestChanges: async (threadId, input) => await this.leadRequestChanges(threadId, input.taskId, input.feedback),
+      call: async (threadId, input) => await this.playbook.call(threadId, input),
+      consult: async (threadId, input) => await this.playbook.consult(threadId, input),
+      discuss: async (threadId, input) => await this.playbook.discuss(threadId, input),
+      note: async (threadId, input) => await this.playbook.note(threadId, input),
+      advance: async (threadId, input) => await this.playbook.advance(threadId, input),
     });
     this.poller = setInterval(
       () =>

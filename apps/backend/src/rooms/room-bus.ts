@@ -27,6 +27,7 @@ export class RoomBus {
       images?: number;
       taskId?: string | null;
       environmentId?: string | null;
+      role?: string | null;
     },
   ): Promise<RoomEvent> {
     const stored = await this.rooms.append(roomId, event);

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { InstanceIdSchema } from './environments';
 import { PiDialogMethodSchema } from './interrupts';
+import { RoomActionSchema, RoomMemoryEntrySchema } from './playbooks';
 
 export const RoomIdSchema = z.uuid();
 
@@ -45,6 +46,7 @@ export const CreateRoomSchema = z
     title: z.string().trim().min(1).max(200),
     summary: z.string().trim().max(4000),
     projectFolder: z.string().min(1).max(4096).optional(),
+    playbook: z.string().min(1).max(200).optional(),
   })
   .strict()
   .refine((input) => !!input.threadId || (!!input.repository && !!input.baseCommit), {
@@ -71,11 +73,12 @@ export const RoomEventSchema = z
     roomId: RoomIdSchema,
     seq: z.number().int().positive(),
     kind: z.enum(['message', 'note', 'task']),
-    actor: z.enum(['owner', 'lead', 'coordinator', 'worker']),
+    actor: z.enum(['owner', 'lead', 'coordinator', 'worker', 'consultant']),
     text: z.string().max(32000),
     images: z.number().int().nonnegative(),
     taskId: z.string().nullable(),
     environmentId: z.string().nullable().optional(),
+    role: z.string().nullable().optional(),
     createdAt: z.number().int().nonnegative(),
   })
   .strict()
@@ -166,6 +169,11 @@ export const RoomDetailSchema = z
     projectFolder: z.string().nullable(),
     mode: z.enum(['supervised', 'assisted']),
     paused: z.boolean(),
+    playbook: z.string().nullable(),
+    stage: z.string().nullable(),
+    stages: z.array(z.string()),
+    actions: z.array(RoomActionSchema),
+    memory: z.array(RoomMemoryEntrySchema),
     leadQuestions: z.array(RoomTaskQuestionSchema),
     events: z.array(RoomEventSchema),
     tasks: z.array(RoomTaskSchema),
@@ -207,7 +215,16 @@ export const RoomStreamLineSchema = z
         questions: z.array(RoomTaskQuestionSchema).optional(),
       })
       .strict(),
-    z.object({ type: z.literal('room'), mode: RoomModeSchema, paused: z.boolean() }).strict(),
+    z
+      .object({
+        type: z.literal('room'),
+        mode: RoomModeSchema,
+        paused: z.boolean(),
+        stage: z.string().nullable().optional(),
+      })
+      .strict(),
+    z.object({ type: z.literal('action'), action: RoomActionSchema }).strict(),
+    z.object({ type: z.literal('memory'), entry: RoomMemoryEntrySchema }).strict(),
     z.object({ type: z.literal('task'), task: RoomTaskSchema }).strict(),
   ])
   .meta({ id: 'RoomStreamLine' });

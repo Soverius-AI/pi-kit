@@ -1,7 +1,7 @@
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { PkNotice } from '@pi-kit/design-system';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import type { Room, RoomClone, RoomStartPreview, RoomWorkerCandidate } from '@pi-kit/protocol';
+import type { PlaybookSummary, Room, RoomClone, RoomStartPreview, RoomWorkerCandidate } from '@pi-kit/protocol';
 import { RoomsStore } from '@pi-kit/rooms/api';
 
 @Component({
@@ -132,6 +132,40 @@ import { RoomsStore } from '@pi-kit/rooms/api';
           </p>
         }
 
+        @if (playbooks().length) {
+          <label class="flex flex-col gap-1">
+            <span class="text-sm font-medium">{{ 'threads.startRoom.playbook' | transloco }}</span>
+            <select
+              class="select select-sm w-full"
+              data-testid="start-room-playbook"
+              (change)="playbook.set($any($event.target).value || undefined)"
+            >
+              <option value="" [selected]="!playbook()">{{ 'threads.startRoom.noPlaybook' | transloco }}</option>
+              @for (option of playbooks(); track option.path) {
+                <option [value]="option.name" [disabled]="!!option.error" [selected]="option.name === playbook()">
+                  {{ option.name }}
+                  @if (option.error) {
+                    · {{ option.error }}
+                  }
+                </option>
+              }
+            </select>
+            @if (chosenPlaybook(); as chosen) {
+              <span class="text-xs text-muted" data-testid="start-room-playbook-about">
+                {{ chosen.description }}
+                @if (chosen.roles.length || chosen.tools.length || chosen.outputs.length) {
+                  <br />
+                  <span class="font-mono">{{
+                    'threads.startRoom.playbookFacts'
+                      | transloco
+                        : { value1: chosen.roles.join(', '), value2: [...chosen.tools, ...chosen.outputs].join(', ') }
+                  }}</span>
+                }
+              </span>
+            }
+          </label>
+        }
+
         <label class="flex flex-col gap-1">
           <span class="text-sm font-medium">{{ 'threads.startRoom.summary' | transloco }}</span>
           <textarea
@@ -208,6 +242,11 @@ export class StartRoomDialog {
   });
   protected readonly clones = signal<RoomClone[] | undefined>(undefined);
   protected readonly folder = signal<string | undefined>(undefined);
+  protected readonly playbooks = signal<PlaybookSummary[]>([]);
+  protected readonly playbook = signal<string | undefined>(undefined);
+  protected readonly chosenPlaybook = computed(() =>
+    this.playbooks().find((option) => option.name === this.playbook()),
+  );
   protected readonly canCreate = computed(
     () =>
       !!this.preview() &&
@@ -228,6 +267,33 @@ export class StartRoomDialog {
       const start = this.preview();
       untracked(() => void this.loadClones(host, start));
     });
+    effect(() => {
+      const host = this.host();
+      const away = this.elsewhere();
+      const start = this.preview();
+      untracked(() => void this.loadPlaybooks(host, away, start));
+    });
+  }
+
+  private async loadPlaybooks(
+    host: RoomWorkerCandidate | undefined,
+    away: RoomWorkerCandidate | undefined,
+    start: RoomStartPreview | undefined,
+  ): Promise<void> {
+    this.playbooks.set([]);
+    this.playbook.set(undefined);
+    if (!start) return;
+    try {
+      const found = await this.rooms.playbooks(
+        away
+          ? { repository: start.repository, baseCommit: start.baseCommit }
+          : { repository: start.repository, threadId: this.threadId() },
+        host,
+      );
+      if (this.host() === host) this.playbooks.set(found);
+    } catch {
+      if (this.host() === host) this.playbooks.set([]);
+    }
   }
 
   private async loadClones(host: RoomWorkerCandidate | undefined, start: RoomStartPreview | undefined): Promise<void> {
@@ -279,7 +345,10 @@ export class StartRoomDialog {
       const summary = this.summary().trim();
       const room =
         !this.elsewhere() || !start
-          ? await this.rooms.create({ threadId: this.threadId(), title, summary }, host)
+          ? await this.rooms.create(
+              { threadId: this.threadId(), title, summary, ...(this.playbook() ? { playbook: this.playbook() } : {}) },
+              host,
+            )
           : await this.rooms.create(
               {
                 title,
@@ -287,6 +356,7 @@ export class StartRoomDialog {
                 repository: start.repository,
                 baseCommit: start.baseCommit,
                 ...(this.folder() ? { projectFolder: this.folder() } : {}),
+                ...(this.playbook() ? { playbook: this.playbook() } : {}),
               },
               host,
             );

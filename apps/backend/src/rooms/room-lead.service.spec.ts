@@ -18,6 +18,8 @@ import { RoomBus } from './room-bus';
 import { RoomLeadService } from './room-lead.service';
 import { RoomQuestions } from './room-questions';
 import { RoomsService } from './rooms.service';
+import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
+import { RoomPlaybookFiles } from './room-playbook-files.service';
 
 let base: string;
 let project: string;
@@ -113,8 +115,15 @@ beforeEach(async () => {
     bus,
     new RoomAgents(rows, threads),
     new RoomQuestions(),
+    new RoomPlaybooksRepository(db),
   );
-  const room = await new RoomsService(rooms, rows, new InstanceRepository(db), new MetaRepository(db)).create({
+  const room = await new RoomsService(
+    rooms,
+    rows,
+    new InstanceRepository(db),
+    new MetaRepository(db),
+    new RoomPlaybookFiles(),
+  ).create({
     threadId: 'source',
     title: 'Watcher fix on Linux',
     summary: 'Run the watcher tests on Linux.',
@@ -206,6 +215,15 @@ describe('the room lead', () => {
     expect((await rows.list()).map((row) => row.id)).toEqual(['source']);
     expect((await rows.visible()).map((row) => row.id)).toEqual(['source']);
     expect((await rows.all()).map((row) => row.id).sort()).toEqual(['lead-1', 'source']);
+  });
+
+  it('keeps consultant threads out of the thread list too', async () => {
+    const path = join(base, 'consultant.jsonl');
+    writeFileSync(path, '{}\n');
+    await rows.insertDraft({ id: 'consultant', sessionPath: path, cwd: project, baseCommit: null });
+    await new RoomPlaybooksRepository(db).addConsultThread('consultant', roomId, 'security');
+    expect((await rows.list()).map((row) => row.id)).toEqual(['source']);
+    expect((await rows.visible()).map((row) => row.id)).toEqual(['source']);
   });
 
   it('posts without prompting anyone, and refuses a second prompt while the lead works', async () => {

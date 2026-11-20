@@ -74,6 +74,36 @@ import { RoomAsk } from './room-ask';
                 <span class="pk-room-paused" data-testid="room-paused">{{ 'rooms.view.pausedHint' | transloco }}</span>
               }
             </div>
+            @if (store.playbook(); as playbook) {
+              <div class="pk-room-playbook" data-testid="room-playbook">
+                <span class="pk-room-tag"><pk-icon name="skill" size="14" />{{ playbook }}</span>
+                @if (store.stages().length) {
+                  <ol class="stages" [attr.aria-label]="'rooms.view.stages' | transloco">
+                    @for (stage of store.stages(); track stage) {
+                      <li [attr.aria-current]="stage === store.stage() ? 'step' : null" data-testid="room-stage">
+                        {{ stage }}
+                      </li>
+                    }
+                  </ol>
+                }
+              </div>
+            }
+            @if (store.memory().length) {
+              <details class="pk-room-notebook" data-testid="room-notebook">
+                <summary>{{ 'rooms.view.notebookN' | transloco: { value1: store.memory().length } }}</summary>
+                <dl>
+                  @for (entry of store.memory(); track entry.scope + entry.key) {
+                    <dt>
+                      {{ entry.key }}
+                      @if (entry.scope === 'playbook') {
+                        <span class="scope">{{ 'rooms.view.playbookNote' | transloco }}</span>
+                      }
+                    </dt>
+                    <dd>{{ entry.text }}</dd>
+                  }
+                </dl>
+              </details>
+            }
             @if (store.projectFolder(); as folder) {
               <p class="meta" data-testid="room-folder">
                 {{ 'rooms.view.integratesInto' | transloco }} <span class="font-mono">{{ folder }}</span>
@@ -114,29 +144,65 @@ import { RoomAsk } from './room-ask';
                   </li>
                 }
                 @case ('lead') {
-                  <li class="pk-room-msg" data-testid="room-message" data-actor="lead">
+                  @if (event.kind === 'note') {
+                    <li class="pk-room-note lead" data-testid="room-lead-note">
+                      <pk-icon name="agents" size="14" />
+                      @if (event.text.length > 160) {
+                        <details>
+                          <summary>{{ event.text.slice(0, 160) }}…</summary>
+                          <span class="full">{{ event.text }}</span>
+                        </details>
+                      } @else {
+                        <span>{{ event.text }}</span>
+                      }
+                    </li>
+                  } @else {
+                    @let host = hostName() ?? ('rooms.view.hostHere' | transloco);
+                    <li class="pk-room-msg" data-testid="room-message" data-actor="lead">
+                      <span class="by">
+                        <pk-avatar [name]="host" [label]="('rooms.view.lead' | transloco) + ' · ' + host" />
+                        <b>{{ 'rooms.view.lead' | transloco }}</b>
+                        <span class="kind"
+                          ><pk-icon name="agents" size="12" />{{ 'rooms.view.agent' | transloco }}</span
+                        >
+                        <span class="env">{{ host }}</span>
+                      </span>
+                      @if (prose(); as markdown) {
+                        <div class="text md" data-testid="room-message-markdown">
+                          <ng-container *ngComponentOutlet="markdown; inputs: { text: event.text }" />
+                        </div>
+                      } @else {
+                        <div class="text">{{ event.text }}</div>
+                      }
+                    </li>
+                  }
+                }
+                @case ('worker') {
+                  <ng-container *ngTemplateOutlet="workerSays; context: { $implicit: event }" />
+                }
+                @case ('consultant') {
+                  <li class="pk-room-msg worker" data-testid="room-message" data-actor="consultant">
                     <span class="by">
                       <pk-avatar
-                        [name]="hostName() ?? ('rooms.view.hostHere' | transloco)"
-                        [label]="
-                          ('rooms.view.lead' | transloco) + ' · ' + (hostName() ?? ('rooms.view.hostHere' | transloco))
-                        "
+                        [name]="consultantMachine(event.environmentId)"
+                        [label]="(event.role ?? '') + ' · ' + consultantMachine(event.environmentId)"
                       />
-                      <b>{{ 'rooms.view.lead' | transloco }}</b>
-                      <span class="kind"><pk-icon name="agents" size="12" />{{ 'rooms.view.agent' | transloco }}</span>
-                      <span class="env">{{ hostName() ?? ('rooms.view.hostHere' | transloco) }}</span>
+                      <b data-testid="room-message-role">{{ event.role }}</b>
+                      <span class="kind"
+                        ><pk-icon name="agents" size="12" />{{ 'rooms.view.consultant' | transloco }}</span
+                      >
+                      <span class="env" data-testid="room-message-machine">{{
+                        consultantMachine(event.environmentId)
+                      }}</span>
                     </span>
                     @if (prose(); as markdown) {
-                      <div class="text md" data-testid="room-message-markdown">
+                      <div class="text md">
                         <ng-container *ngComponentOutlet="markdown; inputs: { text: event.text }" />
                       </div>
                     } @else {
                       <div class="text">{{ event.text }}</div>
                     }
                   </li>
-                }
-                @case ('worker') {
-                  <ng-container *ngTemplateOutlet="workerSays; context: { $implicit: event }" />
                 }
                 @default {
                   @if (event.kind === 'task' && event.taskId && firstTaskEvents().has(event.seq)) {
@@ -283,6 +349,39 @@ import { RoomAsk } from './room-ask';
                   }
                 }
               }
+            }
+            @for (action of store.pendingActions(); track action.id) {
+              <li class="pk-room-task pk-room-action" data-testid="room-action" [attr.data-kind]="action.kind">
+                <div class="head">
+                  <pk-icon name="lock" size="14" />
+                  <span class="label">{{ 'rooms.action.' + action.kind | transloco }}</span>
+                  <b class="title">{{ action.name }}</b>
+                </div>
+                <p class="brief">{{ action.summary }}</p>
+                @if (argvOf(action.payload); as argv) {
+                  <pre class="argv" data-testid="room-action-argv">{{ argv }}</pre>
+                }
+                <div class="actions">
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    data-testid="room-action-approve"
+                    [disabled]="store.acting() === action.id"
+                    (click)="store.decide(action.id, 'approve')"
+                  >
+                    {{ (action.kind === 'call' ? 'rooms.action.run' : 'rooms.action.move') | transloco }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-ghost btn-sm"
+                    data-testid="room-action-discard"
+                    [disabled]="store.acting() === action.id"
+                    (click)="store.decide(action.id, 'discard')"
+                  >
+                    {{ 'rooms.action.discard' | transloco }}
+                  </button>
+                </div>
+              </li>
             }
             @if (store.lead() === 'working') {
               <li class="pk-room-msg" data-testid="room-lead-working">
@@ -473,6 +572,23 @@ export class RoomView {
   protected readonly hostName = computed(() => this.store.machineName(this.store.room()?.hostInstanceId));
   protected workerName(environmentId: string | null | undefined): string {
     return this.store.machineName(environmentId) ?? environmentId?.slice(0, 8) ?? '?';
+  }
+  protected consultantMachine(environmentId: string | null | undefined): string {
+    return environmentId
+      ? this.workerName(environmentId)
+      : (this.hostName() ?? this.workerName(this.store.room()?.hostInstanceId));
+  }
+  protected argvOf(payload: Record<string, unknown>): string | undefined {
+    const mcp = payload['mcp'] as { server?: unknown; tool?: unknown; args?: unknown } | undefined;
+    if (mcp && typeof mcp.server === 'string' && typeof mcp.tool === 'string')
+      return `${mcp.server} · ${mcp.tool} ${JSON.stringify(mcp.args ?? {}, null, 2)}`;
+    const argv = payload['argv'];
+    return Array.isArray(argv)
+      ? argv
+          .map(String)
+          .map((part) => (/^[\w./:=@,+-]+$/.test(part) ? part : `'${part.replaceAll("'", `'\\''`)}'`))
+          .join(' ')
+      : undefined;
   }
   protected readonly modes = ['supervised', 'assisted'] as const;
   private static readonly TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);

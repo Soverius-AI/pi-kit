@@ -5,6 +5,7 @@ import {
   roomsCreate,
   roomsDirectory,
   roomsHosts,
+  roomsPlaybooks,
   roomsStart,
   unwrap,
   type TypedClient,
@@ -12,6 +13,7 @@ import {
 import { ViewPrefs } from '@pi-kit/data-access';
 import type {
   CreateRoom,
+  PlaybookSummary,
   Room,
   RoomClone,
   RoomDirectoryEntry,
@@ -76,6 +78,14 @@ export class RoomsStore {
   clones(repository: string, baseCommit: string, host?: RoomWorkerCandidate): Promise<RoomClone[]> {
     const client = host && !host.local ? this.api.forOwner(host.environmentId) : this.api.client;
     return unwrap(roomsClones({ client, query: { repository, baseCommit } }));
+  }
+
+  playbooks(
+    query: { repository: string; baseCommit?: string; threadId?: string },
+    host?: RoomWorkerCandidate,
+  ): Promise<PlaybookSummary[]> {
+    const client = host && !host.local ? this.api.forOwner(host.environmentId) : this.api.client;
+    return unwrap(roomsPlaybooks({ client, query }));
   }
 
   hosts(): Promise<RoomWorkerCandidate[]> {

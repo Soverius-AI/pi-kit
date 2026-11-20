@@ -6022,6 +6022,247 @@ paths:
       summary: Change how a connector exposes its tools
       tags:
         - connectors
+  /api/composio/status:
+    get:
+      description: Whether a Composio API key is kept, and where. The key itself is never answered.
+      operationId: Composio_status
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Get the Composio status
+      tags:
+        - connectors
+  /api/composio/key:
+    put:
+      description: Checks the project API key against Composio and keeps it in the credential store. It is never answered or logged.
+      operationId: Composio_setKey
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComposioKeyRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Composio refused the key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: Composio did not answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Keep a Composio API key
+      tags:
+        - connectors
+    delete:
+      description: Removes the kept key.
+      operationId: Composio_forgetKey
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Composio apps still use the key.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Forget the Composio API key
+      tags:
+        - connectors
+  /api/composio/toolkits:
+    get:
+      description: Lists Composio toolkits, most popular first.
+      operationId: Composio_toolkits
+      parameters:
+        - name: search
+          required: false
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioToolkitList'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: No Composio API key yet.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: Composio did not answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Search Composio apps
+      tags:
+        - connectors
+  /api/composio/connections:
+    get:
+      description: The Composio apps pi-kit added to the MCP configuration, and whether each is signed in.
+      operationId: Composio_connections
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioConnectionList'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: List the Composio apps
+      tags:
+        - connectors
+    post:
+      description: Creates a Composio session limited to one app (read only unless asked otherwise), adds it to pi's MCP configuration, and answers with the sign-in link the app still needs.
+      operationId: Composio_add
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComposioAddRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioConnection'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: No Composio API key yet, or Composio refused it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: Composio did not answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Add a Composio app
+      tags:
+        - connectors
+  /api/composio/connections/{server}/link:
+    post:
+      description: Answers with a new Composio sign-in link for the app, unless it is signed in already.
+      operationId: Composio_link
+      parameters:
+        - name: server
+          required: true
+          in: path
+          description: The server name of the Composio app.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioConnection'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: pi-kit did not add that app.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: Composio did not answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Sign in to a Composio app
+      tags:
+        - connectors
   /api/packages:
     get:
       description: "Lists the packages in pi's settings (and the folder's, when it is trusted): where each comes from, whether it is on, what it brings, when it was installed, and an update the last check found."
@@ -10198,6 +10439,65 @@ paths:
       tags:
         - rooms
       x-remote: true
+  /api/rooms/playbooks:
+    get:
+      description: 'The playbooks a room can follow: skills in the project’s .pi/skills or .agents/skills folders whose front matter has a `room` block. They are read from the thread’s folder, or from the first clone of the repository with the base commit. A playbook that does not parse is listed with its error.'
+      operationId: Rooms_playbooks
+      parameters:
+        - name: repository
+          required: true
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+        - name: baseCommit
+          required: false
+          in: query
+          schema:
+            type: string
+            pattern: ^[0-9a-f]{40,64}$
+        - name: threadId
+          required: false
+          in: query
+          schema:
+            type: string
+            maxLength: 512
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybookList'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No thread with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: A room needs a git repository with at least one commit. Commit in this thread’s folder first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: List room playbooks
+      tags:
+        - rooms
+      x-remote: true
   /api/rooms/agents:
     get:
       description: The A2A agents outside pi-kit that this environment can hand room tasks to, as added in Settings. Tokens are never returned.
@@ -10472,6 +10772,64 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
       summary: Answer the lead
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/actions/{actionId}:
+    post:
+      description: 'Approves or discards an action the lead drafted: a connector call the playbook does not let it run alone, or a move to a stage the owner gates. An approved call runs on this environment and its output goes to the lead.'
+      operationId: Rooms_decide
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The room id.
+          schema:
+            type: string
+        - name: actionId
+          required: true
+          in: path
+          description: The action id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomActionDecision'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomAction'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: This action was decided already.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Decide on a drafted action
       tags:
         - rooms
       x-remote: true
@@ -12009,6 +12367,111 @@ components:
             - op
             - id
           additionalProperties: false
+    ComposioAddRequest:
+      type: object
+      properties:
+        toolkit:
+          type: string
+          pattern: ^[a-z0-9_-]{1,64}$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        readOnly:
+          default: true
+          type: boolean
+      required:
+        - toolkit
+        - name
+      additionalProperties: false
+    ComposioConnection:
+      type: object
+      properties:
+        server:
+          type: string
+        toolkit:
+          type: string
+        name:
+          type: string
+        readOnly:
+          type: boolean
+        connected:
+          type: boolean
+        signInUrl:
+          type:
+            - string
+            - 'null'
+      required:
+        - server
+        - toolkit
+        - name
+        - readOnly
+        - connected
+        - signInUrl
+      additionalProperties: false
+    ComposioConnectionList:
+      type: array
+      items:
+        $ref: '#/components/schemas/ComposioConnection'
+    ComposioKeyRequest:
+      type: object
+      properties:
+        apiKey:
+          type: string
+          minLength: 8
+          maxLength: 512
+          writeOnly: true
+          x-secret: true
+      required:
+        - apiKey
+      additionalProperties: false
+    ComposioStatus:
+      type: object
+      properties:
+        configured:
+          type: boolean
+        storage:
+          anyOf:
+            - type: string
+              enum:
+                - keychain
+                - plain
+            - type: 'null'
+      required:
+        - configured
+        - storage
+      additionalProperties: false
+    ComposioToolkit:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        logo:
+          type:
+            - string
+            - 'null'
+        tools:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        noAuth:
+          type: boolean
+      required:
+        - slug
+        - name
+        - description
+        - logo
+        - tools
+        - noAuth
+      additionalProperties: false
+    ComposioToolkitList:
+      type: array
+      items:
+        $ref: '#/components/schemas/ComposioToolkit'
     ComputerUseState:
       type: object
       properties:
@@ -12129,6 +12592,58 @@ components:
           required:
             - url
           additionalProperties: false
+        local:
+          type: object
+          properties:
+            command:
+              type: string
+              minLength: 1
+            args:
+              maxItems: 32
+              type: array
+              items:
+                type: string
+            env:
+              type: object
+              propertyNames:
+                type: string
+              additionalProperties:
+                type: string
+            variants:
+              maxItems: 4
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    pattern: ^[a-z0-9-]+$
+                  label:
+                    type: string
+                    minLength: 1
+                  args:
+                    maxItems: 8
+                    type: array
+                    items:
+                      type: string
+                  env:
+                    type: object
+                    propertyNames:
+                      type: string
+                    additionalProperties:
+                      type: string
+                  note:
+                    type: string
+                    minLength: 1
+                required:
+                  - id
+                  - label
+                  - note
+                additionalProperties: false
+          required:
+            - command
+            - args
+          additionalProperties: false
         auth:
           oneOf:
             - type: object
@@ -12168,6 +12683,19 @@ components:
               required:
                 - type
                 - callbackPort
+                - setup
+              additionalProperties: false
+            - type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - device
+                setup:
+                  type: string
+                  minLength: 1
+              required:
+                - type
                 - setup
               additionalProperties: false
             - type: object
@@ -12239,7 +12767,6 @@ components:
         - name
         - vendor
         - logo
-        - endpoint
         - auth
         - scopes
         - mcpApps
@@ -12514,6 +13041,10 @@ components:
           type: string
           minLength: 1
           maxLength: 4096
+        playbook:
+          type: string
+          minLength: 1
+          maxLength: 200
       required:
         - title
         - summary
@@ -16852,6 +17383,54 @@ components:
         - checkedAt
         - command
       additionalProperties: false
+    PlaybookList:
+      type: array
+      items:
+        $ref: '#/components/schemas/PlaybookSummary'
+    PlaybookSummary:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        path:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        tools:
+          type: array
+          items:
+            type: string
+        outputs:
+          type: array
+          items:
+            type: string
+        triggers:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        stages:
+          type: array
+          items:
+            type: string
+        error:
+          type:
+            - string
+            - 'null'
+      required:
+        - name
+        - description
+        - path
+        - roles
+        - tools
+        - outputs
+        - triggers
+        - stages
+        - error
+      additionalProperties: false
     PostRoomMessage:
       type: object
       properties:
@@ -17580,6 +18159,70 @@ components:
         - waiting
         - createdAt
       additionalProperties: false
+    RoomAction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        kind:
+          type: string
+          enum:
+            - call
+            - advance
+        name:
+          type: string
+        summary:
+          type: string
+        payload:
+          type: object
+          propertyNames:
+            type: string
+          additionalProperties: {}
+        state:
+          type: string
+          enum:
+            - pending
+            - done
+            - failed
+            - discarded
+        result:
+          type:
+            - string
+            - 'null'
+        createdAt:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        decidedAt:
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            - type: 'null'
+      required:
+        - id
+        - kind
+        - name
+        - summary
+        - payload
+        - state
+        - result
+        - createdAt
+        - decidedAt
+      additionalProperties: false
+    RoomActionDecision:
+      type: object
+      properties:
+        decision:
+          type: string
+          enum:
+            - approve
+            - discard
+      required:
+        - decision
+      additionalProperties: false
     RoomClone:
       type: object
       properties:
@@ -17620,6 +18263,26 @@ components:
             - assisted
         paused:
           type: boolean
+        playbook:
+          type:
+            - string
+            - 'null'
+        stage:
+          type:
+            - string
+            - 'null'
+        stages:
+          type: array
+          items:
+            type: string
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomAction'
+        memory:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomMemoryEntry'
         leadQuestions:
           type: array
           items:
@@ -17640,6 +18303,11 @@ components:
         - projectFolder
         - mode
         - paused
+        - playbook
+        - stage
+        - stages
+        - actions
+        - memory
         - leadQuestions
         - events
         - tasks
@@ -17694,6 +18362,7 @@ components:
             - lead
             - coordinator
             - worker
+            - consultant
         text:
           type: string
           maxLength: 32000
@@ -17706,6 +18375,10 @@ components:
             - string
             - 'null'
         environmentId:
+          type:
+            - string
+            - 'null'
+        role:
           type:
             - string
             - 'null'
@@ -17751,6 +18424,31 @@ components:
       type: array
       items:
         $ref: '#/components/schemas/Room'
+    RoomMemoryEntry:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum:
+            - room
+            - playbook
+        key:
+          type: string
+        text:
+          type: string
+        updatedBy:
+          type: string
+        updatedAt:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+      required:
+        - scope
+        - key
+        - text
+        - updatedBy
+        - updatedAt
+      additionalProperties: false
     RoomMode:
       type: string
       enum:
@@ -17821,10 +18519,36 @@ components:
               $ref: '#/components/schemas/RoomMode'
             paused:
               type: boolean
+            stage:
+              type:
+                - string
+                - 'null'
           required:
             - type
             - mode
             - paused
+          additionalProperties: false
+        - type: object
+          properties:
+            type:
+              type: string
+              const: action
+            action:
+              $ref: '#/components/schemas/RoomAction'
+          required:
+            - type
+            - action
+          additionalProperties: false
+        - type: object
+          properties:
+            type:
+              type: string
+              const: memory
+            entry:
+              $ref: '#/components/schemas/RoomMemoryEntry'
+          required:
+            - type
+            - entry
           additionalProperties: false
         - type: object
           properties:

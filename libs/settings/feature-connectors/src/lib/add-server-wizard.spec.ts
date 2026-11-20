@@ -2,7 +2,7 @@ import { english } from '@pi-kit/i18n/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CONNECTOR_CATALOG, type McpCheckResult, type McpServer } from '@pi-kit/protocol';
-import { ConnectorsStore, SecretsStore } from '@pi-kit/settings/api';
+import { ComposioStore, ConnectorsStore, SecretsStore } from '@pi-kit/settings/api';
 import { mcpRows } from '@pi-kit/settings/util';
 import { AddServerWizard } from './add-server-wizard';
 
@@ -58,6 +58,8 @@ describe('AddServerWizard', () => {
     f.detectChanges();
   };
 
+  const composio = { open: vi.fn() };
+
   beforeEach(() => {
     vi.clearAllMocks();
     wizard.set({});
@@ -69,6 +71,7 @@ describe('AddServerWizard', () => {
       providers: [
         { provide: ConnectorsStore, useValue: store },
         { provide: SecretsStore, useValue: secrets },
+        { provide: ComposioStore, useValue: composio },
       ],
     });
   });
@@ -78,8 +81,8 @@ describe('AddServerWizard', () => {
     const tiles = Array.from(root(f).querySelectorAll('.pk-choices.pk-gallery button')).map((b) =>
       b.getAttribute('data-testid'),
     );
-    expect(tiles.slice(0, -1)).toEqual(CONNECTOR_CATALOG.connectors.map((c) => `tile-${c.id}`));
-    expect(tiles.at(-1)).toBe('tile-custom');
+    expect(tiles.slice(0, -2)).toEqual(CONNECTOR_CATALOG.connectors.map((c) => `tile-${c.id}`));
+    expect(tiles.slice(-2)).toEqual(['tile-composio-apps', 'tile-custom']);
     expect(q(f, '[data-testid=gallery-search]')).not.toBeNull();
     expect(
       Array.from(q<HTMLSelectElement>(f, '[data-testid=gallery-scope]')?.options ?? []).map((o) =>
@@ -88,6 +91,13 @@ describe('AddServerWizard', () => {
     ).toEqual(['For me', 'This project only']);
     expect(root(f).querySelectorAll('.dots i.on')).toHaveLength(1);
     expect(q(f, '.foot .hint')?.textContent).toBe('Step 1 of 2, next: details');
+  });
+
+  it('offers Composio as an optional tile that opens its own dialog', () => {
+    const f = open();
+    expect(q(f, '[data-testid=tile-composio-apps]')?.textContent).toContain('optional');
+    q<HTMLButtonElement>(f, '[data-testid=tile-composio-apps]')?.click();
+    expect(composio.open).toHaveBeenCalled();
   });
 
   it('the search narrows the gallery', () => {

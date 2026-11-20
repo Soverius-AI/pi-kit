@@ -144,7 +144,7 @@ export interface SessionFacts {
  * archive), what the reconcile pass learnt from the session file, and the thread's worktree and base commit.
  */
 const NOT_A_ROOM_LEAD =
-  'id NOT IN (SELECT lead_thread_id FROM rooms WHERE lead_thread_id IS NOT NULL) AND id NOT IN (SELECT worker_thread_id FROM room_tasks WHERE worker_thread_id IS NOT NULL) AND id NOT IN (SELECT worker_thread_id FROM room_worker_tasks WHERE worker_thread_id IS NOT NULL)';
+  'id NOT IN (SELECT lead_thread_id FROM rooms WHERE lead_thread_id IS NOT NULL) AND id NOT IN (SELECT worker_thread_id FROM room_tasks WHERE worker_thread_id IS NOT NULL) AND id NOT IN (SELECT worker_thread_id FROM room_worker_tasks WHERE worker_thread_id IS NOT NULL) AND id NOT IN (SELECT thread_id FROM room_consult_threads)';
 
 @Injectable()
 export class ThreadsRepository {

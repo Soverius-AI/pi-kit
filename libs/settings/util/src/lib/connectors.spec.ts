@@ -59,6 +59,10 @@ describe('the cards', () => {
       ['slack', 'available'],
       ['atlassian', 'available'],
       ['figma', 'available'],
+      ['composio', 'available'],
+      ['gmail', 'available'],
+      ['google-calendar', 'available'],
+      ['outlook', 'available'],
     ]);
   });
 

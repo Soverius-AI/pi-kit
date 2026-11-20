@@ -20,6 +20,7 @@ import { MaintenanceRepository } from './maintenance.repository';
 import { TerminalReplayRepository } from './terminal-replay.repository';
 import { ThreadProtectionRepository } from './thread-protection.repository';
 import { RoomsRepository } from './rooms.repository';
+import { RoomPlaybooksRepository } from './room-playbooks.repository';
 import { A2aTasksRepository } from './a2a-tasks.repository';
 import { A2aAgentsRepository } from './a2a-agents.repository';
 import { ThreadsRepository } from './threads.repository';
@@ -54,6 +55,7 @@ import { ThreadsRepository } from './threads.repository';
     MaintenanceRepository,
     ThreadProtectionRepository,
     RoomsRepository,
+    RoomPlaybooksRepository,
     A2aTasksRepository,
     A2aAgentsRepository,
   ],
@@ -77,6 +79,7 @@ import { ThreadsRepository } from './threads.repository';
     AgentSpansRepository,
     ThreadProtectionRepository,
     RoomsRepository,
+    RoomPlaybooksRepository,
     A2aTasksRepository,
     A2aAgentsRepository,
   ],

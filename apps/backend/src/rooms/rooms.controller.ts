@@ -43,6 +43,10 @@ import {
   RoomClonesQuerySchema,
   A2aAgentSchema,
   AddA2aAgentSchema,
+  PlaybookListSchema,
+  PlaybooksQuerySchema,
+  RoomActionDecisionSchema,
+  RoomActionSchema,
 } from '@pi-kit/protocol';
 import type {
   ApproveRoomTask,
@@ -61,12 +65,16 @@ import type {
   RoomClone,
   UpdateRoom,
   AddA2aAgent,
+  PlaybookSummary,
+  RoomAction,
+  RoomActionDecision,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
 import { SSE_HEADERS, formatSSEErrorEvent, formatSSEEvent } from '@a2a-js/sdk';
 import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
 import { Fails, Remote, Responds, Streams } from '../contract';
 import { RoomBus } from './room-bus';
+import { RoomPlaybookService } from './room-playbook.service';
 import { RoomDirectoryService } from './room-directory.service';
 import { RoomEnvironments } from './room-environments';
 import { LEAD_BUSY, LEAD_WAITS, NO_LEAD_QUESTION, NO_ROOM, RoomLeadService } from './room-lead.service';
@@ -90,6 +98,7 @@ export class RoomsController {
     private readonly roomDirectory: RoomDirectoryService,
     private readonly environments: RoomEnvironments,
     private readonly outside: RoomA2aAgents,
+    private readonly playbook: RoomPlaybookService,
   ) {}
 
   @Remote()
@@ -170,6 +179,21 @@ export class RoomsController {
   @Fails({ 404: ROOMS_OFF })
   clones(@Query({ schema: RoomClonesQuerySchema }) query: z.infer<typeof RoomClonesQuerySchema>): Promise<RoomClone[]> {
     return this.rooms.clones(query.repository, query.baseCommit);
+  }
+
+  @Remote()
+  @Get('playbooks')
+  @ApiOperation({
+    summary: 'List room playbooks',
+    description:
+      'The playbooks a room can follow: skills in the project’s .pi/skills or .agents/skills folders whose front matter has a `room` block. They are read from the thread’s folder, or from the first clone of the repository with the base commit. A playbook that does not parse is listed with its error.',
+  })
+  @Responds(PlaybookListSchema)
+  @Fails({ 404: `${ROOMS_OFF} Or: ${NO_THREAD}`, 409: NOT_A_REPOSITORY })
+  playbooks(
+    @Query({ schema: PlaybooksQuerySchema }) query: z.infer<typeof PlaybooksQuerySchema>,
+  ): Promise<PlaybookSummary[]> {
+    return this.rooms.playbooksFor(query);
   }
 
   @Get('agents')
@@ -270,6 +294,26 @@ export class RoomsController {
     @Body({ schema: RoomTaskAnswerSchema }) body: RoomTaskAnswer,
   ): Promise<RoomDetail> {
     return this.lead.answerQuestions(roomId, body);
+  }
+
+  @Remote()
+  @Post(':roomId/actions/:actionId')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Decide on a drafted action',
+    description:
+      'Approves or discards an action the lead drafted: a connector call the playbook does not let it run alone, or a move to a stage the owner gates. An approved call runs on this environment and its output goes to the lead.',
+  })
+  @ApiParam({ name: 'roomId', description: 'The room id.' })
+  @ApiParam({ name: 'actionId', description: 'The action id.' })
+  @Responds(RoomActionSchema)
+  @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}`, 409: 'This action was decided already.' })
+  decide(
+    @Param('roomId') roomId: string,
+    @Param('actionId') actionId: string,
+    @Body({ schema: RoomActionDecisionSchema }) body: RoomActionDecision,
+  ): Promise<RoomAction> {
+    return this.playbook.decide(roomId, actionId, body);
   }
 
   @Remote()

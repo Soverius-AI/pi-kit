@@ -3,9 +3,17 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { Message, TaskState, type Task } from '@a2a-js/sdk';
+import { Message, TaskArtifactUpdateEvent, TaskState, type Task } from '@a2a-js/sdk';
 import { AgentEvent, type AgentExecutor, type ExecutionEventBus, type RequestContext } from '@a2a-js/sdk/server';
-import type { A2aRoomTaskOffer, A2aRoomTaskProgress, RoomTaskQuestion, RoomTaskReport } from '@pi-kit/protocol';
+import {
+  A2A_ROOM_EXTENSION,
+  A2aRoomConsultSchema,
+  type A2aRoomConsult,
+  type A2aRoomTaskOffer,
+  type A2aRoomTaskProgress,
+  type RoomTaskQuestion,
+  type RoomTaskReport,
+} from '@pi-kit/protocol';
 import { InstanceRepository } from '../db/instance.repository';
 import { MetaRepository } from '../db/meta.repository';
 import { RoomsRepository } from '../db/rooms.repository';
@@ -15,6 +23,7 @@ import { RepositoryIdentity } from './repository-identity';
 import { RoomA2a } from './room-a2a';
 import { RoomA2aPushSender } from './room-a2a.push-sender';
 import { RoomA2aTaskStore } from './room-a2a.task-store';
+import { RoomConsultant } from './room-consultant.service';
 import { RoomOutbox } from './room-outbox';
 import { RoomQuestions } from './room-questions';
 import { RoomWorkerRunner, type WorkerOutcome } from './room-worker-runner';
@@ -56,6 +65,7 @@ export class RoomWorkerService implements AgentExecutor, OnModuleInit {
     private readonly store: RoomA2aTaskStore,
     private readonly sender: RoomA2aPushSender,
     private readonly outbox: RoomOutbox,
+    private readonly consultant: RoomConsultant,
   ) {}
 
   onModuleInit(): void {
@@ -84,6 +94,8 @@ export class RoomWorkerService implements AgentExecutor, OnModuleInit {
     const user = context.context.user;
     const caller = user?.isAuthenticated ? user.userName : undefined;
     const message = context.userMessage;
+    const consult = A2aRoomConsultSchema.safeParse(message.metadata?.[A2A_ROOM_EXTENSION]);
+    if (consult.success) return await this.consult(context, bus, consult.data, caller);
     const offer = RoomA2a.readOffer(message);
     const reject = (note: string) =>
       bus.publish(
@@ -146,6 +158,65 @@ export class RoomWorkerService implements AgentExecutor, OnModuleInit {
     );
     void this.work(job, project);
     await job.turn.promise;
+  }
+
+  private async consult(
+    context: RequestContext,
+    bus: ExecutionEventBus,
+    consult: A2aRoomConsult,
+    caller: string | undefined,
+  ): Promise<void> {
+    const end = (state: TaskState, note: string) =>
+      bus.publish(
+        AgentEvent.task(
+          RoomA2a.task(context.taskId, context.contextId, state, null, { note, history: [context.userMessage] }),
+        ),
+      );
+    if (!caller) return end(TaskState.TASK_STATE_REJECTED, NOT_THE_HOST);
+    const project = await RepositoryIdentity.findClone(this.meta, consult.repository, consult.base);
+    if (!project)
+      return end(
+        TaskState.TASK_STATE_REJECTED,
+        `No project on this computer is a clone of ${consult.repository} with commit ${consult.base.slice(0, 7)}.`,
+      );
+    bus.publish(
+      AgentEvent.task(
+        RoomA2a.task(context.taskId, context.contextId, TaskState.TASK_STATE_WORKING, null, {
+          history: [context.userMessage],
+        }),
+      ),
+    );
+    const done = (async () => {
+      let answer: string;
+      let state = TaskState.TASK_STATE_COMPLETED;
+      try {
+        answer = await this.consultant.ask({
+          roomId: `${caller}:${consult.roomId}`,
+          roomTitle: consult.roomTitle,
+          repository: consult.repository,
+          folder: project,
+          role: consult.role,
+          instructions: consult.instructions,
+          question: consult.question,
+        });
+      } catch (error) {
+        answer = error instanceof Error ? error.message : String(error);
+        state = TaskState.TASK_STATE_FAILED;
+      }
+      bus.publish(
+        AgentEvent.artifactUpdate(
+          TaskArtifactUpdateEvent.fromJSON({
+            taskId: context.taskId,
+            contextId: context.contextId,
+            artifact: { artifactId: 'answer', name: 'Answer', parts: [{ text: answer, mediaType: 'text/markdown' }] },
+            append: false,
+            lastChunk: true,
+          }),
+        ),
+      );
+      bus.publish(AgentEvent.statusUpdate(RoomA2a.statusUpdate(context.taskId, context.contextId, state, null, null)));
+    })();
+    await done;
   }
 
   async cancelTask(taskId: string, bus: ExecutionEventBus): Promise<void> {

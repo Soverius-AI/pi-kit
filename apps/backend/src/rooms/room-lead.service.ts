@@ -10,6 +10,7 @@ import type {
   UpdateRoom,
 } from '@pi-kit/protocol';
 import { AguiService } from '../agui/agui.service';
+import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
 import { RoomsRepository } from '../db/rooms.repository';
 import { PiSessionService } from '../pi/pi-session.service';
 import { ThreadsService } from '../threads/threads.service';
@@ -22,6 +23,13 @@ export const LEAD_BUSY = 'The lead is still answering. Send again when it is don
 export const LEAD_WAITS = 'The lead waits for your answer to its question first.';
 export const NO_LEAD_QUESTION = 'The lead asks nothing with this id.';
 
+type Found = NonNullable<Awaited<ReturnType<RoomsRepository['get']>>>;
+
+export interface LeadPlaybooks {
+  briefing(found: Found): Promise<string | undefined>;
+  extras(found: Found): Promise<Pick<RoomDetail, 'stages' | 'actions' | 'memory'>>;
+}
+
 @Injectable()
 export class RoomLeadService implements OnModuleInit {
   static readonly AGENT_TURN_LIMIT = 12;
@@ -29,6 +37,7 @@ export class RoomLeadService implements OnModuleInit {
   private readonly briefed = new Set<string>();
   private readonly logger = new Logger(RoomLeadService.name);
   private readonly states = new Map<string, RoomLeadState>();
+  private playbooks: LeadPlaybooks | undefined;
 
   constructor(
     private readonly rooms: RoomsRepository,
@@ -38,10 +47,17 @@ export class RoomLeadService implements OnModuleInit {
     private readonly bus: RoomBus,
     private readonly agents: RoomAgents,
     private readonly questions: RoomQuestions,
+    private readonly consults: RoomPlaybooksRepository,
   ) {}
 
+  setPlaybooks(playbooks: LeadPlaybooks): void {
+    this.playbooks = playbooks;
+  }
+
   async onModuleInit(): Promise<void> {
-    this.sessions.setReadOnlyThreads(async (threadId) => await this.rooms.isLead(threadId));
+    this.sessions.setReadOnlyThreads(
+      async (threadId) => (await this.rooms.isLead(threadId)) || (await this.consults.isConsultThread(threadId)),
+    );
     await this.rooms.clearLeadQuestions();
   }
 
@@ -56,6 +72,9 @@ export class RoomLeadService implements OnModuleInit {
       projectFolder: found.projectFolder,
       mode: found.mode,
       paused: found.paused,
+      playbook: found.playbook,
+      stage: found.stage,
+      ...((await this.playbooks?.extras(found)) ?? { stages: [], actions: [], memory: [] }),
       leadQuestions: found.leadQuestions,
       events: await this.rooms.events(roomId),
       tasks: await this.rooms.tasks(roomId),
@@ -110,7 +129,7 @@ export class RoomLeadService implements OnModuleInit {
       });
     }
     const detail = await this.detail(roomId);
-    this.bus.emit(roomId, { type: 'room', mode: detail.mode, paused: detail.paused });
+    this.bus.emit(roomId, { type: 'room', mode: detail.mode, paused: detail.paused, stage: detail.stage });
     if (!detail.paused) void this.drain(roomId);
     return detail;
   }
@@ -183,7 +202,10 @@ export class RoomLeadService implements OnModuleInit {
       const first =
         !this.briefed.has(roomId) && !(await this.rooms.events(roomId)).some((event) => event.actor === 'lead');
       this.briefed.add(roomId);
-      const prompt = first ? this.firstPrompt(found.room.title, found.room.repository, found.summary, text) : text;
+      const briefing = first ? await this.playbooks?.briefing(found) : undefined;
+      const prompt = first
+        ? this.firstPrompt(found.room.title, found.room.repository, found.summary, text, briefing)
+        : text;
       let run = await this.agui.runHeadless(leadId, prompt, { cwd, images });
       while (run.status === 'interrupted') {
         const questions = RoomQuestions.fromDialogs(this.sessions.pendingDialogs(leadId));
@@ -275,17 +297,20 @@ export class RoomLeadService implements OnModuleInit {
     return detail.id;
   }
 
-  private firstPrompt(title: string, repository: string, summary: string, text: string): string {
+  private firstPrompt(title: string, repository: string, summary: string, text: string, briefing?: string): string {
     return [
       `You are the lead of the pi-kit room “${title}” for the repository ${repository}.`,
       'The owner talks to you here. Answer them and work out how the goal splits into tasks.',
       'When a piece of work is ready to hand off, call room_propose_task with a title, a brief and acceptance criteria. The owner approves each task before a worker runs it in its own worktree; you are told when its result arrives.',
       'You are read-only: do not try to edit files or run commands that change anything.',
+      briefing ?? '',
       summary
         ? `The owner shared this summary from the thread the room started from:\n\n${summary}`
         : 'The owner shared no summary yet.',
       `The owner says:\n\n${text}`,
-    ].join('\n\n');
+    ]
+      .filter(Boolean)
+      .join('\n\n');
   }
 
   private setState(roomId: string, state: RoomLeadState): void {

@@ -1,12 +1,13 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import type { CreateRoom, Room, RoomClone, RoomStartPreview } from '@pi-kit/protocol';
+import type { CreateRoom, PlaybookSummary, Room, RoomClone, RoomStartPreview } from '@pi-kit/protocol';
 import { InstanceRepository } from '../db/instance.repository';
 import { MetaRepository } from '../db/meta.repository';
 import { RoomsRepository } from '../db/rooms.repository';
 import { ThreadsRepository } from '../db/threads.repository';
 import { branchOf, changedFiles, run, toplevel } from '../worktree/worktree-git';
 import { RepositoryIdentity } from './repository-identity';
+import { RoomPlaybookFiles } from './room-playbook-files.service';
 
 export const NO_THREAD = 'No thread with this id.';
 export const SEVERAL_CLONES =
@@ -21,6 +22,7 @@ export class RoomsService {
     private readonly threads: ThreadsRepository,
     private readonly instance: InstanceRepository,
     private readonly meta: MetaRepository,
+    private readonly playbooks: RoomPlaybookFiles,
   ) {}
 
   hosted(): Promise<Room[]> {
@@ -41,7 +43,15 @@ export class RoomsService {
       throw new ConflictException(
         `No project on this computer is a clone of ${repository} with commit ${baseCommit.slice(0, 7)}. Open one in pi-kit and fetch, then try again.`,
       );
-    return await this.rooms.insert({
+    let stage: string | null = null;
+    if (input.playbook) {
+      try {
+        stage = this.playbooks.load(folder, input.playbook).config.stages[0] ?? null;
+      } catch (error) {
+        throw new ConflictException(error instanceof Error ? error.message : String(error));
+      }
+    }
+    const room = await this.rooms.insert({
       id: randomUUID(),
       title: input.title,
       repository,
@@ -49,8 +59,29 @@ export class RoomsService {
       summary: input.summary,
       sourceThreadId: input.threadId ?? null,
       projectFolder: folder,
+      playbook: input.playbook ?? null,
+      stage,
       createdAt: now,
     });
+    if (input.playbook) await this.rooms.setMode(room.id, 'assisted');
+    return room;
+  }
+
+  async playbooksFor(query: {
+    repository: string;
+    baseCommit?: string;
+    threadId?: string;
+  }): Promise<PlaybookSummary[]> {
+    const folder = query.threadId
+      ? (await this.start(query.threadId)).root
+      : query.baseCommit
+        ? (await RepositoryIdentity.clones(this.meta, query.repository, query.baseCommit))[0]?.folder
+        : undefined;
+    return folder ? this.playbooks.list(folder) : [];
+  }
+
+  playbooksIn(folder: string): PlaybookSummary[] {
+    return this.playbooks.list(folder);
   }
 
   async clones(repository: string, baseCommit: string): Promise<RoomClone[]> {
