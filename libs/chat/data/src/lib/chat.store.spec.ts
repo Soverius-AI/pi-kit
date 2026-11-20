@@ -179,6 +179,30 @@ describe('ChatStore', () => {
     expect(chat.canThink()).toBe(true);
   });
 
+  it('shows the load diagnostics redacted, hides a dismissed set and shows a new one for the same session', async () => {
+    const token = 'ghp_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';
+    api.stats.mockResolvedValueOnce(
+      stats({ diagnostics: [{ level: 'error', message: `Failed to load extension "a.ts": bad key ${token}` }] }),
+    );
+    const chat = await make();
+    expect(chat.diagnostics()).toHaveLength(1);
+    expect(chat.diagnostics()[0].level).toBe('error');
+    expect(chat.diagnostics()[0].message).toContain('Failed to load extension "a.ts"');
+    expect(chat.diagnostics()[0].message).not.toContain(token);
+    chat.dismissDiagnostics();
+    expect(chat.diagnostics()).toEqual([]);
+    api.stats.mockResolvedValueOnce(
+      stats({ diagnostics: [{ level: 'error', message: `Failed to load extension "a.ts": bad key ${token}` }] }),
+    );
+    await chat.refreshStats();
+    expect(chat.diagnostics()).toEqual([]);
+    api.stats.mockResolvedValueOnce(
+      stats({ diagnostics: [{ level: 'warning', message: 'Extension package "b": deprecated' }] }),
+    );
+    await chat.refreshStats();
+    expect(chat.diagnostics()).toEqual([{ level: 'warning', message: 'Extension package "b": deprecated' }]);
+  });
+
   it('renders the cached signal-store transcript while the agent is reset for synchronization', async () => {
     const chat = await make();
     const cache = TestBed.inject(ThreadReplayCacheStore);

@@ -97,6 +97,14 @@ export const CompactRequestSchema = z
   .meta({ id: 'CompactRequest' });
 
 /** `GET /api/threads/:id/stats` (pi `getSessionStats()` plus the context window and model). */
+export const SessionDiagnosticSchema = z
+  .object({
+    level: z.enum(['info', 'warning', 'error']),
+    message: z.string(),
+  })
+  .meta({ id: 'SessionDiagnostic' });
+export type SessionDiagnostic = z.infer<typeof SessionDiagnosticSchema>;
+
 export const SessionStatsSchema = z
   .object({
     sessionId: z.string(),
@@ -126,6 +134,8 @@ export const SessionStatsSchema = z
     /** An extension dialog is waiting for an answer, so the session is blocked. */
     waitingForAnswer: z.boolean(),
     cwd: z.string(),
+    /** What pi reported while opening the session, such as an extension that failed to load. */
+    diagnostics: z.array(SessionDiagnosticSchema),
   })
   .meta({ id: 'SessionStats' });
 export type SessionStats = z.infer<typeof SessionStatsSchema>;
