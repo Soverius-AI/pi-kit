@@ -407,14 +407,14 @@
       </button>
     </div>
   }
-  @if (diagnostics().length) {
+  @if (chat.diagnostics().length) {
     <pk-diagnostics
       [title]="
-        diagnostics().length === 1
+        chat.diagnostics().length === 1
           ? ('chat.transcript.piReportedOneProblem' | transloco)
-          : ('chat.transcript.piReportedProblems' | transloco: { value1: diagnostics().length })
+          : ('chat.transcript.piReportedProblems' | transloco: { value1: chat.diagnostics().length })
       "
-      [items]="diagnostics()"
+      [items]="chat.diagnostics()"
       [levelLabels]="diagnosticLevels()"
       [dismissLabel]="'chat.transcript.dismiss' | transloco"
       (dismissed)="chat.dismissDiagnostics()"

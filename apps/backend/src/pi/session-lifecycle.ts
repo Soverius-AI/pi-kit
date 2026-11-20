@@ -293,7 +293,11 @@ export class SessionLifecycle {
       created.modelFallbackMessage,
     );
     const { session } = runtime;
-    const diagnostics = runtime.takeUnreportedDiagnostics().map(({ type, message }) => ({ level: type, message }));
+    const reported =
+      typeof runtime.takeUnreportedDiagnostics === 'function'
+        ? runtime.takeUnreportedDiagnostics()
+        : runtime.diagnostics;
+    const diagnostics = reported.map(({ type, message }) => ({ level: type, message }));
     for (const { level, message } of diagnostics) {
       if (level === 'error') this.logger.error(`Thread ${threadId}: ${message}`);
       else if (level === 'warning') this.logger.warn(`Thread ${threadId}: ${message}`);

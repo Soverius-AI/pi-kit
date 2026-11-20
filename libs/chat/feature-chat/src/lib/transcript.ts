@@ -128,11 +128,6 @@ export class Transcript {
   protected readonly chat = inject(ChatStore);
   protected readonly tree = inject(GraphStore);
   protected readonly prefs = inject(ViewPrefs);
-  protected readonly diagnostics = computed(() => {
-    const stats = this.chat.stats();
-    if (!stats?.diagnostics?.length || stats.sessionId === this.chat.dismissedDiagnostics()) return [];
-    return stats.diagnostics;
-  });
   protected readonly diagnosticLevels = computed(() => ({
     info: this.i18n.t('chat.transcript.diagnosticInfo'),
     warning: this.i18n.t('chat.transcript.diagnosticWarning'),
