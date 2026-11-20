@@ -172,7 +172,7 @@ export class PiSandbox {
             '--null',
             '--hidden',
             '--glob',
-            pattern,
+            (process.platform === 'win32' ? pattern.replaceAll('\\', '/') : pattern).replace(/^(?:\.\/)+/, ''),
             ...ignore.flatMap((p) => ['--glob', `!${p}`]),
             '--',
             root,

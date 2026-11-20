@@ -505,6 +505,7 @@ export function withChatActions<_>() {
         say,
         dismissNotice: (id: number): void =>
           patchState(store, (s) => ({ notices: s.notices.filter((n) => n.id !== id) })),
+        dismissDiagnostics: (): void => patchState(store, (s) => ({ dismissedDiagnostics: s.stats?.sessionId })),
         refreshStats,
         setRunError: (error: ChatStoreState['runError']): void => patchState(store, { runError: error }),
         send,

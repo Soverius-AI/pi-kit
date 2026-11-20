@@ -22,6 +22,40 @@ vi.mock('./load-pi', () => ({
 
 afterEach(() => vi.unstubAllEnvs());
 
+it("logs pi's runtime diagnostics once when a thread opens, such as an extension that fails to load", async () => {
+  const base = mkdtempSync(join(tmpdir(), 'pk-session-diagnostics-'));
+  mkdirSync(join(base, 'extensions'));
+  writeFileSync(
+    join(base, 'extensions', 'broken.ts'),
+    'export default function (pi) { throw new Error("broken on purpose"); }\n',
+  );
+  vi.stubEnv('PI_CODING_AGENT_DIR', base);
+  vi.stubEnv('PI_OFFLINE', '1');
+  const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  const plugins = new PiPluginService();
+  const sessions = new PiSessionService(
+    { resolveForOpen: async () => false } as unknown as TrustService,
+    plugins,
+    { refreshCatalog: async () => undefined } as unknown as LiteLlmService,
+    ThreadProtectionTesting.bypass(),
+  );
+  const id = randomUUID();
+  try {
+    await sessions.open(id, { cwd: base });
+    const reported = error.mock.calls
+      .map(([message]) => String(message))
+      .filter((message) => message.startsWith(`Thread ${id}: Failed to load extension`));
+    expect(reported).toHaveLength(1);
+    expect(reported[0]).toContain('broken.ts');
+    expect(reported[0]).toContain('broken on purpose');
+  } finally {
+    error.mockRestore();
+    sessions.onModuleDestroy();
+    plugins.onModuleDestroy();
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
 it('rejects a session which finishes opening after shutdown instead of retaining it', async () => {
   const base = mkdtempSync(join(tmpdir(), 'pk-session-shutdown-'));
   vi.stubEnv('PI_CODING_AGENT_DIR', base);
@@ -257,7 +291,7 @@ describe('open session ownership', () => {
         expect.stringContaining(`Opened thread ${id} in ${base} (${info.sessionFile ?? 'no session file'})`),
       );
       expect(records[0]).toMatch(
-        /\[total=\d+ms sdk=\d+ms history=\d+ms sandbox=\d+ms resourcesSetup=\d+ms resourcesReload=\d+ms modelRuntime=\d+ms createAgentSession=\d+ms sessionUiBind=\d+ms\]$/,
+        /\[total=\d+ms sdk=\d+ms history=\d+ms sandbox=\d+ms resourcesSetup=\d+ms modelRuntime=\d+ms resourcesReload=\d+ms createAgentSession=\d+ms sessionUiBind=\d+ms\]$/,
       );
     } finally {
       log.mockRestore();

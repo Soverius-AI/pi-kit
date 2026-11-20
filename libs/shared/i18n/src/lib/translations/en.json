@@ -738,7 +738,12 @@
       "workingCalls": "Working · {{value1}} tool {{value2}} so far",
       "rowCalls": "{{value1}} tool {{value2}}",
       "showWork": "Show what pi did",
-      "hideWork": "Hide what pi did"
+      "hideWork": "Hide what pi did",
+      "piReportedOneProblem": "pi reported a problem while opening this thread",
+      "piReportedProblems": "pi reported {{value1}} problems while opening this thread",
+      "diagnosticInfo": "Info",
+      "diagnosticWarning": "Warning",
+      "diagnosticError": "Error"
     },
     "activityRenderers": {
       "summaryOfTheBranchYouLeft": "Summary of the branch you left",
