@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { PkNotice } from '@pi-kit/design-system';
-import { TranslocoPipe } from '@pi-kit/i18n';
+import { Language, TranslocoPipe } from '@pi-kit/i18n';
 import type { PlaybookSummary, Room, RoomClone, RoomStartPreview, RoomWorkerCandidate } from '@pi-kit/protocol';
 import { RoomsStore } from '@pi-kit/rooms/api';
 
@@ -132,39 +132,48 @@ import { RoomsStore } from '@pi-kit/rooms/api';
           </p>
         }
 
-        @if (playbooks().length) {
-          <label class="flex flex-col gap-1">
-            <span class="text-sm font-medium">{{ 'threads.startRoom.playbook' | transloco }}</span>
-            <select
-              class="select select-sm w-full"
-              data-testid="start-room-playbook"
-              (change)="playbook.set($any($event.target).value || undefined)"
-            >
-              <option value="" [selected]="!playbook()">{{ 'threads.startRoom.noPlaybook' | transloco }}</option>
-              @for (option of playbooks(); track option.path) {
-                <option [value]="option.name" [disabled]="!!option.error" [selected]="option.name === playbook()">
-                  {{ option.name }}
-                  @if (option.error) {
-                    · {{ option.error }}
-                  }
-                </option>
-              }
-            </select>
-            @if (chosenPlaybook(); as chosen) {
-              <span class="text-xs text-muted" data-testid="start-room-playbook-about">
-                {{ chosen.description }}
-                @if (chosen.roles.length || chosen.tools.length || chosen.outputs.length) {
-                  <br />
-                  <span class="font-mono">{{
-                    'threads.startRoom.playbookFacts'
-                      | transloco
-                        : { value1: chosen.roles.join(', '), value2: [...chosen.tools, ...chosen.outputs].join(', ') }
-                  }}</span>
-                }
-              </span>
+        <label class="flex flex-col gap-1">
+          <span class="text-sm font-medium">{{ 'threads.startRoom.playbook' | transloco }}</span>
+          <select
+            class="select select-sm w-full"
+            data-testid="start-room-playbook"
+            (change)="choosePlaybook($any($event.target).value)"
+          >
+            <option value="" [selected]="!playbook() && !askLead()">
+              {{ 'threads.startRoom.noPlaybook' | transloco }}
+            </option>
+            @if (!playbooks().length) {
+              <option [value]="askLeadValue" [selected]="askLead()">
+                {{ 'rooms.view.askLeadForPlaybook' | transloco }}
+              </option>
             }
-          </label>
-        }
+            @for (option of playbooks(); track option.path) {
+              <option [value]="option.name" [disabled]="!!option.error" [selected]="option.name === playbook()">
+                {{ option.name }}
+                @if (option.error) {
+                  · {{ option.error }}
+                }
+              </option>
+            }
+          </select>
+          @if (chosenPlaybook(); as chosen) {
+            <span class="text-xs text-muted" data-testid="start-room-playbook-about">
+              {{ chosen.description }}
+              @if (chosen.roles.length || chosen.tools.length || chosen.outputs.length) {
+                <br />
+                <span class="font-mono">{{
+                  'threads.startRoom.playbookFacts'
+                    | transloco
+                      : { value1: chosen.roles.join(', '), value2: [...chosen.tools, ...chosen.outputs].join(', ') }
+                }}</span>
+              }
+            </span>
+          } @else if (!playbooks().length) {
+            <span class="text-xs text-muted" data-testid="start-room-playbook-hint">{{
+              'rooms.view.playbookHint' | transloco
+            }}</span>
+          }
+        </label>
 
         <label class="flex flex-col gap-1">
           <span class="text-sm font-medium">{{ 'threads.startRoom.summary' | transloco }}</span>
@@ -275,6 +284,15 @@ export class StartRoomDialog {
     });
   }
 
+  protected readonly askLeadValue = 'ask-lead';
+  protected readonly askLead = signal(false);
+  private readonly translate = inject(Language).t;
+
+  protected choosePlaybook(value: string): void {
+    this.askLead.set(value === this.askLeadValue);
+    this.playbook.set(value && value !== this.askLeadValue ? value : undefined);
+  }
+
   private async loadPlaybooks(
     host: RoomWorkerCandidate | undefined,
     away: RoomWorkerCandidate | undefined,
@@ -282,6 +300,7 @@ export class StartRoomDialog {
   ): Promise<void> {
     this.playbooks.set([]);
     this.playbook.set(undefined);
+    this.askLead.set(false);
     if (!start) return;
     try {
       const found = await this.rooms.playbooks(
@@ -360,6 +379,9 @@ export class StartRoomDialog {
               },
               host,
             );
+      // The room exists either way; a refused first message shows in the room, not here.
+      if (this.askLead())
+        await this.rooms.askLead(room, this.translate('rooms.view.askLeadForPlaybookMessage')).catch(() => undefined);
       this.created.emit(room);
     } catch (error) {
       this.createError.set(error instanceof Error ? error.message : String(error));

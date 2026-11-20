@@ -44,6 +44,7 @@ describe('OpenRoomStore', () => {
     projectFolder: '/srv/pi-kit',
     mode: 'supervised',
     paused: false,
+    rehearsal: false,
     playbook: null,
     stage: null,
     stages: [],

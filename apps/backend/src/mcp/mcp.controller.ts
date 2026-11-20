@@ -299,14 +299,14 @@ export class McpController {
   @ApiOperation({
     summary: 'Sign in to a server',
     description:
-      "Starts the OAuth sign-in of an HTTP server in the thread's session. The answer carries the link to open when the browser did not open.",
+      "Starts the OAuth sign-in of an HTTP server, in the thread's session or, without a thread, on its own; sessions use the stored sign-in when they connect. The answer carries the link to open when the browser did not open.",
   })
   @ApiParam(SERVER_NAME)
   @Responds(McpActionResultSchema)
   @Fails({ 404: NO_SERVER, 409: NOT_IDLE })
   login(
     @Param('name') name: string,
-    @Query({ schema: ThreadQuerySchema }) query: z.infer<typeof ThreadQuerySchema>,
+    @Query({ schema: OptionalThreadQuerySchema }) query: z.infer<typeof OptionalThreadQuerySchema>,
   ): Promise<McpActionResult> {
     return this.mcp.login(query.thread, name);
   }
@@ -323,7 +323,7 @@ export class McpController {
   @Fails({ 404: NO_SERVER })
   cancelSignIn(
     @Param('name') name: string,
-    @Query({ schema: ThreadQuerySchema }) query: z.infer<typeof ThreadQuerySchema>,
+    @Query({ schema: OptionalThreadQuerySchema }) query: z.infer<typeof OptionalThreadQuerySchema>,
   ): Promise<McpActionResult> {
     return this.mcp.cancelSignIn(query.thread, name);
   }
@@ -341,7 +341,7 @@ export class McpController {
   @Fails({ 404: NO_SERVER, 409: 'No sign-in to that server is waiting for a redirect URL.' })
   pasteSignIn(
     @Param('name') name: string,
-    @Query({ schema: ThreadQuerySchema }) query: z.infer<typeof ThreadQuerySchema>,
+    @Query({ schema: OptionalThreadQuerySchema }) query: z.infer<typeof OptionalThreadQuerySchema>,
     @Body({ schema: SignInPasteRequestSchema }) body: z.infer<typeof SignInPasteRequestSchema>,
   ): Promise<McpActionResult> {
     return this.mcp.pasteSignIn(query.thread, name, body.url);

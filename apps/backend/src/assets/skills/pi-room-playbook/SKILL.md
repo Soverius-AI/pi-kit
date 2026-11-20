@@ -88,7 +88,7 @@ gates:
 - `mail` reads Mail on the Mac pi-kit runs on (newest first, with sender, subject, date and a short preview); `calendar` reads that Mac's calendars or an iCalendar URL or file. macOS asks the user once to allow it. Repeating events in an iCalendar file appear only on their first date.
 - A long output reaches the lead a page at a time; `room_call` with `page` reads the next one.
 - Triggers only use tools. A paused room fires nothing.
-- The lead stays read-only. Code changes go through `room_propose_task`, which a worker runs in its own worktree after the owner approves.
+- The lead stays read-only. Code changes go through `room_propose_task`, which a worker runs in its own worktree after the owner approves; playbook files go through `room_playbook_propose`.
 - Notes (`room_note`) live in pi-kit's database: scope `room` for this room, `playbook` for every later room of this playbook in this repository.
 
 ## Writing one with the user
@@ -96,5 +96,6 @@ gates:
 1. Ask what should start the work (a ticket, a schedule, new pull requests, new mail), who should weigh in, what the result is, and what must never happen without them.
 2. Find the commands, MCP tools or local sources that read and write the systems involved and try the reading ones.
 3. Write both files, keep the body short and concrete, and put every write under `safe-outputs` as a draft.
-4. In a read-only room thread, read this guide with `room_playbook_guide` instead of the file.
-5. Tell the user to start a room with the playbook from the room dialog; it appears there once the folder is committed or present in the clone.
+4. In a read-only room thread, read this guide with `room_playbook_guide` instead of the file, and hand over both whole files with `room_playbook_propose` (also to change the room's own playbook). pi-kit checks them as it loads a playbook and gives the errors back; a valid proposal shows the owner its diff, and they apply it into the project folder.
+5. Elsewhere, tell the user to start a room with the playbook from the room dialog; it appears there once the folder is committed or present in the clone.
+6. To test a playbook, the owner can try each tool and fire triggers from the room's playbook panel, and rehearse: then safe outputs only pretend to run.

@@ -1,4 +1,5 @@
 import { join, resolve } from 'node:path';
+import type { ReadOnlyMode } from './read-only-tools';
 import type { RoomToolsHook } from './room-tools';
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { PendingDialog, PiSessionEntry, PiUiEvent } from '@pi-kit/pi-adapter';
@@ -144,7 +145,8 @@ export class PiSessionService implements OnModuleDestroy {
   private readonly unattachedUi = new Listeners<[threadId: string, event: PiUiEvent]>('unattached UI');
   private readonly skillsUsed = new Listeners<[threadId: string, uses: SkillUse[]]>('skill use');
 
-  private readOnlyThreads: ((threadId: string) => Promise<boolean>) | undefined;
+  private readOnlyThreads: ((threadId: string) => Promise<ReadOnlyMode | undefined>) | undefined;
+  private readOnlyServers: (() => Promise<ReadonlySet<string>>) | undefined;
   private roomTools: RoomToolsHook | undefined;
 
   constructor(
@@ -163,7 +165,8 @@ export class PiSessionService implements OnModuleDestroy {
         agents: () => this.agents,
         ui: (id, cwd) => this.uiHooks(id, cwd),
         opened: (thread) => this.followTurns(thread),
-        readOnly: async (id) => (await this.readOnlyThreads?.(id)) ?? false,
+        readOnly: async (id) => await this.readOnlyThreads?.(id),
+        readOnlyServers: async () => (await this.readOnlyServers?.()) ?? new Set(),
         room: () => this.roomTools,
       },
       protection,
@@ -175,8 +178,12 @@ export class PiSessionService implements OnModuleDestroy {
     this.coordination = hook;
   }
 
-  setReadOnlyThreads(hook: ((threadId: string) => Promise<boolean>) | undefined): void {
+  setReadOnlyThreads(hook: ((threadId: string) => Promise<ReadOnlyMode | undefined>) | undefined): void {
     this.readOnlyThreads = hook;
+  }
+
+  setReadOnlyServers(hook: (() => Promise<ReadonlySet<string>>) | undefined): void {
+    this.readOnlyServers = hook;
   }
 
   setRoomTools(hook: RoomToolsHook | undefined): void {

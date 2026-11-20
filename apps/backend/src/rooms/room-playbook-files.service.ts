@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { parse } from 'yaml';
@@ -6,6 +6,11 @@ import { PlaybookConfigSchema, type PlaybookConfig, type PlaybookSummary } from 
 import { RoomSchedule } from './room-schedule';
 
 type Read = Playbook | { name: string; description: string; error: string };
+
+export interface PlaybookSource {
+  skill: string;
+  yaml: string;
+}
 
 export interface Playbook {
   name: string;
@@ -19,6 +24,7 @@ export interface Playbook {
 export class RoomPlaybookFiles {
   static readonly FOLDERS = [join('.pi', 'skills'), join('.agents', 'skills')];
   static readonly CONFIG = 'room.yaml';
+  static readonly SKILL = 'SKILL.md';
 
   private readonly cache = new Map<string, { stamp: string; read: Read | undefined }>();
 
@@ -43,8 +49,17 @@ export class RoomPlaybookFiles {
     });
   }
 
+  /** `load` for a route: a playbook that does not parse is the owner's conflict to fix. */
+  loadOrConflict(folder: string, name: string): Playbook {
+    try {
+      return this.load(folder, name);
+    } catch (error) {
+      throw new ConflictException(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   load(folder: string, name: string): Playbook {
-    const direct = RoomPlaybookFiles.FOLDERS.map((relative) => join(folder, relative, name, 'SKILL.md'));
+    const direct = RoomPlaybookFiles.FOLDERS.map((relative) => join(folder, relative, name, RoomPlaybookFiles.SKILL));
     for (const path of [...direct.filter((candidate) => this.isPlaybook(candidate)), ...this.files(folder)]) {
       const read = this.read(path);
       if (!read || read.name !== name) continue;
@@ -54,12 +69,36 @@ export class RoomPlaybookFiles {
     throw new Error(`No playbook named ${name} in ${folder}.`);
   }
 
+  /** Where the playbook `name` lives in `folder`, with its files' text, or where a new one would go. */
+  locate(folder: string, name: string): { dir: string; source: PlaybookSource | undefined } {
+    const path =
+      this.files(folder).find((candidate) => this.read(candidate)?.name === name) ??
+      join(folder, RoomPlaybookFiles.FOLDERS[0] as string, name, RoomPlaybookFiles.SKILL);
+    const dir = dirname(path);
+    if (!this.isPlaybook(path)) return { dir, source: undefined };
+    return {
+      dir,
+      source: {
+        skill: readFileSync(path, 'utf8'),
+        yaml: readFileSync(join(dir, RoomPlaybookFiles.CONFIG), 'utf8'),
+      },
+    };
+  }
+
+  /** Reads proposed files the way `load` reads files on disk; the front matter must name the playbook `name`. */
+  validate(path: string, name: string, source: PlaybookSource): Read {
+    const read = this.parseText(path, source.skill, () => source.yaml);
+    if (read.name !== name)
+      return { ...read, error: `The front matter of SKILL.md must say name: ${name} (it says ${read.name}).` };
+    return read;
+  }
+
   private files(folder: string): string[] {
     return RoomPlaybookFiles.FOLDERS.flatMap((relative) => {
       const root = join(folder, relative);
       if (!existsSync(root)) return [];
       return readdirSync(root)
-        .map((entry) => join(root, entry, 'SKILL.md'))
+        .map((entry) => join(root, entry, RoomPlaybookFiles.SKILL))
         .filter((path) => this.isPlaybook(path));
     });
   }
@@ -81,8 +120,14 @@ export class RoomPlaybookFiles {
     return read;
   }
 
-  private parse(path: string): Read | undefined {
-    const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(readFileSync(path, 'utf8'));
+  private parse(path: string): Read {
+    return this.parseText(path, readFileSync(path, 'utf8'), () =>
+      readFileSync(join(dirname(path), RoomPlaybookFiles.CONFIG), 'utf8'),
+    );
+  }
+
+  private parseText(path: string, skill: string, yaml: () => string): Read {
+    const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(skill);
     let front: unknown;
     try {
       front = match ? parse(match[1] ?? '') : {};
@@ -95,7 +140,7 @@ export class RoomPlaybookFiles {
     const fail = (error: string) => ({ name, description, error });
     let room: unknown;
     try {
-      room = parse(readFileSync(join(dirname(path), RoomPlaybookFiles.CONFIG), 'utf8')) ?? {};
+      room = parse(yaml()) ?? {};
     } catch (error) {
       return fail(`room.yaml: ${error instanceof Error ? error.message : String(error)}`);
     }

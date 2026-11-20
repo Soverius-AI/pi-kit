@@ -63,6 +63,11 @@ export const McpServerSchema = z
     error: z.string().optional(),
     /** An HTTP server without an `Authorization` header: it can be signed in to. */
     oauth: z.boolean(),
+    /** The `oauth.clientId` and `oauth.scope` of its entry (a client id is not a secret). */
+    clientId: z.string().optional(),
+    oauthScope: z.string().optional(),
+    /** Without a thread: pi holds a sign-in for this OAuth server, which sessions use when they connect. */
+    signedIn: z.boolean().optional(),
     /** The sign-in pi-kit started and has not finished, or how the last one ended. */
     signIn: McpSignInSchema.optional(),
     /** The tools it listed (names and the first line of their descriptions), once connected in this session. */

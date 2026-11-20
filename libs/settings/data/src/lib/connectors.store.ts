@@ -1,5 +1,5 @@
 import { Language } from '@pi-kit/i18n';
-import { DestroyRef, computed, effect, inject, untracked } from '@angular/core';
+import { DestroyRef, InjectionToken, computed, effect, inject, untracked } from '@angular/core';
 import { patchState, signalStore, withComputed, withHooks, withMethods, withProps, withState } from '@ngrx/signals';
 import {
   ApiClient,
@@ -100,6 +100,9 @@ interface ConnectorsState {
   fileEditor: McpScope | undefined;
 }
 
+/** The session the panel uses when no thread is selected, such as a room's lead on this computer. */
+export const MCP_FALLBACK_THREAD = new InjectionToken<() => string | undefined>('MCP_FALLBACK_THREAD');
+
 /**
  * The MCP servers of the selected thread's pi session and the connectors gallery over them: the overview behind the sidebar's "N MCP servers",
  * Settings › MCP servers, the cards (catalog entries with the state of their server), and the actions: connect, disconnect, exposure, sign in and out.
@@ -176,7 +179,8 @@ export const ConnectorsStore = signalStore(
     const destroyRef = inject(DestroyRef);
     destroyRef.onDestroy(() => clearTimeout(timer));
 
-    const threadId = (): string | undefined => threads.selectedId() ?? undefined;
+    const fallback = inject(MCP_FALLBACK_THREAD, { optional: true });
+    const threadId = (): string | undefined => threads.selectedId() ?? fallback?.();
     const owner = (): (() => boolean) => {
       const thread = threadId();
       const started = generation;
@@ -264,6 +268,11 @@ export const ConnectorsStore = signalStore(
 
     const act = (name: string, call: (thread: string) => Promise<McpActionResult>): Promise<boolean> =>
       run(name, true, (thread) => call(thread as string), name);
+    /** Sign-ins run in the thread's session when there is one, else on their own; sessions read the stored sign-in. */
+    const signInAct = (
+      name: string,
+      call: (thread: string | undefined) => Promise<McpActionResult>,
+    ): Promise<boolean> => run(name, false, call, name);
 
     const choiceOf = (id: string): CardChoice => store.choices()[id] ?? { scope: 'user' };
 
@@ -315,7 +324,7 @@ export const ConnectorsStore = signalStore(
       reconnect: (name: string): Promise<boolean> =>
         act(name, (thread) => unwrap(mcpReconnect({ client: api.client, path: { name }, query: { thread } }))),
       login(name: string): Promise<boolean> {
-        return act(name, (thread) => unwrap(mcpLogin({ client: api.client, path: { name }, query: { thread } })));
+        return signInAct(name, (thread) => unwrap(mcpLogin({ client: api.client, path: { name }, query: { thread } })));
       },
       logout: (name: string): Promise<boolean> =>
         act(name, (thread) => unwrap(mcpLogout({ client: api.client, path: { name }, query: { thread } }))),
@@ -544,9 +553,9 @@ export const ConnectorsStore = signalStore(
       },
 
       cancelSignIn: (name: string): Promise<boolean> =>
-        act(name, (thread) => unwrap(mcpCancelSignIn({ client: api.client, path: { name }, query: { thread } }))),
+        signInAct(name, (thread) => unwrap(mcpCancelSignIn({ client: api.client, path: { name }, query: { thread } }))),
       pasteSignIn: (name: string, url: string): Promise<boolean> =>
-        act(name, (thread) =>
+        signInAct(name, (thread) =>
           unwrap(mcpPasteSignIn({ client: api.client, path: { name }, query: { thread }, body: { url } })),
         ),
 
@@ -562,8 +571,10 @@ export const ConnectorsStore = signalStore(
       // Connectors are configured on the computer; a paired device never reads them.
       if (isDeviceConnection()) return;
       const threads = inject(ThreadsStore);
+      const fallback = inject(MCP_FALLBACK_THREAD, { optional: true });
       effect(() => {
         threads.selectedId();
+        fallback?.();
         untracked(() => store.restart());
       });
       void store.loadCatalog();

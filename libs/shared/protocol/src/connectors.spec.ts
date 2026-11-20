@@ -7,9 +7,11 @@ import {
   connectorById,
   connectorMenuLine,
   connectorOfServer,
+  connectorScope,
   connectorUrl,
   humanToolName,
   normalizeEndpoint,
+  readOnlyScope,
 } from './connectors';
 import { bearerFromResolver, resolverCommand } from './secrets';
 
@@ -39,7 +41,8 @@ describe('the connector catalog', () => {
       if (connector.local) expect(connector.local.args.join(' '), connector.id).toMatch(/@\d+\.\d+\.\d+/);
       else expect(connector.endpoint?.url, connector.id).toMatch(/^https:\/\//);
       for (const variant of connector.endpoint?.variants ?? [])
-        expect(variant.url, `${connector.id}/${variant.id}`).toMatch(/^https:\/\//);
+        if (variant.url) expect(variant.url, `${connector.id}/${variant.id}`).toMatch(/^https:\/\//);
+        else expect(variant.scope, `${connector.id}/${variant.id}`).toBeTruthy();
       expect(connector.docs, connector.id).toMatch(/^https:\/\//);
       expect(connector.verification.checkedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(connector.verification.note.length).toBeGreaterThan(20);
@@ -152,6 +155,21 @@ describe('matching a server with its connector', () => {
     });
   });
 
+  it('tells the Google access levels apart by the scope the entry asks for', () => {
+    const gmail = (oauthScope?: string) => ({
+      ...server('gmail', 'https://gmailmcp.googleapis.com/mcp/v1'),
+      oauthScope,
+    });
+    const G = 'https://www.googleapis.com/auth/';
+    expect(connectorOfServer(gmail(`${G}gmail.readonly`), CONNECTOR_CATALOG)).toMatchObject({ variant: 'readonly' });
+    expect(connectorOfServer(gmail(`${G}gmail.compose ${G}gmail.readonly`), CONNECTOR_CATALOG)).toEqual({
+      connector: expect.objectContaining({ id: 'gmail' }),
+    });
+    expect(connectorOfServer(gmail(), CONNECTOR_CATALOG)).toEqual({
+      connector: expect.objectContaining({ id: 'gmail' }),
+    });
+  });
+
   it('normalises a URL the way a comparison needs', () => {
     expect(normalizeEndpoint('https://Example.com/mcp/#top')).toBe('https://example.com/mcp');
     expect(normalizeEndpoint('not a url')).toBe('not a url');
@@ -211,5 +229,35 @@ describe('the bearer header that mcp.json holds', () => {
     expect(bearerFromResolver(resolverCommand('linux', 'connector-github'))).toBe(
       '!pi-kit-secret get connector-github --bearer',
     );
+  });
+});
+
+describe('the scope of a Google connector', () => {
+  const G = 'https://www.googleapis.com/auth/';
+  const gmail = connectorById('gmail', CONNECTOR_CATALOG)!;
+  const calendar = connectorById('google-calendar', CONNECTOR_CATALOG)!;
+
+  it('asks for read only by default and for no more than the card says', () => {
+    expect(gmail.endpoint?.defaultVariant).toBe('readonly');
+    expect(connectorScope(gmail, 'readonly')).toBe(`${G}gmail.readonly`);
+    expect(connectorScope(gmail)).toBe(`${G}gmail.readonly ${G}gmail.compose`);
+    expect(connectorScope(calendar, 'readonly')).toBe(`${G}calendar.readonly`);
+    expect(connectorScope(calendar)).toBe(`${G}calendar.readonly ${G}calendar.events`);
+    expect(connectorScope(connectorById('linear', CONNECTOR_CATALOG)!)).toBeUndefined();
+  });
+
+  it('shares one redirect URI and one app between Gmail and Calendar', () => {
+    for (const connector of [gmail, calendar]) {
+      expect(connector.auth).toMatchObject({ type: 'oauth-client', callbackPort: 8766, app: 'google' });
+      if (connector.auth.type === 'oauth-client') expect(connector.auth.steps?.length).toBeGreaterThanOrEqual(5);
+    }
+  });
+
+  it('counts a scope as read only when every part of it is', () => {
+    expect(readOnlyScope(`${G}gmail.readonly`)).toBe(true);
+    expect(readOnlyScope(`${G}calendar.readonly  ${G}gmail.readonly`)).toBe(true);
+    expect(readOnlyScope(`${G}gmail.readonly ${G}gmail.compose`)).toBe(false);
+    expect(readOnlyScope(undefined)).toBe(false);
+    expect(readOnlyScope('')).toBe(false);
   });
 });

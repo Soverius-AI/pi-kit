@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AsyncSqlite } from './async-sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
-import { EnvironmentSchema, projectRefKey, threadRefKey } from '@pi-kit/protocol';
+import { defaultEnvironmentLook, EnvironmentSchema, projectRefKey, threadRefKey } from '@pi-kit/protocol';
 import { DatabaseService, DB_FILE, schemaHash } from './database.service';
 import { InstanceRepository } from './instance.repository';
 import { MetaRepository } from './meta.repository';
@@ -158,5 +158,25 @@ describe('instance identity and additive migration', () => {
     expect(threadRefKey({ instanceId: a, threadId: 'same' })).not.toBe(
       threadRefKey({ instanceId: b, threadId: 'same' }),
     );
+  });
+});
+
+describe('environment look', () => {
+  it('derives a look from the instance id until the owner chooses one, and keeps the choice across restarts', async () => {
+    const { item, db, repo } = await open();
+    expect(await repo.look()).toEqual(defaultEnvironmentLook(repo.instanceId));
+    expect(await repo.setLook({ icon: 'oni', color: 7 })).toEqual({ icon: 'oni', color: 7 });
+    await db.onApplicationShutdown();
+    const reopened = await open(item);
+    expect(await reopened.repo.look()).toEqual({ icon: 'oni', color: 7 });
+    expect(
+      EnvironmentSchema.parse({ ...(await reopened.repo.identity()), look: await reopened.repo.look() }).look,
+    ).toEqual({ icon: 'oni', color: 7 });
+  });
+
+  it('refuses a look outside the nine icons and colours', async () => {
+    const { repo } = await open();
+    await expect(repo.setLook({ icon: 'dragon' as never, color: 3 })).rejects.toThrow();
+    await expect(repo.setLook({ icon: 'neko', color: 10 })).rejects.toThrow();
   });
 });

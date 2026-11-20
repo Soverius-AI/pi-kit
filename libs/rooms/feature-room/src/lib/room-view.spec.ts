@@ -1,6 +1,9 @@
-import { Component, input, signal } from '@angular/core';
+import { Component, input, output, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type {
+  PiDialogAnswer,
+  PiDialogRequest,
+  PlaybookDetail,
   Room,
   RoomAction,
   RoomEvent,
@@ -10,12 +13,43 @@ import type {
   RoomTaskQuestion,
   RoomWorkerCandidate,
 } from '@pi-kit/protocol';
-import { OpenRoomStore, ROOM_PROSE } from '@pi-kit/rooms/data';
+import { OpenRoomStore, ROOM_DIALOG, ROOM_MCP_APP, ROOM_PROSE } from '@pi-kit/rooms/data';
 import { RoomView } from './room-view';
 
 @Component({ selector: 'pk-test-prose', template: '<em class="md-out">{{ text() }}</em>' })
 class TestProse {
   readonly text = input.required<string>();
+}
+
+@Component({
+  selector: 'pk-test-dialog',
+  template: `
+    <p class="dialog">{{ request().title }} {{ request().message }} {{ request().tool }}</p>
+    @for (option of request().options ?? []; track option) {
+      <button class="option" (click)="answered.emit({ value: option })">{{ option }}</button>
+    }
+    <button class="yes" (click)="answered.emit({ confirmed: true })">yes</button>
+    <button class="text" (click)="answered.emit({ value: request().placeholder ?? '' })">text</button>
+    <button class="dismiss" (click)="dismissed.emit()">dismiss</button>
+  `,
+})
+class TestDialog {
+  readonly request = input.required<PiDialogRequest>();
+  readonly answered = output<PiDialogAnswer>();
+  readonly dismissed = output<void>();
+}
+
+@Component({
+  selector: 'pk-test-app',
+  template:
+    '<button class="app-out" (click)="send()(\'show tomorrow\')">{{ threadId() }} {{ ownerId() }} {{ app().resourceUri }}</button>',
+})
+class TestApp {
+  readonly threadId = input.required<string>();
+  readonly ownerId = input.required<string>();
+  readonly app = input.required<{ resourceUri: string }>();
+  readonly id = input.required<string>();
+  readonly send = input.required<(text: string) => void>();
 }
 
 const room: Room = {
@@ -60,7 +94,20 @@ describe('RoomView', () => {
     projectFolder: signal<string | null>('/srv/pi-kit'),
     mode: signal<'supervised' | 'assisted'>('supervised'),
     paused: signal(false),
+    rehearsal: signal(false),
     playbook: signal<string | null>(null),
+    playbookDetail: signal<PlaybookDetail | undefined>(undefined),
+    playbookDetailError: signal<string | undefined>(undefined),
+    loadPlaybookDetail: vi.fn(async () => undefined),
+    tryTool: vi.fn(async () => ({ ran: true, ok: true, call: 'gh pr view 7', output: 'PR 7: Fix the watcher' })),
+    fireTrigger: vi.fn(async () => ({
+      text: '1 new among 2.',
+      items: [
+        { key: '7', fresh: true },
+        { key: '6', fresh: false },
+      ],
+    })),
+    playbookChoices: signal<{ name: string; path: string; error?: string | null }[] | undefined>(undefined),
     stage: signal<string | null>(null),
     stages: signal<string[]>([]),
     memory: signal<RoomMemoryEntry[]>([]),
@@ -78,7 +125,10 @@ describe('RoomView', () => {
     environmentName: (id: string) => (id === 'desk' ? 'Desktop' : undefined),
     machineName: (id: string | null | undefined) =>
       id === 'desk' ? 'pi-kit B' : id === room.hostInstanceId ? 'pi-kit A' : undefined,
+    machineLook: (id: string | null | undefined) =>
+      id === 'desk' ? { icon: 'drone', color: 3 } : id === room.hostInstanceId ? { icon: 'oni', color: 7 } : undefined,
     protection: signal<unknown>(undefined),
+    setSandboxed: vi.fn(async () => undefined),
     post,
   };
 
@@ -87,7 +137,10 @@ describe('RoomView', () => {
     lead.set('idle');
     post.mockClear();
     TestBed.configureTestingModule({
-      providers: [{ provide: OpenRoomStore, useValue: store }],
+      providers: [
+        { provide: OpenRoomStore, useValue: store },
+        { provide: ROOM_DIALOG, useValue: () => Promise.resolve(TestDialog) },
+      ],
     });
   });
 
@@ -170,7 +223,7 @@ describe('RoomView', () => {
     store.tasks.set([]);
   });
 
-  it('shows what a running worker asks and sends the owner’s answers', () => {
+  it('shows what a running worker asks and sends the owner’s answers', async () => {
     const task: RoomTask = {
       id: 'c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f',
       roomId: room.id,
@@ -197,33 +250,33 @@ describe('RoomView', () => {
     store.tasks.set([task]);
     events.set([event(1, 'coordinator', 'The worker needs you.', 'task', task.id)]);
     const { fixture, el } = render();
-    const block = el.querySelector('[data-testid=room-task-question]') as HTMLElement;
-    expect(block.textContent).toContain('Run npm install?');
-    expect(block.textContent).toContain('bash');
-    (block.querySelector('[data-testid=room-task-allow]') as HTMLButtonElement).click();
-    expect(store.answer).toHaveBeenCalledWith(task.id, [{ id: 'd1', confirmed: true }]);
-    const reply = block.querySelector('[data-testid=room-task-reply]') as HTMLTextAreaElement;
-    expect(reply.placeholder).toBe('4200');
-    reply.value = '5173';
-    reply.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
     fixture.detectChanges();
-    (block.querySelector('[data-testid=room-task-send-reply]') as HTMLButtonElement).click();
-    expect(store.answer).toHaveBeenCalledWith(task.id, [{ id: 'd2', value: '5173' }]);
+    const block = el.querySelector('[data-testid=room-task-question]') as HTMLElement;
+    const dialogs = block.querySelectorAll('pk-test-dialog');
+    expect(dialogs[0]?.textContent).toContain('Run npm install?');
+    expect(dialogs[0]?.textContent).toContain('bash');
+    (dialogs[0]?.querySelector('.yes') as HTMLButtonElement).click();
+    expect(store.answer).toHaveBeenCalledWith(task.id, [{ id: 'd1', confirmed: true }]);
+    (dialogs[1]?.querySelector('.text') as HTMLButtonElement).click();
+    expect(store.answer).toHaveBeenCalledWith(task.id, [{ id: 'd2', value: '4200' }]);
     store.tasks.set([]);
   });
 
-  it('shows what the lead asks in place of Thinking and sends the owner’s answer', () => {
+  it('shows what the lead asks in place of Thinking and sends the owner’s answer', async () => {
     lead.set('working');
     store.leadQuestions.set([{ id: 'd1', method: 'select', title: 'Which log?', options: ['app.log', 'error.log'] }]);
-    const { el } = render();
+    const { fixture, el } = render();
+    await fixture.whenStable();
+    fixture.detectChanges();
     const block = el.querySelector('[data-testid=room-lead-question]') as HTMLElement;
     expect(block.textContent).toContain('Which log?');
     expect(el.querySelector('[data-testid=room-lead-working] .thinking')).toBeNull();
-    const options = block.querySelectorAll<HTMLButtonElement>('[data-testid=room-task-option]');
+    const options = block.querySelectorAll<HTMLButtonElement>('.option');
     expect([...options].map((option) => option.textContent?.trim())).toEqual(['app.log', 'error.log']);
     options[1].click();
     expect(store.answerLead).toHaveBeenCalledWith([{ id: 'd1', value: 'error.log' }]);
-    (block.querySelector('[data-testid=room-task-skip]') as HTMLButtonElement).click();
+    (block.querySelector('.dismiss') as HTMLButtonElement).click();
     expect(store.answerLead).toHaveBeenCalledWith([{ id: 'd1', cancelled: true }]);
     store.leadQuestions.set([]);
   });
@@ -275,6 +328,24 @@ describe('RoomView', () => {
     expect(worker.querySelector('pk-avatar .letter')?.textContent).toBe('B');
     expect(worker.querySelector('[data-testid=room-message-machine]')?.textContent?.trim()).toBe('pi-kit B');
     expect(worker.querySelector('.text')?.textContent).toBe('Which language?');
+    events.set([]);
+  });
+
+  it('marks each avatar with the participant’s role and its machine’s look, also in the byline', () => {
+    events.set([
+      event(1, 'lead', 'Hi'),
+      { ...event(2, 'worker', 'Done'), environmentId: 'desk' },
+      { ...event(3, 'consultant', 'Looks fine'), role: 'reviewer' },
+    ]);
+    const { el } = render();
+    const avatar = (actor: string) => el.querySelector(`[data-actor=${actor}] pk-avatar`) as HTMLElement;
+    expect(avatar('lead').getAttribute('data-role')).toBe('lead');
+    expect(avatar('lead').querySelector('.pk-avatar-badge.look')?.getAttribute('data-icon')).toBe('oni');
+    expect(el.querySelector('[data-actor=lead] .env pk-env-glyph')?.getAttribute('data-icon')).toBe('oni');
+    expect(avatar('worker').getAttribute('data-role')).toBe('worker');
+    expect(avatar('worker').querySelector('.pk-avatar-badge.look')?.getAttribute('data-icon')).toBe('drone');
+    expect(avatar('consultant').getAttribute('data-role')).toBe('consultant');
+    expect(avatar('consultant').querySelector('.pk-avatar-badge.look')?.getAttribute('data-icon')).toBe('oni');
     events.set([]);
   });
 
@@ -336,6 +407,67 @@ describe('RoomView', () => {
     store.protection.set(undefined);
   });
 
+  describe('the playbook picker', () => {
+    const pick = (el: HTMLElement, value: string) => {
+      const select = el.querySelector<HTMLSelectElement>('[data-testid=room-playbook-select]')!;
+      select.value = value;
+      select.dispatchEvent(new Event('change'));
+    };
+
+    afterEach(() => {
+      store.playbook.set(null);
+      store.playbookChoices.set(undefined);
+      lead.set('idle');
+      store.update.mockClear();
+    });
+
+    it('attaches, switches and removes a playbook of the room’s folder, but not while the lead works', () => {
+      store.playbookChoices.set([
+        { name: 'triage', path: '/p/triage' },
+        { name: 'broken', path: '/p/broken', error: 'room.yaml: bad' },
+      ]);
+      const { fixture, el } = render();
+      expect(el.querySelector<HTMLOptionElement>('option[value=broken]')?.disabled).toBe(true);
+      expect(el.querySelector('[data-testid=room-playbook-hint]')).toBeNull();
+      pick(el, 'triage');
+      expect(store.update).toHaveBeenCalledWith({ playbook: 'triage' });
+      store.playbook.set('triage');
+      fixture.detectChanges();
+      pick(el, '');
+      expect(store.update).toHaveBeenLastCalledWith({ playbook: null });
+      lead.set('working');
+      fixture.detectChanges();
+      expect(el.querySelector<HTMLSelectElement>('[data-testid=room-playbook-select]')?.disabled).toBe(true);
+    });
+
+    it('says where playbooks go when the folder has none, and asks the lead to write one', () => {
+      store.playbookChoices.set([]);
+      const { el } = render();
+      expect(el.querySelector('[data-testid=room-playbook-hint]')?.textContent).toContain('room.yaml');
+      pick(el, 'ask-lead');
+      expect(post).toHaveBeenCalledWith(expect.stringContaining('room_playbook_guide'), 'lead');
+      expect(store.update).not.toHaveBeenCalled();
+    });
+  });
+
+  it('turns the lead’s sandbox off and on, but not while the lead works', () => {
+    store.leadThreadId.set('lead-thread');
+    store.protection.set({ mode: 'sandboxed', state: 'active' });
+    const { fixture, el } = render();
+    const lock = () => el.querySelector<HTMLButtonElement>('[data-testid=room-lead-lock]')!;
+    lock().click();
+    expect(store.setSandboxed).toHaveBeenCalledWith(false);
+    store.protection.set({ mode: 'bypass', state: 'idle' } as never);
+    fixture.detectChanges();
+    lock().click();
+    expect(store.setSandboxed).toHaveBeenLastCalledWith(true);
+    lead.set('working');
+    fixture.detectChanges();
+    expect(lock().disabled).toBe(true);
+    store.leadThreadId.set(null);
+    store.protection.set(undefined);
+  });
+
   it('shows the owner, the lead, notes and a thinking lead', () => {
     events.set([
       event(1, 'owner', 'Hello'),
@@ -361,6 +493,28 @@ describe('RoomView', () => {
     expect(lead?.textContent).toBe('**Plan**\n\n- one');
     expect(el.querySelector('[data-actor=owner]')?.textContent).toContain('**not bold**');
     expect(el.querySelector('[data-actor=owner] .md-out')).toBeNull();
+    events.set([]);
+  });
+
+  it('draws an MCP App the lead opened on the lead’s thread and hands what the app says to the lead', async () => {
+    TestBed.overrideProvider(ROOM_MCP_APP, { useValue: () => Promise.resolve(TestApp) });
+    store.leadThreadId.set('lead-thread');
+    const app = {
+      serverHash: 'pi-mcp:calendar',
+      serverId: 'calendar',
+      tool: 'list_events',
+      resourceUri: 'ui://calendar/day',
+      result: { content: [] },
+    };
+    events.set([{ ...event(1, 'lead', 'list_events', 'app'), app }]);
+    const { fixture, el } = render();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const frame = el.querySelector<HTMLButtonElement>('[data-testid=room-app] .app-out');
+    expect(frame?.textContent).toBe(`lead-thread ${room.hostInstanceId} ui://calendar/day`);
+    frame?.click();
+    expect(post).toHaveBeenCalledWith('show tomorrow', 'lead');
+    store.leadThreadId.set(null);
     events.set([]);
   });
 
@@ -408,5 +562,119 @@ describe('RoomView', () => {
     draft.dispatchEvent(new Event('input'));
     fixture.detectChanges();
     expect((el.querySelector('[data-testid=room-send]') as HTMLButtonElement).disabled).toBe(true);
+  });
+  it('shows a playbook the lead proposes as a diff with what the check found, and applies it', () => {
+    const action: RoomAction = {
+      id: 'b1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d',
+      kind: 'playbook',
+      name: 'pr-review',
+      summary: 'Poll every five minutes.',
+      payload: {
+        name: 'pr-review',
+        folder: '.pi/skills/pr-review',
+        create: false,
+        skill: '---\nname: pr-review\n---\n',
+        yaml: 'tools: {}\n',
+        base: 'abc',
+        files: [
+          {
+            path: '.pi/skills/pr-review/room.yaml',
+            written: false,
+            hunks: [{ oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-every: 1m', '+every: 5m'] }],
+          },
+        ],
+        checks: [
+          { level: 'ok', subject: 'command gh', message: 'Found.' },
+          { level: 'error', subject: 'mcp linear', message: 'linear is not signed in yet.' },
+        ],
+      },
+      state: 'pending',
+      result: null,
+      createdAt: 1,
+      decidedAt: null,
+    };
+    store.pendingActions.set([action]);
+    const { el } = render();
+    const card = el.querySelector('[data-testid=room-action][data-kind=playbook]') as HTMLElement;
+    expect(card.querySelector('[data-testid=room-proposal-file]')?.textContent).toContain('room.yaml');
+    expect(card.querySelector('pk-diff')?.textContent).toContain('every: 5m');
+    expect([...card.querySelectorAll('[data-testid=room-proposal-check]')].map((check) => check.textContent)).toEqual([
+      expect.stringContaining('linear is not signed in yet.'),
+    ]);
+    (card.querySelector('[data-testid=room-action-approve]') as HTMLButtonElement).click();
+    expect(store.decide).toHaveBeenCalledWith(action.id, 'approve');
+    store.pendingActions.set([]);
+  });
+
+  it('opens the playbook: what wakes the lead, its stages, tools to try, triggers to fire, and a rehearsal', async () => {
+    store.playbook.set('pr-review');
+    store.playbookDetail.set({
+      name: 'pr-review',
+      description: 'Review pull requests.',
+      folder: '.pi/skills/pr-review',
+      skill: '---\nname: pr-review\n---\nReview them.',
+      yaml: 'stages: [review, verdict]\n',
+      config: {
+        participants: [{ role: 'security', agent: { machine: 'pi-kit B' }, instructions: 'Look for secrets.' }],
+        tools: {
+          open_prs: { run: ['gh', 'pr', 'list'], description: 'Open pull requests.' },
+          show: { run: ['gh', 'pr', 'view', '{pr}'], description: '' },
+        },
+        'safe-outputs': { comment: { run: ['gh', 'pr', 'comment', '{pr}'], description: '', mode: 'draft', max: 5 } },
+        vars: {},
+        on: { schedule: [], poll: [{ id: 'prs', tool: 'open_prs', every: '5m', with: {}, say: '' }] },
+        stages: ['review', 'verdict'],
+        gates: { verdict: 'owner' },
+      },
+      error: null,
+      stage: 'review',
+      triggers: [
+        { id: 'prs', kind: 'poll', every: '5m', cron: null, tool: 'open_prs', say: '', lastRun: null, nextRun: 1 },
+      ],
+      usage: { comment: 2 },
+      checks: [{ level: 'warn', subject: 'participant security', message: 'pi-kit B is offline.' }],
+    });
+    const { fixture, el } = render();
+    expect(el.querySelector('[data-testid=room-playbook-panel]')).toBeNull();
+    (el.querySelector('[data-testid=room-playbook-open]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const panel = el.querySelector('[data-testid=room-playbook-panel]') as HTMLElement;
+    expect(panel.querySelector('[data-testid=room-playbook-trigger]')?.textContent).toContain('open_prs');
+    expect(panel.querySelector('[data-testid=room-playbook-stage][aria-current=step]')?.textContent?.trim()).toBe(
+      'review',
+    );
+    expect(panel.querySelector('[data-testid=room-playbook-participant]')?.textContent).toContain(
+      'pi-kit B is offline.',
+    );
+    expect(panel.querySelector('[data-name=comment]')?.textContent).toContain('2 of 5 today');
+
+    const show = panel.querySelector('[data-name=show]') as HTMLElement;
+    const param = show.querySelector('input') as HTMLInputElement;
+    param.value = '7';
+    param.dispatchEvent(new Event('input'));
+    (show.querySelector('[data-testid=room-playbook-try]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(store.tryTool).toHaveBeenCalledWith('show', { pr: '7' });
+    expect(show.querySelector('[data-testid=room-playbook-try-result]')?.textContent).toContain(
+      'PR 7: Fix the watcher',
+    );
+
+    (panel.querySelector('[data-testid=room-trigger-dry]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(store.fireTrigger).toHaveBeenCalledWith('prs', true);
+    expect(panel.querySelector('[data-testid=room-trigger-result] .fresh')?.textContent).toBe('7');
+
+    const rehearse = panel.querySelector('[data-testid=room-rehearsal]') as HTMLInputElement;
+    rehearse.checked = true;
+    rehearse.dispatchEvent(new Event('change'));
+    expect(store.update).toHaveBeenCalledWith({ rehearsal: true });
+
+    (panel.querySelector('[data-testid=room-playbook-change]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect((el.querySelector('[data-testid=room-draft]') as HTMLTextAreaElement).value).toBe('Change the playbook: ');
+    store.playbook.set(null);
+    store.playbookDetail.set(undefined);
   });
 });

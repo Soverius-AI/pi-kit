@@ -162,6 +162,85 @@ describe('AddServerWizard', () => {
     expect(root(f).innerHTML).not.toContain('ghp_secret_token_value');
   });
 
+  it('Google: shows the setup steps, starts on read only, fills the client from the downloaded JSON and checks the id', async () => {
+    const f = open();
+    click(f, '[data-testid=tile-gmail]');
+    const steps = q(f, '[data-testid=connector-setup-steps]');
+    expect(steps?.querySelectorAll('li').length).toBeGreaterThanOrEqual(5);
+    expect(steps?.textContent).toContain('Error 403: access_denied');
+    expect(steps?.querySelector<HTMLAnchorElement>('a[href*="gmailmcp.googleapis.com"]')).not.toBeNull();
+    expect(q<HTMLSelectElement>(f, '[data-testid=variant]')?.value).toBe('readonly');
+
+    type(f, '[data-testid=connector-client-id]', 'GOCSPX-not-an-id');
+    click(f, '[data-testid=server-add]');
+    expect(q(f, '[data-testid=server-error]')?.textContent).toContain('.apps.googleusercontent.com');
+    expect(store.add).not.toHaveBeenCalled();
+
+    const input = q<HTMLInputElement>(f, '[data-testid=connector-client-file]') as HTMLInputElement;
+    const json = JSON.stringify({ web: { client_id: '1-a.apps.googleusercontent.com', client_secret: 'GOCSPX-s' } });
+    Object.defineProperty(input, 'files', { value: [new File([json], 'client_secret.json')], configurable: true });
+    input.dispatchEvent(new Event('change'));
+    await new Promise((resolve) => setTimeout(resolve));
+    await settle(f);
+    expect(q<HTMLInputElement>(f, '[data-testid=connector-client-id]')?.value).toBe('1-a.apps.googleusercontent.com');
+    expect(q<HTMLInputElement>(f, '[data-testid=connector-client-secret]')?.value).toBe('GOCSPX-s');
+    click(f, '[data-testid=server-add]');
+    await settle(f);
+    expect(store.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'gmail',
+        variant: 'readonly',
+        clientId: '1-a.apps.googleusercontent.com',
+        clientSecret: 'GOCSPX-s',
+      }),
+    );
+  });
+
+  it('Google: a file without a client is refused with a clear message', async () => {
+    const f = open();
+    click(f, '[data-testid=tile-google-calendar]');
+    const input = q<HTMLInputElement>(f, '[data-testid=connector-client-file]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [new File(['{"type":"service_account"}'], 'key.json')] });
+    input.dispatchEvent(new Event('change'));
+    await new Promise((resolve) => setTimeout(resolve));
+    await settle(f);
+    expect(q(f, '[data-testid=server-error]')?.textContent).toContain('not an OAuth client file');
+  });
+
+  it('Google: once Gmail has an app, Calendar offers to use it and sends only a reference to it', async () => {
+    servers.set([
+      {
+        name: 'gmail',
+        scope: 'global',
+        source: '/u/mcp.json',
+        transport: 'http',
+        target: 'https://gmailmcp.googleapis.com/mcp/v1',
+        exposure: 'codemode',
+        enabled: true,
+        state: 'connected',
+        oauth: true,
+        clientId: '1-a.apps.googleusercontent.com',
+      },
+    ]);
+    const f = open();
+    click(f, '[data-testid=tile-google-calendar]');
+    const reuse = q<HTMLInputElement>(f, '[data-testid=connector-shared-app] input') as HTMLInputElement;
+    expect(q(f, '[data-testid=connector-shared-app]')?.textContent).toContain('Gmail');
+    reuse.click();
+    f.detectChanges();
+    expect(q(f, '[data-testid=connector-client-id]')).toBeNull();
+    expect(root(f).textContent).toContain('1-a.apps.googleusercontent.com');
+    click(f, '[data-testid=server-add]');
+    await settle(f);
+    expect(store.add).toHaveBeenCalledWith({
+      id: 'google-calendar',
+      scope: 'user',
+      exposure: CONNECTOR_CATALOG.connectors.find((c) => c.id === 'google-calendar')?.exposure,
+      variant: 'readonly',
+      clientFrom: 'gmail',
+    });
+  });
+
   it('a server of your own: refuses a bad name or address before anything is checked or written', async () => {
     const f = open();
     click(f, '[data-testid=tile-custom]');

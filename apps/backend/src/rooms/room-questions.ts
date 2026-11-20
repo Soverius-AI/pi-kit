@@ -8,16 +8,21 @@ export type WorkerAnswers = RoomTaskAnswer['answers'];
 export class RoomQuestions {
   private readonly waiting = new Map<string, (answers: WorkerAnswers | undefined) => void>();
 
+  /** A title's first paragraph is the question; the rest is its detail, unless the dialog has a message of its own. */
   static fromDialogs(dialogs: readonly PendingDialog[]): RoomTaskQuestion[] {
-    return dialogs.map(({ id, request }) => ({
-      id,
-      method: request.method,
-      title: request.title.slice(0, 2000),
-      ...(request.message ? { message: request.message.slice(0, 8000) } : {}),
-      ...(request.options ? { options: request.options.slice(0, 50) } : {}),
-      ...(request.placeholder ? { placeholder: request.placeholder.slice(0, 500) } : {}),
-      ...(request.tool ? { tool: request.tool } : {}),
-    }));
+    return dialogs.map(({ id, request }) => {
+      const [title = '', ...rest] = request.title.split('\n\n');
+      const message = request.message ?? (rest.length ? rest.join('\n\n') : undefined);
+      return {
+        id,
+        method: request.method,
+        title: title.slice(0, 2000),
+        ...(message ? { message: message.slice(0, 8000) } : {}),
+        ...(request.options ? { options: request.options.slice(0, 50) } : {}),
+        ...(request.placeholder ? { placeholder: request.placeholder.slice(0, 500) } : {}),
+        ...(request.tool ? { tool: request.tool } : {}),
+      };
+    });
   }
 
   static toResume(

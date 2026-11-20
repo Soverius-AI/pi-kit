@@ -27,6 +27,7 @@ import { RemoteAccessSection } from './remote-access-section';
 import { EnvironmentPeersSection } from './environment-peers-section';
 import { EnvironmentSection } from './environment-section';
 import { ComputerUseSection } from './computer-use-section';
+import { RoomsSection } from './rooms-section';
 
 /**
  * Settings: a left nav of sections with counts, a search box that filters settings by name and description, and the
@@ -40,6 +41,7 @@ import { ComputerUseSection } from './computer-use-section';
   imports: [
     AppearanceSection,
     ComputerUseSection,
+    RoomsSection,
     RemoteAccessSection,
     EnvironmentPeersSection,
     EnvironmentSection,
@@ -241,6 +243,9 @@ import { ComputerUseSection } from './computer-use-section';
                   @case ('computer-use') {
                     <pk-computer-use-section />
                   }
+                  @case ('rooms') {
+                    <pk-rooms-section />
+                  }
                 }
               </div>
             }
@@ -296,7 +301,7 @@ export class SettingsWindow {
   }
 
   protected icon(id: SettingsSectionId): PkIconName {
-    return id === 'remote-access' ? 'settings-mcp' : `settings-${id}`;
+    return id === 'remote-access' ? 'settings-mcp' : id === 'rooms' ? 'room' : `settings-${id}`;
   }
 
   protected sectionsOf(group: string): SettingsSection[] {

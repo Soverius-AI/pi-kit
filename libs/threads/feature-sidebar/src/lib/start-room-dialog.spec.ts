@@ -18,14 +18,25 @@ describe('StartRoomDialog', () => {
 
   let found: { folder: string; clean: boolean }[] = [{ folder: '/srv/pi-kit', clean: true }];
   const clones = vi.fn(async () => found);
+  let books: {
+    name: string;
+    path: string;
+    description: string;
+    roles: string[];
+    tools: string[];
+    outputs: string[];
+  }[] = [];
+  const playbooks = vi.fn(async () => books);
+  const askLead = vi.fn(async () => undefined);
 
   const render = async (ownerId: string) => {
     start.mockClear();
     create.mockClear();
     clones.mockClear();
+    askLead.mockClear();
     TestBed.configureTestingModule({
       imports: [StartRoomDialog],
-      providers: [{ provide: RoomsStore, useValue: { start, create, hosts, clones } }],
+      providers: [{ provide: RoomsStore, useValue: { start, create, hosts, clones, playbooks, askLead } }],
     });
     const fixture = TestBed.createComponent(StartRoomDialog);
     fixture.componentRef.setInput('threadId', 't9');
@@ -117,5 +128,41 @@ describe('StartRoomDialog', () => {
     expect(empty.querySelector('[data-testid=start-room-no-clone]')).not.toBeNull();
     expect((empty.querySelector('[data-testid=start-room-create]') as HTMLButtonElement).disabled).toBe(true);
     found = [{ folder: '/srv/pi-kit', clean: true }];
+  });
+
+  describe('the playbook', () => {
+    afterEach(() => (books = []));
+
+    it('is offered even when the repository has none, with where they go and the lead to write one', async () => {
+      const el = await render('server');
+      const select = el.querySelector('[data-testid=start-room-playbook]') as HTMLSelectElement;
+      expect(el.querySelector('[data-testid=start-room-playbook-hint]')?.textContent).toContain('.pi/skills');
+      select.value = 'ask-lead';
+      select.dispatchEvent(new Event('change'));
+      (el.querySelector('[data-testid=start-room-create]') as HTMLButtonElement).click();
+      await vi.waitFor(() => expect(askLead).toHaveBeenCalled());
+      expect(create.mock.calls[0]?.[0]).not.toHaveProperty('playbook');
+      expect(askLead).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'r1' }),
+        expect.stringContaining('room_playbook_guide'),
+      );
+    });
+
+    it('starts the room with a playbook the repository has, and does not ask the lead', async () => {
+      books = [{ name: 'triage', path: '/p/triage', description: 'Triage.', roles: [], tools: [], outputs: [] }];
+      const el = await render('server');
+      await vi.waitFor(() => {
+        TestBed.tick();
+        expect(el.querySelector('[data-testid=start-room-playbook] option[value=triage]')).not.toBeNull();
+      });
+      expect(el.querySelector('[data-testid=start-room-playbook-hint]')).toBeNull();
+      const select = el.querySelector('[data-testid=start-room-playbook]') as HTMLSelectElement;
+      select.value = 'triage';
+      select.dispatchEvent(new Event('change'));
+      (el.querySelector('[data-testid=start-room-create]') as HTMLButtonElement).click();
+      await vi.waitFor(() => expect(create).toHaveBeenCalled());
+      expect(create.mock.calls[0]?.[0]).toMatchObject({ playbook: 'triage' });
+      expect(askLead).not.toHaveBeenCalled();
+    });
   });
 });

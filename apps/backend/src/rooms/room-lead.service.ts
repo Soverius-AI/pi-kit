@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
 import type {
+  PlaybookSummary,
   PostRoomMessage,
   RoomDetail,
   RoomEvent,
@@ -11,11 +12,13 @@ import type {
 } from '@pi-kit/protocol';
 import { AguiService } from '../agui/agui.service';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
-import { RoomsRepository } from '../db/rooms.repository';
+import { type FoundRoom, RoomsRepository } from '../db/rooms.repository';
 import { PiSessionService } from '../pi/pi-session.service';
 import { ThreadsService } from '../threads/threads.service';
+import { ComposioConnectService } from '../mcp/composio/composio-connect.service';
 import { RoomAgents } from './room-agents';
 import { RoomBus } from './room-bus';
+import { RoomPlaybookFiles } from './room-playbook-files.service';
 import { RoomQuestions, type WorkerAnswers } from './room-questions';
 
 export const NO_ROOM = 'No room with this id.';
@@ -23,11 +26,9 @@ export const LEAD_BUSY = 'The lead is still answering. Send again when it is don
 export const LEAD_WAITS = 'The lead waits for your answer to its question first.';
 export const NO_LEAD_QUESTION = 'The lead asks nothing with this id.';
 
-type Found = NonNullable<Awaited<ReturnType<RoomsRepository['get']>>>;
-
 export interface LeadPlaybooks {
-  briefing(found: Found): Promise<string | undefined>;
-  extras(found: Found): Promise<Pick<RoomDetail, 'stages' | 'actions' | 'memory'>>;
+  briefing(found: FoundRoom): Promise<string | undefined>;
+  extras(found: FoundRoom): Promise<Pick<RoomDetail, 'stages' | 'actions' | 'memory'>>;
 }
 
 @Injectable()
@@ -35,6 +36,8 @@ export class RoomLeadService implements OnModuleInit {
   static readonly AGENT_TURN_LIMIT = 12;
   private readonly inbox = new Map<string, string[]>();
   private readonly briefed = new Set<string>();
+  /** Rooms whose playbook changed since the lead's last turn: the next prompt carries the new briefing. */
+  private readonly rebrief = new Set<string>();
   private readonly logger = new Logger(RoomLeadService.name);
   private readonly states = new Map<string, RoomLeadState>();
   private playbooks: LeadPlaybooks | undefined;
@@ -48,6 +51,8 @@ export class RoomLeadService implements OnModuleInit {
     private readonly agents: RoomAgents,
     private readonly questions: RoomQuestions,
     private readonly consults: RoomPlaybooksRepository,
+    private readonly files: RoomPlaybookFiles,
+    private readonly composio: ComposioConnectService,
   ) {}
 
   setPlaybooks(playbooks: LeadPlaybooks): void {
@@ -55,8 +60,12 @@ export class RoomLeadService implements OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
-    this.sessions.setReadOnlyThreads(
-      async (threadId) => (await this.rooms.isLead(threadId)) || (await this.consults.isConsultThread(threadId)),
+    this.sessions.setReadOnlyThreads(async (threadId) =>
+      (await this.rooms.isLead(threadId))
+        ? 'ask-owner'
+        : (await this.consults.isConsultThread(threadId))
+          ? 'refuse'
+          : undefined,
     );
     await this.rooms.clearLeadQuestions();
   }
@@ -72,6 +81,7 @@ export class RoomLeadService implements OnModuleInit {
       projectFolder: found.projectFolder,
       mode: found.mode,
       paused: found.paused,
+      rehearsal: found.rehearsal,
       playbook: found.playbook,
       stage: found.stage,
       ...((await this.playbooks?.extras(found)) ?? { stages: [], actions: [], memory: [] }),
@@ -103,9 +113,32 @@ export class RoomLeadService implements OnModuleInit {
     return event;
   }
 
+  async roomPlaybooks(roomId: string): Promise<PlaybookSummary[]> {
+    const found = await this.rooms.get(roomId);
+    if (!found) throw new NotFoundException(NO_ROOM);
+    return this.files.list(await this.agents.projectFolder(found));
+  }
+
   async update(roomId: string, change: UpdateRoom): Promise<RoomDetail> {
     const found = await this.rooms.get(roomId);
     if (!found) throw new NotFoundException(NO_ROOM);
+    if (change.playbook !== undefined && change.playbook !== found.playbook) {
+      if (this.state(roomId) === 'working') throw new ConflictException(LEAD_BUSY);
+      let stage: string | null = null;
+      if (change.playbook)
+        stage =
+          this.files.loadOrConflict(await this.agents.projectFolder(found), change.playbook).config.stages[0] ?? null;
+      await this.rooms.setPlaybook(roomId, change.playbook, stage);
+      if (change.playbook) await this.rooms.setMode(roomId, 'assisted');
+      this.rebrief.add(roomId);
+      await this.bus.record(roomId, {
+        kind: 'note',
+        actor: 'coordinator',
+        text: change.playbook
+          ? `You attached the playbook “${change.playbook}”: the room is Assisted${stage ? ` and at its first stage “${stage}”` : ''}.`
+          : 'You removed the playbook.',
+      });
+    }
     if (change.mode && change.mode !== found.mode) {
       await this.rooms.setMode(roomId, change.mode);
       await this.bus.record(roomId, {
@@ -128,10 +161,32 @@ export class RoomLeadService implements OnModuleInit {
           : 'You resumed the agents.',
       });
     }
+    if (change.rehearsal !== undefined && change.rehearsal !== found.rehearsal) {
+      await this.rooms.setRehearsal(roomId, change.rehearsal);
+      if (found.playbook) this.rebrief.add(roomId);
+      await this.bus.record(roomId, {
+        kind: 'note',
+        actor: 'coordinator',
+        text: change.rehearsal
+          ? 'You started a rehearsal: safe outputs only pretend to run, even those that run at once. Nothing goes out.'
+          : 'You ended the rehearsal: safe outputs run again.',
+      });
+    }
     const detail = await this.detail(roomId);
-    this.bus.emit(roomId, { type: 'room', mode: detail.mode, paused: detail.paused, stage: detail.stage });
+    this.bus.emit(roomId, {
+      type: 'room',
+      mode: detail.mode,
+      paused: detail.paused,
+      rehearsal: detail.rehearsal,
+      stage: detail.stage,
+      playbook: detail.playbook,
+    });
     if (!detail.paused) void this.drain(roomId);
     return detail;
+  }
+
+  rebriefNext(roomId: string): void {
+    this.rebrief.add(roomId);
   }
 
   async nudge(roomId: string, text: string): Promise<void> {
@@ -202,10 +257,24 @@ export class RoomLeadService implements OnModuleInit {
       const first =
         !this.briefed.has(roomId) && !(await this.rooms.events(roomId)).some((event) => event.actor === 'lead');
       this.briefed.add(roomId);
-      const briefing = first ? await this.playbooks?.briefing(found) : undefined;
+      const rebrief = this.rebrief.delete(roomId) && !first;
+      const briefing = first || rebrief ? await this.playbooks?.briefing(found) : undefined;
       const prompt = first
-        ? this.firstPrompt(found.room.title, found.room.repository, found.summary, text, briefing)
-        : text;
+        ? this.firstPrompt(
+            found.room.title,
+            found.room.repository,
+            found.summary,
+            text,
+            briefing,
+            await this.composioLine(),
+          )
+        : rebrief
+          ? [
+              briefing ??
+                'The owner removed the room’s playbook: its participants, tools, safe outputs and stages no longer apply.',
+              text,
+            ].join('\n\n')
+          : text;
       let run = await this.agui.runHeadless(leadId, prompt, { cwd, images });
       while (run.status === 'interrupted') {
         const questions = RoomQuestions.fromDialogs(this.sessions.pendingDialogs(leadId));
@@ -241,6 +310,8 @@ export class RoomLeadService implements OnModuleInit {
         this.setState(roomId, run.status === 'aborted' ? 'idle' : 'error');
         return;
       }
+      for (const app of await this.agents.apps(leadId))
+        await this.bus.record(roomId, { kind: 'app', actor: 'lead', text: app.tool ?? app.serverId, app });
       const reply = await this.agents.lastReply(leadId);
       await this.bus.record(
         roomId,
@@ -268,7 +339,7 @@ export class RoomLeadService implements OnModuleInit {
     await this.bus.record(roomId, {
       kind: 'note',
       actor: 'coordinator',
-      text: `The lead needs you: ${questions[0]?.title ?? 'it asks a question.'}`,
+      text: `The lead needs you: ${RoomLeadService.short(questions[0]?.title ?? 'it asks a question.')}`,
     });
     this.bus.emit(roomId, { type: 'lead', state: 'working', questions });
     try {
@@ -277,6 +348,11 @@ export class RoomLeadService implements OnModuleInit {
       await this.rooms.setLeadQuestions(roomId, []).catch(() => undefined);
       this.bus.emit(roomId, { type: 'lead', state: 'working', questions: [] });
     }
+  }
+
+  /** The question card shows the whole call; the room's note only names it. */
+  private static short(text: string): string {
+    return text.length > 160 ? `${text.slice(0, 160)}…` : text;
   }
 
   private key(roomId: string): string {
@@ -297,12 +373,28 @@ export class RoomLeadService implements OnModuleInit {
     return detail.id;
   }
 
-  private firstPrompt(title: string, repository: string, summary: string, text: string, briefing?: string): string {
+  private async composioLine(): Promise<string | undefined> {
+    const reach = await this.composio.forRooms().catch(() => undefined);
+    if (!reach) return undefined;
+    return `Through Composio (the MCP server ${reach.server}) the owner chose these apps: ${reach.apps.join(', ')}. Load COMPOSIO_SEARCH_TOOLS with tool_search, search for what you need, then run the tools it names with COMPOSIO_MULTI_EXECUTE_TOOL; each run asks the owner first.`;
+  }
+
+  private firstPrompt(
+    title: string,
+    repository: string,
+    summary: string,
+    text: string,
+    briefing?: string,
+    composio?: string,
+  ): string {
     return [
       `You are the lead of the pi-kit room “${title}” for the repository ${repository}.`,
       'The owner talks to you here. Answer them and work out how the goal splits into tasks.',
       'When a piece of work is ready to hand off, call room_propose_task with a title, a brief and acceptance criteria. The owner approves each task before a worker runs it in its own worktree; you are told when its result arrives.',
       'You are read-only: do not try to edit files or run commands that change anything.',
+      'To write or change a room playbook, read room_playbook_guide, then send both whole files with room_playbook_propose; the owner applies them.',
+      'You can use the owner’s connected apps: find their MCP tools with tool_search. Tools that only read run at once; one that may change something (signing an app in, running an action) first asks the owner. A tool with an MCP App shows that app to the owner in the room.',
+      composio ?? '',
       briefing ?? '',
       summary
         ? `The owner shared this summary from the thread the room started from:\n\n${summary}`

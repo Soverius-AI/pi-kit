@@ -4,12 +4,12 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { MetaRepository } from '../db/meta.repository';
-import type { PiSessionService } from '../pi/pi-session.service';
-import type { SecretsService } from '../secrets/secrets.service';
+import type { MetaRepository } from '../../db/meta.repository';
+import type { PiSessionService } from '../../pi/pi-session.service';
+import type { SecretsService } from '../../secrets/secrets.service';
 import { ComposioService } from './composio.service';
 
-vi.mock('../pi/load-pi', () => ({
+vi.mock('../../pi/load-pi', () => ({
   loadPiInternals: async () => ({
     config: { resolveConfigValueOrThrow: (value: string) => value },
   }),

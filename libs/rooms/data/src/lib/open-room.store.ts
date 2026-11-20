@@ -7,18 +7,29 @@ import {
   roomsDecline,
   roomsDetail,
   roomsEvents,
+  roomsFireTrigger,
   roomsIntegrate,
+  roomsPlaybookDetail,
+  roomsPlaybooks,
   roomsPost,
   roomsAnswer,
   roomsAnswerLead,
   roomsStop,
+  roomsTryTool,
   roomsUpdate,
   roomsWorkers,
   threadsGetProtection,
+  threadsSetProtection,
   unwrap,
+  WORKBENCH,
   type TypedClient,
 } from '@pi-kit/api';
 import type {
+  EnvironmentLook,
+  PlaybookDetail,
+  PlaybookFireResult,
+  PlaybookSummary,
+  PlaybookTryResult,
   RoomAction,
   RoomMemoryEntry,
   RoomTaskAnswer,
@@ -41,6 +52,7 @@ export type RoomTaskAction = 'approve' | 'decline' | 'stop' | 'integrate';
 export class OpenRoomStore {
   private readonly entry = inject(EntryApiClient);
   private readonly api = inject(ApiClient);
+  private readonly workbench = inject(WORKBENCH);
   private generation = 0;
   private abort: AbortController | undefined;
 
@@ -57,13 +69,25 @@ export class OpenRoomStore {
   readonly projectFolder = signal<string | null>(null);
   readonly mode = signal<RoomMode>('supervised');
   readonly paused = signal(false);
+  readonly rehearsal = signal(false);
   readonly playbook = signal<string | null>(null);
+  /** Read when the panel opens, and again whenever the playbook changes. */
+  readonly playbookDetail = signal<PlaybookDetail | undefined>(undefined);
+  readonly playbookDetailError = signal<string | undefined>(undefined);
   readonly stage = signal<string | null>(null);
   readonly stages = signal<string[]>([]);
   readonly actions = signal<RoomAction[]>([]);
   readonly memory = signal<RoomMemoryEntry[]>([]);
+  /** Undefined until read. */
+  readonly playbookChoices = signal<PlaybookSummary[] | undefined>(undefined);
   readonly pendingActions = computed(() => this.actions().filter((action) => action.state === 'pending'));
   readonly protection = signal<ThreadProtection | undefined>(undefined);
+  /** The lead's thread when the room runs on the backend this window works on, where its pi session lives. */
+  readonly localLeadThreadId = computed(() => {
+    const room = this.room();
+    const here = this.workbench.ownerId ?? this.workbench.entryId;
+    return room && (!here || room.hostInstanceId === here) ? (this.leadThreadId() ?? undefined) : undefined;
+  });
   readonly loading = signal(false);
   readonly error = signal<string | undefined>(undefined);
   readonly connected = signal(false);
@@ -95,11 +119,15 @@ export class OpenRoomStore {
     this.projectFolder.set(null);
     this.mode.set('supervised');
     this.paused.set(false);
+    this.rehearsal.set(false);
     this.playbook.set(null);
+    this.playbookDetail.set(undefined);
+    this.playbookDetailError.set(undefined);
     this.stage.set(null);
     this.stages.set([]);
     this.actions.set([]);
     this.memory.set([]);
+    this.playbookChoices.set(undefined);
     this.protection.set(undefined);
     this.loading.set(false);
     this.error.set(undefined);
@@ -132,6 +160,66 @@ export class OpenRoomStore {
     }
   }
 
+  async loadPlaybooks(): Promise<void> {
+    const room = this.room();
+    if (!room) return;
+    try {
+      const found = await unwrap(
+        roomsPlaybooks({ client: this.client(room), query: { repository: room.repository, roomId: room.id } }),
+      );
+      if (this.room()?.id === room.id) this.playbookChoices.set(found);
+    } catch {
+      if (this.room()?.id === room.id) this.playbookChoices.set([]);
+    }
+  }
+
+  async loadPlaybookDetail(): Promise<void> {
+    const room = this.room();
+    if (!room) return;
+    if (!this.playbook()) {
+      this.playbookDetail.set(undefined);
+      return;
+    }
+    try {
+      const detail = await unwrap(roomsPlaybookDetail({ client: this.client(room), path: { roomId: room.id } }));
+      if (this.room()?.id !== room.id) return;
+      this.playbookDetail.set(detail);
+      this.playbookDetailError.set(undefined);
+      if (detail.config) this.stages.set(detail.config.stages);
+      if (detail.stage) this.stage.set(detail.stage);
+    } catch (error) {
+      if (this.room()?.id === room.id)
+        this.playbookDetailError.set(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /** Runs a playbook tool, or shows the call a safe output would make; the error text on failure. */
+  async tryTool(tool: string, params: Record<string, string>): Promise<PlaybookTryResult | string> {
+    const room = this.room();
+    if (!room) return '';
+    try {
+      return await unwrap(
+        roomsTryTool({ client: this.client(room), path: { roomId: room.id }, body: { tool, params } }),
+      );
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  async fireTrigger(triggerId: string, dry: boolean): Promise<PlaybookFireResult | string> {
+    const room = this.room();
+    if (!room) return '';
+    try {
+      const result = await unwrap(
+        roomsFireTrigger({ client: this.client(room), path: { roomId: room.id, triggerId }, body: { dry } }),
+      );
+      if (!dry) void this.loadPlaybookDetail();
+      return result;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }
+
   async loadWorkers(): Promise<void> {
     const room = this.room();
     if (!room) return;
@@ -149,6 +237,13 @@ export class OpenRoomStore {
   machineName(environmentId: string | null | undefined): string | undefined {
     return environmentId
       ? this.workers().find((candidate) => candidate.environmentId === environmentId)?.name
+      : undefined;
+  }
+
+  /** The look a machine chose; an outside agent has none. */
+  machineLook(environmentId: string | null | undefined): EnvironmentLook | undefined {
+    return environmentId
+      ? this.workers().find((candidate) => candidate.environmentId === environmentId)?.look
       : undefined;
   }
 
@@ -198,7 +293,12 @@ export class OpenRoomStore {
     }
   }
 
-  async update(change: { mode?: RoomMode; paused?: boolean }): Promise<void> {
+  async update(change: {
+    mode?: RoomMode;
+    paused?: boolean;
+    playbook?: string | null;
+    rehearsal?: boolean;
+  }): Promise<void> {
     const room = this.room();
     if (!room) return;
     this.error.set(undefined);
@@ -207,6 +307,32 @@ export class OpenRoomStore {
       if (this.room()?.id !== room.id) return;
       this.mode.set(detail.mode);
       this.paused.set(detail.paused);
+      this.rehearsal.set(detail.rehearsal);
+      this.setPlaybook(detail.playbook);
+      this.stage.set(detail.stage);
+      this.stages.set(detail.stages);
+      this.actions.set(detail.actions);
+      this.memory.set(detail.memory);
+    } catch (error) {
+      if (this.room()?.id === room.id) this.error.set(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /** The lead stays read-only either way; off, it runs on the host without the sandbox. */
+  async setSandboxed(sandboxed: boolean): Promise<void> {
+    const room = this.room();
+    const leadThreadId = this.leadThreadId();
+    if (!room || !leadThreadId) return;
+    this.error.set(undefined);
+    try {
+      const protection = await unwrap(
+        threadsSetProtection({
+          client: this.client(room),
+          path: { id: leadThreadId },
+          body: sandboxed ? { mode: 'sandboxed' } : { mode: 'bypass', confirmBypass: true },
+        }),
+      );
+      if (this.room()?.id === room.id) this.protection.set(protection);
     } catch (error) {
       if (this.room()?.id === room.id) this.error.set(error instanceof Error ? error.message : String(error));
     }
@@ -251,6 +377,14 @@ export class OpenRoomStore {
 
   private putAction(action: RoomAction): void {
     this.actions.update((actions) => this.upsert(actions, action));
+    if (action.kind === 'playbook' && action.state === 'done') void this.loadPlaybooks();
+  }
+
+  /** Rereads the detail even for the same playbook: its files, and so the header's stages, may have changed. */
+  private setPlaybook(playbook: string | null): void {
+    if (playbook !== this.playbook()) this.playbookDetail.set(undefined);
+    this.playbook.set(playbook);
+    void this.loadPlaybookDetail();
   }
 
   private putMemory(entry: RoomMemoryEntry): void {
@@ -288,6 +422,7 @@ export class OpenRoomStore {
       this.projectFolder.set(detail.projectFolder);
       this.mode.set(detail.mode);
       this.paused.set(detail.paused);
+      this.rehearsal.set(detail.rehearsal);
       this.playbook.set(detail.playbook);
       this.stage.set(detail.stage);
       this.stages.set(detail.stages);
@@ -296,6 +431,7 @@ export class OpenRoomStore {
       this.error.set(undefined);
       if (detail.leadThreadId) void this.loadProtection(room, detail.leadThreadId, generation);
       void this.loadWorkers();
+      void this.loadPlaybooks();
     } catch (error) {
       if (generation === this.generation) this.error.set(error instanceof Error ? error.message : String(error));
     } finally {
@@ -336,7 +472,9 @@ export class OpenRoomStore {
             else if (line.type === 'room') {
               this.mode.set(line.mode);
               this.paused.set(line.paused);
+              if (line.rehearsal !== undefined) this.rehearsal.set(line.rehearsal);
               if (line.stage !== undefined) this.stage.set(line.stage);
+              if (line.playbook !== undefined) this.setPlaybook(line.playbook);
             } else {
               this.lead.set(line.state);
               if (line.questions) this.leadQuestions.set(line.questions);

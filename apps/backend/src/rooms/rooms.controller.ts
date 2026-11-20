@@ -47,8 +47,18 @@ import {
   PlaybooksQuerySchema,
   RoomActionDecisionSchema,
   RoomActionSchema,
+  PlaybookDetailSchema,
+  PlaybookTrySchema,
+  PlaybookTryResultSchema,
+  PlaybookFireSchema,
+  PlaybookFireResultSchema,
 } from '@pi-kit/protocol';
 import type {
+  PlaybookDetail,
+  PlaybookTry,
+  PlaybookTryResult,
+  PlaybookFire,
+  PlaybookFireResult,
   ApproveRoomTask,
   CreateRoom,
   RoomWorkerCandidate,
@@ -75,6 +85,7 @@ import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
 import { Fails, Remote, Responds, Streams } from '../contract';
 import { RoomBus } from './room-bus';
 import { RoomPlaybookService } from './room-playbook.service';
+import { RoomPlaybookEditor } from './room-playbook-editor.service';
 import { RoomDirectoryService } from './room-directory.service';
 import { RoomEnvironments } from './room-environments';
 import { LEAD_BUSY, LEAD_WAITS, NO_LEAD_QUESTION, NO_ROOM, RoomLeadService } from './room-lead.service';
@@ -99,6 +110,7 @@ export class RoomsController {
     private readonly environments: RoomEnvironments,
     private readonly outside: RoomA2aAgents,
     private readonly playbook: RoomPlaybookService,
+    private readonly editor: RoomPlaybookEditor,
   ) {}
 
   @Remote()
@@ -186,14 +198,14 @@ export class RoomsController {
   @ApiOperation({
     summary: 'List room playbooks',
     description:
-      'The playbooks a room can follow: skills in the project’s .pi/skills or .agents/skills folders whose front matter has a `room` block. They are read from the thread’s folder, or from the first clone of the repository with the base commit. A playbook that does not parse is listed with its error.',
+      'The playbooks a room can follow: skills in the project’s .pi/skills or .agents/skills folders with a room.yaml beside their SKILL.md. They are read from an open room’s project folder (`roomId`), the thread’s folder, or the first clone of the repository with the base commit. A playbook that does not parse is listed with its error.',
   })
   @Responds(PlaybookListSchema)
-  @Fails({ 404: `${ROOMS_OFF} Or: ${NO_THREAD}`, 409: NOT_A_REPOSITORY })
+  @Fails({ 404: `${ROOMS_OFF} Or: ${NO_THREAD} Or: ${NO_ROOM}`, 409: NOT_A_REPOSITORY })
   playbooks(
     @Query({ schema: PlaybooksQuerySchema }) query: z.infer<typeof PlaybooksQuerySchema>,
   ): Promise<PlaybookSummary[]> {
-    return this.rooms.playbooksFor(query);
+    return query.roomId ? this.lead.roomPlaybooks(query.roomId) : this.rooms.playbooksFor(query);
   }
 
   @Get('agents')
@@ -302,7 +314,7 @@ export class RoomsController {
   @ApiOperation({
     summary: 'Decide on a drafted action',
     description:
-      'Approves or discards an action the lead drafted: a connector call the playbook does not let it run alone, or a move to a stage the owner gates. An approved call runs on this environment and its output goes to the lead.',
+      'Approves or discards an action the lead drafted: a connector call the playbook does not let it run alone, a move to a stage the owner gates, or playbook files it proposes. An approved call runs on this environment and its output goes to the lead (in a rehearsal it only pretends to run); approved playbook files are written into the room’s project folder.',
   })
   @ApiParam({ name: 'roomId', description: 'The room id.' })
   @ApiParam({ name: 'actionId', description: 'The action id.' })
@@ -314,6 +326,66 @@ export class RoomsController {
     @Body({ schema: RoomActionDecisionSchema }) body: RoomActionDecision,
   ): Promise<RoomAction> {
     return this.playbook.decide(roomId, actionId, body);
+  }
+
+  @Remote()
+  @Get(':roomId/playbook')
+  @ApiOperation({
+    summary: 'Show the room’s playbook',
+    description:
+      'The playbook the room follows: both files as they are in the room’s project folder, what they configure, when each trigger ran and runs next, how often each safe output ran in the last day, and the checks that can run before it does (MCP servers signed in, commands found, participants reachable, trigger values given).',
+  })
+  @ApiParam({ name: 'roomId', description: 'The room id.' })
+  @Responds(PlaybookDetailSchema)
+  @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM} Or: the room follows no playbook, or its files are gone.` })
+  playbookDetail(@Param('roomId') roomId: string): Promise<PlaybookDetail> {
+    return this.editor.detail(roomId);
+  }
+
+  @Remote()
+  @Post(':roomId/playbook/try')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Try a playbook tool',
+    description:
+      'Runs one of the playbook’s tools, which only read, with the given parameters and returns its output. A safe output is never run here: the answer shows the call it would make, with its parameters filled in.',
+  })
+  @ApiParam({ name: 'roomId', description: 'The room id.' })
+  @Responds(PlaybookTryResultSchema)
+  @Fails({
+    400: 'A parameter is missing or not allowed.',
+    404: `${ROOMS_OFF} Or: ${NO_ROOM}`,
+    409: 'The room follows no playbook, or it is not valid.',
+  })
+  tryTool(
+    @Param('roomId') roomId: string,
+    @Body({ schema: PlaybookTrySchema }) body: PlaybookTry,
+  ): Promise<PlaybookTryResult> {
+    return this.editor.try(roomId, body);
+  }
+
+  @Remote()
+  @Post(':roomId/playbook/triggers/:triggerId')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Fire a playbook trigger now',
+    description:
+      'A schedule wakes the lead at once. A poll runs its tool and wakes the lead with what is new. With `dry`, nothing is marked seen and the lead is not woken: a poll lists which items would count as new, a schedule says what the lead would be told.',
+  })
+  @ApiParam({ name: 'roomId', description: 'The room id.' })
+  @ApiParam({ name: 'triggerId', description: 'The id of a schedule or poll of the playbook.' })
+  @Responds(PlaybookFireResultSchema)
+  @Fails({
+    400: 'The poll’s tool failed or did not print JSON.',
+    404: `${ROOMS_OFF} Or: ${NO_ROOM} Or: no such trigger.`,
+    409: 'The room follows no playbook, or it is not valid.',
+  })
+  fireTrigger(
+    @Param('roomId') roomId: string,
+    @Param('triggerId') triggerId: string,
+    @Body({ schema: PlaybookFireSchema }) body: PlaybookFire,
+  ): Promise<PlaybookFireResult> {
+    return this.playbook.fireNow(roomId, triggerId, body.dry);
   }
 
   @Remote()

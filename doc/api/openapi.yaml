@@ -85,6 +85,40 @@ paths:
       summary: Rename this environment
       tags:
         - instance
+  /api/instance/look:
+    put:
+      description: The icon and colour shown beside the name, set by the owner here or from a paired environment; never part of pairing or routing.
+      operationId: Instance_setLook
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnvironmentLook'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvironmentLook'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Choose this environment’s look
+      tags:
+        - instance
+      x-remote: true
   /api/instance/access:
     get:
       description: Private desktop-owner API; never proxied to a paired phone.
@@ -5626,7 +5660,7 @@ paths:
         - mcp
   /api/mcp/servers/{name}/login:
     post:
-      description: Starts the OAuth sign-in of an HTTP server in the thread's session. The answer carries the link to open when the browser did not open.
+      description: Starts the OAuth sign-in of an HTTP server, in the thread's session or, without a thread, on its own; sessions use the stored sign-in when they connect. The answer carries the link to open when the browser did not open.
       operationId: Mcp_login
       parameters:
         - name: name
@@ -5636,11 +5670,10 @@ paths:
           schema:
             type: string
         - name: thread
-          required: true
+          required: false
           in: query
           schema:
             type: string
-            minLength: 1
       responses:
         '200':
           description: OK
@@ -5687,11 +5720,10 @@ paths:
           schema:
             type: string
         - name: thread
-          required: true
+          required: false
           in: query
           schema:
             type: string
-            minLength: 1
       responses:
         '200':
           description: OK
@@ -5732,11 +5764,10 @@ paths:
           schema:
             type: string
         - name: thread
-          required: true
+          required: false
           in: query
           schema:
             type: string
-            minLength: 1
       requestBody:
         required: true
         content:
@@ -5844,6 +5875,39 @@ paths:
       tags:
         - mcp
       security: []
+  /api/connectors/logos:
+    get:
+      description: 'The colour logo of each named brand (comma-separated, as Composio’s logo service names them: a catalog entry’s `brand`, or a Composio toolkit) as a data URL, fetched once per run of the backend. A name without a logo is left out.'
+      operationId: Connectors_brandLogos
+      parameters:
+        - name: names
+          required: true
+          in: query
+          schema:
+            type: string
+            pattern: ^[a-z0-9_,-]{1,2000}$
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrandLogos'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Get brand logos
+      tags:
+        - connectors
   /api/connectors/catalog:
     get:
       description: 'Returns the catalog of known MCP servers: what each does, how it signs in and what access it asks for.'
@@ -6020,6 +6084,178 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
       summary: Change how a connector exposes its tools
+      tags:
+        - connectors
+  /api/composio/connect:
+    get:
+      description: The Composio Connect server (signed in with the browser), whether it is signed in, and the apps chosen for it with whether each has an active account in Composio. Checking changes nothing in Composio.
+      operationId: Composio_connectState
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioConnect'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Get the apps reached through Composio Connect
+      tags:
+        - connectors
+  /api/composio/connect/apps:
+    post:
+      description: Remembers the app, so Settings shows its state and room leads are told about it, and asks Composio whether it is connected. No sign-in link is made here; ask for one with the link route.
+      operationId: Composio_wire
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComposioWireRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioConnect'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: There is no Composio Connect server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Choose an app for Composio Connect
+      tags:
+        - connectors
+  /api/composio/connect/search:
+    get:
+      description: Asks Composio’s own tool search which apps fit a name or a use case. It only reads.
+      operationId: Composio_search
+      parameters:
+        - name: q
+          required: true
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioFoundAppList'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: There is no Composio Connect server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '502':
+          description: Composio did not answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Search apps through Composio Connect
+      tags:
+        - connectors
+  /api/composio/connect/apps/{toolkit}/link:
+    post:
+      description: Asks Composio for a new page where the app is connected in the browser. Each call makes a new link, which works for 10 minutes; an app already connected answers without one.
+      operationId: Composio_connectLink
+      parameters:
+        - name: toolkit
+          required: true
+          in: path
+          description: The Composio toolkit slug.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioApp'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: The app is not one of your Composio apps.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: There is no Composio Connect server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Get a page to connect a Composio Connect app
+      tags:
+        - connectors
+  /api/composio/connect/apps/{toolkit}:
+    delete:
+      description: pi-kit stops showing the app and naming it to room leads. Its connection stays in your Composio account.
+      operationId: Composio_unwire
+      parameters:
+        - name: toolkit
+          required: true
+          in: path
+          description: The Composio toolkit slug.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComposioConnect'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Forget a Composio Connect app
       tags:
         - connectors
   /api/composio/status:
@@ -10441,7 +10677,7 @@ paths:
       x-remote: true
   /api/rooms/playbooks:
     get:
-      description: 'The playbooks a room can follow: skills in the project’s .pi/skills or .agents/skills folders whose front matter has a `room` block. They are read from the thread’s folder, or from the first clone of the repository with the base commit. A playbook that does not parse is listed with its error.'
+      description: 'The playbooks a room can follow: skills in the project’s .pi/skills or .agents/skills folders with a room.yaml beside their SKILL.md. They are read from an open room’s project folder (`roomId`), the thread’s folder, or the first clone of the repository with the base commit. A playbook that does not parse is listed with its error.'
       operationId: Rooms_playbooks
       parameters:
         - name: repository
@@ -10463,6 +10699,13 @@ paths:
           schema:
             type: string
             maxLength: 512
+        - name: roomId
+          required: false
+          in: query
+          schema:
+            type: string
+            format: uuid
+            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
       responses:
         '200':
           description: OK
@@ -10483,7 +10726,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
         '404':
-          description: 'Rooms are off on this environment. Or: No thread with this id.'
+          description: 'Rooms are off on this environment. Or: No thread with this id. Or: No room with this id.'
           content:
             application/json:
               schema:
@@ -10777,7 +11020,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/actions/{actionId}:
     post:
-      description: 'Approves or discards an action the lead drafted: a connector call the playbook does not let it run alone, or a move to a stage the owner gates. An approved call runs on this environment and its output goes to the lead.'
+      description: 'Approves or discards an action the lead drafted: a connector call the playbook does not let it run alone, a move to a stage the owner gates, or playbook files it proposes. An approved call runs on this environment and its output goes to the lead (in a rehearsal it only pretends to run); approved playbook files are written into the room’s project folder.'
       operationId: Rooms_decide
       parameters:
         - name: roomId
@@ -10830,6 +11073,150 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
       summary: Decide on a drafted action
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/playbook:
+    get:
+      description: 'The playbook the room follows: both files as they are in the room’s project folder, what they configure, when each trigger ran and runs next, how often each safe output ran in the last day, and the checks that can run before it does (MCP servers signed in, commands found, participants reachable, trigger values given).'
+      operationId: Rooms_playbookDetail
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The room id.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybookDetail'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id. Or: the room follows no playbook, or its files are gone.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Show the room’s playbook
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/playbook/try:
+    post:
+      description: 'Runs one of the playbook’s tools, which only read, with the given parameters and returns its output. A safe output is never run here: the answer shows the call it would make, with its parameters filled in.'
+      operationId: Rooms_tryTool
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The room id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaybookTry'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybookTryResult'
+        '400':
+          description: A parameter is missing or not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The room follows no playbook, or it is not valid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Try a playbook tool
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/playbook/triggers/{triggerId}:
+    post:
+      description: 'A schedule wakes the lead at once. A poll runs its tool and wakes the lead with what is new. With `dry`, nothing is marked seen and the lead is not woken: a poll lists which items would count as new, a schedule says what the lead would be told.'
+      operationId: Rooms_fireTrigger
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The room id.
+          schema:
+            type: string
+        - name: triggerId
+          required: true
+          in: path
+          description: The id of a schedule or poll of the playbook.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaybookFire'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaybookFireResult'
+        '400':
+          description: The poll’s tool failed or did not print JSON.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id. Or: no such trigger.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The room follows no playbook, or it is not valid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Fire a playbook trigger now
       tags:
         - rooms
       x-remote: true
@@ -11958,6 +12345,12 @@ components:
         - worktree
         - liveSyncs
       additionalProperties: false
+    BrandLogos:
+      type: object
+      propertyNames:
+        type: string
+      additionalProperties:
+        type: string
     BrowserInspection:
       type: object
       properties:
@@ -12384,6 +12777,54 @@ components:
         - toolkit
         - name
       additionalProperties: false
+    ComposioApp:
+      type: object
+      properties:
+        toolkit:
+          type: string
+          pattern: ^[a-z0-9_-]{1,64}$
+        name:
+          type: string
+        connected:
+          type: boolean
+        signInUrl:
+          type:
+            - string
+            - 'null'
+        error:
+          type:
+            - string
+            - 'null'
+      required:
+        - toolkit
+        - name
+        - connected
+        - signInUrl
+        - error
+      additionalProperties: false
+    ComposioConnect:
+      type: object
+      properties:
+        server:
+          type:
+            - string
+            - 'null'
+        signedIn:
+          type: boolean
+        problem:
+          type:
+            - string
+            - 'null'
+        apps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComposioApp'
+      required:
+        - server
+        - signedIn
+        - problem
+        - apps
+      additionalProperties: false
     ComposioConnection:
       type: object
       properties:
@@ -12413,6 +12854,25 @@ components:
       type: array
       items:
         $ref: '#/components/schemas/ComposioConnection'
+    ComposioFoundApp:
+      type: object
+      properties:
+        toolkit:
+          type: string
+          pattern: ^[a-z0-9_-]{1,64}$
+        name:
+          type: string
+        description:
+          type: string
+      required:
+        - toolkit
+        - name
+        - description
+      additionalProperties: false
+    ComposioFoundAppList:
+      type: array
+      items:
+        $ref: '#/components/schemas/ComposioFoundApp'
     ComposioKeyRequest:
       type: object
       properties:
@@ -12472,6 +12932,20 @@ components:
       type: array
       items:
         $ref: '#/components/schemas/ComposioToolkit'
+    ComposioWireRequest:
+      type: object
+      properties:
+        toolkit:
+          type: string
+          pattern: ^[a-z0-9_-]{1,64}$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+      required:
+        - toolkit
+        - name
+      additionalProperties: false
     ComputerUseState:
       type: object
       properties:
@@ -12559,6 +13033,9 @@ components:
             - paths
             - style
           additionalProperties: false
+        brand:
+          type: string
+          pattern: ^[a-z0-9_-]{1,64}$
         endpoint:
           type: object
           properties:
@@ -12580,15 +13057,19 @@ components:
                   url:
                     type: string
                     format: uri
+                  scope:
+                    type: string
+                    minLength: 1
                   note:
                     type: string
                     minLength: 1
                 required:
                   - id
                   - label
-                  - url
                   - note
                 additionalProperties: false
+            defaultVariant:
+              type: string
           required:
             - url
           additionalProperties: false
@@ -12678,6 +13159,43 @@ components:
                   minimum: 1024
                   maximum: 65535
                 setup:
+                  type: string
+                  minLength: 1
+                steps:
+                  maxItems: 8
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                        minLength: 1
+                      links:
+                        maxItems: 3
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            label:
+                              type: string
+                              minLength: 1
+                            url:
+                              type: string
+                              format: uri
+                          required:
+                            - label
+                            - url
+                          additionalProperties: false
+                    required:
+                      - text
+                    additionalProperties: false
+                scope:
+                  type: string
+                  minLength: 1
+                app:
+                  type: string
+                  pattern: ^[a-z0-9-]+$
+                clientIdSuffix:
                   type: string
                   minLength: 1
               required:
@@ -12862,6 +13380,9 @@ components:
           maxLength: 4096
           writeOnly: true
           x-secret: true
+        clientFrom:
+          type: string
+          pattern: ^[A-Za-z0-9_-]+$
         custom:
           type: object
           properties:
@@ -13440,10 +13961,35 @@ components:
           type: number
           enum:
             - 1
+        look:
+          $ref: '#/components/schemas/EnvironmentLook'
       required:
         - instanceId
         - name
         - protocolVersion
+      additionalProperties: false
+    EnvironmentLook:
+      type: object
+      properties:
+        icon:
+          type: string
+          enum:
+            - runner
+            - neko
+            - drone
+            - mech
+            - katana
+            - skull
+            - glitch
+            - spinner
+            - oni
+        color:
+          type: integer
+          minimum: 1
+          maximum: 9
+      required:
+        - icon
+        - color
       additionalProperties: false
     ExportRequest:
       type: object
@@ -15855,6 +16401,12 @@ components:
           type: string
         oauth:
           type: boolean
+        clientId:
+          type: string
+        oauthScope:
+          type: string
+        signedIn:
+          type: boolean
         signIn:
           type: object
           properties:
@@ -17383,10 +17935,389 @@ components:
         - checkedAt
         - command
       additionalProperties: false
+    PlaybookCalendarSource:
+      type: object
+      properties:
+        days:
+          default: 1
+          description: Events from now until this many days ahead.
+          type: integer
+          minimum: 1
+          maximum: 31
+        ics:
+          description: An iCalendar URL or file instead of the calendars of this computer; may hold {param} and ${ENV}.
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required:
+        - days
+      additionalProperties: false
+    PlaybookCheck:
+      type: object
+      properties:
+        level:
+          type: string
+          enum:
+            - ok
+            - warn
+            - error
+        subject:
+          type: string
+        message:
+          type: string
+      required:
+        - level
+        - subject
+        - message
+      additionalProperties: false
+    PlaybookConfig:
+      type: object
+      properties:
+        participants:
+          default: []
+          maxItems: 8
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaybookParticipant'
+        tools:
+          default: {}
+          type: object
+          propertyNames:
+            type: string
+            pattern: ^[a-z][a-z0-9_-]{0,39}$
+          additionalProperties:
+            $ref: '#/components/schemas/PlaybookTool'
+        safe-outputs:
+          default: {}
+          type: object
+          propertyNames:
+            type: string
+            pattern: ^[a-z][a-z0-9_-]{0,39}$
+          additionalProperties:
+            $ref: '#/components/schemas/PlaybookSafeOutput'
+        vars:
+          default: {}
+          type: object
+          propertyNames:
+            type: string
+          additionalProperties:
+            type: string
+        on:
+          default:
+            schedule: []
+            poll: []
+          type: object
+          properties:
+            schedule:
+              default: []
+              maxItems: 8
+              type: array
+              items:
+                $ref: '#/components/schemas/PlaybookSchedule'
+            poll:
+              default: []
+              maxItems: 8
+              type: array
+              items:
+                $ref: '#/components/schemas/PlaybookPoll'
+          required:
+            - schedule
+            - poll
+          additionalProperties: false
+        stages:
+          default: []
+          maxItems: 12
+          type: array
+          items:
+            type: string
+            pattern: ^[a-z][a-z0-9-]{0,39}$
+        gates:
+          default: {}
+          type: object
+          propertyNames:
+            type: string
+          additionalProperties:
+            type: string
+            enum:
+              - owner
+              - lead
+      required:
+        - participants
+        - tools
+        - safe-outputs
+        - vars
+        - on
+        - stages
+        - gates
+      additionalProperties: false
+    PlaybookDetail:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        folder:
+          type: string
+        skill:
+          type: string
+        yaml:
+          type: string
+        config:
+          anyOf:
+            - $ref: '#/components/schemas/PlaybookConfig'
+            - type: 'null'
+        error:
+          type:
+            - string
+            - 'null'
+        stage:
+          type:
+            - string
+            - 'null'
+        triggers:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaybookTriggerState'
+        usage:
+          type: object
+          propertyNames:
+            type: string
+          additionalProperties:
+            type: integer
+            minimum: 0
+            maximum: 9007199254740991
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlaybookCheck'
+      required:
+        - name
+        - description
+        - folder
+        - skill
+        - yaml
+        - config
+        - error
+        - stage
+        - triggers
+        - usage
+        - checks
+      additionalProperties: false
+    PlaybookFire:
+      type: object
+      properties:
+        dry:
+          default: false
+          type: boolean
+      additionalProperties: false
+    PlaybookFireResult:
+      type: object
+      properties:
+        text:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              fresh:
+                type: boolean
+            required:
+              - key
+              - fresh
+            additionalProperties: false
+      required:
+        - text
+        - items
+      additionalProperties: false
     PlaybookList:
       type: array
       items:
         $ref: '#/components/schemas/PlaybookSummary'
+    PlaybookMailSource:
+      type: object
+      properties:
+        mailbox:
+          default: inbox
+          description: A mailbox of Mail on this computer.
+          type: string
+          minLength: 1
+          maxLength: 200
+        unread:
+          default: false
+          description: Only unread messages.
+          type: boolean
+        limit:
+          default: 20
+          description: The newest messages, at most this many.
+          type: integer
+          minimum: 1
+          maximum: 50
+        launch:
+          default: false
+          description: Open Mail when it is not running.
+          type: boolean
+      required:
+        - mailbox
+        - unread
+        - limit
+        - launch
+      additionalProperties: false
+    PlaybookMcpCall:
+      type: object
+      properties:
+        server:
+          type: string
+          maxLength: 80
+          pattern: ^[A-Za-z0-9_-]+$
+          description: The MCP server, as it is named in the user’s mcp.json.
+        tool:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The tool of that server to call.
+        args:
+          default: {}
+          description: The tool’s arguments; strings may hold {param}.
+          type: object
+          propertyNames:
+            type: string
+          additionalProperties: {}
+      required:
+        - server
+        - tool
+        - args
+      additionalProperties: false
+    PlaybookParticipant:
+      type: object
+      properties:
+        role:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,39}$
+          description: A short role name, such as security or skeptic.
+        agent:
+          default:
+            local: true
+          type: object
+          properties:
+            local:
+              type: boolean
+            machine:
+              type: string
+              minLength: 1
+              maxLength: 200
+            agent:
+              type: string
+              minLength: 1
+              maxLength: 200
+          additionalProperties: false
+        instructions:
+          default: ''
+          type: string
+          maxLength: 4000
+      required:
+        - role
+        - agent
+        - instructions
+      additionalProperties: false
+    PlaybookPoll:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,39}$
+        tool:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]{0,39}$
+        every:
+          type: string
+          pattern: ^\d+(s|m|h|d)$
+        with:
+          default: {}
+          type: object
+          propertyNames:
+            type: string
+          additionalProperties:
+            type: string
+        key:
+          minItems: 1
+          maxItems: 8
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+        say:
+          default: ''
+          type: string
+          maxLength: 2000
+      required:
+        - id
+        - tool
+        - every
+        - with
+        - say
+      additionalProperties: false
+    PlaybookSafeOutput:
+      type: object
+      properties:
+        run:
+          minItems: 1
+          maxItems: 64
+          type: array
+          items:
+            type: string
+            maxLength: 2000
+        mcp:
+          $ref: '#/components/schemas/PlaybookMcpCall'
+        mail:
+          $ref: '#/components/schemas/PlaybookMailSource'
+        calendar:
+          $ref: '#/components/schemas/PlaybookCalendarSource'
+        description:
+          default: ''
+          type: string
+          maxLength: 1000
+        mode:
+          default: draft
+          description: 'draft: the owner approves each call; auto: it runs.'
+          type: string
+          enum:
+            - draft
+            - auto
+        max:
+          description: At most this many calls a day.
+          type: integer
+          minimum: 1
+          maximum: 1000
+      required:
+        - description
+        - mode
+      additionalProperties: false
+    PlaybookSchedule:
+      type: object
+      properties:
+        id:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,39}$
+        every:
+          type: string
+          pattern: ^\d+(s|m|h|d)$
+        cron:
+          description: Five cron fields in this computer’s time zone, such as 0 8 * * 1-5.
+          type: string
+          pattern: ^\S+( \S+){4}$
+        say:
+          default: ''
+          type: string
+          maxLength: 2000
+      required:
+        - id
+        - say
+      additionalProperties: false
     PlaybookSummary:
       type: object
       properties:
@@ -17430,6 +18361,110 @@ components:
         - triggers
         - stages
         - error
+      additionalProperties: false
+    PlaybookTool:
+      type: object
+      properties:
+        run:
+          minItems: 1
+          maxItems: 64
+          type: array
+          items:
+            type: string
+            maxLength: 2000
+        mcp:
+          $ref: '#/components/schemas/PlaybookMcpCall'
+        mail:
+          $ref: '#/components/schemas/PlaybookMailSource'
+        calendar:
+          $ref: '#/components/schemas/PlaybookCalendarSource'
+        description:
+          default: ''
+          type: string
+          maxLength: 1000
+      required:
+        - description
+      additionalProperties: false
+    PlaybookTriggerState:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum:
+            - schedule
+            - poll
+        every:
+          type:
+            - string
+            - 'null'
+        cron:
+          type:
+            - string
+            - 'null'
+        tool:
+          type:
+            - string
+            - 'null'
+        say:
+          type: string
+        lastRun:
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            - type: 'null'
+        nextRun:
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            - type: 'null'
+      required:
+        - id
+        - kind
+        - every
+        - cron
+        - tool
+        - say
+        - lastRun
+        - nextRun
+      additionalProperties: false
+    PlaybookTry:
+      type: object
+      properties:
+        tool:
+          type: string
+          minLength: 1
+          maxLength: 80
+        params:
+          default: {}
+          type: object
+          propertyNames:
+            type: string
+          additionalProperties:
+            type: string
+            maxLength: 4000
+      required:
+        - tool
+      additionalProperties: false
+    PlaybookTryResult:
+      type: object
+      properties:
+        ran:
+          type: boolean
+        ok:
+          type: boolean
+        call:
+          type: string
+        output:
+          type: string
+      required:
+        - ran
+        - ok
+        - call
+        - output
       additionalProperties: false
     PostRoomMessage:
       type: object
@@ -18171,6 +19206,7 @@ components:
           enum:
             - call
             - advance
+            - playbook
         name:
           type: string
         summary:
@@ -18263,6 +19299,8 @@ components:
             - assisted
         paused:
           type: boolean
+        rehearsal:
+          type: boolean
         playbook:
           type:
             - string
@@ -18303,6 +19341,7 @@ components:
         - projectFolder
         - mode
         - paused
+        - rehearsal
         - playbook
         - stage
         - stages
@@ -18355,6 +19394,7 @@ components:
             - message
             - note
             - task
+            - app
         actor:
           type: string
           enum:
@@ -18382,6 +19422,51 @@ components:
           type:
             - string
             - 'null'
+        app:
+          anyOf:
+            - type: object
+              properties:
+                serverHash:
+                  type: string
+                serverId:
+                  type: string
+                tool:
+                  type: string
+                resourceUri:
+                  type: string
+                result:
+                  type: object
+                  properties:
+                    content:
+                      default: []
+                      type: array
+                      items:
+                        type: object
+                        propertyNames:
+                          type: string
+                        additionalProperties: {}
+                    structuredContent:
+                      type: object
+                      propertyNames:
+                        type: string
+                      additionalProperties: {}
+                    isError:
+                      type: boolean
+                  required:
+                    - content
+                  additionalProperties: {}
+                toolInput:
+                  type: object
+                  propertyNames:
+                    type: string
+                  additionalProperties: {}
+              required:
+                - serverHash
+                - serverId
+                - resourceUri
+                - result
+              additionalProperties: {}
+            - type: 'null'
         createdAt:
           type: integer
           minimum: 0
@@ -18519,7 +19604,13 @@ components:
               $ref: '#/components/schemas/RoomMode'
             paused:
               type: boolean
+            rehearsal:
+              type: boolean
             stage:
+              type:
+                - string
+                - 'null'
+            playbook:
               type:
                 - string
                 - 'null'
@@ -18762,6 +19853,8 @@ components:
           type:
             - string
             - 'null'
+        look:
+          $ref: '#/components/schemas/EnvironmentLook'
       required:
         - environmentId
         - name
@@ -21292,6 +22385,14 @@ components:
         mode:
           $ref: '#/components/schemas/RoomMode'
         paused:
+          type: boolean
+        playbook:
+          anyOf:
+            - type: string
+              minLength: 1
+              maxLength: 200
+            - type: 'null'
+        rehearsal:
           type: boolean
       additionalProperties: false
     UpdateRow:

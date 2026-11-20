@@ -1,5 +1,5 @@
 import { ApplicationConfig, inject, provideBrowserGlobalErrorListeners } from '@angular/core';
-import { ROOM_LEAD_CONTROLS, ROOM_PROSE } from '@pi-kit/rooms/api';
+import { OpenRoomStore, ROOM_DIALOG, ROOM_LEAD_CONTROLS, ROOM_MCP_APP, ROOM_PROSE } from '@pi-kit/rooms/api';
 import { provideCopilotKit, ɵCOPILOTKIT_INSPECTOR_DEVELOPMENT_MODE } from '@copilotkit/angular';
 import { provideMCPApps } from '@copilotkit/angular/mcp-apps';
 import { BACKEND_CONNECTION, ENTRY_CONNECTION, type BackendConnection } from '@pi-kit/api';
@@ -14,12 +14,12 @@ import {
 } from '@pi-kit/chat/api';
 import { Transcript } from '@pi-kit/chat/feature-chat';
 import { AgentInputContainer, ThreadModelPicker } from '@pi-kit/chat/feature-composer';
-import { piKitA2uiCatalog, PkA2uiLoading, provideOpenUiSandbox } from '@pi-kit/chat/feature-genui';
+import { piKitA2uiCatalog, PkA2uiLoading, PkRoomMcpApp, provideOpenUiSandbox } from '@pi-kit/chat/feature-genui';
 import { COPILOT_INSPECTOR_AT_START, readInspectorPreference, readStorage, ViewPrefs } from '@pi-kit/data-access';
 import { PK_THINKING_OPEN } from '@pi-kit/design-system';
 import { ChangesStore } from '@pi-kit/review/api';
 import { GraphStore } from '@pi-kit/session-tree/api';
-import { ConnectorsStore } from '@pi-kit/settings/api';
+import { ConnectorsStore, MCP_FALLBACK_THREAD } from '@pi-kit/settings/api';
 import { ThreadShell, WorktreeReview } from '@pi-kit/threads/api';
 import { provideLanguage, readLanguagePreference } from '@pi-kit/i18n';
 import { ShellStore } from './shell.store';
@@ -112,6 +112,21 @@ export function buildAppConfig(
       {
         provide: ROOM_PROSE,
         useValue: () => import('@pi-kit/chat/ui').then((m) => m.Prose),
+      },
+      {
+        provide: ROOM_DIALOG,
+        useValue: () => import('@pi-kit/chat/ui').then((m) => m.PiDialog),
+      },
+      {
+        provide: MCP_FALLBACK_THREAD,
+        useFactory: () => {
+          const room = inject(OpenRoomStore);
+          return () => room.localLeadThreadId();
+        },
+      },
+      {
+        provide: ROOM_MCP_APP,
+        useValue: () => Promise.resolve(PkRoomMcpApp),
       },
       {
         provide: NEW_THREAD_COMPOSER,

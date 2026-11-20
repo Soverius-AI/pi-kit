@@ -3,3 +3,4 @@ export * from './lib/a2ui-catalog';
 export * from './lib/a2ui-loading';
 export * from './lib/register';
 export * from './lib/open-ui-sandbox';
+export * from './lib/room-mcp-app';

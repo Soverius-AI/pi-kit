@@ -20,9 +20,15 @@ export class McpCallService {
     try {
       const mcp = await loadPiMcp();
       const entry = readMcpEntry(userMcpConfigPath(await this.sessions.agentDir()), server);
-      if (!entry) return { ok: false, output: `No MCP server named ${server} in your mcp.json.` };
-      if (entry['enabled'] === false) return { ok: false, output: `The MCP server ${server} is turned off.` };
-      const transport = await this.transport(mcp, server, entry, cwd);
+      const problem = await this.problemOf(server, entry);
+      if (problem || !entry) return { ok: false, output: problem ?? '' };
+      const url = McpCallService.oauthUrl(entry);
+      const transport = createMcpTransport<Parameters<InstanceType<typeof mcp.McpClient>['connect']>[0]>(
+        mcp as never,
+        { name: server, config: entry } as never,
+        cwd,
+        url ? await this.authProvider(server, url, entry['oauth']) : undefined,
+      );
       client = new mcp.McpClient({ name: 'pi-kit-rooms', version: '1', requestTimeoutMs: McpCallService.TIMEOUT });
       await client.connect(transport);
       const result = await client.callTool(tool, args, { timeoutMs: McpCallService.TIMEOUT });
@@ -42,62 +48,67 @@ export class McpCallService {
     }
   }
 
-  private async transport(
-    mcp: Awaited<ReturnType<typeof loadPiMcp>>,
-    server: string,
-    entry: Record<string, unknown>,
-    cwd: string,
-  ) {
+  /** Why a room tool could not call `server` now, or undefined when it can. */
+  async problem(server: string): Promise<string | undefined> {
+    return await this.problemOf(server, readMcpEntry(userMcpConfigPath(await this.sessions.agentDir()), server));
+  }
+
+  private async problemOf(server: string, entry: Record<string, unknown> | undefined): Promise<string | undefined> {
+    if (!entry) return `No MCP server named ${server} in your mcp.json.`;
+    if (entry['enabled'] === false) return `The MCP server ${server} is turned off.`;
+    if (typeof entry['url'] !== 'string')
+      return typeof entry['command'] === 'string' ? undefined : `The MCP server ${server} names no command or url.`;
+    if (entry['auth'] !== undefined)
+      return `The MCP server ${server} signs in through a model provider, which room tools cannot use.`;
+    const url = McpCallService.oauthUrl(entry);
+    if (!url) return undefined;
+    const { oauth } = await loadPiInternals();
+    return new oauth.McpOAuthCredentialStore().tokens(server, url)
+      ? undefined
+      : `${server} is not signed in yet. Sign in under Settings, Connectors; room tools then use that sign-in.`;
+  }
+
+  /** The URL of a server that signs in with OAuth: an HTTP server with no `Authorization` header of its own. */
+  private static oauthUrl(entry: Record<string, unknown>): string | undefined {
     const url = typeof entry['url'] === 'string' ? entry['url'] : undefined;
-    if (!url && typeof entry['command'] !== 'string')
-      throw new Error(`The MCP server ${server} names no command or url.`);
-    if (url && entry['auth'] !== undefined)
-      throw new Error(`The MCP server ${server} signs in through a model provider, which room tools cannot use.`);
     const headers = entry['headers'] && typeof entry['headers'] === 'object' ? Object.keys(entry['headers']) : [];
-    const oauth = !!url && !headers.some((header) => header.toLowerCase() === 'authorization');
-    const authProvider = oauth ? await this.authProvider(server, url, entry['oauth']) : undefined;
-    return createMcpTransport<Parameters<InstanceType<typeof mcp.McpClient>['connect']>[0]>(
-      mcp as never,
-      { name: server, config: entry } as never,
-      cwd,
-      authProvider,
-    );
+    return url && !headers.some((header) => header.toLowerCase() === 'authorization') ? url : undefined;
   }
 
   private async authProvider(server: string, url: string, settings: unknown): Promise<unknown> {
     const { oauth, config } = await loadPiInternals();
-    const store = new oauth.McpOAuthCredentialStore();
-    if (!store.tokens(server, url))
-      throw new Error(
-        `${server} is not signed in yet. Sign in once under Settings, Connectors (or with /mcp in a thread); room tools then use that sign-in.`,
-      );
-    const resolved = this.oauthSettings(settings, server, config);
+    const resolved = mcpOAuthSettings(settings, server, config);
     return oauth.createMcpAuthProvider({
       serverUrl: url,
-      store: store.forServer(server, url),
+      store: new oauth.McpOAuthCredentialStore().forServer(server, url),
       settings: () => resolved,
       onChallenge: () => undefined,
     });
   }
+}
 
-  private oauthSettings(value: unknown, server: string, config: PiInternals['config']): Record<string, unknown> {
-    if (!value || typeof value !== 'object') return {};
-    const raw = value as Record<string, unknown>;
-    const text = (key: string) => (typeof raw[key] === 'string' ? (raw[key] as string) : undefined);
-    const secret = text('clientSecret');
-    const metadata = text('authServerMetadataUrl');
-    return {
-      clientId: text('clientId'),
-      clientSecret:
-        secret === undefined
-          ? undefined
-          : config.resolveConfigValueOrThrow(secret, `MCP server "${server}" oauth.clientSecret`),
-      callbackPort: typeof raw['callbackPort'] === 'number' ? raw['callbackPort'] : undefined,
-      callbackUrl: text('callbackUrl'),
-      scope: text('scope'),
-      clientName: text('clientName'),
-      clientRegistration: text('clientRegistration'),
-      authServerMetadataUrl: metadata ? new URL(metadata) : undefined,
-    };
-  }
+/** The `oauth` block of an `mcp.json` entry as pi-mcp's sign-in settings, the client secret resolved. */
+export function mcpOAuthSettings(
+  value: unknown,
+  server: string,
+  config: PiInternals['config'],
+): Record<string, unknown> {
+  if (!value || typeof value !== 'object') return {};
+  const raw = value as Record<string, unknown>;
+  const text = (key: string) => (typeof raw[key] === 'string' ? (raw[key] as string) : undefined);
+  const secret = text('clientSecret');
+  const metadata = text('authServerMetadataUrl');
+  return {
+    clientId: text('clientId'),
+    clientSecret:
+      secret === undefined
+        ? undefined
+        : config.resolveConfigValueOrThrow(secret, `MCP server "${server}" oauth.clientSecret`),
+    callbackPort: typeof raw['callbackPort'] === 'number' ? raw['callbackPort'] : undefined,
+    callbackUrl: text('callbackUrl'),
+    scope: text('scope'),
+    clientName: text('clientName'),
+    clientRegistration: text('clientRegistration'),
+    authServerMetadataUrl: metadata ? new URL(metadata) : undefined,
+  };
 }

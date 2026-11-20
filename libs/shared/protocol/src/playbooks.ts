@@ -166,13 +166,16 @@ export const PlaybooksQuerySchema = z
       .regex(/^[0-9a-f]{40,64}$/)
       .optional(),
     threadId: z.string().max(512).optional(),
+    /** Read from this open room's project folder instead. */
+    roomId: z.uuid().optional(),
   })
   .strict();
 
 export const RoomActionSchema = z
   .object({
     id: z.uuid(),
-    kind: z.enum(['call', 'advance']),
+    /** call: a safe output; advance: a gated stage; playbook: new playbook files the lead proposes. */
+    kind: z.enum(['call', 'advance', 'playbook']),
     name: z.string(),
     summary: z.string(),
     payload: z.record(z.string(), z.unknown()),
@@ -202,3 +205,120 @@ export const RoomMemoryEntrySchema = z
   .strict()
   .meta({ id: 'RoomMemoryEntry' });
 export type RoomMemoryEntry = z.infer<typeof RoomMemoryEntrySchema>;
+
+export const PlaybookCheckSchema = z
+  .object({
+    level: z.enum(['ok', 'warn', 'error']),
+    subject: z.string(),
+    message: z.string(),
+  })
+  .strict()
+  .meta({ id: 'PlaybookCheck' });
+export type PlaybookCheck = z.infer<typeof PlaybookCheckSchema>;
+
+export const PlaybookTriggerStateSchema = z
+  .object({
+    id: z.string(),
+    kind: z.enum(['schedule', 'poll']),
+    every: z.string().nullable(),
+    cron: z.string().nullable(),
+    tool: z.string().nullable(),
+    say: z.string(),
+    lastRun: z.number().int().nonnegative().nullable(),
+    /** When it is due next; `null` when a cron does not match within a month. */
+    nextRun: z.number().int().nonnegative().nullable(),
+  })
+  .strict()
+  .meta({ id: 'PlaybookTriggerState' });
+export type PlaybookTriggerState = z.infer<typeof PlaybookTriggerStateSchema>;
+
+export const PlaybookDetailSchema = z
+  .object({
+    name: z.string(),
+    description: z.string(),
+    /** The playbook's folder, relative to the room's project folder. */
+    folder: z.string(),
+    skill: z.string(),
+    yaml: z.string(),
+    config: PlaybookConfigSchema.nullable(),
+    error: z.string().nullable(),
+    stage: z.string().nullable(),
+    triggers: z.array(PlaybookTriggerStateSchema),
+    /** Calls of each safe output in the last 24 hours. */
+    usage: z.record(z.string(), z.number().int().nonnegative()),
+    checks: z.array(PlaybookCheckSchema),
+  })
+  .strict()
+  .meta({ id: 'PlaybookDetail' });
+export type PlaybookDetail = z.infer<typeof PlaybookDetailSchema>;
+
+export const PlaybookTrySchema = z
+  .object({
+    tool: z.string().min(1).max(80),
+    params: z.record(z.string(), z.string().max(4000)).default({}),
+  })
+  .strict()
+  .meta({ id: 'PlaybookTry' });
+export type PlaybookTry = z.infer<typeof PlaybookTrySchema>;
+
+export const PlaybookTryResultSchema = z
+  .object({
+    /** false for a safe output: it is only shown, never run from here. */
+    ran: z.boolean(),
+    ok: z.boolean(),
+    call: z.string(),
+    output: z.string(),
+  })
+  .strict()
+  .meta({ id: 'PlaybookTryResult' });
+export type PlaybookTryResult = z.infer<typeof PlaybookTryResultSchema>;
+
+export const PlaybookFireSchema = z
+  .object({ dry: z.boolean().default(false) })
+  .strict()
+  .meta({ id: 'PlaybookFire' });
+export type PlaybookFire = z.infer<typeof PlaybookFireSchema>;
+
+export const PlaybookFireResultSchema = z
+  .object({
+    text: z.string(),
+    items: z.array(z.object({ key: z.string(), fresh: z.boolean() }).strict()),
+  })
+  .strict()
+  .meta({ id: 'PlaybookFireResult' });
+export type PlaybookFireResult = z.infer<typeof PlaybookFireResultSchema>;
+
+/** The payload of a `playbook` action: the whole new files, with their diff against what is there. */
+export const PlaybookProposalSchema = z
+  .object({
+    name: z.string(),
+    folder: z.string(),
+    create: z.boolean(),
+    skill: z.string(),
+    yaml: z.string(),
+    /** A digest of the files when the lead proposed this; applying refuses when they changed since. */
+    base: z.string(),
+    files: z.array(
+      z
+        .object({
+          path: z.string(),
+          written: z.boolean(),
+          hunks: z.array(
+            z
+              .object({
+                oldStart: z.number().int(),
+                oldLines: z.number().int(),
+                newStart: z.number().int(),
+                newLines: z.number().int(),
+                lines: z.array(z.string()),
+              })
+              .strict(),
+          ),
+        })
+        .strict(),
+    ),
+    checks: z.array(PlaybookCheckSchema),
+  })
+  .strict()
+  .meta({ id: 'PlaybookProposal' });
+export type PlaybookProposal = z.infer<typeof PlaybookProposalSchema>;

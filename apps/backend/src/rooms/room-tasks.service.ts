@@ -32,6 +32,7 @@ import { RoomEnvironments } from './room-environments';
 import { RoomQuestions } from './room-questions';
 import { NO_ROOM, RoomLeadService } from './room-lead.service';
 import { RoomPlaybookService } from './room-playbook.service';
+import { RoomPlaybookEditor } from './room-playbook-editor.service';
 import { RoomWorkerRunner, type WorkerOutcome } from './room-worker-runner';
 
 export const NO_TASK = 'No task with this id in this room.';
@@ -73,6 +74,7 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
     private readonly questions: RoomQuestions,
     private readonly outside: RoomA2aAgents,
     private readonly playbook: RoomPlaybookService,
+    private readonly editor: RoomPlaybookEditor,
     @Inject(CONFIG) private readonly config: BackendConfig,
   ) {}
 
@@ -88,6 +90,8 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
       discuss: async (threadId, input) => await this.playbook.discuss(threadId, input),
       note: async (threadId, input) => await this.playbook.note(threadId, input),
       advance: async (threadId, input) => await this.playbook.advance(threadId, input),
+      proposePlaybook: async (threadId, input) => await this.editor.propose(threadId, input),
+      mcpResult: (threadId, toolCallId, result) => this.agents.keepMcpResult(threadId, toolCallId, result),
     });
     this.poller = setInterval(
       () =>

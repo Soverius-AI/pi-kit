@@ -13,7 +13,7 @@ import {
   ServerCallContext,
   type AgentExecutor,
 } from '@a2a-js/sdk/server';
-import { A2A_ROOM_EXTENSION, type RoomStreamLine, type RoomTaskReport } from '@pi-kit/protocol';
+import { A2A_ROOM_EXTENSION, defaultEnvironmentLook, type RoomStreamLine, type RoomTaskReport } from '@pi-kit/protocol';
 import type { AguiService, HeadlessRun } from '../agui/agui.service';
 import type { BackendConfig } from '../app/config';
 import { A2aAgentsRepository } from '../db/a2a-agents.repository';
@@ -48,6 +48,7 @@ import { RoomWorkerRunner } from './room-worker-runner';
 import { RoomWorkerService } from './room-worker.service';
 import { RoomsService } from './rooms.service';
 import { RoomPlaybookService } from './room-playbook.service';
+import type { RoomPlaybookEditor } from './room-playbook-editor.service';
 import { RoomConsultant } from './room-consultant.service';
 import { RoomPlaybookFiles } from './room-playbook-files.service';
 
@@ -301,7 +302,7 @@ const make = async (name: string, folder: string): Promise<Instance> => {
       asking ? [{ id: 'd1', request: { method: 'confirm', title: 'Run npm install?', tool: 'bash' } }] : [],
     setRoomTools: (value: RoomToolsHook) => (instance.hook = value),
   } as unknown as PiSessionService;
-  const agents = new RoomAgents(rows, threads);
+  const agents = new RoomAgents(rows, threads, { mcpAppLookup: () => undefined } as never, meta);
   const questions = new RoomQuestions();
   const runner = new RoomWorkerRunner(
     threads,
@@ -339,6 +340,7 @@ const make = async (name: string, folder: string): Promise<Instance> => {
     questions,
     instance.outside,
     {} as RoomPlaybookService,
+    {} as RoomPlaybookEditor,
     { dataDir } as BackendConfig,
   );
   const a2aTasks = new A2aTasksRepository(db);
@@ -513,8 +515,22 @@ describe('room tasks on another machine', () => {
   it('lists this computer and the paired machines that can take tasks', async () => {
     offline.add(desktop.id);
     expect(await host.tasks.candidates(roomId)).toEqual([
-      { environmentId: host.id, name: 'Server', local: true, ready: true, reason: null },
-      { environmentId: desktop.id, name: 'Desktop', local: false, ready: false, reason: 'Desktop is offline.' },
+      {
+        environmentId: host.id,
+        name: 'Server',
+        local: true,
+        ready: true,
+        reason: null,
+        look: defaultEnvironmentLook(host.id),
+      },
+      {
+        environmentId: desktop.id,
+        name: 'Desktop',
+        local: false,
+        ready: false,
+        reason: 'Desktop is offline.',
+        look: defaultEnvironmentLook(desktop.id),
+      },
     ]);
   });
 

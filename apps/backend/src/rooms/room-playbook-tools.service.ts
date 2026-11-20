@@ -73,6 +73,15 @@ export class RoomPlaybookTools {
     return { argv: (connector.run ?? []).map(fill) };
   }
 
+  describe(call: ToolCall): string {
+    if (call.mcp) return `${call.mcp.server} · ${call.mcp.tool} ${JSON.stringify(call.mcp.args)}`;
+    if (call.mail) return `Mail ${JSON.stringify(call.mail)}`;
+    if (call.calendar) return `Calendar ${JSON.stringify(call.calendar)}`;
+    return (call.argv ?? [])
+      .map((part) => (/^[\w./:=@,+-]+$/.test(part) ? part : `'${part.replaceAll("'", `'\\''`)}'`))
+      .join(' ');
+  }
+
   callOf(payload: Record<string, unknown>): ToolCall {
     if (payload['mail']) return { mail: payload['mail'] as PlaybookMailSource };
     if (payload['calendar']) return { calendar: payload['calendar'] as PlaybookCalendarSource };

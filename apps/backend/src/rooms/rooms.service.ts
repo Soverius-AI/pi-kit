@@ -80,10 +80,6 @@ export class RoomsService {
     return folder ? this.playbooks.list(folder) : [];
   }
 
-  playbooksIn(folder: string): PlaybookSummary[] {
-    return this.playbooks.list(folder);
-  }
-
   async clones(repository: string, baseCommit: string): Promise<RoomClone[]> {
     return (await RepositoryIdentity.clones(this.meta, repository, baseCommit)).map(({ folder, clean }) => ({
       folder,

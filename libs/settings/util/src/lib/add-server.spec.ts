@@ -144,4 +144,77 @@ describe('the Add a server wizard', () => {
       'Add and connect',
     );
   });
+
+  it('opens a Google card on read-only access and catches a value that is not a Google client id', () => {
+    const s = w.chooseServer(w.startAddServer(), 'gmail', catalog);
+    expect(s.draft.variant).toBe('readonly');
+    expect(w.chooseServer(w.startAddServer(), 'linear', catalog).draft.variant).toBe('');
+    const typed = (clientId: string) =>
+      w.validateServer.bind(undefined, english)(w.patchDraft(s, { clientId }), catalog);
+    expect(typed('GOCSPX-secret')).toMatchObject({ field: 'clientId' });
+    expect(typed('GOCSPX-secret')?.message).toContain('.apps.googleusercontent.com');
+    expect(typed('123-abc.apps.googleusercontent.com')).toBeUndefined();
+    expect(
+      w.validateServer.bind(undefined, english)(w.patchDraft(s, { clientFrom: 'google-calendar' }), catalog),
+    ).toBeUndefined();
+  });
+
+  it('reads the client id and secret from the JSON file Google’s console downloads', () => {
+    const file = (body: unknown) => JSON.stringify(body);
+    expect(
+      w.oauthClientFile(file({ web: { client_id: ' a.apps.googleusercontent.com ', client_secret: 's' } })),
+    ).toEqual({
+      clientId: 'a.apps.googleusercontent.com',
+      clientSecret: 's',
+    });
+    expect(w.oauthClientFile(file({ installed: { client_id: 'b.apps.googleusercontent.com' } }))).toEqual({
+      clientId: 'b.apps.googleusercontent.com',
+    });
+    expect(w.oauthClientFile(file({ type: 'service_account', client_id: '1' }))).toBeUndefined();
+    expect(w.oauthClientFile('not json')).toBeUndefined();
+  });
+
+  it('offers the app of the other Google card once it is set up, and sends a reference to it instead of a client', () => {
+    const server = (name: string, target: string, clientId?: string) =>
+      ({
+        name,
+        scope: 'global',
+        source: 'u',
+        transport: 'http',
+        target,
+        exposure: 'codemode',
+        enabled: true,
+        state: 'connected',
+        oauth: true,
+        ...(clientId ? { clientId } : {}),
+      }) as const;
+    const calendar = catalog.connectors.find((c) => c.id === 'google-calendar');
+    const gmail = server('gmail', 'https://gmailmcp.googleapis.com/mcp/v1', 'c.apps.googleusercontent.com');
+    expect(w.sharedAppSource(calendar, catalog, [gmail])).toMatchObject({ connector: { id: 'gmail' }, server: gmail });
+    expect(w.sharedAppSource(calendar, catalog, [{ ...gmail, clientId: undefined }])).toBeUndefined();
+    expect(
+      w.sharedAppSource(calendar, catalog, [
+        server('google-calendar', 'https://calendarmcp.googleapis.com/mcp/v1', 'x'),
+      ]),
+    ).toBeUndefined();
+    expect(
+      w.sharedAppSource(
+        catalog.connectors.find((c) => c.id === 'slack'),
+        catalog,
+        [gmail],
+      ),
+    ).toBeUndefined();
+
+    const s = w.patchDraft(w.chooseServer(w.startAddServer(), 'google-calendar', catalog), {
+      clientFrom: 'gmail',
+      clientId: 'ignored',
+    });
+    expect(w.connectRequest(s, catalog, { clientSecret: 'ignored too' })).toEqual({
+      id: 'google-calendar',
+      scope: 'user',
+      exposure: calendar?.exposure,
+      variant: 'readonly',
+      clientFrom: 'gmail',
+    });
+  });
 });

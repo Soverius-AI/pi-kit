@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -10,13 +11,15 @@ import { randomUUID } from 'node:crypto';
 import { Message, SendMessageRequest, TaskState, type Task } from '@a2a-js/sdk';
 import {
   A2A_ROOM_EXTENSION,
+  type PlaybookFireResult,
   type PlaybookParticipant,
+  type PlaybookPoll,
   type RoomAction,
   type RoomActionDecision,
   type RoomMemoryEntry,
 } from '@pi-kit/protocol';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
-import { RoomsRepository } from '../db/rooms.repository';
+import { type FoundRoom, RoomsRepository } from '../db/rooms.repository';
 import { PeersService } from '../peers/peers.service';
 import { RoomAgents } from './room-agents';
 import { RoomA2a } from './room-a2a';
@@ -28,8 +31,7 @@ import { RoomSchedule } from './room-schedule';
 import { RoomConsultant } from './room-consultant.service';
 import { NO_ROOM, RoomLeadService } from './room-lead.service';
 import { RoomPlaybookFiles, type Playbook } from './room-playbook-files.service';
-
-type Found = NonNullable<Awaited<ReturnType<RoomsRepository['get']>>>;
+import { RoomPlaybookEditor } from './room-playbook-editor.service';
 
 @Injectable()
 export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown {
@@ -37,6 +39,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
   static readonly CONSULT_LIMIT = 10 * 60_000;
   private readonly logger = new Logger(RoomPlaybookService.name);
   private static readonly KEEP_OUTPUT = 10 * 60_000;
+  private static readonly REHEARSED = 'Rehearsal: it did not run.';
   private static readonly TERMINAL = new Set<TaskState>([
     TaskState.TASK_STATE_COMPLETED,
     TaskState.TASK_STATE_FAILED,
@@ -61,6 +64,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     private readonly a2a: RoomA2aClient,
     private readonly outside: RoomA2aAgents,
     private readonly peers: PeersService,
+    private readonly editor: RoomPlaybookEditor,
   ) {}
 
   onModuleInit(): void {
@@ -73,19 +77,19 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     if (this.timer) clearInterval(this.timer);
   }
 
-  async of(found: Found): Promise<Playbook | undefined> {
+  async of(found: FoundRoom): Promise<Playbook | undefined> {
     if (!found.playbook) return undefined;
     return this.playbooks.load(await this.agents.projectFolder(found), found.playbook);
   }
 
-  scopes(found: Found): string[] {
+  scopes(found: FoundRoom): string[] {
     return [
       `room:${found.room.id}`,
       ...(found.playbook ? [`playbook:${found.room.repository}/${found.playbook}`] : []),
     ];
   }
 
-  async extras(found: Found): Promise<{
+  async extras(found: FoundRoom): Promise<{
     stages: string[];
     actions: RoomAction[];
     memory: RoomMemoryEntry[];
@@ -98,7 +102,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     return { stages: playbook?.config.stages ?? [], actions, memory };
   }
 
-  async briefing(found: Found): Promise<string | undefined> {
+  async briefing(found: FoundRoom): Promise<string | undefined> {
     const playbook = await this.of(found);
     if (!playbook) return undefined;
     const { config } = playbook;
@@ -134,6 +138,9 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
               : ''
           }.`
         : '',
+      found.rehearsal
+        ? 'The room is rehearsing: safe outputs only pretend to run, even those that run at once, so nothing goes out. Go through the workflow as if they had worked.'
+        : '',
       'Keep notes the room should not lose with room_note: decisions, the current spec, what was reviewed. Scope "playbook" notes carry over to later rooms of this playbook.',
       memory.length
         ? `Notes so far:\n${memory.map((entry) => `- [${entry.scope}] ${entry.key}: ${entry.text}`).join('\n')}`
@@ -161,6 +168,15 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         summary: input.reason,
         payload: { ...call },
       });
+      if (found.rehearsal) {
+        await this.store.decide(found.room.id, action.id, 'done', RoomPlaybookService.REHEARSED);
+        await this.bus.record(found.room.id, {
+          kind: 'note',
+          actor: 'coordinator',
+          text: `Rehearsal: ${input.tool} did not run. It would have run ${this.tools.describe(call)}`,
+        });
+        return `Rehearsal: ${input.tool} did not run, nothing went out. It would have run ${this.tools.describe(call)}. Go on as if it had worked.`;
+      }
       const result = await this.run(found, call, input.tool, input.reason);
       await this.store.decide(found.room.id, action.id, result.ok ? 'done' : 'failed', this.tools.cut(result.output));
       return this.reply(result, this.tools.cut(result.output));
@@ -243,31 +259,70 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     const action = await this.store.action(roomId, actionId);
     if (!action) throw new NotFoundException('No action with this id in the room.');
     if (action.state !== 'pending') throw new ConflictException('This action was decided already.');
-    if (body.decision === 'discard') {
-      await this.store.decide(roomId, actionId, 'discarded', null);
-      await this.bus.record(roomId, { kind: 'note', actor: 'coordinator', text: `You discarded ${action.name}.` });
-      void this.lead.nudge(roomId, `The owner discarded action ${action.id} (${action.name}: ${action.summary}).`);
-      return await this.publish(roomId, actionId);
-    }
+    if (body.decision === 'discard')
+      return await this.settleAction(
+        found,
+        action,
+        'discarded',
+        null,
+        `You discarded ${action.name}.`,
+        `The owner discarded action ${action.id} (${action.name}: ${action.summary}).`,
+      );
     if (action.kind === 'advance') {
       await this.store.decide(roomId, actionId, 'done', null);
       await this.enter(found, action.name, action.summary, 'coordinator');
       return await this.publish(roomId, actionId);
     }
+    if (action.kind === 'playbook') {
+      const { ok, result } = await this.editor.apply(found, action);
+      return await this.settleAction(
+        found,
+        action,
+        ok ? 'done' : 'failed',
+        result,
+        ok
+          ? `You applied the playbook “${action.name}”. ${result}`
+          : `You approved the playbook “${action.name}”, but it was not written: ${result}`,
+        ok
+          ? `The owner applied your playbook “${action.name}” (action ${action.id}). ${result} The room follows it from now.`
+          : `The owner approved your playbook “${action.name}” (action ${action.id}), but it was not written: ${result}`,
+      );
+    }
+    if (found.rehearsal)
+      return await this.settleAction(
+        found,
+        action,
+        'done',
+        RoomPlaybookService.REHEARSED,
+        `You approved ${action.name}; in the rehearsal it did not run.`,
+        `The owner approved action ${action.id} (${action.name}). Rehearsal: it did not run, nothing went out. Go on as if it had worked.`,
+      );
     const result = await this.tools.run(await this.agents.projectFolder(found), this.tools.callOf(action.payload));
-    await this.store.decide(roomId, actionId, result.ok ? 'done' : 'failed', this.tools.cut(result.output));
-    await this.bus.record(roomId, {
-      kind: 'note',
-      actor: 'coordinator',
-      text: result.ok
+    return await this.settleAction(
+      found,
+      action,
+      result.ok ? 'done' : 'failed',
+      this.tools.cut(result.output),
+      result.ok
         ? `You approved ${action.name}; it ran.`
         : `You approved ${action.name}, but it failed: ${result.output.slice(0, 500)}`,
-    });
-    void this.lead.nudge(
-      roomId,
       `The owner approved action ${action.id} (${action.name}). ${result.ok ? 'It ran' : 'It failed'}:\n\n${result.output.slice(0, 4000)}`,
     );
-    return await this.publish(roomId, actionId);
+  }
+
+  private async settleAction(
+    found: FoundRoom,
+    action: RoomAction,
+    state: 'done' | 'failed' | 'discarded',
+    result: string | null,
+    note: string,
+    nudge: string,
+  ): Promise<RoomAction> {
+    const roomId = found.room.id;
+    await this.store.decide(roomId, action.id, state, result);
+    await this.bus.record(roomId, { kind: 'note', actor: 'coordinator', text: note });
+    void this.lead.nudge(roomId, nudge);
+    return await this.publish(roomId, action.id);
   }
 
   async tick(now = Date.now()): Promise<void> {
@@ -295,58 +350,101 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
       const stamp = schedule.cron ? Math.floor(now / 60_000) * 60_000 : now;
       const due = schedule.cron
         ? RoomSchedule.matches(schedule.cron, new Date(now)) && runs.get(schedule.id) !== stamp
-        : now - (runs.get(schedule.id) ?? 0) >= this.duration(schedule.every ?? '1h');
+        : now - (runs.get(schedule.id) ?? 0) >= RoomSchedule.duration(schedule.every ?? '1h');
       if (!due) continue;
       await this.store.setLastRun(roomId, schedule.id, stamp);
       await this.rooms.setAgentTurns(roomId, 0);
-      void this.lead.nudge(roomId, `Schedule ${schedule.id}: ${schedule.say || 'it is time for the next round.'}`);
+      void this.lead.nudge(roomId, RoomPlaybookService.wake(schedule));
     }
-    let folder: Promise<string> | undefined;
     for (const trigger of playbook.config.on.poll) {
-      if (now - (runs.get(trigger.id) ?? 0) < this.duration(trigger.every)) continue;
+      if (now - (runs.get(trigger.id) ?? 0) < RoomSchedule.duration(trigger.every)) continue;
       await this.store.setLastRun(roomId, trigger.id, now);
-      const call = this.tools.prepare(playbook, trigger.tool, trigger.with, this.context(found));
-      folder ??= this.agents.projectFolder(found);
-      const result = await this.tools.run(await folder, call);
-      if (!result.ok) {
-        this.logger.warn(`Trigger ${trigger.id} of room ${roomId} failed: ${result.output.slice(0, 300)}`);
-        continue;
-      }
-      let items: { key: string; item: unknown }[];
-      try {
-        items = this.tools.items(result.output, trigger.key);
-      } catch {
-        this.logger.warn(`Trigger ${trigger.id} of room ${roomId} did not print JSON.`);
-        continue;
-      }
-      const fresh = new Set(
-        await this.store.unseen(
-          roomId,
-          trigger.id,
-          items.map((item) => item.key),
-          now,
+      await this.poll(found, playbook, trigger, now, false).catch((error: unknown) =>
+        this.logger.warn(
+          `Trigger ${trigger.id} of room ${roomId}: ${error instanceof Error ? error.message : String(error)}`,
         ),
-      );
-      const news = items.filter((item) => fresh.has(item.key)).slice(0, 5);
-      if (!news.length) continue;
-      await this.bus.record(roomId, {
-        kind: 'note',
-        actor: 'coordinator',
-        text: `Trigger ${trigger.id} found ${news.length} new: ${news.map((item) => item.key).join(', ')}.`,
-      });
-      await this.rooms.setAgentTurns(roomId, 0);
-      void this.lead.nudge(
-        roomId,
-        `Trigger ${trigger.id} found ${news.length} new item${news.length === 1 ? '' : 's'}. ${trigger.say}\n\n${JSON.stringify(
-          news.map((item) => item.item),
-          null,
-          2,
-        ).slice(0, 8000)}`,
       );
     }
   }
 
-  private async ask(found: Found, playbook: Playbook, role: string, question: string): Promise<string> {
+  /** `dry`: a poll only lists which items are new, a schedule only says what the lead would be told. */
+  async fireNow(roomId: string, triggerId: string, dry: boolean, now = Date.now()): Promise<PlaybookFireResult> {
+    const found = await this.rooms.get(roomId);
+    if (!found) throw new NotFoundException(NO_ROOM);
+    if (!found.playbook) throw new ConflictException('This room follows no playbook.');
+    const playbook = this.playbooks.loadOrConflict(await this.agents.projectFolder(found), found.playbook);
+    const schedule = playbook.config.on.schedule.find((candidate) => candidate.id === triggerId);
+    if (schedule) {
+      const text = RoomPlaybookService.wake(schedule);
+      if (dry) return { text: `The lead would be told: ${text}`, items: [] };
+      await this.bus.record(roomId, {
+        kind: 'note',
+        actor: 'coordinator',
+        text: `You ran the schedule ${schedule.id} now.`,
+      });
+      await this.rooms.setAgentTurns(roomId, 0);
+      void this.lead.nudge(roomId, text);
+      return { text: `Woke the lead: ${text}`, items: [] };
+    }
+    const trigger = playbook.config.on.poll.find((candidate) => candidate.id === triggerId);
+    if (!trigger) throw new NotFoundException(`The playbook has no trigger ${triggerId}.`);
+    if (!dry) await this.store.setLastRun(roomId, trigger.id, now);
+    try {
+      return await this.poll(found, playbook, trigger, now, dry);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private async poll(
+    found: FoundRoom,
+    playbook: Playbook,
+    trigger: PlaybookPoll,
+    now: number,
+    dry: boolean,
+  ): Promise<PlaybookFireResult> {
+    const roomId = found.room.id;
+    const call = this.tools.prepare(playbook, trigger.tool, trigger.with, this.context(found));
+    const result = await this.tools.run(await this.agents.projectFolder(found), call);
+    if (!result.ok) throw new Error(`${trigger.tool} failed: ${result.output.slice(0, 300)}`);
+    let items: { key: string; item: unknown }[];
+    try {
+      items = this.tools.items(result.output, trigger.key);
+    } catch {
+      throw new Error(`${trigger.tool} did not print JSON.`);
+    }
+    const keys = items.map((item) => item.key);
+    const fresh = new Set(
+      dry
+        ? await this.store.peekUnseen(roomId, trigger.id, keys)
+        : await this.store.unseen(roomId, trigger.id, keys, now),
+    );
+    const listed = items.slice(0, 50).map((item) => ({ key: item.key, fresh: fresh.has(item.key) }));
+    const news = items.filter((item) => fresh.has(item.key)).slice(0, 5);
+    if (!news.length) return { text: `Nothing new among ${items.length}; the lead is not woken.`, items: listed };
+    if (dry)
+      return {
+        text: `${fresh.size} new among ${items.length}; the lead would be woken with ${news.length}.`,
+        items: listed,
+      };
+    await this.bus.record(roomId, {
+      kind: 'note',
+      actor: 'coordinator',
+      text: `Trigger ${trigger.id} found ${news.length} new: ${news.map((item) => item.key).join(', ')}.`,
+    });
+    await this.rooms.setAgentTurns(roomId, 0);
+    void this.lead.nudge(
+      roomId,
+      `Trigger ${trigger.id} found ${news.length} new item${news.length === 1 ? '' : 's'}. ${trigger.say}\n\n${JSON.stringify(
+        news.map((item) => item.item),
+        null,
+        2,
+      ).slice(0, 8000)}`,
+    );
+    return { text: `Found ${news.length} new; woke the lead.`, items: listed };
+  }
+
+  private async ask(found: FoundRoom, playbook: Playbook, role: string, question: string): Promise<string> {
     const participant = playbook.config.participants.find((candidate) => candidate.role === role);
     if (!participant)
       return `The playbook has no participant ${role}. Participants: ${playbook.config.participants.map((p) => p.role).join(', ') || 'none'}.`;
@@ -371,7 +469,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
   }
 
   private async answerOf(
-    found: Found,
+    found: FoundRoom,
     participant: PlaybookParticipant,
     question: string,
   ): Promise<{ text: string; environmentId: string | null }> {
@@ -458,7 +556,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     return state !== undefined && RoomPlaybookService.TERMINAL.has(state);
   }
 
-  private async enter(found: Found, stage: string, summary: string, actor: 'lead' | 'coordinator'): Promise<void> {
+  private async enter(found: FoundRoom, stage: string, summary: string, actor: 'lead' | 'coordinator'): Promise<void> {
     await this.rooms.setStage(found.room.id, stage);
     await this.bus.record(found.room.id, {
       kind: 'note',
@@ -470,7 +568,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
       void this.lead.nudge(found.room.id, `The owner moved the room to the stage “${stage}”. Go on with it.`);
   }
 
-  private async run(found: Found, call: ToolCall, tool: string, reason: string): Promise<ToolRun> {
+  private async run(found: FoundRoom, call: ToolCall, tool: string, reason: string): Promise<ToolRun> {
     const result = await this.tools.run(await this.agents.projectFolder(found), call);
     await this.bus.record(found.room.id, {
       kind: 'note',
@@ -480,12 +578,16 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     return result;
   }
 
+  private static wake(schedule: { id: string; say?: string }): string {
+    return `Schedule ${schedule.id}: ${schedule.say || 'it is time for the next round.'}`;
+  }
+
   private reply(result: ToolRun, text: string): string {
     return result.ok ? text || '(no output)' : `The call failed: ${this.tools.cut(result.output)}`;
   }
 
   private async draft(
-    found: Found,
+    found: FoundRoom,
     action: Pick<RoomAction, 'kind' | 'name' | 'summary' | 'payload'>,
     note: string,
   ): Promise<RoomAction> {
@@ -501,20 +603,11 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     return action;
   }
 
-  private context(found: Found): Record<string, string> {
+  private context(found: FoundRoom): Record<string, string> {
     return { repository: found.room.repository, room: found.room.id };
   }
 
-  private duration(every: string): number {
-    const value = Number.parseInt(every, 10);
-    const unit = every.at(-1);
-    return Math.max(
-      30_000,
-      value * (unit === 'd' ? 86_400_000 : unit === 'h' ? 3_600_000 : unit === 'm' ? 60_000 : 1000),
-    );
-  }
-
-  private async leadRoom(threadId: string): Promise<{ found: Found; playbook: Playbook }> {
+  private async leadRoom(threadId: string): Promise<{ found: FoundRoom; playbook: Playbook }> {
     const roomId = await this.rooms.roomOfLead(threadId);
     const found = roomId ? await this.rooms.get(roomId) : undefined;
     if (!found) throw new Error('This session is not the lead of a room.');

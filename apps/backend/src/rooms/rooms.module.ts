@@ -29,6 +29,7 @@ import { RoomSources } from './room-sources.service';
 import { RoomConsultant } from './room-consultant.service';
 import { RoomPlaybookService } from './room-playbook.service';
 import { RoomPlaybookFiles } from './room-playbook-files.service';
+import { RoomPlaybookEditor } from './room-playbook-editor.service';
 
 @Module({
   imports: [DbModule, PiModule, ThreadsModule, AguiModule, PeersModule, McpModule],
@@ -56,6 +57,7 @@ import { RoomPlaybookFiles } from './room-playbook-files.service';
     RoomSources,
     RoomConsultant,
     RoomPlaybookService,
+    RoomPlaybookEditor,
   ],
   controllers: [RoomsController, A2aController, A2aWellKnownController],
 })

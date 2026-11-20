@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +22,8 @@ import { McpCallService } from '../mcp/mcp-call.service';
 import { RoomSources } from './room-sources.service';
 import { RoomPlaybookService } from './room-playbook.service';
 import { RoomPlaybookFiles } from './room-playbook-files.service';
+import { RoomPlaybookEditor } from './room-playbook-editor.service';
+import type { RoomEnvironments } from './room-environments';
 import { RoomsService } from './rooms.service';
 
 vi.mock('../pi/load-pi', () => {
@@ -101,6 +103,8 @@ let rooms: RoomsRepository;
 let store: RoomPlaybooksRepository;
 let service: RoomPlaybookService;
 let nudge: ReturnType<typeof vi.fn>;
+let rebriefNext: ReturnType<typeof vi.fn>;
+let editor: RoomPlaybookEditor;
 let ask: ReturnType<typeof vi.fn>;
 let roomId: string;
 let agentDir: string;
@@ -154,21 +158,37 @@ beforeEach(async () => {
   await meta.touchWorkspace(project);
   nudge = vi.fn(async () => undefined);
   ask = vi.fn(async (request: { role: string; question: string }) => `${request.role} says fine`);
+  rebriefNext = vi.fn();
+  const mcp = new McpCallService({ agentDir: async () => agentDir } as unknown as PiSessionService);
+  const files = new RoomPlaybookFiles();
+  const tools = new RoomPlaybookTools(mcp, new RoomSources());
+  const bus = new RoomBus(rooms);
+  const lead = { nudge, rebriefNext, setPlaybooks: () => undefined } as unknown as RoomLeadService;
+  const agents = { projectFolder: async () => project } as unknown as RoomAgents;
+  editor = new RoomPlaybookEditor(
+    rooms,
+    store,
+    files,
+    tools,
+    bus,
+    lead,
+    agents,
+    { list: async () => [] } as unknown as RoomEnvironments,
+    mcp,
+  );
   service = new RoomPlaybookService(
     rooms,
     store,
-    new RoomPlaybookFiles(),
-    new RoomPlaybookTools(
-      new McpCallService({ agentDir: async () => agentDir } as unknown as PiSessionService),
-      new RoomSources(),
-    ),
+    files,
+    tools,
     { ask } as unknown as RoomConsultant,
-    new RoomBus(rooms),
-    { nudge, setPlaybooks: () => undefined } as unknown as RoomLeadService,
-    { projectFolder: async () => project } as unknown as RoomAgents,
+    bus,
+    lead,
+    agents,
     {} as RoomA2aClient,
     { list: async () => [] } as unknown as RoomA2aAgents,
     { manager: async () => ({ self: { name: 'Here' }, peers: [] }) } as unknown as PeersService,
+    editor,
   );
   const room = await new RoomsService(
     rooms,
@@ -366,5 +386,95 @@ describe('room playbooks', () => {
     await service.decide(roomId, action!.id, { decision: 'approve' });
     expect((await rooms.get(roomId))?.stage).toBe('verdict');
     expect(await service.advance('lead', { stage: 'review', summary: 'Again.' })).toContain('now at review');
+  });
+  it('shows the playbook with when its triggers run next and what is not ready', async () => {
+    const monday = new Date(2026, 10, 23, 7, 30).getTime();
+    const detail = await editor.detail(roomId, monday);
+    expect(detail).toMatchObject({ name: 'pr-review', folder: join('.pi', 'skills', 'pr-review'), stage: 'review' });
+    expect(detail.yaml).toBe(ROOM);
+    expect(detail.triggers.find((trigger) => trigger.id === 'brief')?.nextRun).toBe(
+      new Date(2026, 10, 23, 8, 0).getTime(),
+    );
+    expect(detail.checks).toEqual(
+      expect.arrayContaining([
+        { level: 'ok', subject: 'mcp tracker', message: 'Ready.' },
+        expect.objectContaining({
+          level: 'error',
+          subject: 'mcp mail',
+          message: expect.stringContaining('not signed in'),
+        }),
+        { level: 'ok', subject: 'command node', message: 'Found.' },
+      ]),
+    );
+  });
+
+  it('tries a tool but only shows the call a safe output would make', async () => {
+    expect(await editor.try(roomId, { tool: 'show', params: { pr: '7' } })).toMatchObject({
+      ran: true,
+      ok: true,
+      output: 'pr 7',
+    });
+    expect(await editor.try(roomId, { tool: 'comment', params: { pr: '7' } })).toMatchObject({
+      ran: false,
+      call: expect.stringContaining('posted'),
+      output: '',
+    });
+    expect(await store.actions(roomId)).toEqual([]);
+  });
+
+  it('lists what a dry poll would bring without using it up', async () => {
+    const dry = await service.fireNow(roomId, 'prs', true);
+    expect(dry.items).toEqual([
+      { key: '1/a', fresh: true },
+      { key: '2/b', fresh: true },
+    ]);
+    expect(nudge).not.toHaveBeenCalled();
+    await service.fireNow(roomId, 'prs', false);
+    expect(nudge.mock.calls[0]?.[1]).toContain('found 2 new items');
+    expect((await service.fireNow(roomId, 'prs', true)).items.every((item) => !item.fresh)).toBe(true);
+  });
+
+  it('lets nothing go out in a rehearsal, not even a safe output that runs at once', async () => {
+    await rooms.setRehearsal(roomId, true);
+    expect(await service.call('lead', { tool: 'label', params: { pr: '7' }, reason: 'Label it.' })).toContain(
+      'Rehearsal: label did not run',
+    );
+    await service.call('lead', { tool: 'comment', params: { pr: '7' }, reason: 'Post it.' });
+    const comment = (await store.actions(roomId)).find((action) => action.name === 'comment');
+    expect(await service.decide(roomId, comment!.id, { decision: 'approve' })).toMatchObject({
+      state: 'done',
+      result: 'Rehearsal: it did not run.',
+    });
+    expect((await rooms.events(roomId)).filter((event) => /^Ran |it ran\./.test(event.text))).toEqual([]);
+  });
+
+  it('writes playbook files the lead proposes only once the owner applies them, and not over newer files', async () => {
+    const room = join(project, '.pi', 'skills', 'pr-review', 'room.yaml');
+    const changed = ROOM.replace('every: 1m', 'every: 5m');
+    expect(await editor.propose('lead', { name: 'pr-review', skill: SKILL, yaml: 'tools: [', summary: 'x' })).toContain(
+      'Nothing was proposed',
+    );
+    expect(await store.actions(roomId)).toEqual([]);
+    expect(
+      await editor.propose('lead', { name: 'pr-review', skill: SKILL, yaml: changed, summary: 'Poll less.' }),
+    ).toContain('Proposed as action');
+    const [first] = await store.actions(roomId);
+    expect(first).toMatchObject({ kind: 'playbook', state: 'pending' });
+    expect(first?.payload['files']).toEqual([
+      expect.objectContaining({ path: join('.pi', 'skills', 'pr-review', 'room.yaml'), written: false }),
+    ]);
+    expect(readFileSync(room, 'utf8')).toBe(ROOM);
+    expect(await service.decide(roomId, first!.id, { decision: 'approve' })).toMatchObject({ state: 'done' });
+    expect(readFileSync(room, 'utf8')).toBe(changed);
+    expect(rebriefNext).toHaveBeenCalledWith(roomId);
+
+    await editor.propose('lead', { name: 'pr-review', skill: SKILL, yaml: ROOM, summary: 'Back.' });
+    writeFileSync(room, `${changed}# edited by hand\n`);
+    const stale = (await store.actions(roomId)).find((action) => action.state === 'pending');
+    expect(await service.decide(roomId, stale!.id, { decision: 'approve' })).toMatchObject({
+      state: 'failed',
+      result: expect.stringContaining('changed since'),
+    });
+    expect(readFileSync(room, 'utf8')).toContain('edited by hand');
   });
 });

@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Put } from '@nestjs/common';
 import {
+  EnvironmentLookSchema,
   EnvironmentSchema,
   InstanceAccessPreferencesSchema,
   RenameEnvironmentSchema,
@@ -7,6 +8,7 @@ import {
   StoredDeviceGrantsSchema,
   PeerOriginSchema,
   type Environment,
+  type EnvironmentLook,
   type InstanceAccessPreferences,
   type StoredDeviceGrant,
 } from '@pi-kit/protocol';
@@ -32,8 +34,8 @@ export class InstanceController {
     description: 'Stable owner identity and freely editable display name. Does not enable remote access.',
   })
   @Responds(EnvironmentSchema)
-  identity(): Promise<Environment> {
-    return this.instances.identity();
+  async identity(): Promise<Environment> {
+    return { ...(await this.instances.identity()), look: await this.instances.look() };
   }
 
   @Patch()
@@ -42,10 +44,22 @@ export class InstanceController {
     description: 'Owner-only label change; identity, project paths, threads and publication are unchanged.',
   })
   @Responds(EnvironmentSchema)
-  rename(
+  async rename(
     @Body({ schema: RenameEnvironmentSchema }) body: z.infer<typeof RenameEnvironmentSchema>,
   ): Promise<Environment> {
-    return this.instances.rename(body.name);
+    return { ...(await this.instances.rename(body.name)), look: await this.instances.look() };
+  }
+
+  @Remote()
+  @Put('look')
+  @ApiOperation({
+    summary: 'Choose this environment’s look',
+    description:
+      'The icon and colour shown beside the name, set by the owner here or from a paired environment; never part of pairing or routing.',
+  })
+  @Responds(EnvironmentLookSchema)
+  setLook(@Body({ schema: EnvironmentLookSchema }) body: EnvironmentLook): Promise<EnvironmentLook> {
+    return this.instances.setLook(body);
   }
 
   @Get('access')

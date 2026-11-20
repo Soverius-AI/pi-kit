@@ -10,11 +10,12 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { PkAvatar, PkIcon, PkNotice, PkProtectionBadge, PkTip } from '@pi-kit/design-system';
-import { TranslocoPipe } from '@pi-kit/i18n';
-import type { RoomImage } from '@pi-kit/protocol';
-import { OpenRoomStore, ROOM_LEAD_CONTROLS, ROOM_PROSE, type RoomRoute } from '@pi-kit/rooms/data';
+import { PkAvatar, PkEnvGlyph, PkIcon, PkNotice, PkProtectionBadge, PkTip } from '@pi-kit/design-system';
+import { Language, TranslocoPipe } from '@pi-kit/i18n';
+import { PlaybookProposalSchema, type RoomAction, type RoomImage } from '@pi-kit/protocol';
+import { OpenRoomStore, ROOM_LEAD_CONTROLS, ROOM_MCP_APP, ROOM_PROSE, type RoomRoute } from '@pi-kit/rooms/data';
 import { RoomAsk } from './room-ask';
+import { RoomPlaybook, RoomProposal } from './room-playbook';
 
 @Component({
   selector: 'pk-room-view',
@@ -22,11 +23,14 @@ import { RoomAsk } from './room-ask';
     NgComponentOutlet,
     NgTemplateOutlet,
     PkAvatar,
+    PkEnvGlyph,
     PkIcon,
     PkNotice,
     PkProtectionBadge,
     PkTip,
     RoomAsk,
+    RoomPlaybook,
+    RoomProposal,
     TranslocoPipe,
   ],
   host: { class: 'pk-room-view row-start-3 row-span-2 min-h-0', 'data-testid': 'room-view' },
@@ -74,19 +78,75 @@ import { RoomAsk } from './room-ask';
                 <span class="pk-room-paused" data-testid="room-paused">{{ 'rooms.view.pausedHint' | transloco }}</span>
               }
             </div>
-            @if (store.playbook(); as playbook) {
-              <div class="pk-room-playbook" data-testid="room-playbook">
-                <span class="pk-room-tag"><pk-icon name="skill" size="14" />{{ playbook }}</span>
+            <div class="pk-room-pbar" data-testid="room-playbook" [class.open]="panel() && !!store.playbook()">
+              <label class="pick">
+                <pk-icon name="skill" size="14" />
+                <select
+                  data-testid="room-playbook-select"
+                  [attr.aria-label]="'rooms.view.playbookPick' | transloco"
+                  [disabled]="store.lead() === 'working'"
+                  (change)="choosePlaybook($any($event.target))"
+                >
+                  <option value="" [selected]="!store.playbook()">{{ 'rooms.view.noPlaybook' | transloco }}</option>
+                  @if (store.playbook(); as current) {
+                    @if (!playbookNames().has(current)) {
+                      <option [value]="current" selected>{{ current }}</option>
+                    }
+                  }
+                  @for (option of store.playbookChoices() ?? []; track option.path) {
+                    <option
+                      [value]="option.name"
+                      [disabled]="!!option.error"
+                      [selected]="option.name === store.playbook()"
+                    >
+                      {{ option.name }}
+                      @if (option.error) {
+                        · {{ option.error }}
+                      }
+                    </option>
+                  }
+                  @if (store.playbookChoices()?.length === 0) {
+                    <option [value]="askLead">{{ 'rooms.view.askLeadForPlaybook' | transloco }}</option>
+                  }
+                </select>
+                <pk-icon class="caret" name="chevron-down" size="12" />
+              </label>
+              @if (store.playbookChoices()?.length === 0 && !store.playbook()) {
+                <span class="hint" data-testid="room-playbook-hint">{{ 'rooms.view.playbookHint' | transloco }}</span>
+              }
+              @if (store.playbook()) {
                 @if (store.stages().length) {
-                  <ol class="stages" [attr.aria-label]="'rooms.view.stages' | transloco">
-                    @for (stage of store.stages(); track stage) {
-                      <li [attr.aria-current]="stage === store.stage() ? 'step' : null" data-testid="room-stage">
-                        {{ stage }}
+                  <ol class="stepper" [attr.aria-label]="'rooms.view.stages' | transloco">
+                    @for (stage of store.stages(); track stage; let i = $index) {
+                      <li
+                        [attr.aria-current]="stage === store.stage() ? 'step' : null"
+                        [class.done]="i < stageIndex()"
+                        data-testid="room-stage"
+                      >
+                        <span class="dot" aria-hidden="true"></span>{{ stage }}
                       </li>
                     }
                   </ol>
                 }
-              </div>
+                @if (store.rehearsal()) {
+                  <span class="pk-room-rehearsal" data-testid="room-rehearsal-badge"
+                    ><pk-icon name="flask" size="12" />{{ 'rooms.playbook.rehearsal' | transloco }}</span
+                  >
+                }
+                <button
+                  type="button"
+                  class="details"
+                  data-testid="room-playbook-open"
+                  [attr.aria-expanded]="panel()"
+                  (click)="panel.set(!panel())"
+                >
+                  {{ 'rooms.playbook.open' | transloco }}
+                  <pk-icon name="chevron-down" size="12" />
+                </button>
+              }
+            </div>
+            @if (panel() && store.playbook()) {
+              <pk-room-playbook (askChange)="askToChange()" (closed)="panel.set(false)" />
             }
             @if (store.memory().length) {
               <details class="pk-room-notebook" data-testid="room-notebook">
@@ -156,16 +216,43 @@ import { RoomAsk } from './room-ask';
                         <span>{{ event.text }}</span>
                       }
                     </li>
+                  } @else if (event.kind === 'app') {
+                    @if (event.app && mcpApp() && store.leadThreadId()) {
+                      <li data-testid="room-app">
+                        <ng-container
+                          *ngComponentOutlet="
+                            mcpApp();
+                            inputs: {
+                              threadId: store.leadThreadId(),
+                              ownerId: room.hostInstanceId,
+                              app: event.app,
+                              id: 'room-app:' + event.seq,
+                              send: sendToLead,
+                            }
+                          "
+                        />
+                      </li>
+                    }
                   } @else {
                     @let host = hostName() ?? ('rooms.view.hostHere' | transloco);
                     <li class="pk-room-msg" data-testid="room-message" data-actor="lead">
                       <span class="by">
-                        <pk-avatar [name]="host" [label]="('rooms.view.lead' | transloco) + ' · ' + host" />
+                        <pk-avatar
+                          [name]="host"
+                          participant="lead"
+                          [look]="hostLook()"
+                          [label]="('rooms.view.lead' | transloco) + ' · ' + host"
+                        />
                         <b>{{ 'rooms.view.lead' | transloco }}</b>
                         <span class="kind"
                           ><pk-icon name="agents" size="12" />{{ 'rooms.view.agent' | transloco }}</span
                         >
-                        <span class="env">{{ host }}</span>
+                        <span class="env">
+                          @if (hostLook(); as look) {
+                            <pk-env-glyph [look]="look" />
+                          }
+                          {{ host }}</span
+                        >
                       </span>
                       @if (prose(); as markdown) {
                         <div class="text md" data-testid="room-message-markdown">
@@ -183,17 +270,23 @@ import { RoomAsk } from './room-ask';
                 @case ('consultant') {
                   <li class="pk-room-msg worker" data-testid="room-message" data-actor="consultant">
                     <span class="by">
+                      @let consultantLook = store.machineLook(event.environmentId ?? room.hostInstanceId);
                       <pk-avatar
                         [name]="consultantMachine(event.environmentId)"
+                        participant="consultant"
+                        [look]="consultantLook"
                         [label]="(event.role ?? '') + ' · ' + consultantMachine(event.environmentId)"
                       />
                       <b data-testid="room-message-role">{{ event.role }}</b>
                       <span class="kind"
                         ><pk-icon name="agents" size="12" />{{ 'rooms.view.consultant' | transloco }}</span
                       >
-                      <span class="env" data-testid="room-message-machine">{{
-                        consultantMachine(event.environmentId)
-                      }}</span>
+                      <span class="env" data-testid="room-message-machine">
+                        @if (consultantLook; as look) {
+                          <pk-env-glyph [look]="look" />
+                        }
+                        {{ consultantMachine(event.environmentId) }}</span
+                      >
                     </span>
                     @if (prose(); as markdown) {
                       <div class="text md">
@@ -351,14 +444,22 @@ import { RoomAsk } from './room-ask';
               }
             }
             @for (action of store.pendingActions(); track action.id) {
+              @let playbook = action.kind === 'playbook';
               <li class="pk-room-task pk-room-action" data-testid="room-action" [attr.data-kind]="action.kind">
                 <div class="head">
-                  <pk-icon name="lock" size="14" />
-                  <span class="label">{{ 'rooms.action.' + action.kind | transloco }}</span>
+                  <pk-icon [name]="playbook ? 'skill' : 'lock'" size="14" />
+                  <span class="label">{{
+                    (playbook && action.payload['create'] === true
+                      ? 'rooms.action.newPlaybook'
+                      : 'rooms.action.' + action.kind
+                    ) | transloco
+                  }}</span>
                   <b class="title">{{ action.name }}</b>
                 </div>
                 <p class="brief">{{ action.summary }}</p>
-                @if (argvOf(action.payload); as argv) {
+                @if (playbook) {
+                  <pk-room-proposal [action]="action" />
+                } @else if (argvOf(action.payload); as argv) {
                   <pre class="argv" data-testid="room-action-argv">{{ argv }}</pre>
                 }
                 <div class="actions">
@@ -366,10 +467,17 @@ import { RoomAsk } from './room-ask';
                     type="button"
                     class="btn btn-primary btn-sm"
                     data-testid="room-action-approve"
-                    [disabled]="store.acting() === action.id"
+                    [disabled]="store.acting() === action.id || (playbook && !readable(action))"
                     (click)="store.decide(action.id, 'approve')"
                   >
-                    {{ (action.kind === 'call' ? 'rooms.action.run' : 'rooms.action.move') | transloco }}
+                    {{
+                      (playbook
+                        ? 'rooms.action.apply'
+                        : action.kind === 'call'
+                          ? 'rooms.action.run'
+                          : 'rooms.action.move'
+                      ) | transloco
+                    }}
                   </button>
                   <button
                     type="button"
@@ -386,7 +494,11 @@ import { RoomAsk } from './room-ask';
             @if (store.lead() === 'working') {
               <li class="pk-room-msg" data-testid="room-lead-working">
                 <span class="by">
-                  <pk-avatar [name]="hostName() ?? ('rooms.view.hostHere' | transloco)" />
+                  <pk-avatar
+                    [name]="hostName() ?? ('rooms.view.hostHere' | transloco)"
+                    participant="lead"
+                    [look]="hostLook()"
+                  />
                   <b>{{ 'rooms.view.lead' | transloco }}</b>
                   <span class="kind"><pk-icon name="agents" size="12" />{{ 'rooms.view.agent' | transloco }}</span>
                 </span>
@@ -407,13 +519,21 @@ import { RoomAsk } from './room-ask';
           <ng-template #workerSays let-event>
             <li class="pk-room-msg worker" data-testid="room-message" data-actor="worker">
               <span class="by">
+                @let workerLook = store.machineLook(event.environmentId);
                 <pk-avatar
                   [name]="workerName(event.environmentId)"
+                  participant="worker"
+                  [look]="workerLook"
                   [label]="('rooms.view.worker' | transloco) + ' · ' + workerName(event.environmentId)"
                 />
                 <b>{{ 'rooms.view.worker' | transloco }}</b>
                 <span class="kind"><pk-icon name="agents" size="12" />{{ 'rooms.view.agent' | transloco }}</span>
-                <span class="env" data-testid="room-message-machine">{{ workerName(event.environmentId) }}</span>
+                <span class="env" data-testid="room-message-machine">
+                  @if (workerLook; as look) {
+                    <pk-env-glyph [look]="look" />
+                  }
+                  {{ workerName(event.environmentId) }}</span
+                >
                 @if (event.taskId && taskById().get(event.taskId); as task) {
                   <span class="task-ref">{{ task.title }}</span>
                 }
@@ -463,15 +583,23 @@ import { RoomAsk } from './room-ask';
                   />
                 }
               }
-              <span
+              <button
+                type="button"
                 class="pk-room-lock"
                 data-testid="room-lead-lock"
-                [pkTip]="'rooms.view.readOnlyTip' | transloco"
+                [pkTip]="
+                  ('rooms.view.readOnlyTip' | transloco) +
+                  ' ' +
+                  ((sandboxed() ? 'rooms.view.sandboxOffTip' : 'rooms.view.sandboxOnTip') | transloco)
+                "
                 [attr.data-mode]="sandboxed() ? 'sandboxed' : 'bypass'"
+                [attr.aria-pressed]="sandboxed()"
+                [disabled]="!store.leadThreadId() || store.lead() === 'working'"
+                (click)="store.setSandboxed(!sandboxed())"
               >
                 <pk-protection-badge [mode]="sandboxed() ? 'sandboxed' : 'bypass'" [active]="sandboxed()" />
                 {{ (sandboxed() ? 'rooms.view.readOnlySandboxed' : 'rooms.view.readOnlyHost') | transloco }}
-              </span>
+              </button>
             </div>
             @if (images().length) {
               <ul class="pk-room-attachments" data-testid="room-attachments">
@@ -570,6 +698,7 @@ export class RoomView {
   });
   protected readonly maxImages = 6;
   protected readonly hostName = computed(() => this.store.machineName(this.store.room()?.hostInstanceId));
+  protected readonly hostLook = computed(() => this.store.machineLook(this.store.room()?.hostInstanceId));
   protected workerName(environmentId: string | null | undefined): string {
     return this.store.machineName(environmentId) ?? environmentId?.slice(0, 8) ?? '?';
   }
@@ -590,11 +719,45 @@ export class RoomView {
           .join(' ')
       : undefined;
   }
+  protected readonly panel = signal(false);
+  private readonly field = viewChild<ElementRef<HTMLTextAreaElement>>('field');
+  protected readable(action: RoomAction): boolean {
+    return PlaybookProposalSchema.safeParse(action.payload).success;
+  }
+  protected askToChange(): void {
+    this.route.set('lead');
+    this.draft.set(this.translate('rooms.playbook.changeMessage'));
+    queueMicrotask(() => {
+      const field = this.field()?.nativeElement;
+      field?.focus();
+      field?.setSelectionRange(field.value.length, field.value.length);
+    });
+  }
   protected readonly modes = ['supervised', 'assisted'] as const;
+  protected readonly askLead = 'ask-lead';
+  protected readonly stageIndex = computed(() => this.store.stages().indexOf(this.store.stage() ?? ''));
+  protected readonly playbookNames = computed(
+    () => new Set((this.store.playbookChoices() ?? []).map((option) => option.name)),
+  );
+  private readonly translate = inject(Language).t;
+  protected choosePlaybook(select: HTMLSelectElement): void {
+    const value = select.value;
+    if (value === this.askLead) {
+      select.value = this.store.playbook() ?? '';
+      void this.store.post(this.translate('rooms.view.askLeadForPlaybookMessage'), 'lead');
+      return;
+    }
+    // A refused change (the lead started, the playbook broke) puts the select back on what the room has.
+    if (value !== (this.store.playbook() ?? ''))
+      void this.store.update({ playbook: value || null }).then(() => (select.value = this.store.playbook() ?? ''));
+  }
   private static readonly TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
   private readonly controlsLoader = inject(ROOM_LEAD_CONTROLS, { optional: true });
   private readonly proseLoader = inject(ROOM_PROSE, { optional: true });
+  private readonly mcpAppLoader = inject(ROOM_MCP_APP, { optional: true });
   protected readonly prose = signal<Type<unknown> | null>(null);
+  protected readonly mcpApp = signal<Type<unknown> | null>(null);
+  protected readonly sendToLead = (text: string): void => void this.store.post(text, 'lead');
   protected readonly controls = signal<Type<unknown> | null>(null);
   protected readonly sandboxed = computed(() => {
     const protection = this.store.protection();
@@ -609,6 +772,10 @@ export class RoomView {
     effect(() => {
       if (this.store.leadThreadId() && !this.controls() && this.controlsLoader)
         untracked(() => void this.controlsLoader?.().then((type) => this.controls.set(type)));
+    });
+    effect(() => {
+      if (this.store.events().some((event) => event.kind === 'app') && !this.mcpApp() && this.mcpAppLoader)
+        untracked(() => void this.mcpAppLoader?.().then((type) => this.mcpApp.set(type)));
     });
     effect(() => {
       this.store.events();

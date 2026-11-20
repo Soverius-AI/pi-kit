@@ -41,6 +41,8 @@ describe('connector states', () => {
     expect(connectorState(server({ name: 'linear', state: 'disabled', enabled: false }))).toBe('off');
     // configured but not up: a sign-in is the next move for OAuth, patience for a token
     expect(connectorState(server({ name: 'linear', state: 'unknown' }))).toBe('needs-signin');
+    // no session to ask, but pi holds a sign-in
+    expect(connectorState(server({ name: 'linear', state: 'unknown', signedIn: true }))).toBe('signed-in');
     expect(connectorState(server({ name: 'github', state: 'unknown', oauth: false }))).toBe('connecting');
   });
 });

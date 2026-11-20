@@ -334,3 +334,53 @@ export class EditorBlock extends DialogBlock {
     }
   }
 }
+
+/** One extension question, drawn by the block of its kind: what a thread and a room both show. */
+@Component({
+  selector: 'pk-pi-dialog',
+  imports: [ConfirmBlock, SelectBlock, InputBlock, EditorBlock],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { class: 'contents' },
+  template: `
+    @switch (request().method) {
+      @case ('confirm') {
+        <pk-confirm-block
+          [request]="request()"
+          [timeout]="timeout()"
+          (answered)="answered.emit($event)"
+          (dismissed)="dismissed.emit()"
+        />
+      }
+      @case ('select') {
+        <pk-select-block
+          [request]="request()"
+          [timeout]="timeout()"
+          (answered)="answered.emit($event)"
+          (dismissed)="dismissed.emit()"
+        />
+      }
+      @case ('input') {
+        <pk-input-block
+          [request]="request()"
+          [timeout]="timeout()"
+          (answered)="answered.emit($event)"
+          (dismissed)="dismissed.emit()"
+        />
+      }
+      @default {
+        <pk-editor-block
+          [request]="request()"
+          [timeout]="timeout()"
+          (answered)="answered.emit($event)"
+          (dismissed)="dismissed.emit()"
+        />
+      }
+    }
+  `,
+})
+export class PiDialog {
+  readonly request = input.required<PiDialogRequest>();
+  readonly timeout = input<string | undefined>(undefined);
+  readonly answered = output<PiDialogAnswer>();
+  readonly dismissed = output<void>();
+}

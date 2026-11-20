@@ -6,6 +6,7 @@ import {
   roomsDirectory,
   roomsHosts,
   roomsPlaybooks,
+  roomsPost,
   roomsStart,
   unwrap,
   type TypedClient,
@@ -104,6 +105,13 @@ export class RoomsStore {
     };
     this.entries.update((entries) => [entry, ...entries.filter((existing) => existing.room.id !== room.id)]);
     return room;
+  }
+
+  /** A message to the lead of a room that is not open yet (the first one, right after it was started). */
+  async askLead(room: Room, text: string): Promise<void> {
+    await unwrap(
+      roomsPost({ client: this.hostClient(room), path: { roomId: room.id }, body: { text, route: 'lead' } }),
+    );
   }
 
   private clear(): void {

@@ -56,6 +56,7 @@ interface ViewPrefsState {
   /** CopilotKit's web inspector over the window (Settings › Advanced); read when the window loads, so a change applies after a reload. */
   copilotInspector: boolean;
   roomsPreview: boolean;
+  roomsSandbox: boolean;
   sidebarMode: SidebarMode;
   screenshotFormat: NonNullable<BrowserAction['format']>;
   screenshotQuality: number;
@@ -80,6 +81,7 @@ const DEFAULTS: ViewPrefsState = {
   panelWidth: PANEL_WIDTH.default,
   copilotInspector: false,
   roomsPreview: false,
+  roomsSandbox: false,
   sidebarMode: 'threads',
   screenshotFormat: DEFAULT_SCREENSHOT_FORMAT,
   screenshotQuality: DEFAULT_SCREENSHOT_QUALITY,
@@ -190,6 +192,8 @@ function parseRemote(saved: Record<string, unknown>): Partial<ViewPrefsState> {
   if (typeof saved['panelWidth'] === 'number') patch.panelWidth = clampPanelWidth(saved['panelWidth']);
   if (typeof saved['copilotInspector'] === 'boolean') patch.copilotInspector = saved['copilotInspector'];
   if (typeof saved['collaboration.rooms'] === 'boolean') patch.roomsPreview = saved['collaboration.rooms'];
+  if (typeof saved['collaboration.roomsSandbox'] === 'boolean')
+    patch.roomsSandbox = saved['collaboration.roomsSandbox'];
   if (saved['sidebarMode'] === 'rooms' || saved['sidebarMode'] === 'threads') patch.sidebarMode = saved['sidebarMode'];
   if (typeof saved['browserAllowInvalidLocalCertificates'] === 'boolean')
     patch.browserAllowInvalidLocalCertificates = saved['browserAllowInvalidLocalCertificates'];
@@ -245,6 +249,7 @@ const KEYS: Record<keyof ViewPrefsState, string> = {
   panelWidth: 'panelWidth',
   copilotInspector: 'copilotInspector',
   roomsPreview: 'collaboration.rooms',
+  roomsSandbox: 'collaboration.roomsSandbox',
   sidebarMode: 'sidebarMode',
   screenshotFormat: 'screenshotFormat',
   screenshotQuality: 'screenshotQuality',

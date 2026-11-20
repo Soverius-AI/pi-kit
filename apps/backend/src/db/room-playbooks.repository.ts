@@ -114,6 +114,16 @@ export class RoomPlaybooksRepository {
     })();
   }
 
+  /** Like `unseen`, but marks nothing seen. */
+  async peekUnseen(roomId: string, triggerId: string, keys: readonly string[]): Promise<string[]> {
+    const fresh: string[] = [];
+    const seen = this.db.prepare(
+      'SELECT 1 FROM room_trigger_seen WHERE room_id = ? AND trigger_id = ? AND item_key = ?',
+    );
+    for (const key of keys) if (!(await seen.get(roomId, triggerId, key))) fresh.push(key);
+    return fresh;
+  }
+
   async lastRuns(roomId: string): Promise<Map<string, number>> {
     const rows = (await this.db
       .prepare('SELECT trigger_id, ran_at FROM room_trigger_runs WHERE room_id = ?')

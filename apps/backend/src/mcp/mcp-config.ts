@@ -26,6 +26,8 @@ export interface McpConfigEntry {
   enabled: boolean;
   /** HTTP server without an `Authorization` header and without `auth`: signs in with OAuth. */
   oauth: boolean;
+  clientId?: string;
+  oauthScope?: string;
 }
 
 export interface McpConfigRead {
@@ -38,7 +40,7 @@ export interface McpConfigRead {
 
 const NAME = /^[A-Za-z0-9_-]+$/;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export function userMcpConfigPath(agentDir: string): string {
@@ -47,6 +49,11 @@ export function userMcpConfigPath(agentDir: string): string {
 
 export function projectMcpConfigPath(cwd: string): string {
   return join(cwd, '.pi', 'mcp.json');
+}
+
+/** The raw server entries of one `mcp.json`, empty when it cannot be read. */
+export function readMcpServers(path: string): Record<string, unknown> {
+  return readServers(path, []);
 }
 
 function readServers(path: string, errors: string[]): Record<string, unknown> {
@@ -82,6 +89,7 @@ function describeEntry(
   const args = Array.isArray(raw['args']) ? raw['args'].filter((a): a is string => typeof a === 'string') : [];
   const headers = isRecord(raw['headers']) ? Object.keys(raw['headers']) : [];
   const hasAuthorization = headers.some((h) => h.toLowerCase() === 'authorization');
+  const oauth = isRecord(raw['oauth']) ? raw['oauth'] : {};
   return {
     name,
     scope,
@@ -92,6 +100,8 @@ function describeEntry(
     exposure: exposureOf(raw['exposure']),
     enabled: raw['enabled'] !== false,
     oauth: !!url && !hasAuthorization && raw['auth'] === undefined,
+    ...(typeof oauth['clientId'] === 'string' ? { clientId: oauth['clientId'] } : {}),
+    ...(typeof oauth['scope'] === 'string' ? { oauthScope: oauth['scope'] } : {}),
   };
 }
 

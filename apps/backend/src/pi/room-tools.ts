@@ -19,6 +19,12 @@ export interface RoomToolsHook {
   discuss(threadId: string, input: { question: string; roles?: string[] }): Promise<string>;
   note(threadId: string, input: { key: string; text: string; scope: 'room' | 'playbook' }): Promise<string>;
   advance(threadId: string, input: { stage: string; summary: string }): Promise<string>;
+  proposePlaybook(
+    threadId: string,
+    input: { name: string; skill: string; yaml: string; summary: string },
+  ): Promise<string>;
+  /** An MCP tool's whole result; the session file keeps only its text, which is not enough for an MCP App. */
+  mcpResult(threadId: string, toolCallId: string, result: Record<string, unknown>): void;
 }
 
 export class RoomTools {
@@ -34,6 +40,7 @@ export class RoomTools {
   static readonly NOTE = 'room_note';
   static readonly ADVANCE = 'room_advance';
   static readonly GUIDE = 'room_playbook_guide';
+  static readonly PROPOSE_PLAYBOOK = 'room_playbook_propose';
   static readonly NAMES = [
     RoomTools.PROPOSE,
     RoomTools.ANSWER,
@@ -46,6 +53,7 @@ export class RoomTools {
     RoomTools.NOTE,
     RoomTools.ADVANCE,
     RoomTools.GUIDE,
+    RoomTools.PROPOSE_PLAYBOOK,
   ] as const;
   private static readonly Role = z.string().trim().min(1).max(40).describe('A participant role the playbook names.');
   private static readonly CallSchema = z
@@ -98,6 +106,29 @@ export class RoomTools {
     .object({
       stage: z.string().trim().min(1).max(40).describe('The stage to move to, as the playbook names it.'),
       summary: z.string().trim().min(1).max(2000).describe('Why the room is ready for it, for the owner.'),
+    })
+    .strict();
+  private static readonly ProposePlaybookSchema = z
+    .object({
+      name: z
+        .string()
+        .regex(/^[a-z0-9][a-z0-9-]{0,63}$/)
+        .describe('The playbook’s name: its folder under .pi/skills and the name in its front matter.'),
+      skill: z
+        .string()
+        .min(1)
+        .max(64 * 1024)
+        .describe('The whole new SKILL.md, front matter included.'),
+      yaml: z
+        .string()
+        .max(64 * 1024)
+        .describe('The whole new room.yaml.'),
+      summary: z
+        .string()
+        .trim()
+        .min(1)
+        .max(2000)
+        .describe('What the change does, in one or two sentences for the owner.'),
     })
     .strict();
   private static readonly TaskId = z.string().uuid().describe('The id of the task, as the room message gave it.');
@@ -185,6 +216,13 @@ export class RoomTools {
       },
     });
     return (api: ExtensionAPI) => {
+      api.on('tool_result', (event) => {
+        const result = event.structuredContent;
+        if (!('toolName' in event) || !event.toolName.startsWith('mcp__') || !result || typeof result !== 'object')
+          return;
+        const call = result as Record<string, unknown>;
+        if (Array.isArray(call['content'])) host()?.mcpResult(threadId, event.toolCallId, call);
+      });
       api.registerTool({
         ...tool(
           RoomTools.PROPOSE,
@@ -274,6 +312,15 @@ export class RoomTools {
           'Move the room to another stage of the playbook. A stage the owner gates waits for their approval.',
           RoomTools.AdvanceSchema,
           (input) => hook().advance(threadId, input),
+        ),
+      );
+      api.registerTool(
+        tool(
+          RoomTools.PROPOSE_PLAYBOOK,
+          'Propose a playbook',
+          'Propose a new room playbook or a change to one: both whole files. pi-kit checks them the way it loads a playbook and returns the errors to fix. A valid proposal shows the owner its diff; once they apply it, it is written into the project folder and the room follows it.',
+          RoomTools.ProposePlaybookSchema,
+          (input) => hook().proposePlaybook(threadId, input),
         ),
       );
       const guide = RoomTools.skillPath();

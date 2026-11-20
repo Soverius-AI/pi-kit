@@ -21,15 +21,7 @@ export class RoomBus {
     };
   }
 
-  async record(
-    roomId: string,
-    event: Pick<RoomEvent, 'kind' | 'actor' | 'text'> & {
-      images?: number;
-      taskId?: string | null;
-      environmentId?: string | null;
-      role?: string | null;
-    },
-  ): Promise<RoomEvent> {
+  async record(roomId: string, event: Parameters<RoomsRepository['append']>[1]): Promise<RoomEvent> {
     const stored = await this.rooms.append(roomId, event);
     this.emit(roomId, { type: 'event', event: stored });
     return stored;

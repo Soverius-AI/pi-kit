@@ -1,0 +1,1 @@
+ALTER TABLE room_events ADD COLUMN app TEXT;

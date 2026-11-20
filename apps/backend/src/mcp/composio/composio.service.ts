@@ -1,10 +1,10 @@
 import { BadGatewayException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { ComposioAddRequest, ComposioConnection, ComposioStatus, ComposioToolkit } from '@pi-kit/protocol';
-import { MetaRepository } from '../db/meta.repository';
-import { loadPiInternals } from '../pi/load-pi';
-import { PiSessionService } from '../pi/pi-session.service';
-import { SecretsService } from '../secrets/secrets.service';
-import { readMcpConfig, userMcpConfigPath, writeMcpServer } from './mcp-config';
+import { MetaRepository } from '../../db/meta.repository';
+import { loadPiInternals } from '../../pi/load-pi';
+import { PiSessionService } from '../../pi/pi-session.service';
+import { SecretsService } from '../../secrets/secrets.service';
+import { readMcpConfig, userMcpConfigPath, writeMcpServer } from '../mcp-config';
 
 type ComposioServer = Pick<ComposioConnection, 'toolkit' | 'name' | 'readOnly'> & { sessionId: string };
 
@@ -26,6 +26,12 @@ export class ComposioService {
     private readonly secrets: SecretsService,
     private readonly sessions: PiSessionService,
   ) {}
+
+  /** The apps added read only: Composio leaves out every tool that creates, updates or deletes. */
+  async readOnlyServers(): Promise<ReadonlySet<string>> {
+    const { servers } = await this.setting();
+    return new Set(Object.keys(servers).filter((server) => servers[server]?.readOnly));
+  }
 
   async status(): Promise<ComposioStatus> {
     const setting = await this.setting();

@@ -5,7 +5,9 @@ import {
   type ConnectorCatalog,
   type ConnectorExposure,
   type CustomConnector,
+  type McpServer,
   connectorById,
+  connectorOfServer,
 } from '@pi-kit/protocol';
 
 /**
@@ -31,6 +33,8 @@ export interface ServerDraft {
   variant: string;
   /** The client id of the person's own app (a service that signs in with one). */
   clientId: string;
+  /** The configured server whose app this one reuses (Calendar takes Gmail's), or ''. */
+  clientFrom: string;
 }
 
 export interface AddServerState {
@@ -52,6 +56,7 @@ const BLANK: ServerDraft = {
   description: '',
   variant: '',
   clientId: '',
+  clientFrom: '',
 };
 
 export function startAddServer(scope: 'user' | 'project' = 'user'): AddServerState {
@@ -61,7 +66,14 @@ export function startAddServer(scope: 'user' | 'project' = 'user'): AddServerSta
 /** A tile is picked: the details follow, with the catalog service's own defaults (its exposure; its name, which is what `mcp.json` calls it). */
 export function chooseServer(state: AddServerState, id: string, catalog: ConnectorCatalog): AddServerState {
   const connector = id === CUSTOM ? undefined : connectorById(id, catalog);
-  const draft: ServerDraft = connector ? { ...BLANK, name: connector.id, exposure: connector.exposure } : { ...BLANK };
+  const draft: ServerDraft = connector
+    ? {
+        ...BLANK,
+        name: connector.id,
+        exposure: connector.exposure,
+        variant: connector.endpoint?.defaultVariant ?? '',
+      }
+    : { ...BLANK };
   return { ...state, step: 'details', choice: connector ? id : CUSTOM, direction: 'forward', draft };
 }
 
@@ -135,8 +147,57 @@ export function validateServer(
   }
   if (connector.auth.type === 'bearer' && !secrets.token)
     return { field: 'token', message: translate('settings.addServer.pasteTheTokenFirst') };
-  if (connector.auth.type === 'oauth-client' && !d.clientId.trim())
-    return { field: 'clientId', message: translate('settings.addServer.typeTheClientIDOfYourApp') };
+  if (connector.auth.type === 'oauth-client' && !d.clientFrom) {
+    const clientId = d.clientId.trim();
+    if (!clientId) return { field: 'clientId', message: translate('settings.addServer.typeTheClientIDOfYourApp') };
+    const suffix = connector.auth.clientIdSuffix;
+    if (suffix && !clientId.endsWith(suffix))
+      return {
+        field: 'clientId',
+        message: translate('settings.addServer.aClientIdEndsWith', { value1: connector.vendor, value2: suffix }),
+      };
+  }
+  return undefined;
+}
+
+/** The client id and secret of an OAuth client file as Google's console downloads it (`client_secret_….json`), or nothing. */
+export function oauthClientFile(text: string): { clientId: string; clientSecret?: string } | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== 'object') return undefined;
+  const root = parsed as Record<string, unknown>;
+  const client = (root['installed'] ?? root['web']) as Record<string, unknown> | undefined;
+  const clientId = typeof client?.['client_id'] === 'string' ? client['client_id'].trim() : '';
+  if (!clientId) return undefined;
+  const secret = typeof client?.['client_secret'] === 'string' ? client['client_secret'].trim() : '';
+  return { clientId, ...(secret ? { clientSecret: secret } : {}) };
+}
+
+/** Another connector's configured server on the same OAuth app, whose client id this one can reuse. */
+export function sharedAppSource(
+  connector: Connector | undefined,
+  catalog: ConnectorCatalog,
+  servers: readonly McpServer[],
+): { connector: Connector; server: McpServer } | undefined {
+  const app = connector?.auth.type === 'oauth-client' ? connector.auth.app : undefined;
+  if (!app) return undefined;
+  for (const server of servers) {
+    const other = connectorOfServer(server, catalog)?.connector;
+    if (
+      other &&
+      other.id !== connector?.id &&
+      server.name === other.id &&
+      server.scope === 'global' &&
+      server.clientId &&
+      other.auth.type === 'oauth-client' &&
+      other.auth.app === app
+    )
+      return { connector: other, server };
+  }
   return undefined;
 }
 
@@ -185,8 +246,12 @@ export function connectRequest(
     exposure: d.exposure,
     ...(d.variant ? { variant: d.variant } : {}),
     ...(secrets.token ? { token: secrets.token } : {}),
-    ...(d.clientId.trim() ? { clientId: d.clientId.trim() } : {}),
-    ...(secrets.clientSecret ? { clientSecret: secrets.clientSecret } : {}),
+    ...(d.clientFrom
+      ? { clientFrom: d.clientFrom }
+      : {
+          ...(d.clientId.trim() ? { clientId: d.clientId.trim() } : {}),
+          ...(secrets.clientSecret ? { clientSecret: secrets.clientSecret } : {}),
+        }),
   };
 }
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { InstanceIdSchema } from './environments';
+import { EnvironmentLookSchema, InstanceIdSchema } from './environments';
+import { McpAppActivitySchema } from './genui';
 import { PiDialogMethodSchema } from './interrupts';
 import { RoomActionSchema, RoomMemoryEntrySchema } from './playbooks';
 
@@ -67,18 +68,22 @@ export const RoomClonesQuerySchema = z
   .strict();
 
 export const ROOMS_SETTING_KEY = 'collaboration.rooms';
+/** On, room leads and workers start in the sandbox; off (the default), they run on the host, the lead still read-only. */
+export const ROOMS_SANDBOX_SETTING_KEY = 'collaboration.roomsSandbox';
 
 export const RoomEventSchema = z
   .object({
     roomId: RoomIdSchema,
     seq: z.number().int().positive(),
-    kind: z.enum(['message', 'note', 'task']),
+    kind: z.enum(['message', 'note', 'task', 'app']),
     actor: z.enum(['owner', 'lead', 'coordinator', 'worker', 'consultant']),
     text: z.string().max(32000),
     images: z.number().int().nonnegative(),
     taskId: z.string().nullable(),
     environmentId: z.string().nullable().optional(),
     role: z.string().nullable().optional(),
+    /** An MCP App the lead opened (`kind: 'app'`), drawn in the room as in a thread. */
+    app: McpAppActivitySchema.nullable().optional(),
     createdAt: z.number().int().nonnegative(),
   })
   .strict()
@@ -169,6 +174,8 @@ export const RoomDetailSchema = z
     projectFolder: z.string().nullable(),
     mode: z.enum(['supervised', 'assisted']),
     paused: z.boolean(),
+    /** Safe outputs are only simulated, even those the playbook runs at once. */
+    rehearsal: z.boolean(),
     playbook: z.string().nullable(),
     stage: z.string().nullable(),
     stages: z.array(z.string()),
@@ -220,7 +227,10 @@ export const RoomStreamLineSchema = z
         type: z.literal('room'),
         mode: RoomModeSchema,
         paused: z.boolean(),
+        rehearsal: z.boolean().optional(),
         stage: z.string().nullable().optional(),
+        /** The room's playbook, sent when it or its files changed. */
+        playbook: z.string().nullable().optional(),
       })
       .strict(),
     z.object({ type: z.literal('action'), action: RoomActionSchema }).strict(),
@@ -233,11 +243,22 @@ export type RoomStreamLine = z.infer<typeof RoomStreamLineSchema>;
 export const RoomEventsQuerySchema = z.object({ after: z.coerce.number().int().nonnegative().optional() }).strict();
 
 export const UpdateRoomSchema = z
-  .object({ mode: RoomModeSchema.optional(), paused: z.boolean().optional() })
-  .strict()
-  .refine((value) => value.mode !== undefined || value.paused !== undefined, {
-    message: 'Change the mode, the pause, or both.',
+  .object({
+    mode: RoomModeSchema.optional(),
+    paused: z.boolean().optional(),
+    /** Attach or switch to this playbook (the room starts at its first stage), or `null` to remove it. */
+    playbook: z.string().min(1).max(200).nullable().optional(),
+    rehearsal: z.boolean().optional(),
   })
+  .strict()
+  .refine(
+    (value) =>
+      value.mode !== undefined ||
+      value.paused !== undefined ||
+      value.playbook !== undefined ||
+      value.rehearsal !== undefined,
+    { message: 'Change the mode, the pause, the playbook or the rehearsal.' },
+  )
   .meta({ id: 'UpdateRoom' });
 export type UpdateRoom = z.infer<typeof UpdateRoomSchema>;
 
@@ -254,6 +275,8 @@ export const RoomWorkerCandidateSchema = z
     local: z.boolean(),
     ready: z.boolean(),
     reason: z.string().nullable(),
+    /** The environment's own look; outside A2A agents have none. */
+    look: EnvironmentLookSchema.optional(),
   })
   .strict()
   .meta({ id: 'RoomWorkerCandidate' });

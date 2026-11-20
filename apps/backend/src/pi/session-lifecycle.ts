@@ -20,7 +20,7 @@ import { createSessionUi, type SessionUiHooks } from './session-ui';
 import type { TrustService } from './trust.service';
 import type { UiBridge } from './ui-bridge';
 import type { ThreadProtectionService } from './thread-protection.service';
-import { ReadOnlyTools } from './read-only-tools';
+import { type ReadOnlyMode, ReadOnlyTools } from './read-only-tools';
 import { RoomTools, type RoomToolsHook } from './room-tools';
 import { ThreadProtectionExtension } from './thread-protection-extension';
 
@@ -68,7 +68,9 @@ interface LifecycleHooks {
   ui(threadId: string, cwd: string): SessionUiHooks;
   /** A thread that is about to be registered: the facade follows its session's turns from here, before anyone can reach it. */
   opened(thread: OpenThread): void;
-  readOnly(threadId: string): Promise<boolean>;
+  readOnly(threadId: string): Promise<ReadOnlyMode | undefined>;
+  /** MCP servers set up to offer only tools that read, which read-only threads may call in full. */
+  readOnlyServers(): Promise<ReadonlySet<string>>;
   room(): RoomToolsHook | undefined;
 }
 
@@ -193,9 +195,16 @@ export class SessionLifecycle {
     // A dispose during loadPi released the sandbox already; one started now would never be released.
     assertCurrent();
     const readOnly = await this.hooks.readOnly(threadId);
+    const readOnlyServers = () => this.hooks.readOnlyServers();
     const sandbox = await this.protection.prepare(threadId, cwd);
     const sandboxed = sandbox
-      ? await ThreadProtectionExtension.create(pi, { threadId, cwd, client: sandbox, protection: this.protection })
+      ? await ThreadProtectionExtension.create(pi, {
+          threadId,
+          cwd,
+          client: sandbox,
+          protection: this.protection,
+          ...(readOnly ? { allow: (tool) => ReadOnlyTools.outsideSandbox(tool) } : {}),
+        })
       : undefined;
     finishPhase('sandbox');
     // One settings manager for the loader and the session, so they agree on project trust. Trust is decided in
@@ -249,7 +258,9 @@ export class SessionLifecycle {
         createGenUiExtension(),
         createAskUserExtension(),
         ...(sandboxed ? [{ name: ThreadProtectionExtension.NAME, factory: sandboxed.factory, hidden: true }] : []),
-        ...(readOnly ? [{ name: ReadOnlyTools.NAME, factory: ReadOnlyTools.factory(), hidden: true }] : []),
+        ...(readOnly
+          ? [{ name: ReadOnlyTools.NAME, factory: ReadOnlyTools.factory(readOnlyServers, readOnly), hidden: true }]
+          : []),
         ...(readOnly
           ? [{ name: RoomTools.NAME, factory: RoomTools.factory(threadId, () => this.hooks.room()), hidden: true }]
           : []),

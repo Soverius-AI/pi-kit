@@ -1167,6 +1167,9 @@
   line-height: 18px;
   margin-top: 4px;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow-y: auto;
 }
 .pk-approval.stack {
   flex-direction: column;
@@ -6529,6 +6532,10 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
 .pk-item .act .btn {
   white-space: nowrap;
 }
+.pk-item .act .select {
+  width: auto;
+  flex: none;
+}
 .pk-item .act .btn-ghost {
   color: var(--pk-muted);
 }
@@ -6758,9 +6765,25 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
   row-gap: 12px;
   align-items: center;
 }
-.pk-form > label {
+.pk-form > label,
+.pk-form > .pk-form-label {
   font-size: 13px;
   line-height: 18px;
+}
+.pk-form > .pk-form-label {
+  align-self: start;
+}
+.pk-form .pk-setup-steps {
+  margin: 0;
+  padding-left: 18px;
+  list-style: decimal;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 18px;
+}
+.pk-form .pk-setup-steps a {
+  margin-left: 6px;
 }
 .pk-form > .hint {
   grid-column: 2;
@@ -7912,4 +7935,159 @@ pk-queue-bar:has(.pk-queue) + .pk-well {
   background: var(--color-base-100);
   color: var(--color-base-content);
   box-shadow: 0 0 0 1px var(--color-base-300);
+}
+/* Avatar: the machine's look in the corner, the participant's role on top. */
+.pk-avatar-badge.look {
+  right: -5px;
+  bottom: -5px;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.pk-avatar-role {
+  position: absolute;
+  left: -4px;
+  top: -4px;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--color-base-100);
+  color: var(--color-base-content);
+  box-shadow: 0 0 0 1px var(--color-base-300);
+}
+
+/* Environment look (design §6): the glyph glows only in dark schemes, through --pk-identity-glow. */
+.pk-env-glyph {
+  --pk-env-size: 14px;
+  --pk-env-cut: 3px;
+  width: var(--pk-env-size);
+  height: var(--pk-env-size);
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  color: var(--pk-env-color, var(--pk-identity-9));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--pk-env-color, var(--pk-identity-9)) 35%, var(--pk-identity-ground)),
+    var(--pk-identity-ground) 70%
+  );
+  clip-path: polygon(
+    var(--pk-env-cut) 0,
+    100% 0,
+    100% calc(100% - var(--pk-env-cut)),
+    calc(100% - var(--pk-env-cut)) 100%,
+    0 100%,
+    0 var(--pk-env-cut)
+  );
+}
+.pk-env-glyph[data-size='22'] {
+  --pk-env-size: 22px;
+  --pk-env-cut: 5px;
+}
+.pk-env-glyph[data-size='56'] {
+  --pk-env-size: 56px;
+  --pk-env-cut: 12px;
+}
+.pk-env-glyph .pk-icon {
+  filter: drop-shadow(0 0 calc(2px * var(--pk-identity-glow)) var(--pk-env-color, transparent));
+}
+.pk-env-glyph[data-size='56'] .pk-icon {
+  filter: drop-shadow(0 0 calc(4px * var(--pk-identity-glow)) var(--pk-env-color, transparent));
+}
+@media (prefers-contrast: more) {
+  .pk-env-glyph .pk-icon,
+  .pk-env-glyph[data-size='56'] .pk-icon {
+    filter: none;
+  }
+}
+.pk-env-look .win {
+  width: min(440px, calc(100vw - 32px));
+}
+.pk-env-look .body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pk-env-look .tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pk-env-look .tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.pk-env-look .tabs button[aria-selected='true'] {
+  background: var(--color-base-200);
+  font-weight: 600;
+}
+.pk-env-look .tabs button:disabled {
+  opacity: 0.5;
+}
+.pk-env-look fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.pk-env-look legend {
+  padding: 0;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--pk-muted);
+}
+.pk-env-look .icons {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 6px;
+}
+.pk-env-look .icons button,
+.pk-env-look .swatches button {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border-radius: 6px;
+  outline-offset: 1px;
+}
+.pk-env-look .icons button[aria-checked='true'] {
+  outline: 2px solid var(--color-base-content);
+}
+.pk-env-look .swatches {
+  display: flex;
+  gap: 8px;
+}
+.pk-env-look .swatches button {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--pk-env-color);
+}
+.pk-env-look .swatches button[aria-checked='true'] {
+  outline: 2px solid var(--color-base-content);
+  outline-offset: 2px;
+}
+.pk-env-look .preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--color-base-200);
+}
+.pk-env-look .preview .byline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.pk-env-look .hint.warn {
+  color: var(--color-warning);
 }

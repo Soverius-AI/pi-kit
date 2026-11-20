@@ -192,6 +192,10 @@ export type BgAgent = {
     liveSyncs: number;
 };
 
+export type BrandLogos = {
+    [key: string]: string;
+};
+
 export type BrowserInspection = {
     ref: string;
     documentId: string;
@@ -341,6 +345,21 @@ export type ComposioAddRequest = {
     readOnly?: boolean;
 };
 
+export type ComposioApp = {
+    toolkit: string;
+    name: string;
+    connected: boolean;
+    signInUrl: string | null;
+    error: string | null;
+};
+
+export type ComposioConnect = {
+    server: string | null;
+    signedIn: boolean;
+    problem: string | null;
+    apps: Array<ComposioApp>;
+};
+
 export type ComposioConnection = {
     server: string;
     toolkit: string;
@@ -351,6 +370,14 @@ export type ComposioConnection = {
 };
 
 export type ComposioConnectionList = Array<ComposioConnection>;
+
+export type ComposioFoundApp = {
+    toolkit: string;
+    name: string;
+    description: string;
+};
+
+export type ComposioFoundAppList = Array<ComposioFoundApp>;
 
 export type ComposioKeyRequest = {
     apiKey: string;
@@ -371,6 +398,11 @@ export type ComposioToolkit = {
 };
 
 export type ComposioToolkitList = Array<ComposioToolkit>;
+
+export type ComposioWireRequest = {
+    toolkit: string;
+    name: string;
+};
 
 export type ComputerUseState = {
     installed: boolean;
@@ -398,14 +430,17 @@ export type Connector = {
         paths: Array<string>;
         style: 'fill' | 'stroke';
     };
+    brand?: string;
     endpoint?: {
         url: string;
         variants?: Array<{
             id: string;
             label: string;
-            url: string;
+            url?: string;
+            scope?: string;
             note: string;
         }>;
+        defaultVariant?: string;
     };
     local?: {
         command: string;
@@ -432,6 +467,16 @@ export type Connector = {
         type: 'oauth-client';
         callbackPort: number;
         setup: string;
+        steps?: Array<{
+            text: string;
+            links?: Array<{
+                label: string;
+                url: string;
+            }>;
+        }>;
+        scope?: string;
+        app?: string;
+        clientIdSuffix?: string;
     } | {
         type: 'device';
         setup: string;
@@ -474,6 +519,7 @@ export type ConnectRequest = {
     variant?: string;
     exposure?: 'direct' | 'codemode' | 'deferred';
     clientId?: string;
+    clientFrom?: string;
     custom?: {
         name: string;
         url?: string;
@@ -639,6 +685,12 @@ export type Environment = {
     instanceId: string;
     name: string;
     protocolVersion: 1;
+    look?: EnvironmentLook;
+};
+
+export type EnvironmentLook = {
+    icon: 'runner' | 'neko' | 'drone' | 'mech' | 'katana' | 'skull' | 'glitch' | 'spinner' | 'oni';
+    color: number;
 };
 
 export type ExportRequest = {
@@ -1387,6 +1439,9 @@ export type McpServer = {
     tools?: number;
     error?: string;
     oauth: boolean;
+    clientId?: string;
+    oauthScope?: string;
+    signedIn?: boolean;
     signIn?: {
         phase: 'waiting' | 'failed' | 'cancelled';
         url?: string;
@@ -1859,7 +1914,159 @@ export type PiUpdateCheck = {
     command: string;
 };
 
+export type PlaybookCalendarSource = {
+    /**
+     * Events from now until this many days ahead.
+     */
+    days: number;
+    /**
+     * An iCalendar URL or file instead of the calendars of this computer; may hold {param} and ${ENV}.
+     */
+    ics?: string;
+};
+
+export type PlaybookCheck = {
+    level: 'ok' | 'warn' | 'error';
+    subject: string;
+    message: string;
+};
+
+export type PlaybookConfig = {
+    participants: Array<PlaybookParticipant>;
+    tools: {
+        [key: string]: PlaybookTool;
+    };
+    'safe-outputs': {
+        [key: string]: PlaybookSafeOutput;
+    };
+    vars: {
+        [key: string]: string;
+    };
+    on: {
+        schedule: Array<PlaybookSchedule>;
+        poll: Array<PlaybookPoll>;
+    };
+    stages: Array<string>;
+    gates: {
+        [key: string]: 'owner' | 'lead';
+    };
+};
+
+export type PlaybookDetail = {
+    name: string;
+    description: string;
+    folder: string;
+    skill: string;
+    yaml: string;
+    config: PlaybookConfig | null;
+    error: string | null;
+    stage: string | null;
+    triggers: Array<PlaybookTriggerState>;
+    usage: {
+        [key: string]: number;
+    };
+    checks: Array<PlaybookCheck>;
+};
+
+export type PlaybookFire = {
+    dry?: boolean;
+};
+
+export type PlaybookFireResult = {
+    text: string;
+    items: Array<{
+        key: string;
+        fresh: boolean;
+    }>;
+};
+
 export type PlaybookList = Array<PlaybookSummary>;
+
+export type PlaybookMailSource = {
+    /**
+     * A mailbox of Mail on this computer.
+     */
+    mailbox: string;
+    /**
+     * Only unread messages.
+     */
+    unread: boolean;
+    /**
+     * The newest messages, at most this many.
+     */
+    limit: number;
+    /**
+     * Open Mail when it is not running.
+     */
+    launch: boolean;
+};
+
+export type PlaybookMcpCall = {
+    /**
+     * The MCP server, as it is named in the user’s mcp.json.
+     */
+    server: string;
+    /**
+     * The tool of that server to call.
+     */
+    tool: string;
+    /**
+     * The tool’s arguments; strings may hold {param}.
+     */
+    args: {
+        [key: string]: unknown;
+    };
+};
+
+export type PlaybookParticipant = {
+    /**
+     * A short role name, such as security or skeptic.
+     */
+    role: string;
+    agent: {
+        local?: boolean;
+        machine?: string;
+        agent?: string;
+    };
+    instructions: string;
+};
+
+export type PlaybookPoll = {
+    id: string;
+    tool: string;
+    every: string;
+    with: {
+        [key: string]: string;
+    };
+    key?: Array<string>;
+    say: string;
+};
+
+export type PlaybookSafeOutput = {
+    run?: Array<string>;
+    mcp?: PlaybookMcpCall;
+    mail?: PlaybookMailSource;
+    calendar?: PlaybookCalendarSource;
+    description: string;
+    /**
+     * draft: the owner approves each call; auto: it runs.
+     */
+    mode: 'draft' | 'auto';
+    /**
+     * At most this many calls a day.
+     */
+    max?: number;
+};
+
+export type PlaybookSchedule = {
+    id: string;
+    every?: string;
+    /**
+     * Five cron fields in this computer’s time zone, such as 0 8 * * 1-5.
+     */
+    cron?: string;
+    say: string;
+};
 
 export type PlaybookSummary = {
     name: string;
@@ -1871,6 +2078,39 @@ export type PlaybookSummary = {
     triggers: number;
     stages: Array<string>;
     error: string | null;
+};
+
+export type PlaybookTool = {
+    run?: Array<string>;
+    mcp?: PlaybookMcpCall;
+    mail?: PlaybookMailSource;
+    calendar?: PlaybookCalendarSource;
+    description: string;
+};
+
+export type PlaybookTriggerState = {
+    id: string;
+    kind: 'schedule' | 'poll';
+    every: string | null;
+    cron: string | null;
+    tool: string | null;
+    say: string;
+    lastRun: number | null;
+    nextRun: number | null;
+};
+
+export type PlaybookTry = {
+    tool: string;
+    params?: {
+        [key: string]: string;
+    };
+};
+
+export type PlaybookTryResult = {
+    ran: boolean;
+    ok: boolean;
+    call: string;
+    output: string;
 };
 
 export type PostRoomMessage = {
@@ -2117,7 +2357,7 @@ export type Room = {
 
 export type RoomAction = {
     id: string;
-    kind: 'call' | 'advance';
+    kind: 'call' | 'advance' | 'playbook';
     name: string;
     summary: string;
     payload: {
@@ -2148,6 +2388,7 @@ export type RoomDetail = {
     projectFolder: string | null;
     mode: 'supervised' | 'assisted';
     paused: boolean;
+    rehearsal: boolean;
     playbook: string | null;
     stage: string | null;
     stages: Array<string>;
@@ -2171,13 +2412,33 @@ export type RoomDirectoryEntry = {
 export type RoomEvent = {
     roomId: string;
     seq: number;
-    kind: 'message' | 'note' | 'task';
+    kind: 'message' | 'note' | 'task' | 'app';
     actor: 'owner' | 'lead' | 'coordinator' | 'worker' | 'consultant';
     text: string;
     images: number;
     taskId: string | null;
     environmentId?: string | null;
     role?: string | null;
+    app?: {
+        serverHash: string;
+        serverId: string;
+        tool?: string;
+        resourceUri: string;
+        result: {
+            content: Array<{
+                [key: string]: unknown;
+            }>;
+            structuredContent?: {
+                [key: string]: unknown;
+            };
+            isError?: boolean;
+            [key: string]: unknown;
+        };
+        toolInput?: {
+            [key: string]: unknown;
+        };
+        [key: string]: unknown;
+    } | null;
     createdAt: number;
 };
 
@@ -2219,7 +2480,9 @@ export type RoomStreamLine = {
     type: 'room';
     mode: RoomMode;
     paused: boolean;
+    rehearsal?: boolean;
     stage?: string | null;
+    playbook?: string | null;
 } | {
     type: 'action';
     action: RoomAction;
@@ -2285,6 +2548,7 @@ export type RoomWorkerCandidate = {
     local: boolean;
     ready: boolean;
     reason: string | null;
+    look?: EnvironmentLook;
 };
 
 export type RoomWorkerCandidateList = Array<RoomWorkerCandidate>;
@@ -3054,6 +3318,8 @@ export type UpdateRequest = {
 export type UpdateRoom = {
     mode?: RoomMode;
     paused?: boolean;
+    playbook?: string | null;
+    rehearsal?: boolean;
 };
 
 export type UpdateRow = {
@@ -3264,6 +3530,7 @@ export type ConnectRequestWritable = {
     token?: string;
     clientId?: string;
     clientSecret?: string;
+    clientFrom?: string;
     custom?: {
         name: string;
         url?: string;
@@ -3400,6 +3667,35 @@ export type InstanceRenameResponses = {
 };
 
 export type InstanceRenameResponse = InstanceRenameResponses[keyof InstanceRenameResponses];
+
+export type InstanceSetLookData = {
+    body: EnvironmentLook;
+    path?: never;
+    query?: never;
+    url: '/api/instance/look';
+};
+
+export type InstanceSetLookErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type InstanceSetLookError = InstanceSetLookErrors[keyof InstanceSetLookErrors];
+
+export type InstanceSetLookResponses = {
+    /**
+     * OK
+     */
+    200: EnvironmentLook;
+};
+
+export type InstanceSetLookResponse = InstanceSetLookResponses[keyof InstanceSetLookResponses];
 
 export type InstanceAccessData = {
     body?: never;
@@ -8316,8 +8612,8 @@ export type McpLoginData = {
          */
         name: string;
     };
-    query: {
-        thread: string;
+    query?: {
+        thread?: string;
     };
     url: '/api/mcp/servers/{name}/login';
 };
@@ -8360,8 +8656,8 @@ export type McpCancelSignInData = {
          */
         name: string;
     };
-    query: {
-        thread: string;
+    query?: {
+        thread?: string;
     };
     url: '/api/mcp/servers/{name}/signin/cancel';
 };
@@ -8400,8 +8696,8 @@ export type McpPasteSignInData = {
          */
         name: string;
     };
-    query: {
-        thread: string;
+    query?: {
+        thread?: string;
     };
     url: '/api/mcp/servers/{name}/signin/paste';
 };
@@ -8495,6 +8791,37 @@ export type McpSandboxProxyResponses = {
 };
 
 export type McpSandboxProxyResponse = McpSandboxProxyResponses[keyof McpSandboxProxyResponses];
+
+export type ConnectorsBrandLogosData = {
+    body?: never;
+    path?: never;
+    query: {
+        names: string;
+    };
+    url: '/api/connectors/logos';
+};
+
+export type ConnectorsBrandLogosErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type ConnectorsBrandLogosError = ConnectorsBrandLogosErrors[keyof ConnectorsBrandLogosErrors];
+
+export type ConnectorsBrandLogosResponses = {
+    /**
+     * OK
+     */
+    200: BrandLogos;
+};
+
+export type ConnectorsBrandLogosResponse = ConnectorsBrandLogosResponses[keyof ConnectorsBrandLogosResponses];
 
 export type ConnectorsCatalogData = {
     body?: never;
@@ -8647,6 +8974,171 @@ export type ConnectorsExposureResponses = {
 };
 
 export type ConnectorsExposureResponse = ConnectorsExposureResponses[keyof ConnectorsExposureResponses];
+
+export type ComposioConnectStateData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/composio/connect';
+};
+
+export type ComposioConnectStateErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type ComposioConnectStateError = ComposioConnectStateErrors[keyof ComposioConnectStateErrors];
+
+export type ComposioConnectStateResponses = {
+    /**
+     * OK
+     */
+    200: ComposioConnect;
+};
+
+export type ComposioConnectStateResponse = ComposioConnectStateResponses[keyof ComposioConnectStateResponses];
+
+export type ComposioWireData = {
+    body: ComposioWireRequest;
+    path?: never;
+    query?: never;
+    url: '/api/composio/connect/apps';
+};
+
+export type ComposioWireErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * There is no Composio Connect server.
+     */
+    409: Problem;
+};
+
+export type ComposioWireError = ComposioWireErrors[keyof ComposioWireErrors];
+
+export type ComposioWireResponses = {
+    /**
+     * OK
+     */
+    200: ComposioConnect;
+};
+
+export type ComposioWireResponse = ComposioWireResponses[keyof ComposioWireResponses];
+
+export type ComposioSearchData = {
+    body?: never;
+    path?: never;
+    query: {
+        q: string;
+    };
+    url: '/api/composio/connect/search';
+};
+
+export type ComposioSearchErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * There is no Composio Connect server.
+     */
+    409: Problem;
+    /**
+     * Composio did not answer.
+     */
+    502: Problem;
+};
+
+export type ComposioSearchError = ComposioSearchErrors[keyof ComposioSearchErrors];
+
+export type ComposioSearchResponses = {
+    /**
+     * OK
+     */
+    200: ComposioFoundAppList;
+};
+
+export type ComposioSearchResponse = ComposioSearchResponses[keyof ComposioSearchResponses];
+
+export type ComposioConnectLinkData = {
+    body?: never;
+    path: {
+        /**
+         * The Composio toolkit slug.
+         */
+        toolkit: string;
+    };
+    query?: never;
+    url: '/api/composio/connect/apps/{toolkit}/link';
+};
+
+export type ComposioConnectLinkErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * The app is not one of your Composio apps.
+     */
+    404: Problem;
+    /**
+     * There is no Composio Connect server.
+     */
+    409: Problem;
+};
+
+export type ComposioConnectLinkError = ComposioConnectLinkErrors[keyof ComposioConnectLinkErrors];
+
+export type ComposioConnectLinkResponses = {
+    /**
+     * OK
+     */
+    200: ComposioApp;
+};
+
+export type ComposioConnectLinkResponse = ComposioConnectLinkResponses[keyof ComposioConnectLinkResponses];
+
+export type ComposioUnwireData = {
+    body?: never;
+    path: {
+        /**
+         * The Composio toolkit slug.
+         */
+        toolkit: string;
+    };
+    query?: never;
+    url: '/api/composio/connect/apps/{toolkit}';
+};
+
+export type ComposioUnwireErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type ComposioUnwireError = ComposioUnwireErrors[keyof ComposioUnwireErrors];
+
+export type ComposioUnwireResponses = {
+    /**
+     * OK
+     */
+    200: ComposioConnect;
+};
+
+export type ComposioUnwireResponse = ComposioUnwireResponses[keyof ComposioUnwireResponses];
 
 export type ComposioStatusData = {
     body?: never;
@@ -12708,6 +13200,7 @@ export type RoomsPlaybooksData = {
         repository: string;
         baseCommit?: string;
         threadId?: string;
+        roomId?: string;
     };
     url: '/api/rooms/playbooks';
 };
@@ -12722,7 +13215,7 @@ export type RoomsPlaybooksErrors = {
      */
     401: Problem;
     /**
-     * Rooms are off on this environment. Or: No thread with this id.
+     * Rooms are off on this environment. Or: No thread with this id. Or: No room with this id.
      */
     404: Problem;
     /**
@@ -13039,6 +13532,128 @@ export type RoomsDecideResponses = {
 };
 
 export type RoomsDecideResponse = RoomsDecideResponses[keyof RoomsDecideResponses];
+
+export type RoomsPlaybookDetailData = {
+    body?: never;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/playbook';
+};
+
+export type RoomsPlaybookDetailErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id. Or: the room follows no playbook, or its files are gone.
+     */
+    404: Problem;
+};
+
+export type RoomsPlaybookDetailError = RoomsPlaybookDetailErrors[keyof RoomsPlaybookDetailErrors];
+
+export type RoomsPlaybookDetailResponses = {
+    /**
+     * OK
+     */
+    200: PlaybookDetail;
+};
+
+export type RoomsPlaybookDetailResponse = RoomsPlaybookDetailResponses[keyof RoomsPlaybookDetailResponses];
+
+export type RoomsTryToolData = {
+    body: PlaybookTry;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/playbook/try';
+};
+
+export type RoomsTryToolErrors = {
+    /**
+     * A parameter is missing or not allowed.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+    /**
+     * The room follows no playbook, or it is not valid.
+     */
+    409: Problem;
+};
+
+export type RoomsTryToolError = RoomsTryToolErrors[keyof RoomsTryToolErrors];
+
+export type RoomsTryToolResponses = {
+    /**
+     * OK
+     */
+    200: PlaybookTryResult;
+};
+
+export type RoomsTryToolResponse = RoomsTryToolResponses[keyof RoomsTryToolResponses];
+
+export type RoomsFireTriggerData = {
+    body: PlaybookFire;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+        /**
+         * The id of a schedule or poll of the playbook.
+         */
+        triggerId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/playbook/triggers/{triggerId}';
+};
+
+export type RoomsFireTriggerErrors = {
+    /**
+     * The poll’s tool failed or did not print JSON.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id. Or: no such trigger.
+     */
+    404: Problem;
+    /**
+     * The room follows no playbook, or it is not valid.
+     */
+    409: Problem;
+};
+
+export type RoomsFireTriggerError = RoomsFireTriggerErrors[keyof RoomsFireTriggerErrors];
+
+export type RoomsFireTriggerResponses = {
+    /**
+     * OK
+     */
+    200: PlaybookFireResult;
+};
+
+export type RoomsFireTriggerResponse = RoomsFireTriggerResponses[keyof RoomsFireTriggerResponses];
 
 export type RoomsApproveData = {
     body: ApproveRoomTask;

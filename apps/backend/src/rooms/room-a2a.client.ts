@@ -16,7 +16,7 @@ import {
   withA2AExtensions,
   type Client,
 } from '@a2a-js/sdk/client';
-import { A2A_ROOM_EXTENSION, A2A_VERSION_HEADER } from '@pi-kit/protocol';
+import { A2A_ROOM_EXTENSION, A2A_VERSION_HEADER, EnvironmentLookSchema, type EnvironmentLook } from '@pi-kit/protocol';
 import { PeerProxy } from '../peers/peer-proxy';
 import { A2A_CARD_PATH, A2A_PATH, RoomA2a } from './room-a2a';
 
@@ -51,6 +51,16 @@ export class RoomA2aClient {
     } catch {
       return { status: answer.status };
     }
+  }
+
+  /** The look a paired environment chose, read from its own identity; older ones report none. */
+  async look(peerId: string, timeout = 5000): Promise<EnvironmentLook | undefined> {
+    const answer = await this.proxy.call(peerId, '/api/instance', 'GET', undefined, {
+      signal: AbortSignal.timeout(timeout),
+    });
+    const look = (answer.body as { look?: unknown } | undefined)?.look;
+    const parsed = answer.status === 200 ? EnvironmentLookSchema.safeParse(look) : undefined;
+    return parsed?.success ? parsed.data : undefined;
   }
 
   async sendMessage(peerId: string, request: SendMessageRequest, timeout = 20_000): Promise<Task | Message> {

@@ -24,4 +24,18 @@ describe('PkAvatar', () => {
     expect(el.querySelector('.pk-avatar-badge')).toBeNull();
     expect(PkAvatar.hueOf('Desktop')).toBe(PkAvatar.hueOf(' desktop '));
   });
+
+  it('shows the machine’s look as the corner badge and the participant’s role on top', () => {
+    const fixture = TestBed.createComponent(PkAvatar);
+    fixture.componentRef.setInput('name', 'pi-kit B');
+    fixture.componentRef.setInput('look', { icon: 'skull', color: 3 });
+    fixture.componentRef.setInput('participant', 'consultant');
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('.pk-avatar-badge.look')?.getAttribute('data-icon')).toBe('skull');
+    expect(el.getAttribute('data-role')).toBe('consultant');
+    expect(el.querySelector<HTMLElement>('.pk-avatar-role .pk-icon')?.style.getPropertyValue('--icon')).toBe(
+      'var(--pk-icon-comment)',
+    );
+  });
 });

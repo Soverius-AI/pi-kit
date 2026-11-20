@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import {
+  type McpAppActivity,
   redact,
+  redactValue,
   RoomSchema,
   type Room,
   type RoomDirectoryEntry,
@@ -156,6 +158,7 @@ export class RoomsRepository {
         leadQuestions: RoomTask['questions'];
         mode: 'supervised' | 'assisted';
         paused: boolean;
+        rehearsal: boolean;
         agentTurns: number;
         playbook: string | null;
         stage: string | null;
@@ -164,7 +167,7 @@ export class RoomsRepository {
   > {
     const row = (await this.db
       .prepare(
-        `SELECT id, title, repository, base_commit, created_at, summary, lead_thread_id, source_thread_id, project_folder, lead_questions_json, mode, paused, agent_turns, playbook, stage, ${WAITING} FROM rooms WHERE id = ? AND archived_at IS NULL`,
+        `SELECT id, title, repository, base_commit, created_at, summary, lead_thread_id, source_thread_id, project_folder, lead_questions_json, mode, paused, rehearsal, agent_turns, playbook, stage, ${WAITING} FROM rooms WHERE id = ? AND archived_at IS NULL`,
       )
       .get(id)) as
       | (RoomRow & {
@@ -175,6 +178,7 @@ export class RoomsRepository {
           lead_questions_json: string;
           mode: 'supervised' | 'assisted';
           paused: number;
+          rehearsal: number;
           agent_turns: number;
           playbook: string | null;
           stage: string | null;
@@ -190,6 +194,7 @@ export class RoomsRepository {
           leadQuestions: JSON.parse(row.lead_questions_json) as RoomTask['questions'],
           mode: row.mode ?? 'supervised',
           paused: !!Number(row.paused ?? 0),
+          rehearsal: !!Number(row.rehearsal ?? 0),
           agentTurns: Number(row.agent_turns ?? 0),
           playbook: row.playbook ?? null,
           stage: row.stage ?? null,
@@ -199,6 +204,10 @@ export class RoomsRepository {
 
   async setMode(id: string, mode: 'supervised' | 'assisted'): Promise<void> {
     await this.db.prepare('UPDATE rooms SET mode = ? WHERE id = ?').run(mode, id);
+  }
+
+  async setPlaybook(id: string, playbook: string | null, stage: string | null): Promise<void> {
+    await this.db.prepare('UPDATE rooms SET playbook = ?, stage = ? WHERE id = ?').run(playbook, stage, id);
   }
 
   async setStage(id: string, stage: string | null): Promise<void> {
@@ -214,6 +223,10 @@ export class RoomsRepository {
 
   async setPaused(id: string, paused: boolean): Promise<void> {
     await this.db.prepare('UPDATE rooms SET paused = ? WHERE id = ?').run(paused ? 1 : 0, id);
+  }
+
+  async setRehearsal(id: string, rehearsal: boolean): Promise<void> {
+    await this.db.prepare('UPDATE rooms SET rehearsal = ? WHERE id = ?').run(rehearsal ? 1 : 0, id);
   }
 
   async setAgentTurns(id: string, turns: number): Promise<void> {
@@ -250,10 +263,12 @@ export class RoomsRepository {
       taskId?: string | null;
       environmentId?: string | null;
       role?: string | null;
+      app?: McpAppActivity | null;
     },
     createdAt = Date.now(),
   ): Promise<RoomEvent> {
     const text = redact(event.text) as string;
+    const app = event.app ? redactValue(event.app) : null;
     return this.db.transaction(async () => {
       const last = (await this.db
         .prepare('SELECT COALESCE(MAX(seq), 0) AS seq FROM room_events WHERE room_id = ?')
@@ -261,7 +276,7 @@ export class RoomsRepository {
       const seq = Number(last.seq) + 1;
       await this.db
         .prepare(
-          'INSERT INTO room_events (room_id, seq, kind, actor, text, images, task_id, environment_id, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO room_events (room_id, seq, kind, actor, text, images, task_id, environment_id, role, app, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         )
         .run(
           roomId,
@@ -273,6 +288,7 @@ export class RoomsRepository {
           event.taskId ?? null,
           event.environmentId ?? null,
           event.role ?? null,
+          app ? JSON.stringify(app) : null,
           createdAt,
         );
       return {
@@ -285,6 +301,7 @@ export class RoomsRepository {
         taskId: event.taskId ?? null,
         environmentId: event.environmentId ?? null,
         role: event.role ?? null,
+        ...(app ? { app } : {}),
         createdAt,
       };
     })();
@@ -293,7 +310,7 @@ export class RoomsRepository {
   async events(roomId: string, afterSeq = 0): Promise<RoomEvent[]> {
     const rows = (await this.db
       .prepare(
-        'SELECT room_id, seq, kind, actor, text, images, task_id, environment_id, role, created_at FROM room_events WHERE room_id = ? AND seq > ? ORDER BY seq',
+        'SELECT room_id, seq, kind, actor, text, images, task_id, environment_id, role, app, created_at FROM room_events WHERE room_id = ? AND seq > ? ORDER BY seq',
       )
       .all(roomId, afterSeq)) as {
       room_id: string;
@@ -305,6 +322,7 @@ export class RoomsRepository {
       task_id: string | null;
       environment_id: string | null;
       role: string | null;
+      app: string | null;
       created_at: number;
     }[];
     return rows.map((row) => ({
@@ -317,6 +335,7 @@ export class RoomsRepository {
       taskId: row.task_id,
       environmentId: row.environment_id,
       role: row.role,
+      ...(row.app ? { app: JSON.parse(row.app) as McpAppActivity } : {}),
       createdAt: row.created_at,
     }));
   }
@@ -628,3 +647,5 @@ export class RoomsRepository {
     });
   }
 }
+
+export type FoundRoom = NonNullable<Awaited<ReturnType<RoomsRepository['get']>>>;

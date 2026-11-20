@@ -2,6 +2,10 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query } from
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import {
   ComposioAddRequestSchema,
+  type ComposioApp,
+  ComposioAppSchema,
+  type ComposioConnect,
+  ComposioConnectSchema,
   type ComposioConnection,
   ComposioConnectionListSchema,
   ComposioConnectionSchema,
@@ -11,15 +15,88 @@ import {
   type ComposioToolkit,
   ComposioToolkitListSchema,
   ComposioToolkitsQuerySchema,
+  type ComposioFoundApp,
+  ComposioFoundAppListSchema,
+  ComposioSearchQuerySchema,
+  ComposioWireRequestSchema,
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
-import { Fails, Responds } from '../contract';
+import { Fails, Responds } from '../../contract';
+import { ComposioConnectService } from './composio-connect.service';
 import { ComposioService } from './composio.service';
 
 @ApiTags('connectors')
 @Controller('composio')
 export class ComposioController {
-  constructor(private readonly composio: ComposioService) {}
+  constructor(
+    private readonly composio: ComposioService,
+    private readonly connect: ComposioConnectService,
+  ) {}
+
+  @Get('connect')
+  @ApiOperation({
+    summary: 'Get the apps reached through Composio Connect',
+    description:
+      'The Composio Connect server (signed in with the browser), whether it is signed in, and the apps chosen for it with whether each has an active account in Composio. Checking changes nothing in Composio.',
+  })
+  @Responds(ComposioConnectSchema)
+  connectState(): Promise<ComposioConnect> {
+    return this.connect.state();
+  }
+
+  @Post('connect/apps')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Choose an app for Composio Connect',
+    description:
+      'Remembers the app, so Settings shows its state and room leads are told about it, and asks Composio whether it is connected. No sign-in link is made here; ask for one with the link route.',
+  })
+  @Responds(ComposioConnectSchema)
+  @Fails({ 409: 'There is no Composio Connect server.' })
+  wire(
+    @Body({ schema: ComposioWireRequestSchema }) body: z.infer<typeof ComposioWireRequestSchema>,
+  ): Promise<ComposioConnect> {
+    return this.connect.wire(body);
+  }
+
+  @Get('connect/search')
+  @ApiOperation({
+    summary: 'Search apps through Composio Connect',
+    description: 'Asks Composio’s own tool search which apps fit a name or a use case. It only reads.',
+  })
+  @Responds(ComposioFoundAppListSchema)
+  @Fails({ 409: 'There is no Composio Connect server.', 502: 'Composio did not answer.' })
+  search(
+    @Query({ schema: ComposioSearchQuerySchema }) query: z.infer<typeof ComposioSearchQuerySchema>,
+  ): Promise<ComposioFoundApp[]> {
+    return this.connect.search(query.q);
+  }
+
+  @Post('connect/apps/:toolkit/link')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Get a page to connect a Composio Connect app',
+    description:
+      'Asks Composio for a new page where the app is connected in the browser. Each call makes a new link, which works for 10 minutes; an app already connected answers without one.',
+  })
+  @ApiParam({ name: 'toolkit', description: 'The Composio toolkit slug.', schema: { type: 'string' } })
+  @Responds(ComposioAppSchema)
+  @Fails({ 404: 'The app is not one of your Composio apps.', 409: 'There is no Composio Connect server.' })
+  connectLink(@Param('toolkit') toolkit: string): Promise<ComposioApp> {
+    return this.connect.link(toolkit);
+  }
+
+  @Delete('connect/apps/:toolkit')
+  @ApiOperation({
+    summary: 'Forget a Composio Connect app',
+    description:
+      'pi-kit stops showing the app and naming it to room leads. Its connection stays in your Composio account.',
+  })
+  @ApiParam({ name: 'toolkit', description: 'The Composio toolkit slug.', schema: { type: 'string' } })
+  @Responds(ComposioConnectSchema)
+  unwire(@Param('toolkit') toolkit: string): Promise<ComposioConnect> {
+    return this.connect.unwire(toolkit);
+  }
 
   @Get('status')
   @ApiOperation({

@@ -10,18 +10,28 @@ import {
   connectorById,
   connectorSecretAccount,
   isProviderAccount,
+  parseResolver,
   storedAccountsOf,
 } from '@pi-kit/protocol';
 import { SecretsService } from '../secrets/secrets.service';
 import { PiSessionService } from '../pi/pi-session.service';
 import { TrustService } from '../pi/trust.service';
 import { ThreadsService } from '../threads/threads.service';
-import { buildConnectorEntry, buildCustomEntry, endpointFor, endpointOverrides, needsSignIn } from './connectors';
 import {
+  buildConnectorEntry,
+  buildCustomEntry,
+  endpointFor,
+  endpointOverrides,
+  needsSignIn,
+  readOnlyServerNames,
+} from './connectors';
+import {
+  isRecord,
   type McpConfigEntry,
   projectMcpConfigPath,
   readMcpConfig,
   readMcpEntry,
+  readMcpServers,
   removeMcpServer,
   setMcpServerExposure,
   userMcpConfigPath,
@@ -93,28 +103,34 @@ export class ConnectorsService {
     let entry: Record<string, unknown>;
     if (connector) {
       let authorization: string | undefined;
+      let clientId = request.clientId;
       let clientSecretCommand: string | undefined;
       if (connector.auth.type === 'bearer') {
         if (!request.token)
           throw new BadRequestException(`token: paste the ${connector.name} token. ${connector.auth.setup}`);
         authorization = await this.keepToken(connectorAccount(connector.id), request.token, notes);
       } else if (connector.auth.type === 'oauth-client') {
-        if (!request.clientId)
+        if (request.clientFrom) {
+          const shared = this.sharedClient(connector, request.clientFrom, path);
+          clientId = shared.clientId;
+          clientSecretCommand = shared.clientSecret;
+        } else if (!request.clientId) {
           throw new BadRequestException(
             `clientId: the client id of your ${connector.name} app is needed. ${connector.auth.setup}`,
           );
-        if (request.clientSecret)
+        } else if (request.clientSecret) {
           clientSecretCommand = await this.keepSecret(
             connectorSecretAccount(connector.id),
             request.clientSecret,
             notes,
           );
+        }
       }
       entry = buildConnectorEntry(connector, {
         exposure,
         ...(request.variant ? { variant: request.variant } : {}),
         ...(authorization ? { authorization } : {}),
-        ...(request.clientId ? { clientId: request.clientId } : {}),
+        ...(clientId ? { clientId } : {}),
         ...(clientSecretCommand ? { clientSecretCommand } : {}),
         ...overrideUrl(connector, request.variant),
       });
@@ -181,8 +197,16 @@ export class ConnectorsService {
     } catch (error) {
       throw new ConflictException(error instanceof Error ? error.message : String(error));
     }
-    for (const account of [connectorAccount(name), connectorSecretAccount(name), ...(raw ? storedAccountsOf(raw) : [])])
-      if (isProviderAccount(account)) await this.secrets.forget(account);
+    // Gmail and Calendar may share one client secret; it stays while another entry still reads it.
+    const inUse = new Set(
+      Object.values(readMcpServers(entry.source)).flatMap((other) => (isRecord(other) ? accountsOf(other) : [])),
+    );
+    for (const account of new Set([
+      connectorAccount(name),
+      connectorSecretAccount(name),
+      ...(raw ? accountsOf(raw) : []),
+    ]))
+      if (isProviderAccount(account) && !inUse.has(account)) await this.secrets.forget(account);
     if (threadId) {
       this.mcp.forgetSignIn(threadId, name);
       await this.sessions.reload(threadId);
@@ -205,7 +229,29 @@ export class ConnectorsService {
     }
   }
 
+  /** The servers of the user's `mcp.json` that a read-only room may use in full (see `readOnlyServerNames`). */
+  async readOnlyServers(): Promise<ReadonlySet<string>> {
+    const config = readMcpConfig({ agentDir: await this.sessions.agentDir(), projectTrusted: false });
+    return new Set(readOnlyServerNames(config.servers, this.catalog()));
+  }
+
   // ---- internals
+
+  /** The client id and secret (a reference, as written) of `from`, an entry of the same vendor app in the file this one goes to. */
+  private sharedClient(connector: Connector, from: string, path: string): { clientId: string; clientSecret?: string } {
+    const source = connectorById(from, this.catalog());
+    const app = connector.auth.type === 'oauth-client' ? connector.auth.app : undefined;
+    if (!app || source?.auth.type !== 'oauth-client' || source.auth.app !== app)
+      throw new BadRequestException(`clientFrom: ${from} does not use the same app as ${connector.name}.`);
+    const oauth = readMcpEntry(path, from)?.['oauth'];
+    const clientId = isRecord(oauth) && typeof oauth['clientId'] === 'string' ? oauth['clientId'] : undefined;
+    if (!clientId || !isRecord(oauth))
+      throw new BadRequestException(`clientFrom: ${source.name} is not set up with an app of yours yet.`);
+    return {
+      clientId,
+      ...(typeof oauth['clientSecret'] === 'string' ? { clientSecret: oauth['clientSecret'] } : {}),
+    };
+  }
 
   /** Stores a token and returns the `Authorization` value for `mcp.json`: the command that prints it, or (no store) the header itself, with a note that says so. */
   private async keepToken(account: string, token: string, notes: string[]): Promise<string> {
@@ -248,6 +294,13 @@ export class ConnectorsService {
     if (this.sessions.stats(threadId).streaming)
       throw new ConflictException('Stop the run first: pi reloads the session to see the change.');
   }
+}
+
+/** The credential-store accounts an entry reads: its headers and variables, and its OAuth client secret. */
+function accountsOf(raw: Record<string, unknown>): string[] {
+  const secret = isRecord(raw['oauth']) ? raw['oauth']['clientSecret'] : undefined;
+  const account = typeof secret === 'string' ? parseResolver(secret)?.provider : undefined;
+  return [...storedAccountsOf(raw), ...(account ? [account] : [])];
 }
 
 /** The URL the end-to-end tests asked for (`PI_KIT_CONNECTOR_URLS`, never in production), as a spread for the entry options. */

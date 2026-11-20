@@ -20,7 +20,8 @@ export type SettingsSectionId =
   | 'advanced'
   | 'voice'
   | 'computer-use'
-  | 'remote-access';
+  | 'remote-access'
+  | 'rooms';
 export type SettingsNavGroup = 'App' | 'pi' | 'Workspace';
 
 export interface SettingsSection {
@@ -58,6 +59,13 @@ export const settingsSections = (translate: Translate): readonly SettingsSection
     label: translate('shared.catalog.remoteAccess'),
     group: 'App',
     intro: translate('shared.catalog.remoteAccessIntro'),
+  },
+  {
+    id: 'rooms',
+    label: translate('settings.roomsSection.title'),
+    group: 'App',
+    intro: translate('settings.roomsSection.pageIntro'),
+    desktopOnly: true,
   },
   {
     id: 'models',
@@ -812,15 +820,6 @@ export const settingsCatalog = (translate: Translate): readonly SettingEntry[] =
     keywords: 'copilotkit inspector ag-ui agui events debug devtools developer runtime',
   },
   {
-    id: 'rooms-preview',
-    section: 'advanced',
-    group: translate('shared.catalog.collaboration'),
-    name: translate('shared.catalog.roomsPreview'),
-    description: translate('shared.catalog.roomsPreviewDescription'),
-    storage: 'pi-kit',
-    keywords: 'rooms preview collaboration paired machines workers remote tasks experimental',
-  },
-  {
     id: 'trust-list',
     section: 'advanced',
     group: translate('shared.catalog.savedTrustDecisions'),
@@ -960,6 +959,42 @@ export const settingsCatalog = (translate: Translate): readonly SettingEntry[] =
     description: translate('environments.pairing.trust'),
     storage: 'pi-kit',
     keywords: 'environment instance peer pair invitation connect unpair relay',
+  },
+  {
+    id: 'rooms-preview',
+    section: 'rooms',
+    group: translate('settings.roomsSection.title'),
+    name: translate('shared.catalog.roomsPreview'),
+    description: translate('shared.catalog.roomsPreviewDescription'),
+    storage: 'pi-kit',
+    keywords: 'rooms preview collaboration paired machines workers remote tasks experimental',
+  },
+  {
+    id: 'rooms-sandbox',
+    section: 'rooms',
+    group: translate('settings.roomsSection.title'),
+    name: translate('settings.roomsSection.sandbox'),
+    description: translate('settings.roomsSection.sandboxHint'),
+    storage: 'pi-kit',
+    keywords: 'rooms sandbox lead worker protection host',
+  },
+  {
+    id: 'rooms-machines',
+    section: 'rooms',
+    group: translate('settings.roomsSection.machines'),
+    name: translate('settings.roomsSection.machines'),
+    description: translate('settings.roomsSection.machinesIntro'),
+    storage: 'pi-kit',
+    keywords: 'rooms machines environments peers a2a agent card icon look colour color',
+  },
+  {
+    id: 'rooms-a2a-agents',
+    section: 'rooms',
+    group: translate('settings.roomsSection.a2aAgents'),
+    name: translate('settings.roomsSection.a2aAgents'),
+    description: translate('settings.roomsSection.a2aAgentsIntro'),
+    storage: 'pi-kit',
+    keywords: 'a2a agents outside token rooms workers',
   },
   // ---- Computer use (@pi-kit/computer-use, packages/pi-computer-use)
   {

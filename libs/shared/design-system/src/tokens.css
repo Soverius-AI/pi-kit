@@ -254,3 +254,34 @@ kbd,
     transition: none !important;
   }
 }
+
+/* Identity palette (design §6): the nine environment colours; they mark identity, never state. */
+:root {
+  --pk-identity-1: #007c8a;
+  --pk-identity-2: #b0109a;
+  --pk-identity-3: #4c7a00;
+  --pk-identity-4: #8a6d00;
+  --pk-identity-5: #b4470a;
+  --pk-identity-6: #c3134e;
+  --pk-identity-7: #6a3fd1;
+  --pk-identity-8: #2949c9;
+  --pk-identity-9: #5a6273;
+  --pk-identity-ground: #f2f3f7;
+  --pk-identity-glow: 0;
+}
+[data-theme='pi-dark'],
+[data-theme='pi-soverius'],
+[data-theme='pi-omarchy'],
+[data-theme='pi-desktop']:not([data-scheme='light']) {
+  --pk-identity-1: #2ef2ff;
+  --pk-identity-2: #ff3edb;
+  --pk-identity-3: #b6ff3b;
+  --pk-identity-4: #ffe53b;
+  --pk-identity-5: #ff7a2f;
+  --pk-identity-6: #ff4f8b;
+  --pk-identity-7: #a06bff;
+  --pk-identity-8: #4d7cff;
+  --pk-identity-9: #c9d1e0;
+  --pk-identity-ground: #0b0d14;
+  --pk-identity-glow: 1;
+}

@@ -40,6 +40,7 @@ export const ShellStore = signalStore(
       /** Only a genuinely empty chat may show the backdrop, never a replay or an optimistic first message. */
       emptyChat: computed(() => {
         if (review.mode() !== 'chat') return false;
+        if (openRoom.room()) return openRoom.events().length === 0;
         const selectedId = threads.selectedId();
         if (!selectedId) return true;
         const thread = threads.selected();

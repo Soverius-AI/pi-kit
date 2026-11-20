@@ -4,18 +4,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConflictException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RoomStreamLine } from '@pi-kit/protocol';
+import { ROOMS_SANDBOX_SETTING_KEY, type RoomStreamLine } from '@pi-kit/protocol';
 import type { AguiService, HeadlessRun } from '../agui/agui.service';
 import { DatabaseService } from '../db/database.service';
 import { InstanceRepository } from '../db/instance.repository';
 import { MetaRepository } from '../db/meta.repository';
+import type { ComposioConnectService } from '../mcp/composio/composio-connect.service';
 import { RoomsRepository } from '../db/rooms.repository';
 import { ThreadsRepository } from '../db/threads.repository';
 import type { PiSessionService } from '../pi/pi-session.service';
 import type { ThreadsService } from '../threads/threads.service';
 import { RoomAgents } from './room-agents';
 import { RoomBus } from './room-bus';
-import { RoomLeadService } from './room-lead.service';
+import { LEAD_BUSY, RoomLeadService } from './room-lead.service';
 import { RoomQuestions } from './room-questions';
 import { RoomsService } from './rooms.service';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
@@ -39,7 +40,7 @@ let dialogs: { id: string; request: { method: string; title: string; message?: s
 let resumed: HeadlessRun;
 const resumeHeadless = vi.fn(async (): Promise<HeadlessRun> => resumed);
 const pendingDialogs = vi.fn(() => dialogs);
-let readOnly: ((threadId: string) => Promise<boolean>) | undefined;
+let readOnly: ((threadId: string) => Promise<string | undefined>) | undefined;
 const setReadOnlyThreads = vi.fn((hook: typeof readOnly) => (readOnly = hook));
 
 const settle = () => vi.waitFor(() => expect(lead.state(roomId)).not.toBe('working'), { timeout: 5000 });
@@ -113,9 +114,11 @@ beforeEach(async () => {
     { runHeadless, resumeHeadless } as unknown as AguiService,
     { abort, setReadOnlyThreads, pendingDialogs } as unknown as PiSessionService,
     bus,
-    new RoomAgents(rows, threads),
+    new RoomAgents(rows, threads, { mcpAppLookup: () => undefined } as never, new MetaRepository(db)),
     new RoomQuestions(),
     new RoomPlaybooksRepository(db),
+    new RoomPlaybookFiles(),
+    { forRooms: async () => undefined } as unknown as ComposioConnectService,
   );
   const room = await new RoomsService(
     rooms,
@@ -137,11 +140,11 @@ afterEach(async () => {
 });
 
 describe('the room lead', () => {
-  it('makes every room lead a read-only session, and only leads', async () => {
+  it('makes every room lead a read-only session that asks its owner, and only leads', async () => {
     await lead.onModuleInit();
     const leadId = await lead.prepare(roomId);
-    expect(await readOnly?.(leadId)).toBe(true);
-    expect(await readOnly?.('source')).toBe(false);
+    expect(await readOnly?.(leadId)).toBe('ask-owner');
+    expect(await readOnly?.('source')).toBeUndefined();
   });
 
   it('creates the lead on the first message, seeds it with the summary, and posts its answer', async () => {
@@ -169,7 +172,13 @@ describe('the room lead', () => {
     ]);
   });
 
-  it('sandboxes the lead when the sandbox runs here', async () => {
+  it('starts the lead on the host while rooms do not use the sandbox', async () => {
+    await lead.prepare(roomId);
+    expect(threads.setProtection).not.toHaveBeenCalled();
+  });
+
+  it('sandboxes the lead when rooms use the sandbox and it runs here', async () => {
+    await new MetaRepository(db).setSetting(ROOMS_SANDBOX_SETTING_KEY, true);
     await lead.prepare(roomId);
     expect(threads.setProtection).toHaveBeenCalledWith('lead-1', expect.objectContaining({ mode: 'sandboxed' }));
     expect(threads.setProtection).not.toHaveBeenCalledWith('lead-1', expect.objectContaining({ mode: 'bypass' }));
@@ -178,6 +187,7 @@ describe('the room lead', () => {
 
   it('keeps a read-only lead on the host and says so when the sandbox is unavailable', async () => {
     sandboxState = 'unavailable';
+    await new MetaRepository(db).setSetting(ROOMS_SANDBOX_SETTING_KEY, true);
     await lead.prepare(roomId);
     expect(threads.setProtection).toHaveBeenLastCalledWith('lead-1', { mode: 'bypass', confirmBypass: true });
     const note = (await lead.detail(roomId)).events.at(-1);
@@ -341,5 +351,61 @@ describe('the room lead', () => {
     await settle();
     expect((await lead.detail(roomId)).events.at(-1)?.text).toBe('The lead could not answer: No model.');
     expect(lead.state(roomId)).toBe('error');
+  });
+});
+
+describe('the room’s playbook', () => {
+  const playbook = (name: string, stages: string) => {
+    const folder = join(project, '.pi', 'skills', name);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, 'SKILL.md'), `---\nname: ${name}\ndescription: ${name} work.\n---\nDo ${name}.\n`);
+    writeFileSync(join(folder, 'room.yaml'), `stages: [${stages}]\n`);
+  };
+
+  beforeEach(() => {
+    playbook('triage', 'collect, decide');
+    playbook('release', 'freeze, ship');
+    lead.setPlaybooks({
+      briefing: async (found) => (found.playbook ? `Briefing of ${found.playbook}.` : undefined),
+      extras: async () => ({ stages: [], actions: [], memory: [] }),
+    });
+  });
+
+  it('lists the playbooks of the room’s own folder', async () => {
+    expect((await lead.roomPlaybooks(roomId)).map((p) => p.name).sort()).toEqual(['release', 'triage']);
+  });
+
+  it('attaches, switches and removes a playbook, each at its first stage and with a note', async () => {
+    let detail = await lead.update(roomId, { playbook: 'triage' });
+    expect([detail.playbook, detail.stage, detail.mode]).toEqual(['triage', 'collect', 'assisted']);
+    detail = await lead.update(roomId, { playbook: 'release' });
+    expect([detail.playbook, detail.stage]).toEqual(['release', 'freeze']);
+    detail = await lead.update(roomId, { playbook: null });
+    expect([detail.playbook, detail.stage]).toEqual([null, null]);
+    expect(detail.events.filter((e) => e.kind === 'note').map((e) => e.text)).toEqual([
+      'You attached the playbook “triage”: the room is Assisted and at its first stage “collect”.',
+      'You attached the playbook “release”: the room is Assisted and at its first stage “freeze”.',
+      'You removed the playbook.',
+    ]);
+  });
+
+  it('refuses a playbook that is missing, and any change while the lead answers', async () => {
+    await expect(lead.update(roomId, { playbook: 'nope' })).rejects.toBeInstanceOf(ConflictException);
+    await lead.post(roomId, { text: 'Start.', route: 'lead' });
+    await expect(lead.update(roomId, { playbook: 'triage' })).rejects.toThrow(LEAD_BUSY);
+    await settle();
+  });
+
+  it('briefs the lead on the new playbook with its next prompt, once', async () => {
+    await lead.post(roomId, { text: 'Start.', route: 'lead' });
+    await settle();
+    await lead.update(roomId, { playbook: 'triage' });
+    await lead.post(roomId, { text: 'Go on.', route: 'lead' });
+    await settle();
+    await lead.post(roomId, { text: 'And then?', route: 'lead' });
+    await settle();
+    const prompts = runHeadless.mock.calls.map((call) => (call as unknown as [string, string])[1]);
+    expect(prompts.at(-2)).toBe('Briefing of triage.\n\nGo on.');
+    expect(prompts.at(-1)).toBe('And then?');
   });
 });

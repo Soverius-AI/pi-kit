@@ -1,4 +1,4 @@
-import type { BashOperations, ExtensionFactory } from '@earendil-works/pi-coding-agent' with {
+import type { BashOperations, ExtensionFactory, ToolInfo } from '@earendil-works/pi-coding-agent' with {
   'resolution-mode': 'import',
 };
 import type { PiModule } from './load-pi';
@@ -26,9 +26,16 @@ export class ThreadProtectionExtension {
   /** `bash` serves the `!command` shell of the session, which pi runs without an extension event; `tools` are the names routed through the sandbox. */
   static async create(
     pi: PiModule,
-    options: { threadId: string; cwd: string; client: SandboxClient; protection: ThreadProtectionService },
+    options: {
+      threadId: string;
+      cwd: string;
+      client: SandboxClient;
+      protection: ThreadProtectionService;
+      /** A tool the sandbox does not route that this thread may still call. */
+      allow?: (tool: ToolInfo) => boolean;
+    },
   ): Promise<{ factory: ExtensionFactory; bash: BashOperations; tools: string[] }> {
-    const { threadId, cwd, client, protection } = options;
+    const { threadId, cwd, client, protection, allow } = options;
     const generation = (await protection.binding(threadId)).generation;
     const sandbox = { client, cwd, assertCurrent: () => protection.assertSessionCurrent(threadId, generation, true) };
     const { PiSandbox } = await SandboxPackage.load('pi');
@@ -43,10 +50,12 @@ export class ThreadProtectionExtension {
         api.on('before_agent_start', () => sandbox.assertCurrent());
         api.on('tool_call', (event) => {
           sandbox.assertCurrent();
-          if (!routed.has(event.toolName))
-            return ThreadProtectionExtension.HOST_TOOLS.has(event.toolName)
-              ? undefined
-              : { block: true, reason: `${event.toolName} is not available in a sandboxed thread.` };
+          if (!routed.has(event.toolName)) {
+            if (ThreadProtectionExtension.HOST_TOOLS.has(event.toolName)) return undefined;
+            const tool = api.getAllTools().find((candidate) => candidate.name === event.toolName);
+            if (tool && allow?.(tool)) return undefined;
+            return { block: true, reason: `${event.toolName} is not available in a sandboxed thread.` };
+          }
           const source = api.getAllTools().find((tool) => tool.name === event.toolName)?.sourceInfo.path;
           return source === ThreadProtectionExtension.SOURCE
             ? undefined

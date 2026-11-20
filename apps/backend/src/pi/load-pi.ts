@@ -107,7 +107,18 @@ export interface PiInternals {
       settings: () => Record<string, unknown>;
       onChallenge: (challenge: unknown) => void;
     }): unknown;
+    signInMcpServer(options: {
+      serverUrl: string;
+      store: unknown;
+      settings: Record<string, unknown>;
+      prompt: {
+        showAuthorizationUrl(url: URL): void;
+        promptForRedirectUrl(signal: AbortSignal): Promise<string | undefined>;
+      };
+      signal?: AbortSignal;
+    }): Promise<void>;
   };
+  openBrowser(target: string): void;
   config: {
     resolveConfigValueOrThrow(value: string, description: string): string;
     resolveHeadersOrThrow(
@@ -122,7 +133,8 @@ export function loadPiInternals(): Promise<PiInternals> {
   piInternals ??= Promise.all([
     nativeImport<PiInternals['oauth']>(file('extensions', 'mcp', 'oauth.js')),
     nativeImport<PiInternals['config']>(file('core', 'resolve-config-value.js')),
-  ]).then(([oauth, config]) => ({ oauth, config }));
+    nativeImport<Pick<PiInternals, 'openBrowser'>>(file('utils', 'open-browser.js')),
+  ]).then(([oauth, config, browser]) => ({ oauth, config, openBrowser: browser.openBrowser }));
   return piInternals;
 }
 export function loadPi(): Promise<PiModule> {
