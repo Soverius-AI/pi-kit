@@ -407,6 +407,19 @@
       </button>
     </div>
   }
+  @if (chat.diagnostics().length) {
+    <pk-diagnostics
+      [title]="
+        chat.diagnostics().length === 1
+          ? ('chat.transcript.piReportedOneProblem' | transloco)
+          : ('chat.transcript.piReportedProblems' | transloco: { value1: chat.diagnostics().length })
+      "
+      [items]="chat.diagnostics()"
+      [levelLabels]="diagnosticLevels()"
+      [dismissLabel]="'chat.transcript.dismiss' | transloco"
+      (dismissed)="chat.dismissDiagnostics()"
+    />
+  }
   @for (notice of chat.notices(); track notice.id) {
     <div
       role="status"

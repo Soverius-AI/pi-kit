@@ -1,6 +1,6 @@
 import { Language, TranslocoPipe } from '@pi-kit/i18n';
 import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, type Type, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, type Type, computed, effect, inject, input, signal } from '@angular/core';
 import type { AssistantMessage, Message, UserMessage } from '@ag-ui/client';
 import {
   CopilotChatAssistantMessage,
@@ -11,7 +11,15 @@ import {
   CopilotChatToolCallsView,
   CopilotChatUserMessage,
 } from '@copilotkit/angular';
-import { PkIcon, PkLightboxService, PkMarker, PkSkillDraftCard, PkThink, PkTurn } from '@pi-kit/design-system';
+import {
+  PkDiagnostics,
+  PkIcon,
+  PkLightboxService,
+  PkMarker,
+  PkSkillDraftCard,
+  PkThink,
+  PkTurn,
+} from '@pi-kit/design-system';
 import type { PiActivityContent } from '@pi-kit/protocol';
 import { RADIUS_FUNDS_URL, formatDuration, isOutOfFunds, newestSentence, thoughtLabel } from '@pi-kit/ui';
 import { AgentLiveState, type PieceInfo, type StepPiece, type WorkPiece, percentLabel } from '@pi-kit/chat/util';
@@ -87,6 +95,7 @@ function callHint(args: string | undefined, max = 80): string {
     NestedToolCalls,
     NgComponentOutlet,
     NgTemplateOutlet,
+    PkDiagnostics,
     PkIcon,
     VirtualTranscript,
     VirtualRow,
@@ -100,7 +109,6 @@ function callHint(args: string | undefined, max = 80): string {
     ReplayLoading,
     TranslocoPipe,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
     class: 'pk-messages',
     '[attr.data-usage]': "prefs.showUsage() ? 'show' : null",
@@ -120,6 +128,11 @@ export class Transcript {
   protected readonly chat = inject(ChatStore);
   protected readonly tree = inject(GraphStore);
   protected readonly prefs = inject(ViewPrefs);
+  protected readonly diagnosticLevels = computed(() => ({
+    info: this.i18n.t('chat.transcript.diagnosticInfo'),
+    warning: this.i18n.t('chat.transcript.diagnosticWarning'),
+    error: this.i18n.t('chat.transcript.diagnosticError'),
+  }));
   private readonly clock = inject(ClockStore);
   /** A sent image opens full size (the lightbox of the shell). */
   protected readonly lightbox = inject(PkLightboxService);

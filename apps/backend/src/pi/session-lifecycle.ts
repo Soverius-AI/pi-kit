@@ -1,8 +1,16 @@
 import { existsSync } from 'node:fs';
 import { Logger } from '@nestjs/common';
-import type { AgentSession, BashOperations, EventBusController } from '@earendil-works/pi-coding-agent' with {
+import type {
+  AgentSession,
+  AgentSessionRuntimeDiagnostic,
+  BashOperations,
+  CreateAgentSessionRuntimeFactory,
+  CreateAgentSessionServicesOptions,
+  EventBusController,
+} from '@earendil-works/pi-coding-agent' with {
   'resolution-mode': 'import',
 };
+import type { SessionDiagnostic } from '@pi-kit/protocol';
 import { type AgentsHook, createAgentTools } from '../bg-agents/agent-tools';
 import { McpTap } from '../mcp/mcp-tap';
 import { createAskUserExtension } from './ask-user-extension';
@@ -59,6 +67,7 @@ export interface OpenThread {
   queue: SessionQueue;
   /** The `!command` shell of a sandboxed thread. */
   bash?: BashOperations;
+  diagnostics: SessionDiagnostic[];
 }
 
 interface LifecycleHooks {
@@ -216,15 +225,12 @@ export class SessionLifecycle {
     const sessionUi = createSessionUi(pi, threadId, this.hooks.ui(threadId, cwd));
     const { ui, bus } = sessionUi;
     this.plugins.bind(threadId, bus);
-    const resourceLoader = new pi.DefaultResourceLoader({
+    const resourceLoaderOptions: CreateAgentSessionServicesOptions['resourceLoaderOptions'] = {
       additionalSkillPaths: [
         genUiSkillPath(),
         ...(this.hooks.browser()?.available ? [browserSkillPath()] : []),
         ...(this.hooks.room() ? [RoomTools.skillPath()].filter((path): path is string => !!path) : []),
       ],
-      cwd,
-      agentDir,
-      settingsManager,
       eventBus: bus,
       // The CLI loads these three as built-in extensions; SDK sessions have to ask for them.
       extensionFactories: [
@@ -265,23 +271,62 @@ export class SessionLifecycle {
           ? [{ name: RoomTools.NAME, factory: RoomTools.factory(threadId, () => this.hooks.room()), hidden: true }]
           : []),
       ],
-    });
+    };
     finishPhase('resourcesSetup');
-    await resourceLoader.reload({
-      resolveProjectTrust: ({ extensionsResult }) => this.trust.resolveForOpen(cwd, extensionsResult),
-    });
-    finishPhase('resourcesReload');
     const modelRuntime = await createModelRuntime(pi);
     finishPhase('modelRuntime');
-    const { session, modelFallbackMessage } = await pi.createAgentSession({
-      modelRuntime,
-      cwd,
-      resourceLoader,
-      sessionManager,
-      settingsManager,
-    });
-    finishPhase('createAgentSession');
-    if (modelFallbackMessage) this.logger.warn(modelFallbackMessage);
+    const createRuntime: CreateAgentSessionRuntimeFactory = async (options) => {
+      const services = await pi.createAgentSessionServices({
+        cwd: options.cwd,
+        agentDir: options.agentDir,
+        settingsManager,
+        modelRuntime,
+        resourceLoaderOptions,
+        resourceLoaderReloadOptions: {
+          resolveProjectTrust: ({ extensionsResult }) => this.trust.resolveForOpen(cwd, extensionsResult),
+        },
+      });
+      finishPhase('resourcesReload');
+      const created = await pi.createAgentSessionFromServices({
+        services,
+        sessionManager: options.sessionManager,
+        sessionStartEvent: options.sessionStartEvent,
+      });
+      finishPhase('createAgentSession');
+      const extensions = services.resourceLoader.getExtensions();
+      const diagnostics: AgentSessionRuntimeDiagnostic[] = [
+        ...services.diagnostics,
+        ...extensions.errors.map(({ path, error }) => ({
+          type: 'error' as const,
+          message: `Failed to load extension "${path}": ${error}`,
+        })),
+        ...(extensions.warnings ?? []).map(({ path, warning }) => ({
+          type: 'warning' as const,
+          message: `Extension package "${path}": ${warning}`,
+        })),
+        ...(created.modelFallbackMessage ? [{ type: 'warning' as const, message: created.modelFallbackMessage }] : []),
+      ];
+      return { ...created, services, diagnostics };
+    };
+    const created = await createRuntime({ cwd, agentDir, sessionManager });
+    const runtime = new pi.AgentSessionRuntime(
+      created.session,
+      created.services,
+      createRuntime,
+      created.diagnostics,
+      created.modelFallbackMessage,
+    );
+    const { session } = runtime;
+    const reported =
+      typeof runtime.takeUnreportedDiagnostics === 'function'
+        ? runtime.takeUnreportedDiagnostics()
+        : runtime.diagnostics;
+    const diagnostics = reported.map(({ type, message }) => ({ level: type, message }));
+    for (const { level, message } of diagnostics) {
+      if (level === 'error') this.logger.error(`Thread ${threadId}: ${message}`);
+      else if (level === 'warning') this.logger.warn(`Thread ${threadId}: ${message}`);
+      else this.logger.log(`Thread ${threadId}: ${message}`);
+    }
     if (sandboxed) {
       const tools = session.getAllTools();
       const replaced = sandboxed.tools.filter(
@@ -310,6 +355,7 @@ export class SessionLifecycle {
       mcp: new SessionMcp(session, tap, () => this.protection.assertSessionCurrent(threadId, generation, false)),
       session,
       bash: sandboxed?.bash,
+      diagnostics,
       info: {
         threadId,
         cwd,

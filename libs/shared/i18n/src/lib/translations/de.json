@@ -738,7 +738,12 @@
       "workingCalls": "Arbeitet · bisher {{value1}} Werkzeug-{{value2}}",
       "rowCalls": "{{value1}} Werkzeug-{{value2}}",
       "showWork": "Zeigen, was pi getan hat",
-      "hideWork": "Verbergen, was pi getan hat"
+      "hideWork": "Verbergen, was pi getan hat",
+      "piReportedOneProblem": "pi hat beim Öffnen dieses Threads ein Problem gemeldet",
+      "piReportedProblems": "pi hat beim Öffnen dieses Threads {{value1}} Probleme gemeldet",
+      "diagnosticInfo": "Info",
+      "diagnosticWarning": "Warnung",
+      "diagnosticError": "Fehler"
     },
     "activityRenderers": {
       "summaryOfTheBranchYouLeft": "Zusammenfassung des Zweigs, den du verlassen hast",

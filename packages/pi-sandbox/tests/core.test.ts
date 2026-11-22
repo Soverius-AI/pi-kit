@@ -272,6 +272,28 @@ test('the grep tool keeps pi’s definition, is off by default and runs pi’s g
   assert.deepEqual(seen, [['pi.grep', [params, '/workspace/sub']]]);
 });
 
+test('find anchors a ./ path pattern at the search path, like pi', async () => {
+  const commands: string[] = [];
+  const client: SandboxClient = {
+    state: 'active',
+    request: async <T = unknown>(op: string): Promise<T> => (op === 'exists' ? true : undefined) as T,
+    exec: async (command, _cwd, options) => {
+      commands.push(command);
+      options.onData?.(Buffer.from('/workspace/src/a.ts\0'));
+      return { exitCode: 0 };
+    },
+    close: async () => undefined,
+  } satisfies SandboxClient;
+  const sdk = await import('@earendil-works/pi-coding-agent');
+  const find = PiSandbox.toolDefinitions(sdk, { client, cwd: '/workspace', assertCurrent: noop }).find(
+    (tool) => tool.name === 'find',
+  );
+  assert.ok(find);
+  await find.execute('1', { pattern: './src/*.ts' }, undefined, undefined, { cwd: '/workspace' } as never);
+  assert.equal(commands.length, 1);
+  assert.ok(commands[0].includes(`'--glob' 'src/*.ts'`), commands[0]);
+});
+
 test('pi operations route through the client, sniff images with a bounded read and refuse an inactive client', async () => {
   const seen: [string, unknown[]][] = [];
   let active = true;

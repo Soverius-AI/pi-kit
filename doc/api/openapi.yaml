@@ -20040,6 +20040,21 @@ components:
         - groups
         - items
       additionalProperties: false
+    SessionDiagnostic:
+      type: object
+      properties:
+        level:
+          type: string
+          enum:
+            - info
+            - warning
+            - error
+        message:
+          type: string
+      required:
+        - level
+        - message
+      additionalProperties: false
     SessionStats:
       type: object
       properties:
@@ -20127,6 +20142,10 @@ components:
           type: boolean
         cwd:
           type: string
+        diagnostics:
+          type: array
+          items:
+            $ref: '#/components/schemas/SessionDiagnostic'
       required:
         - sessionId
         - sessionFile
@@ -20146,6 +20165,7 @@ components:
         - streaming
         - waitingForAnswer
         - cwd
+        - diagnostics
       additionalProperties: false
     SessionTree:
       type: object

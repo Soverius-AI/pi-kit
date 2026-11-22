@@ -53,6 +53,20 @@ export function withChatTranscript<_>() {
         const window = contextWindow();
         return limit && window ? (limit / window) * 100 : undefined;
       });
+      const diagnosticsKey = computed(() => {
+        const current = stats();
+        return current?.diagnostics?.length
+          ? [current.sessionId, ...current.diagnostics.map((d) => `${d.level}\u0000${d.message}`)].join('\n')
+          : undefined;
+      });
+      const diagnostics = computed(() => {
+        const current = stats();
+        if (!current?.diagnostics?.length || diagnosticsKey() === store.dismissedDiagnostics()) return [];
+        const redaction = store._redaction;
+        return redaction.enabledFor(store._threads.selected()?.cwd)
+          ? current.diagnostics.map((d) => ({ ...d, message: redaction.text(d.message) }))
+          : current.diagnostics;
+      });
       const running = computed(() => store._agentStore().isRunning() && !store.syncRun());
       const activities = computed(() => activityMap(messages()));
       const chips = computed<readonly ComposerChip[]>(
@@ -69,6 +83,8 @@ export function withChatTranscript<_>() {
         messages,
         /** Complete redacted transcript; the viewport controls which rows are mounted. */
         transcriptMessages: shown,
+        diagnosticsKey,
+        diagnostics,
         agentLive: computed(() => AgentLiveState.pin(shown(), store._threads.selectedId())),
         /** True while a run streams (or the stored log of a running thread is replayed). */
         running,

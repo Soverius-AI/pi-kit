@@ -59,6 +59,7 @@ export interface ChatStoreState {
   liveTokens: number;
   liveTurns: number;
   stats: SessionStats | undefined;
+  dismissedDiagnostics: string | undefined;
   commands: Command[];
   commandsLoading: boolean;
   commandsError: string | undefined;
@@ -132,6 +133,7 @@ export const initial: ChatSessionState = {
   liveTokens: 0,
   liveTurns: 0,
   stats: undefined,
+  dismissedDiagnostics: undefined,
   commands: [],
   commandsLoading: false,
   commandsError: undefined,

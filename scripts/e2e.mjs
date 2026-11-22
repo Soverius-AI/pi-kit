@@ -20,6 +20,7 @@ import { parseArgs } from 'node:util';
 import { startKeyProxy } from '../e2e/support/key-proxy.mjs';
 
 const { values } = parseArgs({
+  args: process.argv.slice(2).filter((arg, index) => index > 0 || arg !== '--'),
   options: {
     grep: { type: 'string' },
     file: { type: 'string' },

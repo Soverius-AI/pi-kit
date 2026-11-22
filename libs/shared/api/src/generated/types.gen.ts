@@ -2613,6 +2613,11 @@ export type SessionContext = {
     items: Array<ContextItem>;
 };
 
+export type SessionDiagnostic = {
+    level: 'info' | 'warning' | 'error';
+    message: string;
+};
+
 export type SessionStats = {
     sessionId: string;
     sessionFile: string | null;
@@ -2642,6 +2647,7 @@ export type SessionStats = {
     streaming: boolean;
     waitingForAnswer: boolean;
     cwd: string;
+    diagnostics: Array<SessionDiagnostic>;
 };
 
 export type SessionTree = {

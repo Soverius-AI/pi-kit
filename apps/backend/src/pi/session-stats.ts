@@ -20,7 +20,7 @@ function contextOf(session: AgentSession, lookup: WindowLookup): Pick<SessionSta
 }
 
 /** `/session`, the composer's token meter and the status bar. */
-export function sessionStats({ session, info, ui }: OpenThread, lookup: WindowLookup): SessionStats {
+export function sessionStats({ session, info, ui, diagnostics }: OpenThread, lookup: WindowLookup): SessionStats {
   const stats = session.getSessionStats();
   const context = contextOf(session, lookup);
   const compaction = session.settingsManager.getCompactionSettings(session.model);
@@ -45,6 +45,7 @@ export function sessionStats({ session, info, ui }: OpenThread, lookup: WindowLo
     streaming: session.isStreaming,
     waitingForAnswer: ui.size > 0,
     cwd: info.cwd,
+    diagnostics,
   };
 }
 
