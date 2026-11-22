@@ -84,7 +84,15 @@ before(async () => {
     'the desktop renderer',
     60_000,
   );
-  await page.waitForSelector('pk-root .pk-shell');
+  try {
+    await page.waitForSelector('pk-root .pk-shell');
+  } catch (error) {
+    for (const name of ['main.log', 'service.log', 'backend.log']) {
+      const file = join(world.data, 'logs', name);
+      console.error(`--- ${name}\n${existsSync(file) ? readFileSync(file, 'utf8').slice(-12000) : '(missing)'}`);
+    }
+    throw error;
+  }
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
       .find((w) => w.webContents.getURL().startsWith('app://pi-kit'))
