@@ -35,7 +35,12 @@ export class RoomsService {
   }
 
   async create(input: CreateRoom, now = Date.now()): Promise<Room> {
-    const start = input.threadId ? await this.start(input.threadId) : undefined;
+    const start = input.threadId
+      ? await this.start(input.threadId)
+      : !input.repository && input.projectFolder
+        ? await this.startIn(input.projectFolder, input.title)
+        : undefined;
+    if (start && !input.threadId) await this.meta.touchWorkspace(start.root);
     const repository = start?.repository ?? input.repository ?? '';
     const baseCommit = start?.baseCommit ?? input.baseCommit ?? '';
     const folder = start?.root ?? (await this.chooseClone(repository, baseCommit, input.projectFolder));
@@ -43,16 +48,17 @@ export class RoomsService {
       throw new ConflictException(
         `No project on this computer is a clone of ${repository} with commit ${baseCommit.slice(0, 7)}. Open one in pi-kit and fetch, then try again.`,
       );
+    const id = randomUUID();
     let stage: string | null = null;
     if (input.playbook) {
       try {
-        stage = this.playbooks.load(folder, input.playbook).config.stages[0] ?? null;
+        stage = this.playbooks.load(this.playbooks.place(folder, id), input.playbook).config.stages[0] ?? null;
       } catch (error) {
         throw new ConflictException(error instanceof Error ? error.message : String(error));
       }
     }
     const room = await this.rooms.insert({
-      id: randomUUID(),
+      id,
       title: input.title,
       repository,
       baseCommit,
@@ -63,6 +69,7 @@ export class RoomsService {
       stage,
       createdAt: now,
     });
+    this.playbooks.place(folder, room.id);
     if (input.playbook) await this.rooms.setMode(room.id, 'assisted');
     return room;
   }
@@ -77,7 +84,7 @@ export class RoomsService {
       : query.baseCommit
         ? (await RepositoryIdentity.clones(this.meta, query.repository, query.baseCommit))[0]?.folder
         : undefined;
-    return folder ? this.playbooks.list(folder) : [];
+    return folder ? this.playbooks.list(this.playbooks.place(folder)) : [];
   }
 
   async clones(repository: string, baseCommit: string): Promise<RoomClone[]> {
@@ -105,13 +112,16 @@ export class RoomsService {
   private async start(threadId: string): Promise<RoomStartPreview & { root: string }> {
     const thread = await this.threads.get(threadId);
     if (!thread) throw new NotFoundException(NO_THREAD);
-    const folder = thread.worktreePath ?? thread.cwd;
+    return await this.startIn(thread.worktreePath ?? thread.cwd, (thread.title ?? '').slice(0, 200));
+  }
+
+  private async startIn(folder: string, title: string): Promise<RoomStartPreview & { root: string }> {
     const root = await toplevel(folder);
     const head = root ? await run(root, ['rev-parse', '--verify', 'HEAD']) : undefined;
     if (!root || !head?.ok) throw new ConflictException(NOT_A_REPOSITORY);
     const identity = await RepositoryIdentity.of(root);
     return {
-      title: (thread.title ?? '').slice(0, 200),
+      title,
       repository: identity?.repository ?? root,
       branch: await branchOf(root),
       baseCommit: head.stdout.trim(),

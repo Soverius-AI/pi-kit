@@ -187,6 +187,26 @@ export class PeerProxy {
     }
   }
 
+  async stream(
+    peerId: string,
+    path: string,
+    method: string,
+    body?: unknown,
+    options: { signal?: AbortSignal; headers?: Record<string, string> } = {},
+  ): Promise<IncomingMessage> {
+    PeerProxy.checked(path, method);
+    const peer = await this.peers.target(peerId);
+    const bytes = body === undefined ? undefined : Buffer.from(JSON.stringify(body));
+    return await this.fetch(peer, undefined, {
+      path,
+      method,
+      headers: { ...(bytes ? { 'content-type': 'application/json' } : {}), ...options.headers },
+      body: bytes,
+      signal: options.signal,
+      replayable: true,
+    });
+  }
+
   async projects(peerId: string, deviceId?: string, signal?: AbortSignal): Promise<Workspace[]> {
     const peer = await this.peers.target(peerId, deviceId);
     const response = await this.fetch(peer, deviceId, {

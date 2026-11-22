@@ -8,7 +8,9 @@ import type {
   RoomAction,
   RoomEvent,
   RoomLeadState,
+  RoomLive,
   RoomMemoryEntry,
+  RoomRun,
   RoomTask,
   RoomTaskQuestion,
   RoomWorkerCandidate,
@@ -92,6 +94,8 @@ describe('RoomView', () => {
     sending: signal(false),
     leadThreadId: signal<string | null>(null),
     projectFolder: signal<string | null>('/srv/pi-kit'),
+    folder: signal<string | null>('/data/rooms/a6f1d2c3'),
+    archive: vi.fn(async () => true),
     mode: signal<'supervised' | 'assisted'>('supervised'),
     paused: signal(false),
     rehearsal: signal(false),
@@ -107,10 +111,14 @@ describe('RoomView', () => {
         { key: '6', fresh: false },
       ],
     })),
-    playbookChoices: signal<{ name: string; path: string; error?: string | null }[] | undefined>(undefined),
+    playbookChoices: signal<
+      { name: string; path: string; origin?: 'room' | 'repository'; error?: string | null }[] | undefined
+    >(undefined),
     stage: signal<string | null>(null),
     stages: signal<string[]>([]),
     memory: signal<RoomMemoryEntry[]>([]),
+    runs: signal<RoomRun[]>([]),
+    live: signal<RoomLive[]>([]),
     pendingActions: signal<RoomAction[]>([]),
     decide: vi.fn(async () => undefined),
     update: vi.fn(async () => undefined),
@@ -152,7 +160,7 @@ describe('RoomView', () => {
 
   it('shows the room, the shared summary and an invitation to ask the lead', () => {
     const { el } = render();
-    expect(el.querySelector('h1')?.textContent?.trim()).toBe('Watcher fix on Linux');
+    expect(el.querySelector('[data-testid=room-meta]')?.textContent).toContain('github.com/acme/pi-kit');
     expect(el.querySelector('[data-testid=room-summary]')?.textContent).toContain('Run the watcher tests on Linux.');
     expect(el.querySelector('[data-testid=room-folder]')?.textContent).toContain('/srv/pi-kit');
     expect(el.querySelector('[data-testid=room-empty]')).not.toBeNull();
@@ -443,7 +451,7 @@ describe('RoomView', () => {
     it('says where playbooks go when the folder has none, and asks the lead to write one', () => {
       store.playbookChoices.set([]);
       const { el } = render();
-      expect(el.querySelector('[data-testid=room-playbook-hint]')?.textContent).toContain('room.yaml');
+      expect(el.querySelector('[data-testid=room-playbook-hint]')?.textContent).toContain('room’s own folder');
       pick(el, 'ask-lead');
       expect(post).toHaveBeenCalledWith(expect.stringContaining('room_playbook_guide'), 'lead');
       expect(store.update).not.toHaveBeenCalled();
@@ -612,10 +620,21 @@ describe('RoomView', () => {
       name: 'pr-review',
       description: 'Review pull requests.',
       folder: '.pi/skills/pr-review',
+      origin: 'repository',
       skill: '---\nname: pr-review\n---\nReview them.',
       yaml: 'stages: [review, verdict]\n',
       config: {
-        participants: [{ role: 'security', agent: { machine: 'pi-kit B' }, instructions: 'Look for secrets.' }],
+        lead: { model: 'local/gemma' },
+        workers: { thinking: 'medium' },
+        participants: [
+          {
+            role: 'security',
+            agent: { machine: 'pi-kit B' },
+            instructions: 'Look for secrets.',
+            model: 'anthropic/claude-opus-5-5',
+            thinking: 'high',
+          },
+        ],
         tools: {
           open_prs: { run: ['gh', 'pr', 'list'], description: 'Open pull requests.' },
           show: { run: ['gh', 'pr', 'view', '{pr}'], description: '' },
@@ -636,6 +655,7 @@ describe('RoomView', () => {
     });
     const { fixture, el } = render();
     expect(el.querySelector('[data-testid=room-playbook-panel]')).toBeNull();
+    expect(el.querySelector('[data-testid=room-side-trigger]')?.textContent).toContain('every 5m · open_prs');
     (el.querySelector('[data-testid=room-playbook-open]') as HTMLButtonElement).click();
     fixture.detectChanges();
     const panel = el.querySelector('[data-testid=room-playbook-panel]') as HTMLElement;
@@ -645,6 +665,11 @@ describe('RoomView', () => {
     );
     expect(panel.querySelector('[data-testid=room-playbook-participant]')?.textContent).toContain(
       'pi-kit B is offline.',
+    );
+    expect(panel.querySelector('[data-testid=room-playbook-lead-model]')?.textContent).toBe('local/gemma');
+    expect(panel.querySelector('[data-testid=room-playbook-workers-model]')?.textContent).toContain('thinking');
+    expect(panel.querySelector('[data-testid=room-playbook-participant-model]')?.textContent).toContain(
+      'anthropic/claude-opus-5-5 · thinking',
     );
     expect(panel.querySelector('[data-name=comment]')?.textContent).toContain('2 of 5 today');
 
@@ -674,7 +699,224 @@ describe('RoomView', () => {
     (panel.querySelector('[data-testid=room-playbook-change]') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect((el.querySelector('[data-testid=room-draft]') as HTMLTextAreaElement).value).toBe('Change the playbook: ');
+    expect(el.querySelector('[data-testid=room-playbook-panel]')).toBeNull();
     store.playbook.set(null);
     store.playbookDetail.set(undefined);
+  });
+
+  it('keeps the room’s controls in a bar that does not scroll, and renames and archives from its menu', async () => {
+    const running: RoomTask = {
+      id: 'd1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f',
+      roomId: room.id,
+      title: 'Add c',
+      brief: 'Create c.txt.',
+      acceptance: '',
+      state: 'running',
+      environmentId: 'desk',
+      attempt: 1,
+      base: 'a'.repeat(40),
+      branch: null,
+      head: null,
+      report: null,
+      files: [],
+      questions: [],
+      review: 'none',
+      reviewRounds: 0,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    store.tasks.set([running]);
+    const { fixture, el } = render();
+    const bar = el.querySelector('[data-testid=room-bar]') as HTMLElement;
+    expect(el.querySelector('.pk-room-scroll')?.contains(bar)).toBe(false);
+    expect(bar.querySelector('[data-testid=room-mode]')).not.toBeNull();
+
+    (bar.querySelector('[data-testid=room-rename]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const title = bar.querySelector('[data-testid=room-title-input]') as HTMLInputElement;
+    expect(title.value).toBe('Watcher fix on Linux');
+    title.value = '  Watcher fix everywhere ';
+    title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    fixture.detectChanges();
+    expect(store.update).toHaveBeenLastCalledWith({ title: 'Watcher fix everywhere' });
+    expect(bar.querySelector('[data-testid=room-title-input]')).toBeNull();
+
+    (bar.querySelector('[data-testid=room-archive]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const dialog = el.querySelector('[data-testid=room-archive-dialog]') as HTMLElement;
+    expect(dialog.querySelector('[data-testid=room-archive-running]')?.textContent).toContain('1 task(s)');
+    (dialog.querySelector('[data-testid=room-archive-leave]') as HTMLInputElement).dispatchEvent(new Event('change'));
+    (dialog.querySelector('[data-testid=room-archive-confirm]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(store.archive).toHaveBeenCalledWith(false);
+    expect(el.querySelector('[data-testid=room-archive-dialog]')).toBeNull();
+    store.tasks.set([]);
+  });
+
+  it('shows runs like a workflow’s: the list in the side panel, and each run with its trigger, steps and output', () => {
+    const run = (number: number, state: RoomRun['state'], steps: RoomRun['steps']): RoomRun => ({
+      id: `run-${number}`,
+      roomId: room.id,
+      number,
+      cause: number === 2 ? 'poll' : 'owner',
+      trigger: number === 2 ? 'prs' : null,
+      title: number === 2 ? '1 new: 7' : 'Which pull requests wait?',
+      playbook: 'pr-review',
+      stage: 'review',
+      state,
+      summary: number === 2 ? null : 'Two wait on you.',
+      startedAt: 1_000,
+      endedAt: state === 'running' ? null : 15_000,
+      steps,
+    });
+    store.runs.set([
+      run(2, 'running', [
+        {
+          seq: 1,
+          kind: 'tool',
+          name: 'show',
+          detail: 'gh pr view 7',
+          state: 'done',
+          output: 'PR 7: Fix the watcher',
+          startedAt: 1_000,
+          endedAt: 3_000,
+        },
+        {
+          seq: 2,
+          kind: 'output',
+          name: 'comment',
+          detail: 'gh pr comment 7',
+          state: 'waiting',
+          output: null,
+          startedAt: 3_000,
+          endedAt: null,
+        },
+      ]),
+      run(1, 'done', []),
+    ]);
+    const { fixture, el } = render();
+    const rows = [...el.querySelectorAll<HTMLButtonElement>('[data-testid=room-side-run]')];
+    expect(rows.map((row) => [row.getAttribute('data-state'), row.querySelector('.title')?.textContent])).toEqual([
+      ['running', '1 new: 7'],
+      ['done', 'Which pull requests wait?'],
+    ]);
+    rows[1]?.click();
+    fixture.detectChanges();
+    const dialog = el.querySelector('[data-testid=room-runs-dialog]') as HTMLElement;
+    const detail = () => dialog.querySelector('[data-testid=room-run-detail]') as HTMLElement;
+    expect(detail().querySelector('h3')?.textContent).toBe('Which pull requests wait?');
+    expect(detail().querySelector('[data-testid=room-run-no-steps]')).not.toBeNull();
+    expect(detail().querySelector('[data-testid=room-run-summary]')?.textContent?.trim()).toBe('Two wait on you.');
+    expect(detail().querySelector('.facts')?.textContent).toContain('14s');
+
+    dialog.querySelectorAll<HTMLButtonElement>('[data-testid=room-run]')[0]?.click();
+    fixture.detectChanges();
+    expect(detail().querySelector('.facts')?.textContent).toContain('New items · prs');
+    const steps = [...detail().querySelectorAll('[data-testid=step]')];
+    expect(steps.map((step) => [step.querySelector('.name')?.textContent, step.getAttribute('data-state')])).toEqual([
+      ['show', 'done'],
+      ['comment', 'waiting'],
+    ]);
+    expect(steps[0]?.querySelector('.tag')?.textContent).toBe('Tool');
+    expect(steps[0]?.querySelector('[data-testid=step-output]')?.textContent).toBe('PR 7: Fix the watcher');
+    expect(steps[0]?.querySelector('.duration')?.textContent).toBe('2s');
+    expect(steps[1]?.querySelector('pk-run-status')?.getAttribute('aria-label')).toBe('Waiting for you');
+    store.runs.set([]);
+  });
+
+  it('shows what each participant is writing as it comes, with the tool it is using, in place of Thinking', () => {
+    const speaker = (id: string, actor: RoomLive['actor'], more: Partial<RoomLive>): RoomLive => ({
+      id,
+      actor,
+      role: null,
+      taskId: null,
+      environmentId: null,
+      text: '',
+      reset: false,
+      activity: null,
+      done: false,
+      ...more,
+    });
+    lead.set('working');
+    const { fixture, el } = render();
+    expect(el.querySelector('[data-testid=room-lead-working] .thinking')).not.toBeNull();
+    store.live.set([
+      speaker('l1', 'lead', { text: 'Two pull requests wait' }),
+      speaker('l2', 'consultant', { role: 'security', environmentId: 'desk', activity: 'grep' }),
+      speaker('l3', 'worker', { environmentId: 'desk', text: 'Adding b.txt' }),
+    ]);
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid=room-lead-working]')).toBeNull();
+    const live = [...el.querySelectorAll<HTMLElement>('[data-testid=room-live]')];
+    expect(live.map((row) => row.getAttribute('data-actor'))).toEqual(['lead', 'consultant', 'worker']);
+    expect(live[0]?.querySelector('[data-testid=room-live-text]')?.textContent).toBe('Two pull requests wait');
+    expect(live[0]?.querySelector('pk-avatar')?.getAttribute('aria-label')).toBe('Lead · pi-kit A');
+    expect(live[1]?.querySelector('b')?.textContent).toBe('security');
+    expect(live[1]?.querySelector('[data-testid=room-live-activity]')?.textContent?.trim()).toBe('using grep');
+    expect(live[1]?.querySelector('[data-testid=room-live-text]')).toBeNull();
+    expect(live[2]?.querySelector('pk-avatar')?.getAttribute('aria-label')).toBe('Worker · pi-kit B');
+    store.live.set([]);
+    lead.set('idle');
+  });
+
+  it('lists tasks by what they need, the room’s own folder and its playbooks in a side panel that can be hidden', () => {
+    const task = (id: string, title: string, state: RoomTask['state']): RoomTask => ({
+      id,
+      roomId: room.id,
+      title,
+      brief: '',
+      acceptance: '',
+      state,
+      environmentId: 'desk',
+      attempt: 1,
+      base: 'a'.repeat(40),
+      branch: null,
+      head: null,
+      report: null,
+      files: [],
+      questions: [],
+      review: 'none',
+      reviewRounds: 0,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    store.tasks.set([
+      task('t1', 'Add b', 'proposed'),
+      task('t2', 'Add c', 'running'),
+      task('t3', 'Add d', 'integrated'),
+    ]);
+    store.playbookChoices.set([
+      { name: 'triage', path: '/data/rooms/a6f1d2c3/playbooks/triage/SKILL.md', origin: 'room' },
+      { name: 'pr-review', path: '/srv/pi-kit/.pi/skills/pr-review/SKILL.md', origin: 'repository' },
+    ]);
+    const { fixture, el } = render();
+    const side = el.querySelector('[data-testid=room-side]') as HTMLElement;
+    expect(el.querySelector('.pk-room-scroll')?.contains(side)).toBe(false);
+    expect([...side.querySelectorAll('[data-testid=room-side-tasks] h4')].map((h) => h.textContent?.trim())).toEqual([
+      'Needs you',
+      'Running',
+      'Done',
+    ]);
+    expect(
+      [...side.querySelectorAll('[data-testid=room-side-task]')].map((row) => row.getAttribute('data-state')),
+    ).toEqual(['proposed', 'running', 'integrated']);
+    expect(side.querySelector('[data-testid=room-own-folder]')?.textContent).toContain('/data/rooms/a6f1d2c3');
+    expect(
+      [...side.querySelectorAll('[data-testid=room-side-playbook]')].map((node) => [
+        node.getAttribute('data-origin'),
+        node.textContent?.trim(),
+      ]),
+    ).toEqual([
+      ['room', 'triage'],
+      ['repository', 'pr-review'],
+    ]);
+    expect(side.querySelector('[data-testid=room-side-no-triggers]')).not.toBeNull();
+    (el.querySelector('[data-testid=room-side-toggle]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid=room-side]')).toBeNull();
+    (el.querySelector('[data-testid=room-side-toggle]') as HTMLButtonElement).click();
+    store.tasks.set([]);
+    store.playbookChoices.set(undefined);
   });
 });

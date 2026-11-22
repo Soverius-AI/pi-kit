@@ -9,7 +9,9 @@ A room playbook turns a room into a repeatable workflow without code in pi-kit: 
 `room.yaml` borrows the vocabulary of GitHub Agentic Workflows where the meaning is the same: `on` for what wakes the lead, `tools` for what it may read with, `safe-outputs` for everything that writes, each a draft the owner approves.
 
 ```yaml
-participants: [{ role, agent: { machine | agent }, instructions }]
+lead: { model, thinking }
+workers: { model, thinking }
+participants: [{ role, agent: { machine | agent }, instructions, model, thinking }]
 tools: { name: { run: [argv…] | mcp: { server, tool, args } | mail: {…} | calendar: {…}, description } }
 safe-outputs: { name: { <one of the same>, description, mode: draft|auto, max: <per day> } }
 vars: { name: value }
@@ -19,6 +21,8 @@ on:
 stages: [names]
 gates: { stage: owner|lead }
 ```
+
+A playbook written for one room lives in that room's own folder instead: `<dataDir>/rooms/<roomId>/playbooks/<name>/`, with the same two files. Every room gets this folder when it starts. A playbook the lead proposes that does not exist yet is written there, so it stays out of the repository; a playbook of the project is changed where it is. The room's folder is looked at first, then the project's skill folders, and archiving a room keeps its folder.
 
 `GET /api/rooms/playbooks` lists playbooks (with parse errors), and `CreateRoom.playbook` starts a room with one; such rooms start Assisted at the first stage.
 
@@ -38,6 +42,28 @@ Drafts and gated stages are `room_actions` the owner approves or discards (`POST
 Triggers run on the 15 s tick while the room is not paused. `on.schedule` wakes the lead every interval or at matching cron minutes (local time). `on.poll` runs a tool when due (at least 30 s); its output must be JSON (an array of items); an item is new when its `key` was not seen (`room_trigger_seen`), so `[number, headRefOid]` re-triggers on a new push. New items (at most five per firing) wake the lead and reset its agent-turn counter.
 
 Consultant answers are room events with actor `consultant`, a `role` and the machine that answered. Consultant threads stay out of the thread list, as lead and worker threads do.
+
+## Models and thinking effort
+
+Without settings every participant runs on the host's default model and thinking effort; the owner can change the lead's with the picker in the room's composer, which shows the effort for models that think. A playbook can set both: `lead` and `workers` at the top, and `model` and `thinking` on a participant. `model` is `provider/id`; `thinking` is one of pi's levels. The lead's are applied when the playbook is first briefed and again when it changes, so a later choice in the picker holds until then; a consultant's and a worker's when their thread starts a turn. A model that is not available leaves the thread on the default and shows as an error in the playbook's checks; an effort on a model that does not think is a warning. The settings apply to threads on the room's host: a participant or worker on another instance, and an outside agent, keep their own.
+
+## Runs
+
+Every turn of the lead is a run (`room_runs`): what woke it (the owner, a schedule, a poll, an approval, a stage change or an agent), the stage it started in, how it ended and the lead's answer. While it runs, each `room_call`, `room_consult` and `room_advance` is a step (`room_run_steps`) with its state, the call or question, the output and when it started and ended. A drafted safe output or a gated stage is a step that waits; it settles when the owner approves or discards the action, also after the run ended. `GET /api/rooms/:id/runs` lists the last fifty, and the room's stream sends a `run` line on every change. Runs left open by a restart are marked stopped.
+
+The room shows them the way a CI service shows workflow runs: the playbook's overview is a graph from what wakes the lead, through the lead, to the stages with their state, and the Runs tab lists each run with its steps as a log that opens to the output.
+
+## Live text
+
+What the lead, a consultant or a worker writes reaches the room while it is written. Their turns all run through `AguiService.runHeadless`, which now hands every event of the run to an observer; `RoomLive` turns the text and tool events into `live` lines of the room's stream, a few times a second: the text to append (or the whole text after a reset), the tool being called, and an end. A piece that would show a secret is sent as the whole redacted text instead. A client that connects in the middle gets what each participant has written so far. The final text still arrives as the room event or the task's report; the live text is never stored.
+
+A worker or consultant on a paired instance streams over A2A itself. While it runs, its pi-kit publishes what it writes as chunks of an artifact named `live` on the task (`append` for more text, a first chunk without it after a reset, `lastChunk` at the end, and the tool in use in the artifact's room-extension metadata), four times a second. The host subscribes to the task (`SubscribeToTask`, Server-Sent Events through the peer connection) and relays the chunks into the room's stream; after a question was answered it subscribes again. The chunks never enter the push outbox, which carries status only, and the `live` artifact is left out of the stored task and of the result. An outside A2A agent that streams its task gets the same treatment: text chunks of its artifacts show as live text while the task runs. An outside agent asked as a consultant still answers in one piece, because that call waits for the whole answer.
+
+## Without a window
+
+Rooms and playbooks run in the backend, so they work on a server with no desktop app and no browser: the triggers tick, the lead and the consultants run, and runs are recorded. `pi-kit rooms` does there what the room view does: turn rooms on, start a room from a folder with a playbook, show what waits, approve or discard drafts, stages, playbook changes and tasks, answer questions, fire a trigger, read the runs with their steps, and follow a room live (see [Server and CLI](../docs/server.md)). `POST /api/rooms` takes a `projectFolder` alone for this: a git repository on the host, which becomes a project.
+
+What still needs a person at a screen: signing an MCP server in with OAuth the first time, and the local mail and calendar sources, which use the Mac's own apps and permissions.
 
 ## Trust
 

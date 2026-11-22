@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger, NotFoundException, type OnModuleInit } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, type OnModuleInit, Optional } from '@nestjs/common';
 import type {
   PlaybookSummary,
   PostRoomMessage,
@@ -9,6 +9,7 @@ import type {
   RoomTaskAnswer,
   RoomTaskQuestion,
   UpdateRoom,
+  PlaybookAgentSettings,
 } from '@pi-kit/protocol';
 import { AguiService } from '../agui/agui.service';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
@@ -20,6 +21,8 @@ import { RoomAgents } from './room-agents';
 import { RoomBus } from './room-bus';
 import { RoomPlaybookFiles } from './room-playbook-files.service';
 import { RoomQuestions, type WorkerAnswers } from './room-questions';
+import { RoomLive } from './room-live';
+import { RoomRuns, type RunCause } from './room-runs';
 
 export const NO_ROOM = 'No room with this id.';
 export const LEAD_BUSY = 'The lead is still answering. Send again when it is done, or post without prompting it.';
@@ -29,12 +32,13 @@ export const NO_LEAD_QUESTION = 'The lead asks nothing with this id.';
 export interface LeadPlaybooks {
   briefing(found: FoundRoom): Promise<string | undefined>;
   extras(found: FoundRoom): Promise<Pick<RoomDetail, 'stages' | 'actions' | 'memory'>>;
+  settings(found: FoundRoom, who: 'lead'): Promise<PlaybookAgentSettings | undefined>;
 }
 
 @Injectable()
 export class RoomLeadService implements OnModuleInit {
   static readonly AGENT_TURN_LIMIT = 12;
-  private readonly inbox = new Map<string, string[]>();
+  private readonly inbox = new Map<string, { text: string; cause: RunCause }[]>();
   private readonly briefed = new Set<string>();
   /** Rooms whose playbook changed since the lead's last turn: the next prompt carries the new briefing. */
   private readonly rebrief = new Set<string>();
@@ -53,6 +57,8 @@ export class RoomLeadService implements OnModuleInit {
     private readonly consults: RoomPlaybooksRepository,
     private readonly files: RoomPlaybookFiles,
     private readonly composio: ComposioConnectService,
+    private readonly live: RoomLive,
+    @Optional() private readonly runs?: RoomRuns,
   ) {}
 
   setPlaybooks(playbooks: LeadPlaybooks): void {
@@ -79,6 +85,7 @@ export class RoomLeadService implements OnModuleInit {
       lead: this.state(roomId),
       leadThreadId: found.leadThreadId ?? (await this.prepare(roomId).catch(() => null)),
       projectFolder: found.projectFolder,
+      folder: this.files.roomFolder(roomId) ?? null,
       mode: found.mode,
       paused: found.paused,
       rehearsal: found.rehearsal,
@@ -108,7 +115,7 @@ export class RoomLeadService implements OnModuleInit {
     });
     if (message.route === 'lead') {
       await this.rooms.setAgentTurns(roomId, 0);
-      this.prompt(roomId, message.text, message.images ?? []);
+      this.prompt(roomId, message.text, message.images ?? [], { kind: 'owner', title: message.text });
     }
     return event;
   }
@@ -116,18 +123,27 @@ export class RoomLeadService implements OnModuleInit {
   async roomPlaybooks(roomId: string): Promise<PlaybookSummary[]> {
     const found = await this.rooms.get(roomId);
     if (!found) throw new NotFoundException(NO_ROOM);
-    return this.files.list(await this.agents.projectFolder(found));
+    return this.files.list(this.files.place(await this.agents.projectFolder(found), roomId));
   }
 
   async update(roomId: string, change: UpdateRoom): Promise<RoomDetail> {
     const found = await this.rooms.get(roomId);
     if (!found) throw new NotFoundException(NO_ROOM);
+    if (change.title !== undefined && change.title !== found.room.title) {
+      await this.rooms.setTitle(roomId, change.title);
+      await this.bus.record(roomId, {
+        kind: 'note',
+        actor: 'coordinator',
+        text: `You renamed the room to “${change.title}”.`,
+      });
+    }
     if (change.playbook !== undefined && change.playbook !== found.playbook) {
       if (this.state(roomId) === 'working') throw new ConflictException(LEAD_BUSY);
       let stage: string | null = null;
       if (change.playbook)
         stage =
-          this.files.loadOrConflict(await this.agents.projectFolder(found), change.playbook).config.stages[0] ?? null;
+          this.files.loadOrConflict(this.files.place(await this.agents.projectFolder(found), roomId), change.playbook)
+            .config.stages[0] ?? null;
       await this.rooms.setPlaybook(roomId, change.playbook, stage);
       if (change.playbook) await this.rooms.setMode(roomId, 'assisted');
       this.rebrief.add(roomId);
@@ -175,6 +191,7 @@ export class RoomLeadService implements OnModuleInit {
     const detail = await this.detail(roomId);
     this.bus.emit(roomId, {
       type: 'room',
+      title: detail.room.title,
       mode: detail.mode,
       paused: detail.paused,
       rehearsal: detail.rehearsal,
@@ -185,13 +202,28 @@ export class RoomLeadService implements OnModuleInit {
     return detail;
   }
 
+  async found(roomId: string): Promise<FoundRoom> {
+    const found = await this.rooms.get(roomId);
+    if (!found) throw new NotFoundException(NO_ROOM);
+    return found;
+  }
+
+  async archive(roomId: string, now = Date.now()): Promise<void> {
+    const found = await this.rooms.get(roomId);
+    if (!found) throw new NotFoundException(NO_ROOM);
+    if (found.leadThreadId && this.state(roomId) === 'working')
+      await this.sessions.abort(found.leadThreadId).catch(() => undefined);
+    this.inbox.delete(roomId);
+    await this.rooms.archive(roomId, now);
+  }
+
   rebriefNext(roomId: string): void {
     this.rebrief.add(roomId);
   }
 
-  async nudge(roomId: string, text: string): Promise<void> {
+  async nudge(roomId: string, text: string, cause: RunCause = { kind: 'agent', title: text }): Promise<void> {
     const queue = this.inbox.get(roomId) ?? [];
-    queue.push(text);
+    queue.push({ text, cause });
     this.inbox.set(roomId, queue);
     await this.drain(roomId);
   }
@@ -214,16 +246,21 @@ export class RoomLeadService implements OnModuleInit {
       this.bus.emit(roomId, { type: 'room', mode: found.mode, paused: true });
       return;
     }
-    const text = this.inbox.get(roomId)?.shift();
-    if (!text) return;
+    const next = this.inbox.get(roomId)?.shift();
+    if (!next) return;
     await this.rooms.setAgentTurns(roomId, found.agentTurns + 1);
-    this.prompt(roomId, text);
+    this.prompt(roomId, next.text, [], next.cause);
   }
 
-  prompt(roomId: string, text: string, images: readonly RoomImage[] = []): boolean {
+  prompt(
+    roomId: string,
+    text: string,
+    images: readonly RoomImage[] = [],
+    cause: RunCause = { kind: 'owner', title: text },
+  ): boolean {
     if (this.state(roomId) === 'working') return false;
     this.setState(roomId, 'working');
-    void this.answer(roomId, text, images);
+    void this.answer(roomId, text, images, cause);
     return true;
   }
 
@@ -248,10 +285,14 @@ export class RoomLeadService implements OnModuleInit {
     return await this.createLead(roomId, found.room.title, await this.agents.projectFolder(found));
   }
 
-  private async answer(roomId: string, text: string, images: readonly RoomImage[]): Promise<void> {
+  private async answer(roomId: string, text: string, images: readonly RoomImage[], cause: RunCause): Promise<void> {
+    let outcome: { state: 'done' | 'failed' | 'stopped'; summary: string | null } = { state: 'failed', summary: null };
+    let runId: string | undefined;
+    const speaking = this.live.turn({ roomId, actor: 'lead' });
     try {
       const found = await this.rooms.get(roomId);
       if (!found) return;
+      runId = await this.runs?.start(roomId, cause, found);
       const cwd = await this.agents.projectFolder(found);
       const leadId = found.leadThreadId ?? (await this.prepare(roomId));
       const first =
@@ -259,6 +300,7 @@ export class RoomLeadService implements OnModuleInit {
       this.briefed.add(roomId);
       const rebrief = this.rebrief.delete(roomId) && !first;
       const briefing = first || rebrief ? await this.playbooks?.briefing(found) : undefined;
+      if (first || rebrief) await this.agents.configure(leadId, await this.playbooks?.settings(found, 'lead'));
       const prompt = first
         ? this.firstPrompt(
             found.room.title,
@@ -275,7 +317,7 @@ export class RoomLeadService implements OnModuleInit {
               text,
             ].join('\n\n')
           : text;
-      let run = await this.agui.runHeadless(leadId, prompt, { cwd, images });
+      let run = await this.agui.runHeadless(leadId, prompt, { cwd, images, observe: speaking.observe });
       while (run.status === 'interrupted') {
         const questions = RoomQuestions.fromDialogs(this.sessions.pendingDialogs(leadId));
         if (questions.length === 0) break;
@@ -283,10 +325,14 @@ export class RoomLeadService implements OnModuleInit {
         if (!answers) {
           await this.sessions.abort(leadId).catch(() => undefined);
           await this.bus.record(roomId, { kind: 'note', actor: 'coordinator', text: 'The lead’s turn was stopped.' });
+          outcome = { state: 'stopped', summary: null };
           this.setState(roomId, 'idle');
           return;
         }
-        run = await this.agui.resumeHeadless(leadId, RoomQuestions.toResume(answers), { cwd });
+        run = await this.agui.resumeHeadless(leadId, RoomQuestions.toResume(answers), {
+          cwd,
+          observe: speaking.observe,
+        });
       }
       if (run.status === 'interrupted') {
         await this.sessions.abort(leadId).catch(() => undefined);
@@ -295,6 +341,7 @@ export class RoomLeadService implements OnModuleInit {
           actor: 'coordinator',
           text: 'The lead stopped at a question nobody could answer. Its turn was cancelled.',
         });
+        outcome = { state: 'stopped', summary: null };
         this.setState(roomId, 'idle');
         return;
       }
@@ -307,9 +354,11 @@ export class RoomLeadService implements OnModuleInit {
               ? 'The lead’s turn was stopped.'
               : `The lead could not answer: ${run.error ?? 'pi reported an error.'}`,
         });
+        outcome = { state: run.status === 'aborted' ? 'stopped' : 'failed', summary: run.error ?? null };
         this.setState(roomId, run.status === 'aborted' ? 'idle' : 'error');
         return;
       }
+      speaking.end();
       for (const app of await this.agents.apps(leadId))
         await this.bus.record(roomId, { kind: 'app', actor: 'lead', text: app.tool ?? app.serverId, app });
       const reply = await this.agents.lastReply(leadId);
@@ -319,8 +368,10 @@ export class RoomLeadService implements OnModuleInit {
           ? { kind: 'message', actor: 'lead', text: reply }
           : { kind: 'note', actor: 'coordinator', text: 'The lead finished without a written answer.' },
       );
+      outcome = { state: 'done', summary: reply ?? null };
       this.setState(roomId, 'idle');
     } catch (error) {
+      outcome = { state: 'failed', summary: error instanceof Error ? error.message : String(error) };
       this.logger.warn(`The lead of room ${roomId} failed: ${error instanceof Error ? error.message : String(error)}`);
       await this.bus
         .record(roomId, {
@@ -330,6 +381,12 @@ export class RoomLeadService implements OnModuleInit {
         })
         .catch(() => undefined);
       this.setState(roomId, 'error');
+    } finally {
+      speaking.end();
+      if (runId) {
+        const stage = (await this.rooms.get(roomId).catch(() => undefined))?.stage ?? null;
+        await this.runs?.end(roomId, runId, outcome.state, outcome.summary, stage).catch(() => undefined);
+      }
     }
   }
 
@@ -342,9 +399,11 @@ export class RoomLeadService implements OnModuleInit {
       text: `The lead needs you: ${RoomLeadService.short(questions[0]?.title ?? 'it asks a question.')}`,
     });
     this.bus.emit(roomId, { type: 'lead', state: 'working', questions });
+    await this.runs?.waiting(roomId, true);
     try {
       return await waiting;
     } finally {
+      await this.runs?.waiting(roomId, false).catch(() => undefined);
       await this.rooms.setLeadQuestions(roomId, []).catch(() => undefined);
       this.bus.emit(roomId, { type: 'lead', state: 'working', questions: [] });
     }

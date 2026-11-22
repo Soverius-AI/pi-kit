@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { Readable } from 'node:stream';
 import { join } from 'node:path';
 import { ConflictException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -39,6 +40,7 @@ import { RoomA2aTaskStore } from './room-a2a.task-store';
 import { RoomOutbox } from './room-outbox';
 import { RoomAgents } from './room-agents';
 import { RoomBus } from './room-bus';
+import { RoomLive } from './room-live';
 import { RoomDirectoryService } from './room-directory.service';
 import { RoomEnvironments } from './room-environments';
 import { RoomQuestions } from './room-questions';
@@ -79,6 +81,8 @@ let roomId: string;
 let work: (folder: string) => HeadlessRun;
 let offline: Set<string>;
 let asking: boolean;
+let speaking: string[];
+let speakingAfter: string[];
 const resumed = vi.fn();
 const workerPrompts: string[] = [];
 const prompt = vi.fn((_roomId: string, _text: string) => true);
@@ -133,6 +137,31 @@ const network = (self: () => Instance): PeerProxy =>
         return { status, body: { message: (error as Error).message } };
       }
       throw new Error(`no route ${path}`);
+    },
+    stream: async (
+      peerId: string,
+      _path: string,
+      _method: string,
+      body?: unknown,
+      options: { headers?: Record<string, string> } = {},
+    ) => {
+      if (offline.has(peerId)) throw new Error('connect ECONNREFUSED');
+      const target = instances.get(peerId) as Instance;
+      const headers = options.headers ?? {};
+      const answer = await target.a2a.serve(
+        self().id,
+        headers['a2a-version'],
+        headers['a2a-extensions'],
+        body as Record<string, unknown>,
+      );
+      const events = async function* () {
+        if (!(Symbol.asyncIterator in answer)) return;
+        for await (const event of answer) yield Buffer.from(formatSSEEvent(event));
+      };
+      return Object.assign(Readable.from(events()), {
+        statusCode: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      });
     },
   }) as unknown as PeerProxy;
 
@@ -287,14 +316,37 @@ const make = async (name: string, folder: string): Promise<Instance> => {
       path: undefined,
     })),
   } as unknown as ThreadsService;
-  const runHeadless = vi.fn(async (_id: string, text: string, options: { cwd: string }) => {
-    workerPrompts.push(text);
-    return asking ? ({ status: 'interrupted' } as HeadlessRun) : work(options.cwd);
-  });
-  const resumeHeadless = vi.fn(async (id: string, answers: unknown, options: { cwd: string }) => {
-    resumed(id, answers);
-    return work(options.cwd);
-  });
+  const runHeadless = vi.fn(
+    async (
+      _id: string,
+      text: string,
+      options: { cwd: string; observe?: (event: { type: string; delta?: string; toolCallName?: string }) => void },
+    ) => {
+      workerPrompts.push(text);
+      for (const piece of speaking) {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        if (piece.startsWith('tool:')) options.observe?.({ type: 'TOOL_CALL_START', toolCallName: piece.slice(5) });
+        else options.observe?.({ type: 'TEXT_MESSAGE_CONTENT', delta: piece });
+        await new Promise((resolve) => setTimeout(resolve, 320));
+      }
+      return asking ? ({ status: 'interrupted' } as HeadlessRun) : work(options.cwd);
+    },
+  );
+  const resumeHeadless = vi.fn(
+    async (
+      id: string,
+      answers: unknown,
+      options: { cwd: string; observe?: (event: { type: string; delta?: string }) => void },
+    ) => {
+      resumed(id, answers);
+      for (const piece of speakingAfter) {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        options.observe?.({ type: 'TEXT_MESSAGE_CONTENT', delta: piece });
+        await new Promise((resolve) => setTimeout(resolve, 320));
+      }
+      return work(options.cwd);
+    },
+  );
   const instance = { id: db.instanceId, name, db, rooms, meta, rows } as Instance;
   const sessions = {
     abort,
@@ -339,9 +391,10 @@ const make = async (name: string, folder: string): Promise<Instance> => {
     new RoomEnvironments(new InstanceRepository(db), client, instance.outside, peers),
     questions,
     instance.outside,
-    {} as RoomPlaybookService,
+    { settings: async () => undefined } as unknown as RoomPlaybookService,
     {} as RoomPlaybookEditor,
     { dataDir } as BackendConfig,
+    new RoomLive(instance.bus),
   );
   const a2aTasks = new A2aTasksRepository(db);
   const store = new RoomA2aTaskStore(a2aTasks);
@@ -358,7 +411,15 @@ const make = async (name: string, folder: string): Promise<Instance> => {
     store,
     sender,
     instance.outbox,
-    {} as RoomConsultant,
+    {
+      ask: async (request: { observe?: (event: { type: string; delta?: string }) => void }) => {
+        for (const piece of speaking) {
+          request.observe?.({ type: 'TEXT_MESSAGE_CONTENT', delta: piece });
+          await new Promise((resolve) => setTimeout(resolve, 320));
+        }
+        return 'No secrets found.';
+      },
+    } as unknown as RoomConsultant,
   );
   instance.a2a = new RoomA2aServer(instance.worker, store, sender, pushes, peers, new InstanceRepository(db));
   instance.restartA2a = () =>
@@ -388,6 +449,8 @@ beforeEach(async () => {
   outsideMode = 'done';
   offline = new Set();
   asking = false;
+  speaking = [];
+  speakingAfter = [];
   resumed.mockClear();
   workerPrompts.length = 0;
   lead.nudge.mockClear();
@@ -546,6 +609,41 @@ describe('room tasks on another machine', () => {
     expect((await desktop.rows.list()).map((row) => row.id)).toEqual([]);
     expect((await host.tasks.integrate(roomId, task.id)).state).toBe('integrated');
     expect(readFileSync(join(project, 'b.txt'), 'utf8')).toBe('b\nc\n');
+  });
+
+  it('shows what the worker on Desktop writes while it writes, through an A2A subscription, and none of it in the task it keeps', async () => {
+    speaking = ['Adding ', 'tool:write', 'b.txt now.'];
+    const lines: Extract<RoomStreamLine, { type: 'live' }>['live'][] = [];
+    host.bus.subscribe(roomId, (line) => {
+      if (line.type === 'live') lines.push(line.live);
+    });
+    const task = await propose();
+    await host.tasks.approveTask(roomId, task.id, desktop.id);
+    await settle(task.id);
+    expect(lines[0]).toMatchObject({
+      actor: 'worker',
+      taskId: task.id,
+      environmentId: desktop.id,
+      text: '',
+      done: false,
+    });
+    expect(lines.slice(1).map((line) => [line.text, line.reset, line.activity, line.done])).toEqual([
+      ['Adding ', true, null, false],
+      ['', false, 'write', false],
+      ['b.txt now.', false, null, false],
+      ['', false, null, true],
+    ]);
+    expect(new Set(lines.map((line) => line.id)).size).toBe(1);
+    expect((await host.rooms.task(task.id))?.report).toBe('Added b.txt on Desktop.');
+    const kept = await desktop.a2a.handle(host.id, '1.0', A2A_ROOM_EXTENSION, {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'GetTask',
+      params: { id: (await host.rooms.task(task.id))?.a2aTaskId },
+    });
+    const artifacts = (kept['result'] as { artifacts?: { artifactId: string }[] }).artifacts ?? [];
+    expect(artifacts.map((artifact) => artifact.artifactId)).not.toContain('live');
+    expect((await desktop.rooms.outbox()).length).toBe(0);
   });
 
   it('keeps the result on Desktop while the host is offline and delivers it when the host is back', async () => {
@@ -938,6 +1036,51 @@ describe('A2A streaming', () => {
     expect(bundle.raw?.length).toBeGreaterThan(0);
   });
 
+  it('streams what a consultant writes as chunks of a live artifact, then its answer', async () => {
+    speaking = ['No secrets', ' found.'];
+    const events = await collect(
+      await desktop.a2a.serve(host.id, '1.0', A2A_ROOM_EXTENSION, {
+        jsonrpc: '2.0',
+        id: 'consult-1',
+        method: 'SendStreamingMessage',
+        params: {
+          message: {
+            messageId: 'm-consult',
+            contextId: roomId,
+            role: 'ROLE_USER',
+            parts: [{ text: 'Any secrets?', mediaType: 'text/plain' }],
+            metadata: {
+              [A2A_ROOM_EXTENSION]: {
+                consult: true,
+                roomId,
+                roomTitle: 'Watcher fix',
+                repository: 'github.com/acme/pi-kit',
+                base: git(project, 'rev-parse', 'HEAD'),
+                role: 'security',
+                instructions: '',
+                question: 'Any secrets?',
+              },
+            },
+            extensions: [A2A_ROOM_EXTENSION],
+          },
+        },
+      }),
+    );
+    const chunks = events.flatMap((event) => {
+      const update = (event['result'] as { artifactUpdate?: Record<string, unknown> }).artifactUpdate;
+      const artifact = update?.['artifact'] as { artifactId?: string; parts?: { text?: string }[] } | undefined;
+      return artifact
+        ? [[artifact.artifactId, artifact.parts?.[0]?.text ?? '', !!update?.['append'], !!update?.['lastChunk']]]
+        : [];
+    });
+    expect(chunks).toEqual([
+      ['live', 'No secrets', false, false],
+      ['live', ' found.', true, false],
+      ['live', '', true, true],
+      ['answer', 'No secrets found.', false, true],
+    ]);
+  });
+
   it('resubscribes to a task that waits for an answer and ends the stream when it is stopped', async () => {
     asking = true;
     const task = await propose();
@@ -1130,6 +1273,30 @@ describe('workers that ask', () => {
       { interruptId: 'd1', status: 'resolved', payload: { value: 'yes' } },
     ]);
     expect((await host.rooms.task(task.id))?.state).toBe('submitted');
+  });
+
+  it('ends the live text while Desktop’s worker waits, and shows what it writes after the answer', async () => {
+    asking = true;
+    speaking = ['Which language?'];
+    speakingAfter = ['Writing it in English.'];
+    const lines: Extract<RoomStreamLine, { type: 'live' }>['live'][] = [];
+    host.bus.subscribe(roomId, (line) => {
+      if (line.type === 'live') lines.push(line.live);
+    });
+    const task = await propose();
+    await host.tasks.approveTask(roomId, task.id, desktop.id);
+    await waitForQuestion(task.id);
+    const before = [...lines];
+    expect(before.at(-1)).toMatchObject({ done: true });
+    expect(before.map((line) => line.text).join('')).toBe('Which language?');
+    asking = false;
+    await host.tasks.answer(roomId, task.id, { answers: [{ id: 'd1', value: 'yes' }] });
+    await settle(task.id);
+    const after = lines.slice(before.length);
+    expect(after.map((line) => line.text).join('')).toBe('Writing it in English.');
+    expect(after.at(-1)).toMatchObject({ done: true });
+    expect(new Set(after.map((line) => line.id)).size).toBe(1);
+    expect(after[0]?.id).not.toBe(before[0]?.id);
   });
 
   it('stops a worker that waits for an answer', async () => {

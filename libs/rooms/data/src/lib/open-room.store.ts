@@ -3,12 +3,14 @@ import {
   ApiClient,
   EntryApiClient,
   roomsApprove,
+  roomsArchive,
   roomsDecide,
   roomsDecline,
   roomsDetail,
   roomsEvents,
   roomsFireTrigger,
   roomsIntegrate,
+  roomsListRuns,
   roomsPlaybookDetail,
   roomsPlaybooks,
   roomsPost,
@@ -38,7 +40,9 @@ import type {
   RoomEvent,
   RoomImage,
   RoomLeadState,
+  RoomLive,
   RoomMode,
+  RoomRun,
   RoomStreamLine,
   RoomTask,
   RoomWorkerCandidate,
@@ -67,6 +71,8 @@ export class OpenRoomStore {
   readonly leadQuestions = signal<RoomTaskQuestion[]>([]);
   readonly leadThreadId = signal<string | null>(null);
   readonly projectFolder = signal<string | null>(null);
+  readonly folder = signal<string | null>(null);
+  readonly listChanges = signal(0);
   readonly mode = signal<RoomMode>('supervised');
   readonly paused = signal(false);
   readonly rehearsal = signal(false);
@@ -78,6 +84,8 @@ export class OpenRoomStore {
   readonly stages = signal<string[]>([]);
   readonly actions = signal<RoomAction[]>([]);
   readonly memory = signal<RoomMemoryEntry[]>([]);
+  readonly runs = signal<RoomRun[]>([]);
+  readonly live = signal<RoomLive[]>([]);
   /** Undefined until read. */
   readonly playbookChoices = signal<PlaybookSummary[] | undefined>(undefined);
   readonly pendingActions = computed(() => this.actions().filter((action) => action.state === 'pending'));
@@ -117,6 +125,7 @@ export class OpenRoomStore {
     this.leadQuestions.set([]);
     this.leadThreadId.set(null);
     this.projectFolder.set(null);
+    this.folder.set(null);
     this.mode.set('supervised');
     this.paused.set(false);
     this.rehearsal.set(false);
@@ -127,6 +136,8 @@ export class OpenRoomStore {
     this.stages.set([]);
     this.actions.set([]);
     this.memory.set([]);
+    this.runs.set([]);
+    this.live.set([]);
     this.playbookChoices.set(undefined);
     this.protection.set(undefined);
     this.loading.set(false);
@@ -294,6 +305,7 @@ export class OpenRoomStore {
   }
 
   async update(change: {
+    title?: string;
     mode?: RoomMode;
     paused?: boolean;
     playbook?: string | null;
@@ -305,6 +317,8 @@ export class OpenRoomStore {
     try {
       const detail = await unwrap(roomsUpdate({ client: this.client(room), path: { roomId: room.id }, body: change }));
       if (this.room()?.id !== room.id) return;
+      if (detail.room.title !== room.title) this.listChanges.update((count) => count + 1);
+      this.room.set(detail.room);
       this.mode.set(detail.mode);
       this.paused.set(detail.paused);
       this.rehearsal.set(detail.rehearsal);
@@ -315,6 +329,21 @@ export class OpenRoomStore {
       this.memory.set(detail.memory);
     } catch (error) {
       if (this.room()?.id === room.id) this.error.set(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async archive(stopTasks: boolean): Promise<boolean> {
+    const room = this.room();
+    if (!room) return false;
+    this.error.set(undefined);
+    try {
+      await unwrap(roomsArchive({ client: this.client(room), path: { roomId: room.id }, body: { stopTasks } }));
+      if (this.room()?.id === room.id) this.close();
+      this.listChanges.update((count) => count + 1);
+      return true;
+    } catch (error) {
+      if (this.room()?.id === room.id) this.error.set(error instanceof Error ? error.message : String(error));
+      return false;
     }
   }
 
@@ -394,6 +423,33 @@ export class OpenRoomStore {
     });
   }
 
+  private putLive(piece: RoomLive): void {
+    this.live.update((live) => {
+      if (piece.done) return live.filter((speaker) => speaker.id !== piece.id);
+      const known = live.find((speaker) => speaker.id === piece.id);
+      const next = { ...piece, text: known && !piece.reset ? known.text + piece.text : piece.text };
+      return known ? live.map((speaker) => (speaker.id === piece.id ? next : speaker)) : [...live, next];
+    });
+  }
+
+  private putRun(run: RoomRun): void {
+    this.runs.update((runs) => this.upsert(runs, run).sort((a, b) => b.number - a.number));
+  }
+
+  private async loadRuns(room: Room, generation: number, fresh = false): Promise<void> {
+    try {
+      const runs = await unwrap(roomsListRuns({ client: this.client(room), path: { roomId: room.id } }));
+      if (generation !== this.generation) return;
+      this.runs.update((live) => {
+        if (fresh) return runs;
+        const known = new Set(live.map((run) => run.id));
+        return [...live, ...runs.filter((run) => !known.has(run.id))].sort((a, b) => b.number - a.number);
+      });
+    } catch {
+      return;
+    }
+  }
+
   private putTask(task: RoomTask): void {
     this.tasks.update((tasks) => this.upsert(tasks, task));
   }
@@ -420,10 +476,12 @@ export class OpenRoomStore {
       this.leadQuestions.set(detail.leadQuestions);
       this.leadThreadId.set(detail.leadThreadId);
       this.projectFolder.set(detail.projectFolder);
+      this.folder.set(detail.folder);
       this.mode.set(detail.mode);
       this.paused.set(detail.paused);
       this.rehearsal.set(detail.rehearsal);
       this.playbook.set(detail.playbook);
+      if (detail.playbook) void this.loadPlaybookDetail();
       this.stage.set(detail.stage);
       this.stages.set(detail.stages);
       this.actions.set(detail.actions);
@@ -432,6 +490,7 @@ export class OpenRoomStore {
       if (detail.leadThreadId) void this.loadProtection(room, detail.leadThreadId, generation);
       void this.loadWorkers();
       void this.loadPlaybooks();
+      void this.loadRuns(room, generation);
     } catch (error) {
       if (generation === this.generation) this.error.set(error instanceof Error ? error.message : String(error));
     } finally {
@@ -450,7 +509,10 @@ export class OpenRoomStore {
   }
 
   private async follow(room: Room, generation: number): Promise<void> {
+    let reconnecting = false;
     while (generation === this.generation) {
+      if (reconnecting) void this.loadRuns(room, generation, true);
+      reconnecting = true;
       const abort = new AbortController();
       this.abort = abort;
       try {
@@ -469,7 +531,14 @@ export class OpenRoomStore {
             else if (line.type === 'task') this.putTask(line.task);
             else if (line.type === 'action') this.putAction(line.action);
             else if (line.type === 'memory') this.putMemory(line.entry);
+            else if (line.type === 'run') this.putRun(line.run);
+            else if (line.type === 'live') this.putLive(line.live);
             else if (line.type === 'room') {
+              const title = line.title;
+              if (title && title !== this.room()?.title) {
+                this.room.update((current) => current && { ...current, title });
+                this.listChanges.update((count) => count + 1);
+              }
               this.mode.set(line.mode);
               this.paused.set(line.paused);
               if (line.rehearsal !== undefined) this.rehearsal.set(line.rehearsal);
@@ -487,6 +556,7 @@ export class OpenRoomStore {
       }
       if (generation !== this.generation) return;
       this.connected.set(false);
+      this.live.set([]);
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
   }

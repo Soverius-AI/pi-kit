@@ -29,6 +29,9 @@ import { RoomSources } from './room-sources.service';
 import { RoomConsultant } from './room-consultant.service';
 import { RoomPlaybookService } from './room-playbook.service';
 import { RoomPlaybookFiles } from './room-playbook-files.service';
+import { RoomFolders } from './room-folders';
+import { RoomRuns } from './room-runs';
+import { RoomLive } from './room-live';
 import { RoomPlaybookEditor } from './room-playbook-editor.service';
 
 @Module({
@@ -52,6 +55,9 @@ import { RoomPlaybookEditor } from './room-playbook-editor.service';
     RoomA2aTaskStore,
     RoomOutbox,
     RoomA2aAgents,
+    RoomFolders,
+    RoomRuns,
+    RoomLive,
     RoomPlaybookFiles,
     RoomPlaybookTools,
     RoomSources,

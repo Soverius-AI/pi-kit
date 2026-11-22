@@ -10481,7 +10481,7 @@ paths:
         - rooms
       x-remote: true
     post:
-      description: Creates a room hosted on this environment, either from a thread (the repository and base commit are read from the thread's folder, which the room integrates into) or from a repository and base commit that a project on this environment has. With several such projects, `projectFolder` names the one the room integrates into (see GET /api/rooms/clones). Only the given summary is stored as shared context.
+      description: Creates a room hosted on this environment, from a thread (the repository and base commit are read from the thread's folder, which the room integrates into), from a `projectFolder` alone (a git repository here with a commit; it becomes a project of this environment), or from a repository and base commit that a project on this environment has. With several such projects, `projectFolder` names the one the room integrates into (see GET /api/rooms/clones). Only the given summary is stored as shared context.
       operationId: Rooms_create
       parameters: []
       requestBody:
@@ -10870,7 +10870,7 @@ paths:
         - rooms
       x-remote: true
     patch:
-      description: 'Supervised: worker questions and results come to the owner. Assisted: the lead answers worker questions it can settle and reviews results first, sending them back for changes up to three times; the owner still approves tasks and integrates. Paused: nothing wakes the lead until the owner resumes.'
+      description: 'A title renames the room. Supervised: worker questions and results come to the owner. Assisted: the lead answers worker questions it can settle and reviews results first, sending them back for changes up to three times; the owner still approves tasks and integrates. Paused: nothing wakes the lead until the owner resumes.'
       operationId: Rooms_update
       parameters:
         - name: roomId
@@ -10910,7 +10910,83 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Problem'
-      summary: Change how autonomous a room is
+      summary: Rename a room or change how autonomous it is
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/runs:
+    get:
+      description: 'Each turn of the lead is a run: what woke it (the owner, a schedule, a poll, an approval, a stage or an agent), the tools it called, the participants it consulted, the safe outputs it drafted or ran and the stages it moved to, each with its state and output. Newest first, at most fifty.'
+      operationId: Rooms_listRuns
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The room id.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomRunList'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: List a room’s runs
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/archive:
+    post:
+      description: The room leaves every list and nothing wakes its lead again. With stopTasks its running tasks are asked to stop first; otherwise they keep running where they are. Repositories, worktrees, sessions and the room’s folder are kept.
+      operationId: Rooms_archive
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The room id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArchiveRoom'
+      responses:
+        '204':
+          description: The room was archived.
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Archive a room
       tags:
         - rooms
       x-remote: true
@@ -11564,7 +11640,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/events:
     get:
-      description: 'Keeps the connection open and sends newline-delimited JSON: the lead’s state first, then every event after `after`, then each new event and lead state as it happens; blank lines keep the connection alive.'
+      description: 'Keeps the connection open and sends newline-delimited JSON: the lead’s state first, then what each participant is writing right now, then every event after `after`, then each new event, lead state, run and piece of live text as it happens; blank lines keep the connection alive.'
       operationId: Rooms_events
       parameters:
         - name: roomId
@@ -12010,6 +12086,12 @@ components:
       propertyNames:
         type: string
       additionalProperties: {}
+    ArchiveRoom:
+      type: object
+      properties:
+        stopTasks:
+          type: boolean
+      additionalProperties: false
     AttendantAction:
       type: object
       properties:
@@ -17935,6 +18017,26 @@ components:
         - checkedAt
         - command
       additionalProperties: false
+    PlaybookAgentSettings:
+      type: object
+      properties:
+        model:
+          type: string
+          maxLength: 200
+          pattern: ^[^\s/]+\/\S+$
+          description: The model as provider/id, such as anthropic/claude-opus-5-5; the host’s default when left out.
+        thinking:
+          description: The thinking effort; the host’s default when left out.
+          type: string
+          enum:
+            - off
+            - minimal
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
+      additionalProperties: false
     PlaybookCalendarSource:
       type: object
       properties:
@@ -17973,6 +18075,10 @@ components:
     PlaybookConfig:
       type: object
       properties:
+        lead:
+          $ref: '#/components/schemas/PlaybookAgentSettings'
+        workers:
+          $ref: '#/components/schemas/PlaybookAgentSettings'
         participants:
           default: []
           maxItems: 8
@@ -18059,6 +18165,11 @@ components:
           type: string
         folder:
           type: string
+        origin:
+          type: string
+          enum:
+            - room
+            - repository
         skill:
           type: string
         yaml:
@@ -18095,6 +18206,7 @@ components:
         - name
         - description
         - folder
+        - origin
         - skill
         - yaml
         - config
@@ -18218,6 +18330,21 @@ components:
           default: ''
           type: string
           maxLength: 4000
+        model:
+          type: string
+          maxLength: 200
+          pattern: ^[^\s/]+\/\S+$
+          description: The model as provider/id, such as anthropic/claude-opus-5-5; the host’s default when left out.
+        thinking:
+          type: string
+          enum:
+            - off
+            - minimal
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
       required:
         - role
         - agent
@@ -18327,6 +18454,11 @@ components:
           type: string
         path:
           type: string
+        origin:
+          type: string
+          enum:
+            - room
+            - repository
         roles:
           type: array
           items:
@@ -18355,6 +18487,7 @@ components:
         - name
         - description
         - path
+        - origin
         - roles
         - tools
         - outputs
@@ -19292,6 +19425,10 @@ components:
           type:
             - string
             - 'null'
+        folder:
+          type:
+            - string
+            - 'null'
         mode:
           type: string
           enum:
@@ -19339,6 +19476,7 @@ components:
         - lead
         - leadThreadId
         - projectFolder
+        - folder
         - mode
         - paused
         - rehearsal
@@ -19509,6 +19647,50 @@ components:
       type: array
       items:
         $ref: '#/components/schemas/Room'
+    RoomLive:
+      type: object
+      properties:
+        id:
+          type: string
+        actor:
+          type: string
+          enum:
+            - lead
+            - consultant
+            - worker
+        role:
+          type:
+            - string
+            - 'null'
+        taskId:
+          type:
+            - string
+            - 'null'
+        environmentId:
+          type:
+            - string
+            - 'null'
+        text:
+          type: string
+        reset:
+          type: boolean
+        activity:
+          type:
+            - string
+            - 'null'
+        done:
+          type: boolean
+      required:
+        - id
+        - actor
+        - role
+        - taskId
+        - environmentId
+        - text
+        - reset
+        - activity
+        - done
+      additionalProperties: false
     RoomMemoryEntry:
       type: object
       properties:
@@ -19539,6 +19721,137 @@ components:
       enum:
         - supervised
         - assisted
+    RoomRun:
+      type: object
+      properties:
+        id:
+          type: string
+        roomId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        number:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+        cause:
+          type: string
+          enum:
+            - owner
+            - schedule
+            - poll
+            - approval
+            - stage
+            - agent
+        trigger:
+          type:
+            - string
+            - 'null'
+        title:
+          type: string
+        playbook:
+          type:
+            - string
+            - 'null'
+        stage:
+          type:
+            - string
+            - 'null'
+        state:
+          type: string
+          enum:
+            - running
+            - waiting
+            - done
+            - failed
+            - stopped
+        summary:
+          type:
+            - string
+            - 'null'
+        startedAt:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        endedAt:
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            - type: 'null'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomRunStep'
+      required:
+        - id
+        - roomId
+        - number
+        - cause
+        - trigger
+        - title
+        - playbook
+        - stage
+        - state
+        - summary
+        - startedAt
+        - endedAt
+        - steps
+      additionalProperties: false
+    RoomRunList:
+      type: array
+      items:
+        $ref: '#/components/schemas/RoomRun'
+    RoomRunStep:
+      type: object
+      properties:
+        seq:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+        kind:
+          type: string
+          enum:
+            - tool
+            - output
+            - consult
+            - advance
+        name:
+          type: string
+        detail:
+          type: string
+        state:
+          type: string
+          enum:
+            - running
+            - waiting
+            - done
+            - failed
+            - discarded
+        output:
+          type:
+            - string
+            - 'null'
+        startedAt:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        endedAt:
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            - type: 'null'
+      required:
+        - seq
+        - kind
+        - name
+        - detail
+        - state
+        - output
+        - startedAt
+        - endedAt
+      additionalProperties: false
     RoomStartPreview:
       type: object
       properties:
@@ -19600,6 +19913,8 @@ components:
             type:
               type: string
               const: room
+            title:
+              type: string
             mode:
               $ref: '#/components/schemas/RoomMode'
             paused:
@@ -19629,6 +19944,28 @@ components:
           required:
             - type
             - action
+          additionalProperties: false
+        - type: object
+          properties:
+            type:
+              type: string
+              const: run
+            run:
+              $ref: '#/components/schemas/RoomRun'
+          required:
+            - type
+            - run
+          additionalProperties: false
+        - type: object
+          properties:
+            type:
+              type: string
+              const: live
+            live:
+              $ref: '#/components/schemas/RoomLive'
+          required:
+            - type
+            - live
           additionalProperties: false
         - type: object
           properties:
@@ -22402,6 +22739,10 @@ components:
     UpdateRoom:
       type: object
       properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
         mode:
           $ref: '#/components/schemas/RoomMode'
         paused:

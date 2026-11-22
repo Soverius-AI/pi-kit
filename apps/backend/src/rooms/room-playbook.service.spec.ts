@@ -1,7 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { SendMessageRequest, StreamResponse, Task } from '@a2a-js/sdk';
+import { A2A_ROOM_EXTENSION, A2aRoomConsultSchema, type RoomStreamLine } from '@pi-kit/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseService } from '../db/database.service';
 import { InstanceRepository } from '../db/instance.repository';
@@ -22,6 +24,11 @@ import { McpCallService } from '../mcp/mcp-call.service';
 import { RoomSources } from './room-sources.service';
 import { RoomPlaybookService } from './room-playbook.service';
 import { RoomPlaybookFiles } from './room-playbook-files.service';
+import { RoomFolders } from './room-folders';
+import { RoomLive } from './room-live';
+import { RoomRuns } from './room-runs';
+import { RoomRunsRepository } from '../db/room-runs.repository';
+import type { BackendConfig } from '../app/config';
 import { RoomPlaybookEditor } from './room-playbook-editor.service';
 import type { RoomEnvironments } from './room-environments';
 import { RoomsService } from './rooms.service';
@@ -108,6 +115,10 @@ let editor: RoomPlaybookEditor;
 let ask: ReturnType<typeof vi.fn>;
 let roomId: string;
 let agentDir: string;
+let runs: RoomRuns;
+let bus: RoomBus;
+let paired: { peerId: string; name: string; state: string }[];
+const a2a = { sendMessage: vi.fn(), getTask: vi.fn(), subscribe: vi.fn() };
 
 const MCP_SERVER = `
 const rl = require('node:readline').createInterface({ input: process.stdin });
@@ -160,11 +171,18 @@ beforeEach(async () => {
   ask = vi.fn(async (request: { role: string; question: string }) => `${request.role} says fine`);
   rebriefNext = vi.fn();
   const mcp = new McpCallService({ agentDir: async () => agentDir } as unknown as PiSessionService);
-  const files = new RoomPlaybookFiles();
+  const files = new RoomPlaybookFiles(new RoomFolders({ dataDir: join(base, 'data') } as BackendConfig));
   const tools = new RoomPlaybookTools(mcp, new RoomSources());
-  const bus = new RoomBus(rooms);
+  bus = new RoomBus(rooms);
+  paired = [];
   const lead = { nudge, rebriefNext, setPlaybooks: () => undefined } as unknown as RoomLeadService;
-  const agents = { projectFolder: async () => project } as unknown as RoomAgents;
+  const agents = {
+    projectFolder: async () => project,
+    models: async () => [
+      { provider: 'anthropic', id: 'claude-opus-5-5', reasoning: true },
+      { provider: 'local', id: 'gemma', reasoning: false },
+    ],
+  } as unknown as RoomAgents;
   editor = new RoomPlaybookEditor(
     rooms,
     store,
@@ -185,10 +203,12 @@ beforeEach(async () => {
     bus,
     lead,
     agents,
-    {} as RoomA2aClient,
+    a2a as unknown as RoomA2aClient,
     { list: async () => [] } as unknown as RoomA2aAgents,
-    { manager: async () => ({ self: { name: 'Here' }, peers: [] }) } as unknown as PeersService,
+    { manager: async () => ({ self: { name: 'Here' }, peers: paired }) } as unknown as PeersService,
     editor,
+    new RoomLive(bus),
+    (runs = new RoomRuns(new RoomRunsRepository(db), bus)),
   );
   const room = await new RoomsService(
     rooms,
@@ -216,7 +236,7 @@ afterEach(async () => {
 
 describe('room playbooks', () => {
   it('lists skills with a room block as playbooks and starts the room assisted at the first stage', async () => {
-    expect(new RoomPlaybookFiles().list(project)).toEqual([
+    expect(new RoomPlaybookFiles().list({ project })).toEqual([
       expect.objectContaining({
         name: 'pr-review',
         roles: ['security', 'tests'],
@@ -238,13 +258,13 @@ describe('room playbooks', () => {
       room,
       'on:\n  poll:\n    - { id: t, every: 1m, tool: comment }\nsafe-outputs:\n  comment: { run: [x] }\n',
     );
-    expect(new RoomPlaybookFiles().list(project)[0]?.error).toContain('safe outputs never run from a trigger');
+    expect(new RoomPlaybookFiles().list({ project })[0]?.error).toContain('safe outputs never run from a trigger');
     writeFileSync(room, 'on:\n  schedule:\n    - { id: t, cron: "99 * * * *" }\n');
-    expect(new RoomPlaybookFiles().list(project)[0]?.error).toContain('cron');
+    expect(new RoomPlaybookFiles().list({ project })[0]?.error).toContain('cron');
     writeFileSync(room, 'connectors: {}\n');
-    expect(new RoomPlaybookFiles().list(project)[0]?.error).toContain('connectors');
+    expect(new RoomPlaybookFiles().list({ project })[0]?.error).toContain('connectors');
     rmSync(room);
-    expect(new RoomPlaybookFiles().list(project)).toEqual([]);
+    expect(new RoomPlaybookFiles().list({ project })).toEqual([]);
   });
 
   it('runs tools at once, drafts safe outputs, and refuses what the playbook does not name', async () => {
@@ -256,7 +276,10 @@ describe('room playbooks', () => {
     expect(action).toMatchObject({ kind: 'call', name: 'comment', state: 'pending' });
     const done = await service.decide(roomId, action!.id, { decision: 'approve' });
     expect(done).toMatchObject({ state: 'done', result: 'posted 7' });
-    expect(nudge).toHaveBeenCalledWith(roomId, expect.stringContaining('posted 7'));
+    expect(nudge).toHaveBeenCalledWith(roomId, expect.stringContaining('posted 7'), {
+      kind: 'approval',
+      title: 'You approved comment; it ran.',
+    });
     await expect(service.decide(roomId, action!.id, { decision: 'discard' })).rejects.toThrow('decided already');
   });
 
@@ -367,6 +390,89 @@ describe('room playbooks', () => {
     );
   });
 
+  it('reads a model and thinking effort for the lead, the workers and each participant, hands them on and checks them', async () => {
+    writeFileSync(
+      join(project, '.pi', 'skills', 'pr-review', 'room.yaml'),
+      [
+        'lead: { model: anthropic/claude-opus-5-5, thinking: high }',
+        'workers: { model: local/gemma, thinking: medium }',
+        'participants:',
+        '  - { role: security, model: nowhere/none }',
+        '  - { role: tests, thinking: low }',
+        '',
+      ].join('\n'),
+    );
+    const found = (await rooms.get(roomId))!;
+    expect(await service.settings(found, 'lead')).toEqual({ model: 'anthropic/claude-opus-5-5', thinking: 'high' });
+    expect(await service.settings(found, 'workers')).toEqual({ model: 'local/gemma', thinking: 'medium' });
+    await service.consult('lead', { role: 'tests', question: 'Enough tests?' });
+    expect(ask).toHaveBeenLastCalledWith(expect.objectContaining({ role: 'tests', settings: { thinking: 'low' } }));
+    const checks = (await editor.detail(roomId)).checks.filter((check) => check.subject.startsWith('model '));
+    expect(checks).toEqual([
+      { level: 'ok', subject: 'model lead', message: 'Available.' },
+      expect.objectContaining({
+        level: 'warn',
+        subject: 'model workers',
+        message: expect.stringContaining('does not think'),
+      }),
+      expect.objectContaining({ level: 'error', subject: 'model participant security' }),
+    ]);
+    writeFileSync(join(project, '.pi', 'skills', 'pr-review', 'room.yaml'), 'lead: { model: no-slash }\n');
+    expect(new RoomPlaybookFiles().list({ project })[0]?.error).toContain('lead.model');
+  });
+
+  it('asks a participant on a paired computer with a message its pi-kit accepts, and shows what it writes meanwhile', async () => {
+    paired = [{ peerId: 'peer-1', name: 'Desktop', state: 'active' }];
+    writeFileSync(
+      join(project, '.pi', 'skills', 'pr-review', 'room.yaml'),
+      'participants:\n  - { role: security, agent: { machine: Desktop }, model: anthropic/claude-opus-5-5, thinking: high }\n',
+    );
+    const task = (state: string, artifacts: Record<string, unknown>[] = []) =>
+      Task.fromJSON({ id: 'c1', contextId: roomId, status: { state }, artifacts });
+    a2a.sendMessage.mockResolvedValue(task('TASK_STATE_WORKING'));
+    a2a.subscribe.mockImplementation(async function* () {
+      for (const [text, append] of [
+        ['No secrets', false],
+        [' found.', true],
+      ] as const)
+        yield StreamResponse.fromJSON({
+          artifactUpdate: {
+            taskId: 'c1',
+            contextId: roomId,
+            artifact: { artifactId: 'live', parts: [{ text }] },
+            append,
+            lastChunk: false,
+          },
+        });
+    });
+    a2a.getTask.mockResolvedValue(
+      task('TASK_STATE_COMPLETED', [
+        { artifactId: 'live', parts: [{ text: 'No secrets found.' }] },
+        { artifactId: 'answer', parts: [{ text: 'No secrets found in the diff.' }] },
+      ]),
+    );
+    const live: Extract<RoomStreamLine, { type: 'live' }>['live'][] = [];
+    bus.subscribe(roomId, (line) => {
+      if (line.type === 'live') live.push(line.live);
+    });
+    expect(await service.consult('lead', { role: 'security', question: 'Any secrets?' })).toBe(
+      'No secrets found in the diff.',
+    );
+    const sent = SendMessageRequest.toJSON(a2a.sendMessage.mock.calls[0]?.[1] as SendMessageRequest) as {
+      message: { metadata: Record<string, unknown> };
+    };
+    expect(A2aRoomConsultSchema.safeParse(sent.message.metadata[A2A_ROOM_EXTENSION]).success).toBe(true);
+    expect(
+      live.map((piece) => [piece.actor, piece.role, piece.environmentId, piece.text, piece.reset, piece.done]),
+    ).toEqual([
+      ['consultant', 'security', 'peer-1', '', true, false],
+      ['consultant', 'security', 'peer-1', 'No secrets', true, false],
+      ['consultant', 'security', 'peer-1', ' found.', false, false],
+      ['consultant', 'security', 'peer-1', '', false, true],
+    ]);
+    expect(a2a.subscribe).toHaveBeenCalledWith('peer-1', { tenant: '', id: 'c1' }, expect.any(AbortSignal));
+  }, 10_000);
+
   it('keeps notes per room and per playbook', async () => {
     await service.note('lead', { key: 'decision', text: 'Ship it.', scope: 'room' });
     await service.note('lead', { key: 'style', text: 'Tabs.', scope: 'playbook' });
@@ -476,5 +582,76 @@ describe('room playbooks', () => {
       result: expect.stringContaining('changed since'),
     });
     expect(readFileSync(room, 'utf8')).toContain('edited by hand');
+  });
+
+  it('records a run with a step for every tool, consultation, safe output and stage, and settles drafts later', async () => {
+    const id = await runs.start(
+      roomId,
+      { kind: 'poll', trigger: 'prs', title: '2 new: 1, 2\nmore' },
+      { playbook: 'pr-review', stage: 'review' },
+    );
+    await service.call('lead', { tool: 'show', params: { pr: '7' }, reason: 'Read it.' });
+    await service.consult('lead', { role: 'security', question: 'Any secrets?' });
+    await service.call('lead', { tool: 'comment', params: { pr: '7' }, reason: 'Post it.' });
+    await service.call('lead', { tool: 'label', params: { pr: '7' }, reason: 'Label it.' });
+    await service.advance('lead', { stage: 'verdict', summary: 'Reviewed.' });
+    await runs.end(roomId, id, 'done', 'All reviewed.', 'review');
+    const [run] = await runs.list(roomId);
+    expect(run).toMatchObject({
+      number: 1,
+      cause: 'poll',
+      trigger: 'prs',
+      title: '2 new: 1, 2',
+      playbook: 'pr-review',
+      state: 'done',
+      summary: 'All reviewed.',
+    });
+    expect(run?.steps.map((step) => [step.kind, step.name, step.state])).toEqual([
+      ['tool', 'show', 'done'],
+      ['consult', 'security', 'done'],
+      ['output', 'comment', 'waiting'],
+      ['output', 'label', 'done'],
+      ['advance', 'verdict', 'waiting'],
+    ]);
+    expect(run?.steps[0]).toMatchObject({ output: expect.stringContaining('pr 7') });
+    expect(run?.steps[0]?.detail).toContain('process.argv[1]');
+    expect(run?.steps[1]).toMatchObject({ detail: 'Any secrets?', output: 'security says fine' });
+    const actions = await store.actions(roomId);
+    await service.decide(roomId, actions.find((action) => action.name === 'comment')!.id, { decision: 'approve' });
+    await service.decide(roomId, actions.find((action) => action.name === 'verdict')!.id, { decision: 'discard' });
+    const settled = (await runs.list(roomId))[0];
+    expect(settled?.steps.map((step) => [step.name, step.state])).toEqual([
+      ['show', 'done'],
+      ['security', 'done'],
+      ['comment', 'done'],
+      ['label', 'done'],
+      ['verdict', 'discarded'],
+    ]);
+    expect(settled?.steps[2]?.output).toBe('posted 7');
+    await service.call('lead', { tool: 'show', params: { pr: '8' }, reason: 'No run is open.' });
+    expect((await runs.list(roomId))[0]?.steps).toHaveLength(5);
+  });
+
+  it('keeps a new playbook in the room’s own folder, out of the repository, and follows it from there', async () => {
+    const skill = SKILL.replace('name: pr-review', 'name: triage');
+    const folder = join(base, 'data', 'rooms', roomId);
+    await editor.propose('lead', { name: 'triage', skill, yaml: 'stages: [sort]\n', summary: 'Sort issues.' });
+    const [action] = await store.actions(roomId);
+    expect(action?.payload).toMatchObject({ create: true, folder: join('playbooks', 'triage') });
+    expect(await service.decide(roomId, action!.id, { decision: 'approve' })).toMatchObject({
+      state: 'done',
+      result: expect.stringContaining(folder),
+    });
+    expect(readFileSync(join(folder, 'playbooks', 'triage', 'room.yaml'), 'utf8')).toBe('stages: [sort]\n');
+    expect(existsSync(join(project, '.pi', 'skills', 'triage'))).toBe(false);
+    expect(git('status', '--porcelain', '--', '.pi/skills/triage')).toBe('');
+    const place = { project, room: folder };
+    expect(new RoomPlaybookFiles().list(place).map(({ name, origin }) => [name, origin])).toEqual([
+      ['triage', 'room'],
+      ['pr-review', 'repository'],
+    ]);
+    expect(new RoomPlaybookFiles().load(place, 'triage').config.stages).toEqual(['sort']);
+    await rooms.setPlaybook(roomId, 'triage', 'sort');
+    expect(await editor.detail(roomId)).toMatchObject({ origin: 'room', folder: join('playbooks', 'triage') });
   });
 });

@@ -202,6 +202,14 @@ export class RoomsRepository {
       : undefined;
   }
 
+  async setTitle(id: string, title: string): Promise<void> {
+    await this.db.prepare('UPDATE rooms SET title = ? WHERE id = ?').run(redact(title) as string, id);
+  }
+
+  async archive(id: string, at: number): Promise<void> {
+    await this.db.prepare('UPDATE rooms SET archived_at = ? WHERE id = ? AND archived_at IS NULL').run(at, id);
+  }
+
   async setMode(id: string, mode: 'supervised' | 'assisted'): Promise<void> {
     await this.db.prepare('UPDATE rooms SET mode = ? WHERE id = ?').run(mode, id);
   }

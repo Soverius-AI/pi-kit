@@ -71,7 +71,12 @@ export class AguiService {
   runHeadless(
     threadId: string,
     text: string,
-    options: { cwd: string; chips?: readonly ComposerChip[]; images?: readonly { mimeType: string; data: string }[] },
+    options: {
+      cwd: string;
+      chips?: readonly ComposerChip[];
+      images?: readonly { mimeType: string; data: string }[];
+      observe?: (event: BaseEvent) => void;
+    },
   ): Promise<HeadlessRun> {
     const runId = `headless-${randomUUID()}`;
     const input: RunAgentInput = {
@@ -100,27 +105,31 @@ export class AguiService {
         ...(options.chips && options.chips.length > 0 ? { skills: options.chips } : {}),
       },
     };
-    return this.execute(threadId, input);
+    return this.execute(threadId, input, options.observe);
   }
 
   resumeHeadless(
     threadId: string,
     answers: readonly { interruptId: string; status: 'resolved' | 'cancelled'; payload?: unknown }[],
-    options: { cwd: string },
+    options: { cwd: string; observe?: (event: BaseEvent) => void },
   ): Promise<HeadlessRun> {
-    return this.execute(threadId, {
+    return this.execute(
       threadId,
-      runId: `headless-${randomUUID()}`,
-      state: {},
-      messages: [],
-      tools: [],
-      context: [],
-      forwardedProps: { cwd: options.cwd },
-      resume: [...answers],
-    } as RunAgentInput);
+      {
+        threadId,
+        runId: `headless-${randomUUID()}`,
+        state: {},
+        messages: [],
+        tools: [],
+        context: [],
+        forwardedProps: { cwd: options.cwd },
+        resume: [...answers],
+      } as RunAgentInput,
+      options.observe,
+    );
   }
 
-  private execute(threadId: string, input: RunAgentInput): Promise<HeadlessRun> {
+  private execute(threadId: string, input: RunAgentInput, observe?: (event: BaseEvent) => void): Promise<HeadlessRun> {
     return new Promise<HeadlessRun>((resolve) => {
       let result: HeadlessRun = { status: 'error', error: 'The run ended without a result.' };
       const note = (event: BaseEvent): void => {
@@ -138,7 +147,14 @@ export class AguiService {
       };
       try {
         this.runner.run({ threadId, agent: this.agent.clone(), input }).subscribe({
-          next: note,
+          next: (event) => {
+            note(event);
+            try {
+              observe?.(event);
+            } catch {
+              return;
+            }
+          },
           error: (error: unknown) =>
             resolve({ status: 'error', error: error instanceof Error ? error.message : String(error) }),
           complete: () => resolve(result),

@@ -1,6 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { type PiSessionEntry, sessionToMessages } from '@pi-kit/pi-adapter';
-import { genUiId, MCP_APPS_ACTIVITY, type McpAppActivity, ROOMS_SANDBOX_SETTING_KEY } from '@pi-kit/protocol';
+import {
+  genUiId,
+  MCP_APPS_ACTIVITY,
+  type McpAppActivity,
+  type ModelInfo,
+  type PlaybookAgentSettings,
+  ROOMS_SANDBOX_SETTING_KEY,
+} from '@pi-kit/protocol';
 import { MetaRepository } from '../db/meta.repository';
 import { ThreadsRepository } from '../db/threads.repository';
 import { PiSessionService } from '../pi/pi-session.service';
@@ -10,6 +17,9 @@ import { toplevel } from '../worktree/worktree-git';
 @Injectable()
 export class RoomAgents {
   private static readonly KEPT_THREADS = 20;
+  private static readonly CONFIGURED = 256;
+  private readonly logger = new Logger(RoomAgents.name);
+  private readonly configured = new Map<string, string>();
   private readonly mcpResults = new Map<string, Map<string, Record<string, unknown>>>();
 
   constructor(
@@ -18,6 +28,35 @@ export class RoomAgents {
     private readonly sessions: PiSessionService,
     private readonly meta: MetaRepository,
   ) {}
+
+  async configure(threadId: string, settings: PlaybookAgentSettings | undefined): Promise<void> {
+    const wanted = `${settings?.model ?? ''}\0${settings?.thinking ?? ''}`;
+    if (!settings || wanted === '\0' || this.configured.get(threadId) === wanted) return;
+    const [provider = '', ...rest] = (settings.model ?? '').split('/');
+    try {
+      await this.threads.openSession(threadId);
+      await this.sessions.setModel(threadId, {
+        ...(settings.model ? { provider, modelId: rest.join('/') } : {}),
+        ...(settings.thinking ? { thinkingLevel: settings.thinking } : {}),
+      });
+      this.configured.delete(threadId);
+      this.configured.set(threadId, wanted);
+      while (this.configured.size > RoomAgents.CONFIGURED)
+        this.configured.delete(this.configured.keys().next().value as string);
+    } catch (error) {
+      this.logger.warn(`Thread ${threadId} keeps its model: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  async models(threadId: string | null): Promise<ModelInfo[] | undefined> {
+    if (!threadId) return undefined;
+    try {
+      await this.threads.openSession(threadId);
+      return (await this.sessions.models(threadId)).models;
+    } catch {
+      return undefined;
+    }
+  }
 
   async projectFolder(room: { projectFolder: string | null; sourceThreadId: string | null }): Promise<string> {
     if (room.projectFolder) return room.projectFolder;

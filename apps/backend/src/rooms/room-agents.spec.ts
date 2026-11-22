@@ -1,5 +1,5 @@
 import type { MetaRepository } from '../db/meta.repository';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { ThreadsRepository } from '../db/threads.repository';
 import type { PiSessionService } from '../pi/pi-session.service';
 import type { ThreadsService } from '../threads/threads.service';
@@ -74,5 +74,34 @@ describe('RoomAgents.apps', () => {
   it('falls back to the text the session kept', async () => {
     const [app] = await agents().apps('lead');
     expect(app?.result).toEqual({ content: [{ type: 'text', text: '2 meetings' }] });
+  });
+});
+
+describe('RoomAgents.configure', () => {
+  it('gives a thread the model and thinking effort a playbook asks for, once, and keeps the default when it cannot', async () => {
+    const openSession = vi.fn(async () => undefined);
+    const setModel = vi.fn(async (_thread: string, change: { modelId?: string }) => {
+      if (change.modelId === 'gone') throw new Error('Unknown model x/gone.');
+    });
+    const room = new RoomAgents(
+      {} as ThreadsRepository,
+      { openSession } as unknown as ThreadsService,
+      { setModel } as unknown as PiSessionService,
+      {} as MetaRepository,
+    );
+    await room.configure('t1', undefined);
+    await room.configure('t1', {});
+    expect(setModel).not.toHaveBeenCalled();
+    await room.configure('t1', { model: 'anthropic/claude-opus-5-5', thinking: 'high' });
+    await room.configure('t1', { model: 'anthropic/claude-opus-5-5', thinking: 'high' });
+    expect(openSession).toHaveBeenCalledTimes(1);
+    expect(setModel.mock.calls).toEqual([
+      ['t1', { provider: 'anthropic', modelId: 'claude-opus-5-5', thinkingLevel: 'high' }],
+    ]);
+    await room.configure('t1', { thinking: 'low' });
+    expect(setModel).toHaveBeenLastCalledWith('t1', { thinkingLevel: 'low' });
+    await expect(room.configure('t2', { model: 'x/gone' })).resolves.toBeUndefined();
+    await room.configure('t2', { model: 'x/gone' });
+    expect(setModel).toHaveBeenCalledTimes(4);
   });
 });

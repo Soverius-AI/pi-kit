@@ -52,6 +52,7 @@ export class RoomA2aPushSender implements PushNotificationSender {
               $case: 'task',
               value: {
                 ...task,
+                artifacts: task.artifacts.filter((artifact) => artifact.artifactId !== RoomA2a.LIVE),
                 status: payload.value.status,
                 metadata: { ...task.metadata, ...payload.value.metadata },
               },

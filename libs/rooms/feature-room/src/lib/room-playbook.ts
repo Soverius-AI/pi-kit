@@ -1,8 +1,18 @@
-import { Component, computed, inject, input, output, signal } from '@angular/core';
-import { PkIcon, type PkIconName, PkNotice, PkTabPanel, PkTabs, PkTip } from '@pi-kit/design-system';
+import { Component, computed, inject, input, model, output, signal } from '@angular/core';
+import {
+  PkIcon,
+  type PkIconName,
+  PkNotice,
+  type PkRunState,
+  PkRunStatus,
+  PkTabPanel,
+  PkTabs,
+  PkTip,
+} from '@pi-kit/design-system';
 import { Language, TranslocoPipe } from '@pi-kit/i18n';
 import {
   PlaybookProposalSchema,
+  type PlaybookAgentSettings,
   type PlaybookConfig,
   type PlaybookFireResult,
   type PlaybookTool,
@@ -11,19 +21,31 @@ import {
   type RoomAction,
 } from '@pi-kit/protocol';
 import { OpenRoomStore } from '@pi-kit/rooms/data';
+import { RoomFormat } from './room-format';
 import { PkDiffViewer, modelFromActivity } from '@pi-kit/ui';
+import { RoomRuns } from './room-runs';
 
 type Connector = { name: string; tool: PlaybookTool; output?: { mode: 'draft' | 'auto'; max?: number } };
 
 @Component({
   selector: 'pk-room-playbook',
-  imports: [PkIcon, PkNotice, PkTabPanel, PkTabs, PkTip, TranslocoPipe],
+  imports: [PkIcon, PkNotice, PkRunStatus, PkTabPanel, PkTabs, PkTip, RoomRuns, TranslocoPipe],
   styleUrl: './room-playbook.css',
   host: { class: 'pk-room-playbook-panel', 'data-testid': 'room-playbook-panel' },
   template: `
     @if (store.playbookDetail(); as detail) {
       <header class="top">
+        <span class="mark" aria-hidden="true"><pk-icon name="skill" size="18" /></span>
         <div class="about">
+          <div class="name">
+            <h2>{{ detail.name }}</h2>
+            <span class="pill" data-testid="room-playbook-status" [attr.data-status]="status()">{{
+              'rooms.playbook.status.' + status() | transloco
+            }}</span>
+            <span class="chip" data-testid="room-playbook-origin">{{
+              'rooms.playbook.origin.' + detail.origin | transloco
+            }}</span>
+          </div>
           @if (detail.description) {
             <p class="description">{{ detail.description }}</p>
           }
@@ -65,19 +87,19 @@ type Connector = { name: string; tool: PlaybookTool; output?: { mode: 'draft' | 
       <pk-tabs [label]="detail.name" [(value)]="tab">
         <pk-tab-panel value="overview" [label]="'rooms.playbook.overview' | transloco">
           @if (detail.config; as config) {
-            <div class="flow" data-testid="room-playbook-flow">
-              <section class="col">
+            <div class="graph" data-testid="room-playbook-flow">
+              <section class="lane">
                 <h4>{{ 'rooms.playbook.wakes' | transloco }}</h4>
                 @for (trigger of detail.triggers; track trigger.id) {
-                  <div class="card" data-testid="room-playbook-trigger" [attr.data-kind]="trigger.kind">
+                  <div class="node" data-testid="room-playbook-trigger" [attr.data-kind]="trigger.kind">
                     <div class="title">
                       <pk-icon [name]="trigger.kind === 'poll' ? 'refresh' : 'sparkle'" size="13" />
                       <b>{{ trigger.id }}</b>
                     </div>
-                    <span class="muted font-mono">{{ when(trigger) }}</span>
+                    <span class="muted font-mono">{{ format.when(trigger) }}</span>
                     @if (trigger.nextRun !== null) {
                       <span class="muted">{{
-                        'rooms.playbook.next' | transloco: { value1: time(trigger.nextRun) }
+                        'rooms.playbook.next' | transloco: { value1: format.time(trigger.nextRun) }
                       }}</span>
                     }
                     <div class="buttons">
@@ -120,46 +142,75 @@ type Connector = { name: string; tool: PlaybookTool; output?: { mode: 'draft' | 
                     }
                   </div>
                 } @empty {
-                  <p class="card muted">{{ 'rooms.playbook.onlyMessages' | transloco }}</p>
+                  <p class="node muted">{{ 'rooms.playbook.onlyMessages' | transloco }}</p>
                 }
               </section>
-              <pk-icon class="arrow" name="arrow-right" size="14" />
-              <section class="col">
+              <span class="wire" aria-hidden="true"></span>
+              <section class="lane">
                 <h4>{{ 'rooms.view.lead' | transloco }}</h4>
-                <div class="card stats">
-                  <button type="button" (click)="tab.set('tools')">
-                    <b>{{ tools().length }}</b
-                    >{{ 'rooms.playbook.statTools' | transloco }}
-                  </button>
-                  <button type="button" (click)="tab.set('tools')">
-                    <b>{{ outputs().length }}</b
-                    >{{ 'rooms.playbook.statOutputs' | transloco }}
-                  </button>
-                  <button type="button" (click)="tab.set('participants')">
-                    <b>{{ config.participants.length }}</b
-                    >{{ 'rooms.playbook.statParticipants' | transloco }}
-                  </button>
+                <div class="node lead" [attr.data-state]="leadState()">
+                  <div class="title">
+                    <pk-run-status [state]="leadState()" [label]="'rooms.playbook.lead.' + leadState() | transloco" />
+                    <b>{{ 'rooms.view.lead' | transloco }}</b>
+                    <span class="muted">{{ 'rooms.playbook.lead.' + leadState() | transloco }}</span>
+                  </div>
+                  @if (settingsOf(config.lead); as lead) {
+                    <span class="muted font-mono" data-testid="room-playbook-lead-model">{{ lead }}</span>
+                  }
+                  @if (settingsOf(config.workers); as workers) {
+                    <span class="muted" data-testid="room-playbook-workers-model"
+                      >{{ 'rooms.playbook.workersRun' | transloco }} <span class="font-mono">{{ workers }}</span></span
+                    >
+                  }
+                  <div class="stats">
+                    <button type="button" (click)="tab.set('tools')">
+                      <b>{{ tools().length }}</b
+                      >{{ 'rooms.playbook.statTools' | transloco }}
+                    </button>
+                    <button type="button" (click)="tab.set('tools')">
+                      <b>{{ outputs().length }}</b
+                      >{{ 'rooms.playbook.statOutputs' | transloco }}
+                    </button>
+                    <button type="button" (click)="tab.set('participants')">
+                      <b>{{ config.participants.length }}</b
+                      >{{ 'rooms.playbook.statParticipants' | transloco }}
+                    </button>
+                  </div>
                 </div>
               </section>
-              <pk-icon class="arrow" name="arrow-right" size="14" />
-              <section class="col">
+              <span class="wire" aria-hidden="true"></span>
+              <section class="lane">
                 <h4>{{ 'rooms.view.stages' | transloco }}</h4>
-                <ol class="card steps">
-                  @for (stage of config.stages; track stage) {
-                    <li data-testid="room-playbook-stage" [attr.aria-current]="stage === detail.stage ? 'step' : null">
-                      <span class="dot" aria-hidden="true"></span>
-                      <span>{{ stage }}</span>
+                <ol class="chain">
+                  @for (stage of config.stages; track stage; let i = $index) {
+                    <li
+                      class="node stage"
+                      data-testid="room-playbook-stage"
+                      [attr.data-state]="stageState(i)"
+                      [attr.aria-current]="stage === detail.stage ? 'step' : null"
+                    >
+                      <pk-run-status
+                        [state]="stageState(i)"
+                        [label]="'rooms.playbook.stageState.' + stageState(i) | transloco"
+                      />
+                      <span class="label">{{ stage }}</span>
                       @if (config.gates[stage] === 'owner') {
-                        <pk-icon name="lock" size="11" [pkTip]="'rooms.playbook.ownerGate' | transloco" />
+                        <span class="gate" [pkTip]="'rooms.playbook.ownerGate' | transloco"
+                          ><pk-icon name="lock" size="11" />{{ 'rooms.playbook.gate' | transloco }}</span
+                        >
                       }
                     </li>
                   } @empty {
-                    <li class="muted">{{ 'rooms.playbook.noStages' | transloco }}</li>
+                    <li class="node muted">{{ 'rooms.playbook.noStages' | transloco }}</li>
                   }
                 </ol>
               </section>
             </div>
           }
+        </pk-tab-panel>
+
+        <pk-tab-panel value="runs" [label]="'rooms.runs.title' | transloco" [count]="store.runs().length">
+          <pk-room-runs [(selected)]="run" />
         </pk-tab-panel>
 
         @if (detail.config; as config) {
@@ -250,6 +301,11 @@ type Connector = { name: string; tool: PlaybookTool; output?: { mode: 'draft' | 
                         <span class="muted">{{
                           participant.agent.machine ?? participant.agent.agent ?? ('rooms.view.hostHere' | transloco)
                         }}</span>
+                        @if (settingsOf(participant); as settings) {
+                          <span class="tag font-mono" data-testid="room-playbook-participant-model">{{
+                            settings
+                          }}</span>
+                        }
                         @if (check) {
                           <span class="check" [attr.data-level]="check.level">{{ check.message }}</span>
                         }
@@ -303,6 +359,7 @@ type Connector = { name: string; tool: PlaybookTool; output?: { mode: 'draft' | 
 export class RoomPlaybook {
   protected readonly store = inject(OpenRoomStore);
   private readonly language = inject(Language);
+  protected readonly format = inject(RoomFormat);
   readonly askChange = output<void>();
   readonly closed = output<void>();
   protected readonly busy = signal<string | undefined>(undefined);
@@ -321,7 +378,35 @@ export class RoomPlaybook {
   );
 
   protected readonly connectors = computed(() => [...this.tools(), ...this.outputs()]);
-  protected readonly tab = signal('overview');
+  readonly tab = model('overview');
+  readonly run = model<string | undefined>(undefined);
+  protected readonly status = computed(() =>
+    this.store.paused() ? 'paused' : this.store.rehearsal() ? 'rehearsal' : 'active',
+  );
+  protected readonly leadState = computed<PkRunState>(() =>
+    this.store.lead() === 'working' ? 'running' : this.store.lead() === 'error' ? 'failed' : 'pending',
+  );
+  protected readonly stageAt = computed(() => {
+    const detail = this.store.playbookDetail();
+    return detail?.config?.stages.indexOf(detail.stage ?? '') ?? -1;
+  });
+  protected settingsOf(settings: PlaybookAgentSettings | undefined): string {
+    return [
+      settings?.model,
+      settings?.thinking &&
+        this.language.t('rooms.playbook.thinking', {
+          value1: this.language.t(`common.effortValue.${settings.thinking}`),
+        }),
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
+  protected stageState(index: number): PkRunState {
+    const at = this.stageAt();
+    if (index < at) return 'done';
+    if (index > at) return 'pending';
+    return this.store.lead() === 'working' ? 'running' : 'current';
+  }
   protected readonly files = computed(() => {
     const detail = this.store.playbookDetail();
     return detail
@@ -357,19 +442,6 @@ export class RoomPlaybook {
 
   protected checkOf(subject: string) {
     return this.store.playbookDetail()?.checks.find((check) => check.subject === subject);
-  }
-
-  protected when(trigger: PlaybookTriggerState): string {
-    const every = trigger.cron ?? this.language.t('rooms.playbook.every', { value1: trigger.every ?? '' });
-    return trigger.tool ? `${every} · ${trigger.tool}` : every;
-  }
-
-  protected time(at: number): string {
-    return new Date(at).toLocaleString(this.language.locale(), {
-      weekday: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
   }
 
   protected firstLine(text: string): string {

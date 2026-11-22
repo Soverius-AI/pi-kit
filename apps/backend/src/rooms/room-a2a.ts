@@ -29,9 +29,13 @@ export const A2A_PATH = '/api/a2a';
 export const A2A_CARD_PATH = '/api/a2a/.well-known/agent-card.json';
 export const A2A_PUSH_PATH = '/api/rooms/a2a/push';
 
+import type { LivePiece } from './room-live';
+
 type Json = Record<string, unknown>;
 
 export class RoomA2a {
+  static readonly LIVE = 'live';
+
   static peerUrl(instanceId: string, path: string): string {
     return `${A2A_PEER_SCHEME}//${instanceId}${path}`;
   }
@@ -207,6 +211,52 @@ export class RoomA2a {
       status: RoomA2a.status(state, text, id, roomId),
       metadata: progress ? { [A2A_ROOM_EXTENSION]: progress } : {},
     });
+  }
+
+  static liveUpdate(id: string, roomId: string, piece: LivePiece): TaskArtifactUpdateEvent {
+    return TaskArtifactUpdateEvent.fromJSON({
+      taskId: id,
+      contextId: roomId,
+      artifact: {
+        artifactId: RoomA2a.LIVE,
+        name: 'Live',
+        parts: piece.text ? [{ text: piece.text, mediaType: 'text/plain' }] : [],
+        metadata: { [A2A_ROOM_EXTENSION]: { activity: piece.activity } },
+      },
+      append: !piece.reset,
+      lastChunk: piece.done,
+    });
+  }
+
+  static live(response: StreamResponse, from: 'pi-kit' | 'outside'): LivePiece | undefined {
+    if (response.payload?.$case !== 'artifactUpdate') return undefined;
+    const update = response.payload.value;
+    const artifact = update.artifact;
+    if (!artifact || (from === 'pi-kit' && artifact.artifactId !== RoomA2a.LIVE)) return undefined;
+    const text = artifact.parts.map((part) => (part.content?.$case === 'text' ? part.content.value : '')).join('');
+    const activity = (artifact.metadata?.[A2A_ROOM_EXTENSION] as { activity?: unknown } | undefined)?.activity;
+    if (from === 'outside' && (!text || update.lastChunk)) return undefined;
+    return {
+      text,
+      reset: !update.append,
+      activity: typeof activity === 'string' ? activity : null,
+      done: from === 'pi-kit' && update.lastChunk,
+    };
+  }
+
+  static async relay(
+    stream: AsyncIterable<StreamResponse>,
+    from: 'pi-kit' | 'outside',
+    put: (piece: LivePiece) => void,
+  ): Promise<void> {
+    try {
+      for await (const response of stream) {
+        const piece = RoomA2a.live(response, from);
+        if (piece) put(piece);
+      }
+    } catch {
+      return;
+    }
   }
 
   static artifactUpdates(id: string, roomId: string, report: RoomTaskReport): TaskArtifactUpdateEvent[] {

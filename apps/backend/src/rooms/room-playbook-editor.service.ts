@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { delimiter, join, relative, resolve } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import { structuredPatch } from 'diff';
 import {
   PlaybookProposalSchema,
@@ -12,6 +12,7 @@ import {
   type PlaybookTry,
   type PlaybookTryResult,
   type RoomAction,
+  type PlaybookAgentSettings,
 } from '@pi-kit/protocol';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
 import { type FoundRoom, RoomsRepository } from '../db/rooms.repository';
@@ -44,9 +45,9 @@ export class RoomPlaybookEditor {
   async detail(roomId: string, now = Date.now()): Promise<PlaybookDetail> {
     const found = await this.room(roomId);
     if (!found.playbook) throw new NotFoundException('This room follows no playbook.');
-    const folder = await this.agents.projectFolder(found);
-    const { dir, source } = this.files.locate(folder, found.playbook);
-    if (!source) throw new NotFoundException(`No playbook named ${found.playbook} in ${folder}.`);
+    const place = this.files.place(await this.agents.projectFolder(found), roomId);
+    const { dir, source } = this.files.locate(place, found.playbook);
+    if (!source) throw new NotFoundException(`No playbook named ${found.playbook} in ${place.project}.`);
     const read = this.files.validate(join(dir, RoomPlaybookFiles.SKILL), found.playbook, source);
     const config = 'config' in read ? read.config : null;
     const runs = await this.store.lastRuns(roomId);
@@ -57,7 +58,8 @@ export class RoomPlaybookEditor {
     return {
       name: read.name,
       description: read.description,
-      folder: relative(folder, dir),
+      folder: this.files.shown(place, dir),
+      origin: this.files.origin(place, dir),
       skill: source.skill,
       yaml: source.yaml,
       config,
@@ -90,12 +92,12 @@ export class RoomPlaybookEditor {
       usage,
       checks:
         'config' in read
-          ? await this.check(folder, read)
+          ? await this.check(place.project, read, found.leadThreadId)
           : [{ level: 'error', subject: 'playbook', message: read.error }],
     };
   }
 
-  private async check(folder: string, playbook: Playbook): Promise<PlaybookCheck[]> {
+  private async check(folder: string, playbook: Playbook, leadThreadId: string | null): Promise<PlaybookCheck[]> {
     const { config } = playbook;
     const checks: PlaybookCheck[] = [];
     const connectors = [...Object.entries(config.tools), ...Object.entries(config['safe-outputs'])];
@@ -117,6 +119,38 @@ export class RoomPlaybookEditor {
       for (const [name, tool] of connectors)
         if (tool.mail || (tool.calendar && !tool.calendar.ics))
           checks.push({ level: 'error', subject: `tool ${name}`, message: 'It reads Mail or Calendar of a Mac.' });
+    const asked: [string, PlaybookAgentSettings | undefined][] = [
+      ['lead', config.lead],
+      ['workers', config.workers],
+      ...config.participants.map((participant): [string, PlaybookAgentSettings] => [
+        `participant ${participant.role}`,
+        participant,
+      ]),
+    ];
+    const models = asked.some(([, settings]) => settings?.model) ? await this.agents.models(leadThreadId) : undefined;
+    for (const [subject, settings] of asked) {
+      if (!settings?.model) continue;
+      const model = models?.find((candidate) => `${candidate.provider}/${candidate.id}` === settings.model);
+      if (!models)
+        checks.push({
+          level: 'warn',
+          subject: `model ${subject}`,
+          message: `${settings.model} is checked once the lead runs.`,
+        });
+      else if (!model)
+        checks.push({
+          level: 'error',
+          subject: `model ${subject}`,
+          message: `${settings.model} is not available here; it would run on the default model.`,
+        });
+      else if (settings.thinking && settings.thinking !== 'off' && !model.reasoning)
+        checks.push({
+          level: 'warn',
+          subject: `model ${subject}`,
+          message: `${settings.model} does not think; the effort ${settings.thinking} is ignored.`,
+        });
+      else checks.push({ level: 'ok', subject: `model ${subject}`, message: 'Available.' });
+    }
     const remote = config.participants.filter((participant) => participant.agent.machine || participant.agent.agent);
     const environments = remote.length
       ? await this.environments.list({ agents: remote.some((participant) => participant.agent.agent) })
@@ -168,7 +202,7 @@ export class RoomPlaybookEditor {
   async try(roomId: string, input: PlaybookTry): Promise<PlaybookTryResult> {
     const found = await this.room(roomId);
     const folder = await this.agents.projectFolder(found);
-    const playbook = this.files.loadOrConflict(folder, found.playbook ?? '');
+    const playbook = this.files.loadOrConflict(this.files.place(folder, roomId), found.playbook ?? '');
     let call;
     try {
       call = this.tools.prepare(playbook, input.tool, input.params, {
@@ -198,15 +232,16 @@ export class RoomPlaybookEditor {
     const found = roomId ? await this.rooms.get(roomId) : undefined;
     if (!found) throw new Error('This session is not the lead of a room.');
     const folder = await this.agents.projectFolder(found);
-    const { dir, source: before } = this.files.locate(folder, input.name);
+    const place = this.files.place(folder, found.room.id);
+    const { dir, source: before } = this.files.locate(place, input.name);
     const proposed = { skill: input.skill, yaml: input.yaml };
     const read = this.files.validate(join(dir, RoomPlaybookFiles.SKILL), input.name, proposed);
     if ('error' in read)
       return `Nothing was proposed: the playbook is not valid. ${read.error}\n\nFix it and propose again.`;
     if (before?.skill === input.skill && before.yaml === input.yaml)
       return 'Those are the files as they are now; there is nothing to propose.';
-    const checks = await this.check(folder, read);
-    const where = relative(folder, dir);
+    const checks = await this.check(folder, read, found.leadThreadId);
+    const where = this.files.shown(place, dir);
     const payload: PlaybookProposal = {
       name: input.name,
       folder: where,
@@ -262,19 +297,19 @@ export class RoomPlaybookEditor {
     const parsed = PlaybookProposalSchema.safeParse(action.payload);
     if (!parsed.success) return { ok: false, result: 'The proposal is not readable.' };
     const proposal = parsed.data;
-    const folder = await this.agents.projectFolder(found);
-    const { dir, source } = this.files.locate(folder, proposal.name);
+    const place = this.files.place(await this.agents.projectFolder(found), found.room.id);
+    const { dir, source } = this.files.locate(place, proposal.name);
     if (RoomPlaybookEditor.digest(source) !== proposal.base)
       return {
         ok: false,
         result: 'The playbook’s files changed since the lead proposed this. Ask it to propose again.',
       };
-    if (resolve(folder, proposal.folder) !== dir)
+    if (this.files.shown(place, dir) !== proposal.folder)
       return { ok: false, result: 'The proposal points outside the playbook’s folder.' };
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, RoomPlaybookFiles.SKILL), proposal.skill, 'utf8');
     await writeFile(join(dir, RoomPlaybookFiles.CONFIG), proposal.yaml, 'utf8');
-    const written = `Wrote ${join(proposal.folder, RoomPlaybookFiles.SKILL)} and ${RoomPlaybookFiles.CONFIG}; they are uncommitted changes in ${folder}.`;
+    const written = `Wrote ${join(proposal.folder, RoomPlaybookFiles.SKILL)} and ${RoomPlaybookFiles.CONFIG}; ${this.files.origin(place, dir) === 'room' ? `they are in the room's folder ${place.room}` : `they are uncommitted changes in ${place.project}`}.`;
     if (!found.playbook) {
       const failed = await this.lead.update(found.room.id, { playbook: proposal.name }).then(
         () => undefined,

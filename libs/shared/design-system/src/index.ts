@@ -23,6 +23,8 @@ export * from './lib/tool-output';
 export * from './lib/tool-list';
 export * from './lib/notice';
 export * from './lib/diagnostics';
+export * from './lib/run-status';
+export * from './lib/step-log';
 export * from './lib/changes-pill';
 export * from './lib/diff-totals';
 export * from './lib/skill-draft-card';

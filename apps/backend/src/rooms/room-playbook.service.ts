@@ -6,6 +6,7 @@ import {
   NotFoundException,
   type OnApplicationShutdown,
   type OnModuleInit,
+  Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Message, SendMessageRequest, TaskState, type Task } from '@a2a-js/sdk';
@@ -17,6 +18,7 @@ import {
   type RoomAction,
   type RoomActionDecision,
   type RoomMemoryEntry,
+  type PlaybookAgentSettings,
 } from '@pi-kit/protocol';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
 import { type FoundRoom, RoomsRepository } from '../db/rooms.repository';
@@ -32,6 +34,8 @@ import { RoomConsultant } from './room-consultant.service';
 import { NO_ROOM, RoomLeadService } from './room-lead.service';
 import { RoomPlaybookFiles, type Playbook } from './room-playbook-files.service';
 import { RoomPlaybookEditor } from './room-playbook-editor.service';
+import { RoomLive } from './room-live';
+import { RoomRuns } from './room-runs';
 
 @Injectable()
 export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown {
@@ -65,6 +69,8 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     private readonly outside: RoomA2aAgents,
     private readonly peers: PeersService,
     private readonly editor: RoomPlaybookEditor,
+    private readonly live: RoomLive,
+    @Optional() private readonly runs?: RoomRuns,
   ) {}
 
   onModuleInit(): void {
@@ -79,7 +85,14 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
 
   async of(found: FoundRoom): Promise<Playbook | undefined> {
     if (!found.playbook) return undefined;
-    return this.playbooks.load(await this.agents.projectFolder(found), found.playbook);
+    return this.playbooks.load(
+      this.playbooks.place(await this.agents.projectFolder(found), found.room.id),
+      found.playbook,
+    );
+  }
+
+  async settings(found: FoundRoom, who: 'lead' | 'workers'): Promise<PlaybookAgentSettings | undefined> {
+    return (await this.of(found).catch(() => undefined))?.config[who];
   }
 
   scopes(found: FoundRoom): string[] {
@@ -168,7 +181,13 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         summary: input.reason,
         payload: { ...call },
       });
+      const step = await this.runs?.step(found.room.id, {
+        kind: 'output',
+        name: input.tool,
+        detail: this.tools.describe(call),
+      });
       if (found.rehearsal) {
+        await this.runs?.settle(found.room.id, step, 'done', RoomPlaybookService.REHEARSED);
         await this.store.decide(found.room.id, action.id, 'done', RoomPlaybookService.REHEARSED);
         await this.bus.record(found.room.id, {
           kind: 'note',
@@ -178,6 +197,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         return `Rehearsal: ${input.tool} did not run, nothing went out. It would have run ${this.tools.describe(call)}. Go on as if it had worked.`;
       }
       const result = await this.run(found, call, input.tool, input.reason);
+      await this.runs?.settle(found.room.id, step, result.ok ? 'done' : 'failed', result.output);
       await this.store.decide(found.room.id, action.id, result.ok ? 'done' : 'failed', this.tools.cut(result.output));
       return this.reply(result, this.tools.cut(result.output));
     }
@@ -187,14 +207,23 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         { kind: 'call', name: input.tool, summary: input.reason, payload: { ...call } },
         `Drafted ${input.tool} for your approval: ${input.reason}`,
       );
+      await this.runs?.step(found.room.id, {
+        kind: 'output',
+        name: input.tool,
+        detail: this.tools.describe(call),
+        state: 'waiting',
+        actionId: action.id,
+      });
       return `Drafted as action ${action.id}. Nothing ran: the owner approves or discards it, and you are told the result.`;
     }
     const key = `${found.room.id}:${JSON.stringify(call)}`;
     const kept = (input.page ?? 1) > 1 ? this.outputs.get(key) : undefined;
-    const result =
-      kept && Date.now() - kept.at < RoomPlaybookService.KEEP_OUTPUT
-        ? kept.result
-        : await this.run(found, call, input.tool, input.reason);
+    const fresh = !(kept && Date.now() - kept.at < RoomPlaybookService.KEEP_OUTPUT);
+    const step = fresh
+      ? await this.runs?.step(found.room.id, { kind: 'tool', name: input.tool, detail: this.tools.describe(call) })
+      : undefined;
+    const result = fresh ? await this.run(found, call, input.tool, input.reason) : kept.result;
+    await this.runs?.settle(found.room.id, step, result.ok ? 'done' : 'failed', result.output);
     if (!kept) {
       this.outputs.delete(key);
       this.outputs.set(key, { at: Date.now(), result });
@@ -242,14 +271,27 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     const stages = playbook.config.stages;
     if (!stages.includes(input.stage)) return `The playbook has no stage ${input.stage}. Stages: ${stages.join(', ')}.`;
     if (playbook.config.gates[input.stage] === 'owner') {
-      await this.draft(
+      const gated = await this.draft(
         found,
         { kind: 'advance', name: input.stage, summary: input.summary, payload: { stage: input.stage } },
         `Asks you to move the room to “${input.stage}”: ${input.summary}`,
       );
+      await this.runs?.step(found.room.id, {
+        kind: 'advance',
+        name: input.stage,
+        detail: input.summary,
+        state: 'waiting',
+        actionId: gated.id,
+      });
       return `The owner decides on moving to ${input.stage}; you are told when they do. Wait for it.`;
     }
     await this.enter(found, input.stage, input.summary, 'lead');
+    await this.runs?.step(found.room.id, {
+      kind: 'advance',
+      name: input.stage,
+      detail: input.summary,
+      state: 'done',
+    });
     return `The room is now at ${input.stage}.`;
   }
 
@@ -270,6 +312,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
       );
     if (action.kind === 'advance') {
       await this.store.decide(roomId, actionId, 'done', null);
+      await this.runs?.settleAction(roomId, actionId, 'done', null);
       await this.enter(found, action.name, action.summary, 'coordinator');
       return await this.publish(roomId, actionId);
     }
@@ -320,8 +363,9 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
   ): Promise<RoomAction> {
     const roomId = found.room.id;
     await this.store.decide(roomId, action.id, state, result);
+    await this.runs?.settleAction(roomId, action.id, state, result);
     await this.bus.record(roomId, { kind: 'note', actor: 'coordinator', text: note });
-    void this.lead.nudge(roomId, nudge);
+    void this.lead.nudge(roomId, nudge, { kind: 'approval', title: note });
     return await this.publish(roomId, action.id);
   }
 
@@ -354,7 +398,11 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
       if (!due) continue;
       await this.store.setLastRun(roomId, schedule.id, stamp);
       await this.rooms.setAgentTurns(roomId, 0);
-      void this.lead.nudge(roomId, RoomPlaybookService.wake(schedule));
+      void this.lead.nudge(roomId, RoomPlaybookService.wake(schedule), {
+        kind: 'schedule',
+        trigger: schedule.id,
+        title: schedule.say || schedule.id,
+      });
     }
     for (const trigger of playbook.config.on.poll) {
       if (now - (runs.get(trigger.id) ?? 0) < RoomSchedule.duration(trigger.every)) continue;
@@ -372,7 +420,10 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     const found = await this.rooms.get(roomId);
     if (!found) throw new NotFoundException(NO_ROOM);
     if (!found.playbook) throw new ConflictException('This room follows no playbook.');
-    const playbook = this.playbooks.loadOrConflict(await this.agents.projectFolder(found), found.playbook);
+    const playbook = this.playbooks.loadOrConflict(
+      this.playbooks.place(await this.agents.projectFolder(found), found.room.id),
+      found.playbook,
+    );
     const schedule = playbook.config.on.schedule.find((candidate) => candidate.id === triggerId);
     if (schedule) {
       const text = RoomPlaybookService.wake(schedule);
@@ -383,7 +434,11 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         text: `You ran the schedule ${schedule.id} now.`,
       });
       await this.rooms.setAgentTurns(roomId, 0);
-      void this.lead.nudge(roomId, text);
+      void this.lead.nudge(roomId, text, {
+        kind: 'schedule',
+        trigger: schedule.id,
+        title: schedule.say || schedule.id,
+      });
       return { text: `Woke the lead: ${text}`, items: [] };
     }
     const trigger = playbook.config.on.poll.find((candidate) => candidate.id === triggerId);
@@ -440,6 +495,11 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         null,
         2,
       ).slice(0, 8000)}`,
+      {
+        kind: 'poll',
+        trigger: trigger.id,
+        title: `${news.length} new: ${news.map((item) => item.key).join(', ')}`,
+      },
     );
     return { text: `Found ${news.length} new; woke the lead.`, items: listed };
   }
@@ -449,10 +509,13 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     if (!participant)
       return `The playbook has no participant ${role}. Participants: ${playbook.config.participants.map((p) => p.role).join(', ') || 'none'}.`;
     await this.bus.record(found.room.id, { kind: 'note', actor: 'lead', text: `Asks the ${role}: ${question}`, role });
+    const step = await this.runs?.step(found.room.id, { kind: 'consult', name: role, detail: question });
     let answer: { text: string; environmentId: string | null };
+    let answered = true;
     try {
       answer = await this.answerOf(found, participant, question);
     } catch (error) {
+      answered = false;
       answer = {
         text: `The ${role} could not answer: ${error instanceof Error ? error.message : String(error)}`,
         environmentId: null,
@@ -465,6 +528,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
       role,
       environmentId: answer.environmentId,
     });
+    await this.runs?.settle(found.room.id, step, answered ? 'done' : 'failed', answer.text);
     return answer.text;
   }
 
@@ -517,14 +581,36 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
           configuration: { acceptedOutputModes: ['text/markdown', 'text/plain'], returnImmediately: true },
         });
         const reply = await this.a2a.sendMessage(peer.peerId, request);
-        return {
-          text: await this.settle(reply, async (id) => await this.a2a.getTask(peer.peerId, { tenant: '', id })),
+        const relay = this.live.relay({
+          roomId: found.room.id,
+          actor: 'consultant',
+          role: participant.role,
           environmentId: peer.peerId,
-        };
+        });
+        const abort = new AbortController();
+        if (!('messageId' in reply))
+          void RoomA2a.relay(
+            this.a2a.subscribe(peer.peerId, { tenant: '', id: reply.id }, abort.signal),
+            'pi-kit',
+            relay.put,
+          );
+        try {
+          return {
+            text: await this.settle(reply, async (id) => await this.a2a.getTask(peer.peerId, { tenant: '', id })),
+            environmentId: peer.peerId,
+          };
+        } finally {
+          abort.abort();
+          relay.end();
+        }
       }
     }
     return {
-      text: await this.consultant.ask({ ...consult, folder: await this.agents.projectFolder(found) }),
+      text: await this.consultant.ask({
+        ...consult,
+        folder: await this.agents.projectFolder(found),
+        settings: { model: participant.model, thinking: participant.thinking },
+      }),
       environmentId: null,
     };
   }
@@ -546,6 +632,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     }
     if (!this.terminal(task.status?.state)) return 'The consultant took too long; no answer.';
     const artifacts = (task.artifacts ?? [])
+      .filter((artifact) => artifact.artifactId !== RoomA2a.LIVE)
       .flatMap((artifact) => artifact.parts.map((part) => (part.content?.$case === 'text' ? part.content.value : '')))
       .filter(Boolean)
       .join('\n\n');
@@ -565,7 +652,10 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     });
     this.bus.emit(found.room.id, { type: 'room', mode: found.mode, paused: found.paused, stage });
     if (actor === 'coordinator')
-      void this.lead.nudge(found.room.id, `The owner moved the room to the stage “${stage}”. Go on with it.`);
+      void this.lead.nudge(found.room.id, `The owner moved the room to the stage “${stage}”. Go on with it.`, {
+        kind: 'stage',
+        title: stage,
+      });
   }
 
   private async run(found: FoundRoom, call: ToolCall, tool: string, reason: string): Promise<ToolRun> {

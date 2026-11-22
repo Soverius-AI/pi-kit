@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConflictException } from '@nestjs/common';
@@ -21,6 +21,11 @@ import { RoomQuestions } from './room-questions';
 import { RoomsService } from './rooms.service';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
 import { RoomPlaybookFiles } from './room-playbook-files.service';
+import { RoomFolders } from './room-folders';
+import { RoomLive } from './room-live';
+import { RoomRuns } from './room-runs';
+import { RoomRunsRepository } from '../db/room-runs.repository';
+import type { BackendConfig } from '../app/config';
 
 let base: string;
 let project: string;
@@ -30,6 +35,7 @@ let rooms: RoomsRepository;
 let lead: RoomLeadService;
 let bus: RoomBus;
 let roomId: string;
+let runs: RoomRuns;
 let reply: string;
 let run: HeadlessRun;
 let sandboxState: string;
@@ -117,8 +123,10 @@ beforeEach(async () => {
     new RoomAgents(rows, threads, { mcpAppLookup: () => undefined } as never, new MetaRepository(db)),
     new RoomQuestions(),
     new RoomPlaybooksRepository(db),
-    new RoomPlaybookFiles(),
+    new RoomPlaybookFiles(new RoomFolders({ dataDir: join(base, 'data') } as BackendConfig)),
     { forRooms: async () => undefined } as unknown as ComposioConnectService,
+    new RoomLive(bus),
+    (runs = new RoomRuns(new RoomRunsRepository(db), bus)),
   );
   const room = await new RoomsService(
     rooms,
@@ -164,12 +172,58 @@ describe('the room lead', () => {
       [1, 'owner', 'Can Desktop check this on Linux?'],
       [2, 'lead', reply],
     ]);
-    expect(lines.map((l) => (l.type === 'lead' ? l.state : l.type === 'event' ? l.event.actor : 'task'))).toEqual([
-      'owner',
-      'working',
-      'lead',
-      'idle',
+    expect(
+      lines
+        .filter((l) => l.type !== 'run' && l.type !== 'live')
+        .map((l) => (l.type === 'lead' ? l.state : l.type === 'event' ? l.event.actor : 'task')),
+    ).toEqual(['owner', 'working', 'lead', 'idle']);
+    await vi.waitFor(() =>
+      expect(lines.flatMap((l) => (l.type === 'run' ? [l.run.state] : []))).toEqual(['running', 'done']),
+    );
+    expect(await runs.list(roomId)).toEqual([
+      expect.objectContaining({
+        number: 1,
+        cause: 'owner',
+        title: 'Can Desktop check this on Linux?',
+        state: 'done',
+        summary: reply,
+        steps: [],
+      }),
     ]);
+    await lead.nudge(roomId, 'Desktop finished.\nDetails follow.');
+    await settle();
+    expect((await runs.list(roomId)).map((run) => [run.number, run.cause, run.title])).toEqual([
+      [2, 'agent', 'Desktop finished.'],
+      [1, 'owner', 'Can Desktop check this on Linux?'],
+    ]);
+  });
+
+  it('streams what the lead writes and ends the stream before its answer is posted', async () => {
+    runHeadless.mockImplementationOnce((async (
+      _thread: string,
+      _prompt: string,
+      options: { observe?: (event: { type: string; delta?: string }) => void },
+    ) => {
+      options.observe?.({ type: 'TEXT_MESSAGE_START' });
+      options.observe?.({ type: 'TEXT_MESSAGE_CONTENT', delta: 'I would split ' });
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      options.observe?.({ type: 'TEXT_MESSAGE_CONTENT', delta: 'this.' });
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      return run;
+    }) as never);
+    const lines: RoomStreamLine[] = [];
+    bus.subscribe(roomId, (line) => lines.push(line));
+    await lead.post(roomId, { text: 'Plan it.', route: 'lead' });
+    await vi.waitFor(() => expect(lead.state(roomId)).toBe('idle'), { timeout: 3000 });
+    await settle();
+    const told = lines.flatMap((line) =>
+      line.type === 'live'
+        ? [line.live.done ? 'live done' : `live ${line.live.reset ? 'whole' : 'more'}: ${line.live.text}`]
+        : line.type === 'event' && line.event.actor === 'lead'
+          ? ['answer']
+          : [],
+    );
+    expect(told).toEqual(['live whole: ', 'live whole: I would split ', 'live more: this.', 'live done', 'answer']);
   });
 
   it('starts the lead on the host while rooms do not use the sandbox', async () => {
@@ -281,7 +335,7 @@ describe('the room lead', () => {
     expect(resumeHeadless).toHaveBeenCalledWith(
       'lead-1',
       [{ interruptId: 'd1', status: 'resolved', payload: { confirmed: true } }],
-      { cwd: project },
+      { cwd: project, observe: expect.any(Function) },
     );
     const detail = await lead.detail(roomId);
     expect(detail.events.at(-1)).toMatchObject({ actor: 'lead', text: reply });
@@ -298,6 +352,7 @@ describe('the room lead', () => {
     await settle();
     expect(resumeHeadless).toHaveBeenCalledWith('lead-1', [{ interruptId: 'd1', status: 'cancelled' }], {
       cwd: project,
+      observe: expect.any(Function),
     });
   });
 
@@ -339,6 +394,23 @@ describe('the room lead', () => {
     await settle();
   });
 
+  it('gives the room its own folder, renames it and archives it without deleting anything', async () => {
+    const detail = await lead.detail(roomId);
+    expect(detail.folder).toBe(join(base, 'data', 'rooms', roomId));
+    expect(existsSync(join(detail.folder as string, 'playbooks'))).toBe(true);
+    const lines: unknown[] = [];
+    bus.subscribe(roomId, (line) => lines.push(line));
+    const renamed = await lead.update(roomId, { title: 'Watcher fix everywhere' });
+    expect(renamed.room.title).toBe('Watcher fix everywhere');
+    expect(renamed.events.at(-1)?.text).toContain('Watcher fix everywhere');
+    expect(lines.at(-1)).toMatchObject({ type: 'room', title: 'Watcher fix everywhere' });
+    expect((await rooms.active()).map((room) => room.title)).toEqual(['Watcher fix everywhere']);
+    await lead.archive(roomId);
+    expect(await rooms.active()).toEqual([]);
+    await expect(lead.detail(roomId)).rejects.toThrow('No room with this id');
+    expect(existsSync(join(detail.folder as string, 'playbooks'))).toBe(true);
+  });
+
   it('switches the room to assisted and says so in the room', async () => {
     const detail = await lead.update(roomId, { mode: 'assisted' });
     expect(detail.mode).toBe('assisted');
@@ -368,6 +440,7 @@ describe('the room’s playbook', () => {
     lead.setPlaybooks({
       briefing: async (found) => (found.playbook ? `Briefing of ${found.playbook}.` : undefined),
       extras: async () => ({ stages: [], actions: [], memory: [] }),
+      settings: async () => undefined,
     });
   });
 

@@ -99,6 +99,10 @@ export type AppSettings = {
     [key: string]: unknown;
 };
 
+export type ArchiveRoom = {
+    stopTasks?: boolean;
+};
+
 export type AttendantAction = {
     id: number;
     at: number;
@@ -1914,6 +1918,17 @@ export type PiUpdateCheck = {
     command: string;
 };
 
+export type PlaybookAgentSettings = {
+    /**
+     * The model as provider/id, such as anthropic/claude-opus-5-5; the host’s default when left out.
+     */
+    model?: string;
+    /**
+     * The thinking effort; the host’s default when left out.
+     */
+    thinking?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+};
+
 export type PlaybookCalendarSource = {
     /**
      * Events from now until this many days ahead.
@@ -1932,6 +1947,8 @@ export type PlaybookCheck = {
 };
 
 export type PlaybookConfig = {
+    lead?: PlaybookAgentSettings;
+    workers?: PlaybookAgentSettings;
     participants: Array<PlaybookParticipant>;
     tools: {
         [key: string]: PlaybookTool;
@@ -1956,6 +1973,7 @@ export type PlaybookDetail = {
     name: string;
     description: string;
     folder: string;
+    origin: 'room' | 'repository';
     skill: string;
     yaml: string;
     config: PlaybookConfig | null;
@@ -2029,6 +2047,11 @@ export type PlaybookParticipant = {
         agent?: string;
     };
     instructions: string;
+    /**
+     * The model as provider/id, such as anthropic/claude-opus-5-5; the host’s default when left out.
+     */
+    model?: string;
+    thinking?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 };
 
 export type PlaybookPoll = {
@@ -2072,6 +2095,7 @@ export type PlaybookSummary = {
     name: string;
     description: string;
     path: string;
+    origin: 'room' | 'repository';
     roles: Array<string>;
     tools: Array<string>;
     outputs: Array<string>;
@@ -2386,6 +2410,7 @@ export type RoomDetail = {
     lead: RoomLeadState;
     leadThreadId: string | null;
     projectFolder: string | null;
+    folder: string | null;
     mode: 'supervised' | 'assisted';
     paused: boolean;
     rehearsal: boolean;
@@ -2451,6 +2476,18 @@ export type RoomLeadState = 'idle' | 'working' | 'error';
 
 export type RoomList = Array<Room>;
 
+export type RoomLive = {
+    id: string;
+    actor: 'lead' | 'consultant' | 'worker';
+    role: string | null;
+    taskId: string | null;
+    environmentId: string | null;
+    text: string;
+    reset: boolean;
+    activity: string | null;
+    done: boolean;
+};
+
 export type RoomMemoryEntry = {
     scope: 'room' | 'playbook';
     key: string;
@@ -2460,6 +2497,35 @@ export type RoomMemoryEntry = {
 };
 
 export type RoomMode = 'supervised' | 'assisted';
+
+export type RoomRun = {
+    id: string;
+    roomId: string;
+    number: number;
+    cause: 'owner' | 'schedule' | 'poll' | 'approval' | 'stage' | 'agent';
+    trigger: string | null;
+    title: string;
+    playbook: string | null;
+    stage: string | null;
+    state: 'running' | 'waiting' | 'done' | 'failed' | 'stopped';
+    summary: string | null;
+    startedAt: number;
+    endedAt: number | null;
+    steps: Array<RoomRunStep>;
+};
+
+export type RoomRunList = Array<RoomRun>;
+
+export type RoomRunStep = {
+    seq: number;
+    kind: 'tool' | 'output' | 'consult' | 'advance';
+    name: string;
+    detail: string;
+    state: 'running' | 'waiting' | 'done' | 'failed' | 'discarded';
+    output: string | null;
+    startedAt: number;
+    endedAt: number | null;
+};
 
 export type RoomStartPreview = {
     title: string;
@@ -2478,6 +2544,7 @@ export type RoomStreamLine = {
     questions?: Array<RoomTaskQuestion>;
 } | {
     type: 'room';
+    title?: string;
     mode: RoomMode;
     paused: boolean;
     rehearsal?: boolean;
@@ -2486,6 +2553,12 @@ export type RoomStreamLine = {
 } | {
     type: 'action';
     action: RoomAction;
+} | {
+    type: 'run';
+    run: RoomRun;
+} | {
+    type: 'live';
+    live: RoomLive;
 } | {
     type: 'memory';
     entry: RoomMemoryEntry;
@@ -3322,6 +3395,7 @@ export type UpdateRequest = {
 };
 
 export type UpdateRoom = {
+    title?: string;
     mode?: RoomMode;
     paused?: boolean;
     playbook?: string | null;
@@ -13408,6 +13482,78 @@ export type RoomsUpdateResponses = {
 };
 
 export type RoomsUpdateResponse = RoomsUpdateResponses[keyof RoomsUpdateResponses];
+
+export type RoomsListRunsData = {
+    body?: never;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/runs';
+};
+
+export type RoomsListRunsErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomsListRunsError = RoomsListRunsErrors[keyof RoomsListRunsErrors];
+
+export type RoomsListRunsResponses = {
+    /**
+     * OK
+     */
+    200: RoomRunList;
+};
+
+export type RoomsListRunsResponse = RoomsListRunsResponses[keyof RoomsListRunsResponses];
+
+export type RoomsArchiveData = {
+    body: ArchiveRoom;
+    path: {
+        /**
+         * The room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/archive';
+};
+
+export type RoomsArchiveErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomsArchiveError = RoomsArchiveErrors[keyof RoomsArchiveErrors];
+
+export type RoomsArchiveResponses = {
+    /**
+     * The room was archived.
+     */
+    204: void;
+};
+
+export type RoomsArchiveResponse = RoomsArchiveResponses[keyof RoomsArchiveResponses];
 
 export type RoomsPostData = {
     body: PostRoomMessage;

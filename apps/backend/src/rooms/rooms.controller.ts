@@ -40,6 +40,8 @@ import {
   A2aAgentListSchema,
   RoomCloneListSchema,
   UpdateRoomSchema,
+  ArchiveRoomSchema,
+  RoomRunListSchema,
   RoomClonesQuerySchema,
   A2aAgentSchema,
   AddA2aAgentSchema,
@@ -74,6 +76,8 @@ import type {
   A2aAgent,
   RoomClone,
   UpdateRoom,
+  ArchiveRoom,
+  RoomRun,
   AddA2aAgent,
   PlaybookSummary,
   RoomAction,
@@ -84,6 +88,8 @@ import { SSE_HEADERS, formatSSEErrorEvent, formatSSEEvent } from '@a2a-js/sdk';
 import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
 import { Fails, Remote, Responds, Streams } from '../contract';
 import { RoomBus } from './room-bus';
+import { RoomRuns } from './room-runs';
+import { RoomLive } from './room-live';
 import { RoomPlaybookService } from './room-playbook.service';
 import { RoomPlaybookEditor } from './room-playbook-editor.service';
 import { RoomDirectoryService } from './room-directory.service';
@@ -111,6 +117,8 @@ export class RoomsController {
     private readonly outside: RoomA2aAgents,
     private readonly playbook: RoomPlaybookService,
     private readonly editor: RoomPlaybookEditor,
+    private readonly runs: RoomRuns,
+    private readonly live: RoomLive,
   ) {}
 
   @Remote()
@@ -145,7 +153,7 @@ export class RoomsController {
   @ApiOperation({
     summary: 'Create a room',
     description:
-      "Creates a room hosted on this environment, either from a thread (the repository and base commit are read from the thread's folder, which the room integrates into) or from a repository and base commit that a project on this environment has. With several such projects, `projectFolder` names the one the room integrates into (see GET /api/rooms/clones). Only the given summary is stored as shared context.",
+      "Creates a room hosted on this environment, from a thread (the repository and base commit are read from the thread's folder, which the room integrates into), from a `projectFolder` alone (a git repository here with a commit; it becomes a project of this environment), or from a repository and base commit that a project on this environment has. With several such projects, `projectFolder` names the one the room integrates into (see GET /api/rooms/clones). Only the given summary is stored as shared context.",
   })
   @Responds(RoomSchema, { status: 201 })
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_THREAD}`, 409: `${NOT_A_REPOSITORY} Or: ${NO_CLONE} Or: ${SEVERAL_CLONES}` })
@@ -262,15 +270,49 @@ export class RoomsController {
   @Remote()
   @Patch(':roomId')
   @ApiOperation({
-    summary: 'Change how autonomous a room is',
+    summary: 'Rename a room or change how autonomous it is',
     description:
-      'Supervised: worker questions and results come to the owner. Assisted: the lead answers worker questions it can settle and reviews results first, sending them back for changes up to three times; the owner still approves tasks and integrates. Paused: nothing wakes the lead until the owner resumes.',
+      'A title renames the room. Supervised: worker questions and results come to the owner. Assisted: the lead answers worker questions it can settle and reviews results first, sending them back for changes up to three times; the owner still approves tasks and integrates. Paused: nothing wakes the lead until the owner resumes.',
   })
   @ApiParam({ name: 'roomId', description: 'The room id.' })
   @Responds(RoomDetailSchema)
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
   update(@Param('roomId') roomId: string, @Body({ schema: UpdateRoomSchema }) body: UpdateRoom): Promise<RoomDetail> {
     return this.lead.update(roomId, body);
+  }
+
+  @Remote()
+  @Get(':roomId/runs')
+  @ApiOperation({
+    summary: 'List a room’s runs',
+    description:
+      'Each turn of the lead is a run: what woke it (the owner, a schedule, a poll, an approval, a stage or an agent), the tools it called, the participants it consulted, the safe outputs it drafted or ran and the stages it moved to, each with its state and output. Newest first, at most fifty.',
+  })
+  @ApiParam({ name: 'roomId', description: 'The room id.' })
+  @Responds(RoomRunListSchema)
+  @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
+  async listRuns(@Param('roomId') roomId: string): Promise<RoomRun[]> {
+    await this.lead.found(roomId);
+    return await this.runs.list(roomId);
+  }
+
+  @Remote()
+  @Post(':roomId/archive')
+  @HttpCode(204)
+  @ApiOperation({
+    summary: 'Archive a room',
+    description:
+      'The room leaves every list and nothing wakes its lead again. With stopTasks its running tasks are asked to stop first; otherwise they keep running where they are. Repositories, worktrees, sessions and the room’s folder are kept.',
+  })
+  @ApiParam({ name: 'roomId', description: 'The room id.' })
+  @ApiNoContentResponse({ description: 'The room was archived.' })
+  @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
+  async archive(
+    @Param('roomId') roomId: string,
+    @Body({ schema: ArchiveRoomSchema }) body: ArchiveRoom,
+  ): Promise<void> {
+    await this.lead.archive(roomId);
+    if (body.stopTasks) await this.tasks.stopRunning(roomId);
   }
 
   @Remote()
@@ -508,7 +550,7 @@ export class RoomsController {
   @ApiOperation({
     summary: 'Stream a room',
     description:
-      'Keeps the connection open and sends newline-delimited JSON: the lead’s state first, then every event after `after`, then each new event and lead state as it happens; blank lines keep the connection alive.',
+      'Keeps the connection open and sends newline-delimited JSON: the lead’s state first, then what each participant is writing right now, then every event after `after`, then each new event, lead state, run and piece of live text as it happens; blank lines keep the connection alive.',
   })
   @ApiParam({ name: 'roomId', description: 'The room id.' })
   @Streams(RoomStreamLineSchema, 'The stream stays open until the client closes it.')
@@ -543,6 +585,7 @@ export class RoomsController {
       leave();
     });
     send({ type: 'lead', state: detail.lead, questions: detail.leadQuestions });
+    for (const live of this.live.snapshot(roomId)) send({ type: 'live', live });
     for (const event of detail.events) {
       if (event.seq <= last) continue;
       last = event.seq;

@@ -50,8 +50,8 @@ export const CreateRoomSchema = z
     playbook: z.string().min(1).max(200).optional(),
   })
   .strict()
-  .refine((input) => !!input.threadId || (!!input.repository && !!input.baseCommit), {
-    message: 'Start a room from a thread, or give the repository and base commit.',
+  .refine((input) => !!input.threadId || (!!input.repository && !!input.baseCommit) || !!input.projectFolder, {
+    message: 'Start a room from a thread, from a folder, or give the repository and base commit.',
   })
   .meta({ id: 'CreateRoom' });
 export type CreateRoom = z.infer<typeof CreateRoomSchema>;
@@ -165,6 +165,58 @@ export const RoomTaskSchema = z
   .meta({ id: 'RoomTask' });
 export type RoomTask = z.infer<typeof RoomTaskSchema>;
 
+export const RoomRunStepSchema = z
+  .object({
+    seq: z.number().int().positive(),
+    kind: z.enum(['tool', 'output', 'consult', 'advance']),
+    name: z.string(),
+    detail: z.string(),
+    state: z.enum(['running', 'waiting', 'done', 'failed', 'discarded']),
+    output: z.string().nullable(),
+    startedAt: z.number().int().nonnegative(),
+    endedAt: z.number().int().nonnegative().nullable(),
+  })
+  .strict()
+  .meta({ id: 'RoomRunStep' });
+export type RoomRunStep = z.infer<typeof RoomRunStepSchema>;
+
+export const RoomRunSchema = z
+  .object({
+    id: z.string(),
+    roomId: RoomIdSchema,
+    number: z.number().int().positive(),
+    cause: z.enum(['owner', 'schedule', 'poll', 'approval', 'stage', 'agent']),
+    trigger: z.string().nullable(),
+    title: z.string(),
+    playbook: z.string().nullable(),
+    stage: z.string().nullable(),
+    state: z.enum(['running', 'waiting', 'done', 'failed', 'stopped']),
+    summary: z.string().nullable(),
+    startedAt: z.number().int().nonnegative(),
+    endedAt: z.number().int().nonnegative().nullable(),
+    steps: z.array(RoomRunStepSchema),
+  })
+  .strict()
+  .meta({ id: 'RoomRun' });
+export type RoomRun = z.infer<typeof RoomRunSchema>;
+export const RoomRunListSchema = z.array(RoomRunSchema).meta({ id: 'RoomRunList' });
+
+export const RoomLiveSchema = z
+  .object({
+    id: z.string(),
+    actor: z.enum(['lead', 'consultant', 'worker']),
+    role: z.string().nullable(),
+    taskId: z.string().nullable(),
+    environmentId: z.string().nullable(),
+    text: z.string(),
+    reset: z.boolean(),
+    activity: z.string().nullable(),
+    done: z.boolean(),
+  })
+  .strict()
+  .meta({ id: 'RoomLive' });
+export type RoomLive = z.infer<typeof RoomLiveSchema>;
+
 export const RoomDetailSchema = z
   .object({
     room: RoomSchema,
@@ -172,6 +224,7 @@ export const RoomDetailSchema = z
     lead: RoomLeadStateSchema,
     leadThreadId: z.string().nullable(),
     projectFolder: z.string().nullable(),
+    folder: z.string().nullable(),
     mode: z.enum(['supervised', 'assisted']),
     paused: z.boolean(),
     /** Safe outputs are only simulated, even those the playbook runs at once. */
@@ -225,6 +278,7 @@ export const RoomStreamLineSchema = z
     z
       .object({
         type: z.literal('room'),
+        title: z.string().optional(),
         mode: RoomModeSchema,
         paused: z.boolean(),
         rehearsal: z.boolean().optional(),
@@ -234,6 +288,8 @@ export const RoomStreamLineSchema = z
       })
       .strict(),
     z.object({ type: z.literal('action'), action: RoomActionSchema }).strict(),
+    z.object({ type: z.literal('run'), run: RoomRunSchema }).strict(),
+    z.object({ type: z.literal('live'), live: RoomLiveSchema }).strict(),
     z.object({ type: z.literal('memory'), entry: RoomMemoryEntrySchema }).strict(),
     z.object({ type: z.literal('task'), task: RoomTaskSchema }).strict(),
   ])
@@ -244,6 +300,7 @@ export const RoomEventsQuerySchema = z.object({ after: z.coerce.number().int().n
 
 export const UpdateRoomSchema = z
   .object({
+    title: z.string().trim().min(1).max(200).optional(),
     mode: RoomModeSchema.optional(),
     paused: z.boolean().optional(),
     /** Attach or switch to this playbook (the room starts at its first stage), or `null` to remove it. */
@@ -253,14 +310,18 @@ export const UpdateRoomSchema = z
   .strict()
   .refine(
     (value) =>
+      value.title !== undefined ||
       value.mode !== undefined ||
       value.paused !== undefined ||
       value.playbook !== undefined ||
       value.rehearsal !== undefined,
-    { message: 'Change the mode, the pause, the playbook or the rehearsal.' },
+    { message: 'Change the title, the mode, the pause, the playbook or the rehearsal.' },
   )
   .meta({ id: 'UpdateRoom' });
 export type UpdateRoom = z.infer<typeof UpdateRoomSchema>;
+
+export const ArchiveRoomSchema = z.object({ stopTasks: z.boolean().optional() }).strict().meta({ id: 'ArchiveRoom' });
+export type ArchiveRoom = z.infer<typeof ArchiveRoomSchema>;
 
 export const ApproveRoomTaskSchema = z
   .object({ environmentId: InstanceIdSchema.optional() })

@@ -1,8 +1,9 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, Optional } from '@nestjs/common';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { parse } from 'yaml';
 import { PlaybookConfigSchema, type PlaybookConfig, type PlaybookSummary } from '@pi-kit/protocol';
+import { RoomFolders } from './room-folders';
 import { RoomSchedule } from './room-schedule';
 
 type Read = Playbook | { name: string; description: string; error: string };
@@ -10,6 +11,11 @@ type Read = Playbook | { name: string; description: string; error: string };
 export interface PlaybookSource {
   skill: string;
   yaml: string;
+}
+
+export interface PlaybookPlace {
+  project: string;
+  room?: string;
 }
 
 export interface Playbook {
@@ -28,16 +34,38 @@ export class RoomPlaybookFiles {
 
   private readonly cache = new Map<string, { stamp: string; read: Read | undefined }>();
 
-  list(folder: string): PlaybookSummary[] {
-    return this.files(folder).flatMap((path): PlaybookSummary[] => {
+  constructor(@Optional() private readonly folders?: RoomFolders) {}
+
+  place(project: string, roomId?: string): PlaybookPlace {
+    const room = roomId ? this.roomFolder(roomId) : undefined;
+    return room ? { project, room } : { project };
+  }
+
+  roomFolder(roomId: string): string | undefined {
+    return this.folders?.ensure(roomId);
+  }
+
+  origin(place: PlaybookPlace, path: string): 'room' | 'repository' {
+    return place.room && path.startsWith(place.room + sep) ? 'room' : 'repository';
+  }
+
+  shown(place: PlaybookPlace, dir: string): string {
+    return relative(place.room && this.origin(place, dir) === 'room' ? place.room : place.project, dir);
+  }
+
+  list(place: PlaybookPlace): PlaybookSummary[] {
+    const seen = new Set<string>();
+    return this.files(place).flatMap((path): PlaybookSummary[] => {
       const read = this.read(path);
-      if (!read) return [];
+      if (!read || seen.has(read.name)) return [];
+      seen.add(read.name);
       const config = 'config' in read ? read.config : undefined;
       return [
         {
           name: read.name,
           description: read.description,
           path,
+          origin: this.origin(place, path),
           roles: config?.participants.map((participant) => participant.role) ?? [],
           tools: Object.keys(config?.tools ?? {}),
           outputs: Object.keys(config?.['safe-outputs'] ?? {}),
@@ -50,30 +78,30 @@ export class RoomPlaybookFiles {
   }
 
   /** `load` for a route: a playbook that does not parse is the owner's conflict to fix. */
-  loadOrConflict(folder: string, name: string): Playbook {
+  loadOrConflict(place: PlaybookPlace, name: string): Playbook {
     try {
-      return this.load(folder, name);
+      return this.load(place, name);
     } catch (error) {
       throw new ConflictException(error instanceof Error ? error.message : String(error));
     }
   }
 
-  load(folder: string, name: string): Playbook {
-    const direct = RoomPlaybookFiles.FOLDERS.map((relative) => join(folder, relative, name, RoomPlaybookFiles.SKILL));
-    for (const path of [...direct.filter((candidate) => this.isPlaybook(candidate)), ...this.files(folder)]) {
+  load(place: PlaybookPlace, name: string): Playbook {
+    const direct = this.roots(place).map((root) => join(root, name, RoomPlaybookFiles.SKILL));
+    for (const path of [...direct.filter((candidate) => this.isPlaybook(candidate)), ...this.files(place)]) {
       const read = this.read(path);
       if (!read || read.name !== name) continue;
       if ('error' in read) throw new Error(`The playbook ${name} is not valid: ${read.error}`);
       return read;
     }
-    throw new Error(`No playbook named ${name} in ${folder}.`);
+    throw new Error(`No playbook named ${name} in ${place.room ? `${place.room} or ` : ''}${place.project}.`);
   }
 
-  /** Where the playbook `name` lives in `folder`, with its files' text, or where a new one would go. */
-  locate(folder: string, name: string): { dir: string; source: PlaybookSource | undefined } {
+  /** Where the playbook `name` lives, with its files' text, or where a new one would go: the room's folder when it has one. */
+  locate(place: PlaybookPlace, name: string): { dir: string; source: PlaybookSource | undefined } {
     const path =
-      this.files(folder).find((candidate) => this.read(candidate)?.name === name) ??
-      join(folder, RoomPlaybookFiles.FOLDERS[0] as string, name, RoomPlaybookFiles.SKILL);
+      this.files(place).find((candidate) => this.read(candidate)?.name === name) ??
+      join(this.roots(place)[0] as string, name, RoomPlaybookFiles.SKILL);
     const dir = dirname(path);
     if (!this.isPlaybook(path)) return { dir, source: undefined };
     return {
@@ -93,9 +121,15 @@ export class RoomPlaybookFiles {
     return read;
   }
 
-  private files(folder: string): string[] {
-    return RoomPlaybookFiles.FOLDERS.flatMap((relative) => {
-      const root = join(folder, relative);
+  private roots(place: PlaybookPlace): string[] {
+    return [
+      ...(place.room ? [join(place.room, RoomFolders.PLAYBOOKS)] : []),
+      ...RoomPlaybookFiles.FOLDERS.map((folder) => join(place.project, folder)),
+    ];
+  }
+
+  private files(place: PlaybookPlace): string[] {
+    return this.roots(place).flatMap((root) => {
       if (!existsSync(root)) return [];
       return readdirSync(root)
         .map((entry) => join(root, entry, RoomPlaybookFiles.SKILL))

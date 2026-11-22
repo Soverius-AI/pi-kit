@@ -4798,7 +4798,6 @@
       "reviewedN": "Reviewed by lead · {{value1}} round(s)"
     },
     "view": {
-      "integratesInto": "Integrates into",
       "tag": "Room",
       "hostHere": "This computer",
       "sharedSummary": "Shared summary",
@@ -4842,14 +4841,25 @@
       },
       "worker": "Worker",
       "stages": "Stages",
-      "notebookN": "Notebook · {{value1}} note(s)",
       "playbookNote": "playbook",
       "playbookPick": "Playbook",
       "noPlaybook": "No playbook",
       "askLeadForPlaybook": "Ask the lead to write one",
-      "playbookHint": "No playbooks here yet. A playbook is a folder in .pi/skills or .agents/skills with a SKILL.md and a room.yaml.",
+      "playbookHint": "No playbooks here yet. Ask the lead to write one: it goes into the room’s own folder. Playbooks in the project’s .pi/skills or .agents/skills show up here too.",
       "askLeadForPlaybookMessage": "Write a room playbook for this repository. Read your playbook guide (room_playbook_guide) first, ask me what you need to know, then propose both files with room_playbook_propose.",
-      "consultant": "consultant"
+      "consultant": "consultant",
+      "menu": "Room menu",
+      "rename": "Rename room",
+      "archive": "Archive room…",
+      "sideToggle": "Room panel",
+      "archiveTitle": "Archive this room?",
+      "archiveText": "“{{value1}}” leaves the room list and nothing wakes its lead again. Repositories, worktrees, sessions and the room’s folder are kept.",
+      "archiveRunningN": "{{value1}} task(s) are still running.",
+      "archiveStop": "Stop them",
+      "archiveLeave": "Leave them running",
+      "archiveConfirm": "Archive",
+      "cancel": "Cancel",
+      "usingTool": "using {{value1}}"
     },
     "action": {
       "call": "Draft",
@@ -4860,7 +4870,7 @@
       "playbook": "Playbook change",
       "newPlaybook": "New playbook",
       "apply": "Apply",
-      "playbookWhere": "Applying writes both files into the room’s project folder as uncommitted changes; the lead follows them from its next turn."
+      "playbookWhere": "Applying writes both files: a new playbook into the room’s own folder, a playbook of the project into the project as uncommitted changes. The lead follows them from its next turn."
     },
     "playbook": {
       "open": "Details",
@@ -4903,7 +4913,82 @@
       "statTools": "tools",
       "statOutputs": "safe outputs",
       "statParticipants": "participants",
-      "noTools": "The playbook names no tools."
+      "noTools": "The playbook names no tools.",
+      "status": {
+        "active": "Active",
+        "paused": "Paused",
+        "rehearsal": "Rehearsing"
+      },
+      "origin": {
+        "room": "In the room’s folder",
+        "repository": "In the project"
+      },
+      "lead": {
+        "running": "working",
+        "failed": "stopped with an error",
+        "pending": "idle"
+      },
+      "stageState": {
+        "done": "Done",
+        "running": "In progress",
+        "current": "Current stage",
+        "pending": "Not reached"
+      },
+      "gate": "you approve",
+      "workersRun": "Workers:",
+      "thinking": "thinking {{value1}}"
+    },
+    "side": {
+      "tasks": "Tasks",
+      "noTasks": "No tasks yet. The lead proposes them.",
+      "group": {
+        "needsYou": "Needs you",
+        "running": "Running",
+        "done": "Done"
+      },
+      "scheduled": "Scheduled",
+      "nothingScheduled": "Nothing is scheduled. A playbook can wake the lead on a schedule or when something new arrives.",
+      "files": "Files",
+      "roomFolder": "Room folder",
+      "noRoomPlaybooks": "No playbooks of its own yet",
+      "project": "Project",
+      "notebook": "Notebook",
+      "noRuns": "No runs yet."
+    },
+    "runs": {
+      "title": "Runs",
+      "empty": "No runs yet. Each time the lead is woken — by you, a schedule, new items or your approval — the run shows here with every step it took.",
+      "cause": {
+        "owner": "You asked",
+        "schedule": "Schedule",
+        "poll": "New items",
+        "approval": "Your decision",
+        "stage": "Stage change",
+        "agent": "Agent"
+      },
+      "state": {
+        "running": "Running",
+        "waiting": "Waiting for you",
+        "done": "Done",
+        "failed": "Failed",
+        "stopped": "Stopped",
+        "discarded": "Discarded"
+      },
+      "kind": {
+        "tool": "Tool",
+        "output": "Safe output",
+        "consult": "Asked",
+        "advance": "Stage"
+      },
+      "triggeredBy": "Triggered by",
+      "stage": "Stage",
+      "started": "Started",
+      "took": "Took",
+      "ongoing": "running",
+      "stepsN": "{{value1}} step(s)",
+      "noSteps": "The lead answered without calling a tool or asking anyone.",
+      "result": "Result",
+      "all": "All runs"
     }
   },
   "common": {

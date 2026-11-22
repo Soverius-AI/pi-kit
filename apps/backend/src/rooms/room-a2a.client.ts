@@ -1,9 +1,12 @@
 import { Injectable } from '@nestjs/common';
+import { Readable } from 'node:stream';
 import {
   AgentCard,
   type CancelTaskRequest,
   type GetTaskRequest,
   type SendMessageRequest,
+  type StreamResponse,
+  type SubscribeToTaskRequest,
   type Task,
   type Message,
 } from '@a2a-js/sdk';
@@ -87,6 +90,14 @@ export class RoomA2aClient {
     );
   }
 
+  async *subscribe(
+    peerId: string,
+    request: SubscribeToTaskRequest,
+    signal: AbortSignal,
+  ): AsyncGenerator<StreamResponse, void, undefined> {
+    yield* (await this.client(peerId)).resubscribeTask(request, this.options(signal));
+  }
+
   static isOffline(error: unknown): boolean {
     for (let cause: unknown = error; cause; cause = (cause as { cause?: unknown }).cause)
       if (cause instanceof A2aOffline) return true;
@@ -105,17 +116,21 @@ export class RoomA2aClient {
     run: (client: Client, signal: AbortSignal) => Promise<T>,
     timeout: number,
   ): Promise<T> {
+    try {
+      return await run(await this.client(peerId), AbortSignal.timeout(timeout));
+    } catch (error) {
+      this.clients.delete(peerId);
+      throw error;
+    }
+  }
+
+  private client(peerId: string): Promise<Client> {
     let pending = this.clients.get(peerId);
     if (!pending) {
       pending = this.factory.createFromUrl(RoomA2a.peerUrl(peerId, `${A2A_PATH}/`));
       this.clients.set(peerId, pending);
     }
-    try {
-      return await run(await pending, AbortSignal.timeout(timeout));
-    } catch (error) {
-      this.clients.delete(peerId);
-      throw error;
-    }
+    return pending;
   }
 
   private async fetch(input: string | URL | Request, init: RequestInit = {}): Promise<Response> {
@@ -127,6 +142,20 @@ export class RoomA2aClient {
       if (name.startsWith('a2a-')) headers[name] = value;
     });
     const body = typeof init.body === 'string' && init.body ? (JSON.parse(init.body) as unknown) : undefined;
+    if (new Headers(init.headers).get('accept')?.includes('text/event-stream')) {
+      try {
+        const upstream = await this.proxy.stream(target.instanceId, target.path, init.method ?? 'POST', body, {
+          ...(init.signal ? { signal: init.signal } : {}),
+          headers: { ...headers, accept: 'text/event-stream' },
+        });
+        return new Response(Readable.toWeb(upstream) as unknown as ReadableStream<Uint8Array>, {
+          status: upstream.statusCode ?? 502,
+          headers: { 'content-type': String(upstream.headers['content-type'] ?? 'text/event-stream') },
+        });
+      } catch (error) {
+        throw new A2aOffline(error instanceof Error ? error.message : String(error), { cause: error });
+      }
+    }
     let answer: { status: number; body: unknown };
     try {
       answer = await this.proxy.call(target.instanceId, target.path, init.method ?? 'GET', body, {

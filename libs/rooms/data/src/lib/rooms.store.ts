@@ -12,6 +12,7 @@ import {
   type TypedClient,
 } from '@pi-kit/api';
 import { ViewPrefs } from '@pi-kit/data-access';
+import { OpenRoomStore } from './open-room.store';
 import type {
   CreateRoom,
   PlaybookSummary,
@@ -26,6 +27,7 @@ import type {
 export class RoomsStore {
   private readonly api = inject(EntryApiClient);
   private readonly prefs = inject(ViewPrefs);
+  private readonly open = inject(OpenRoomStore);
   private generation = 0;
 
   readonly enabled = computed(() => this.prefs.roomsPreview());
@@ -45,6 +47,9 @@ export class RoomsStore {
       if (!on) return;
       const timer = setInterval(() => void this.refresh(), 30_000);
       onCleanup(() => clearInterval(timer));
+    });
+    effect(() => {
+      if (this.open.listChanges() > 0 && untracked(() => this.enabled())) untracked(() => void this.refresh());
     });
   }
 

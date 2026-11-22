@@ -112,6 +112,18 @@ describe('rooms', () => {
     await expect(service.create({ ...offer, baseCommit: 'f'.repeat(40) })).rejects.toBeInstanceOf(ConflictException);
   });
 
+  it('creates a room from a folder alone, which becomes a project, and refuses a folder that is no repository', async () => {
+    const other = join(base, 'other');
+    execFileSync('git', ['clone', '-q', project, other]);
+    const room = await service.create({ title: 'From a server', summary: '', projectFolder: join(other, '.') });
+    expect(room).toMatchObject({ repository: project, baseCommit: git('rev-parse', 'HEAD') });
+    expect((await new RoomsRepository(db).get(room.id))?.projectFolder).toBe(other);
+    expect((await meta.listWorkspaces()).map((workspace) => workspace.cwd)).toContain(other);
+    await expect(service.create({ title: 'Nowhere', summary: '', projectFolder: base })).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+  });
+
   it('asks which folder when several clones match, skips worktrees, and lists clean clones first', async () => {
     git('remote', 'add', 'origin', 'git@github.com:acme/pi-kit.git');
     const head = git('rev-parse', 'HEAD');

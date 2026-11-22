@@ -24,6 +24,7 @@ import { RoomA2a } from './room-a2a';
 import { RoomA2aPushSender } from './room-a2a.push-sender';
 import { RoomA2aTaskStore } from './room-a2a.task-store';
 import { RoomConsultant } from './room-consultant.service';
+import { LiveFeed } from './room-live';
 import { RoomOutbox } from './room-outbox';
 import { RoomQuestions } from './room-questions';
 import { RoomWorkerRunner, type WorkerOutcome } from './room-worker-runner';
@@ -53,6 +54,7 @@ class Turn {
 
 @Injectable()
 export class RoomWorkerService implements AgentExecutor, OnModuleInit {
+  static readonly LIVE_EVERY = 250;
   private readonly jobs = new Map<string, Job>();
 
   constructor(
@@ -186,6 +188,7 @@ export class RoomWorkerService implements AgentExecutor, OnModuleInit {
         }),
       ),
     );
+    const feed = this.feed(() => bus, context.taskId, context.contextId);
     const done = (async () => {
       let answer: string;
       let state = TaskState.TASK_STATE_COMPLETED;
@@ -198,11 +201,13 @@ export class RoomWorkerService implements AgentExecutor, OnModuleInit {
           role: consult.role,
           instructions: consult.instructions,
           question: consult.question,
+          observe: feed.observe,
         });
       } catch (error) {
         answer = error instanceof Error ? error.message : String(error);
         state = TaskState.TASK_STATE_FAILED;
       }
+      feed.end();
       bus.publish(
         AgentEvent.artifactUpdate(
           TaskArtifactUpdateEvent.fromJSON({
@@ -280,6 +285,7 @@ export class RoomWorkerService implements AgentExecutor, OnModuleInit {
       ...this.progress(offer.taskId, offer.attempt),
       ...extra,
     });
+    const feed = this.feed(() => job.bus, offer.a2aTaskId, offer.roomId);
     const outcome = await this.runner.run({
       project,
       title: offer.title,
@@ -320,7 +326,9 @@ export class RoomWorkerService implements AgentExecutor, OnModuleInit {
         job.turn.resolve();
         return await answered;
       },
+      observe: feed.observe,
     });
+    feed.end();
     const report = await this.package(offer, outcome);
     await this.rooms.updateWorkerTask(offer.taskId, { state: report.state === 'running' ? 'running' : report.state });
     for (const artifact of RoomA2a.artifactUpdates(offer.a2aTaskId, offer.roomId, report))
@@ -338,6 +346,12 @@ export class RoomWorkerService implements AgentExecutor, OnModuleInit {
     );
     this.jobs.delete(offer.a2aTaskId);
     job.turn.resolve();
+  }
+
+  private feed(bus: () => ExecutionEventBus, taskId: string, contextId: string): LiveFeed {
+    return new LiveFeed(RoomWorkerService.LIVE_EVERY, (piece) =>
+      bus().publish(AgentEvent.artifactUpdate(RoomA2a.liveUpdate(taskId, contextId, piece))),
+    );
   }
 
   private reply(task: Task, text: string): Message {

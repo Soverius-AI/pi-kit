@@ -1,3 +1,5 @@
+import type { BaseEvent } from '@ag-ui/core';
+import type { PlaybookAgentSettings } from '@pi-kit/protocol';
 import { Injectable } from '@nestjs/common';
 import { AguiService } from '../agui/agui.service';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
@@ -5,6 +7,7 @@ import { ThreadsRepository } from '../db/threads.repository';
 import { PiSessionService } from '../pi/pi-session.service';
 import { ThreadsService } from '../threads/threads.service';
 import { RoomAgents } from './room-agents';
+import { RoomLive } from './room-live';
 
 export interface ConsultRequest {
   roomId: string;
@@ -14,6 +17,8 @@ export interface ConsultRequest {
   role: string;
   instructions: string;
   question: string;
+  settings?: PlaybookAgentSettings;
+  observe?: (event: BaseEvent) => void;
 }
 
 @Injectable()
@@ -27,6 +32,7 @@ export class RoomConsultant {
     private readonly agui: AguiService,
     private readonly sessions: PiSessionService,
     private readonly agents: RoomAgents,
+    private readonly live: RoomLive,
   ) {}
 
   async ask(request: ConsultRequest): Promise<string> {
@@ -45,7 +51,17 @@ export class RoomConsultant {
     const existing = await this.playbooks.consultThread(request.roomId, request.role);
     const threadId = existing && (await this.threadRows.get(existing)) ? existing : await this.create(request);
     const prompt = existing === threadId ? request.question : this.firstPrompt(request);
-    const run = await this.agui.runHeadless(threadId, prompt, { cwd: request.folder });
+    await this.agents.configure(threadId, request.settings);
+    const speaking = this.live.turn({ roomId: request.roomId, actor: 'consultant', role: request.role });
+    const run = await this.agui
+      .runHeadless(threadId, prompt, {
+        cwd: request.folder,
+        observe: (event) => {
+          speaking.observe(event);
+          request.observe?.(event);
+        },
+      })
+      .finally(() => speaking.end());
     if (run.status === 'interrupted') {
       await this.sessions.abort(threadId).catch(() => undefined);
       return `The ${request.role} consultant stopped to ask a question; consultants cannot ask. Put what it needs into the question.`;

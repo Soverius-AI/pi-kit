@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { RoomTask, RoomTaskQuestion } from '@pi-kit/protocol';
+import type { BaseEvent } from '@ag-ui/core';
+import type { PlaybookAgentSettings, RoomTask, RoomTaskQuestion } from '@pi-kit/protocol';
 import { AguiService } from '../agui/agui.service';
 import { numstat } from '../changes/git';
 import { PiSessionService } from '../pi/pi-session.service';
@@ -20,6 +21,8 @@ export interface WorkerJob {
   onThread: (threadId: string) => Promise<void>;
   onStarted?: (started: { branch: string | null; folder: string; note?: string }) => Promise<void>;
   onQuestion?: (questions: RoomTaskQuestion[]) => Promise<WorkerAnswers | undefined>;
+  observe?: (event: BaseEvent) => void;
+  settings?: PlaybookAgentSettings;
 }
 
 export interface WorkerOutcome {
@@ -56,12 +59,16 @@ export class RoomWorkerRunner {
       branch = detail.worktree?.branch ?? null;
       if (!folder) throw new Error('The worker’s worktree was not created.');
       const unavailable = await this.agents.sandbox(detail.id);
+      await this.agents.configure(detail.id, job.settings);
       await job.onStarted?.({
         branch,
         folder,
         ...(unavailable ? { note: `${unavailable} The worker runs in its worktree without it.` } : {}),
       });
-      let result = await this.agui.runHeadless(detail.id, this.prompt(job), { cwd: folder });
+      let result = await this.agui.runHeadless(detail.id, this.prompt(job), {
+        cwd: folder,
+        ...(job.observe ? { observe: job.observe } : {}),
+      });
       while (result.status === 'interrupted' && job.onQuestion) {
         const questions = RoomQuestions.fromDialogs(this.sessions.pendingDialogs(detail.id));
         if (questions.length === 0) break;
@@ -70,7 +77,10 @@ export class RoomWorkerRunner {
           await this.sessions.abort(detail.id).catch(() => undefined);
           return this.ended('stopped', folder, branch, `The worker on “${job.title}” was stopped.`);
         }
-        result = await this.agui.resumeHeadless(detail.id, RoomQuestions.toResume(answers), { cwd: folder });
+        result = await this.agui.resumeHeadless(detail.id, RoomQuestions.toResume(answers), {
+          cwd: folder,
+          ...(job.observe ? { observe: job.observe } : {}),
+        });
       }
       if (result.status === 'interrupted') {
         await this.sessions.abort(detail.id).catch(() => undefined);

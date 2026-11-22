@@ -13,7 +13,14 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { StreamResponse, TaskState, type Message, type Task } from '@a2a-js/sdk';
-import type { RoomTask, RoomTaskAnswer, RoomTaskQuestion, RoomTaskReport, RoomWorkerCandidate } from '@pi-kit/protocol';
+import type {
+  RoomTask,
+  RoomTaskAnswer,
+  RoomTaskQuestion,
+  RoomTaskReport,
+  RoomWorkerCandidate,
+  PlaybookAgentSettings,
+} from '@pi-kit/protocol';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
 import { InstanceRepository } from '../db/instance.repository';
@@ -28,6 +35,7 @@ import { RoomA2aAgents } from './room-a2a-agents';
 import type { A2aAgentRow } from '../db/a2a-agents.repository';
 import { RoomAgents } from './room-agents';
 import { RoomBus } from './room-bus';
+import { type LiveRelay, RoomLive } from './room-live';
 import { RoomEnvironments } from './room-environments';
 import { RoomQuestions } from './room-questions';
 import { NO_ROOM, RoomLeadService } from './room-lead.service';
@@ -52,6 +60,7 @@ type StoredTask = RoomTask & {
 
 @Injectable()
 export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
+  static readonly REFOLLOW = 3000;
   static readonly REVIEW_ROUNDS = 3;
   static readonly LEAD_ANSWERS = 5;
   private readonly logger = new Logger(RoomTasksService.name);
@@ -59,6 +68,7 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
   private poller: ReturnType<typeof setInterval> | undefined;
   private polling: Promise<void> | undefined;
   private readonly following = new Map<string, AbortController>();
+  private readonly relays = new Map<string, LiveRelay>();
 
   constructor(
     private readonly rooms: RoomsRepository,
@@ -76,6 +86,7 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
     private readonly playbook: RoomPlaybookService,
     private readonly editor: RoomPlaybookEditor,
     @Inject(CONFIG) private readonly config: BackendConfig,
+    private readonly live: RoomLive,
   ) {}
 
   onModuleInit(): void {
@@ -107,6 +118,8 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
     if (this.poller) clearInterval(this.poller);
     for (const abort of this.following.values()) abort.abort();
     this.following.clear();
+    for (const relay of this.relays.values()) relay.end();
+    this.relays.clear();
   }
 
   async poll(): Promise<void> {
@@ -114,6 +127,8 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
       for (const id of await this.rooms.runningTaskIds()) {
         const task = await this.rooms.task(id);
         const agent = task?.a2aTaskId ? await this.outside.get(task.environmentId) : undefined;
+        if (task?.a2aTaskId && !agent && task.environmentId !== this.instance.instanceId && !task.questions.length)
+          this.followPeer(task, task.environmentId, task.a2aTaskId);
         if (!task?.a2aTaskId || !agent || this.following.has(task.id)) continue;
         try {
           await this.applyOutside(
@@ -237,6 +252,7 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
       throw new ConflictException(`${peer.name}: ${why || 'the agent did not take the task.'}`);
     }
     await this.rooms.updateTask(task.id, { a2aTaskId: started.id });
+    this.followPeer(task, target, started.id);
     return await this.changed(task, message(peer.name), actor);
   }
 
@@ -295,6 +311,50 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
     return running;
   }
 
+  private relayOf(task: { id: string; roomId: string }, environmentId: string): LiveRelay {
+    let relay = this.relays.get(task.id);
+    if (!relay) {
+      relay = this.live.relay({ roomId: task.roomId, actor: 'worker', taskId: task.id, environmentId });
+      this.relays.set(task.id, relay);
+    }
+    return relay;
+  }
+
+  private followPeer(task: { id: string; roomId: string }, peerId: string, a2aTaskId: string): void {
+    if (this.following.has(task.id)) return;
+    const abort = new AbortController();
+    this.following.set(task.id, abort);
+    const relay = this.relayOf(task, peerId);
+    void (async () => {
+      try {
+        while (!abort.signal.aborted) {
+          await RoomA2a.relay(
+            this.a2a.subscribe(peerId, { tenant: '', id: a2aTaskId }, abort.signal),
+            'pi-kit',
+            relay.put,
+          );
+          const current = await this.rooms.task(task.id);
+          if (abort.signal.aborted || current?.state !== 'running' || current.questions.length) return;
+          await new Promise((resolve) => setTimeout(resolve, RoomTasksService.REFOLLOW).unref());
+        }
+      } finally {
+        if (this.following.get(task.id) === abort) this.following.delete(task.id);
+      }
+    })();
+  }
+
+  private endRelay(taskId: string): void {
+    this.relays.get(taskId)?.end();
+    this.relays.delete(taskId);
+    this.following.get(taskId)?.abort();
+    this.following.delete(taskId);
+  }
+
+  async stopRunning(roomId: string): Promise<void> {
+    for (const task of await this.rooms.tasks(roomId))
+      if (task.state === 'running') await this.stop(roomId, task.id).catch(() => undefined);
+  }
+
   private follow(taskId: string, agent: A2aAgentRow, a2aTaskId: string): void {
     if (this.following.has(taskId)) return;
     const abort = new AbortController();
@@ -302,8 +362,14 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
     void (async () => {
       try {
         if (!(await this.outside.streams(agent.id))) return;
-        for await (const _event of this.outside.subscribe(agent.id, { tenant: '', id: a2aTaskId }, abort.signal)) {
+        for await (const event of this.outside.subscribe(agent.id, { tenant: '', id: a2aTaskId }, abort.signal)) {
           if (abort.signal.aborted) return;
+          const piece = RoomA2a.live(event, 'outside');
+          const task = piece ? await this.rooms.task(taskId) : undefined;
+          if (piece && task) {
+            this.relayOf(task, agent.id).put(piece);
+            continue;
+          }
           await this.applyOutside(taskId, agent, await this.outside.getTask(agent.id, { tenant: '', id: a2aTaskId }));
         }
       } catch (error) {
@@ -444,6 +510,7 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
       }
       if (!('status' in result))
         throw new ConflictException(RoomA2a.text(result) || 'The worker no longer waits for this answer.');
+      if (task.a2aTaskId) this.followPeer(task, task.environmentId, task.a2aTaskId);
     }
     await this.rooms.updateTask(task.id, { questions: [] });
     return await this.changed(
@@ -694,6 +761,11 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
     return path;
   }
 
+  private async workerSettings(roomId: string): Promise<PlaybookAgentSettings | undefined> {
+    const found = await this.rooms.get(roomId);
+    return found ? await this.playbook.settings(found, 'workers') : undefined;
+  }
+
   private async workHere(
     roomId: string,
     task: RoomTask,
@@ -701,6 +773,12 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
     more: { from?: string; feedback?: string; round?: number } = {},
   ): Promise<void> {
     let outcome: WorkerOutcome;
+    const speaking = this.live.turn({
+      roomId,
+      actor: 'worker',
+      taskId: task.id,
+      environmentId: this.instance.instanceId,
+    });
     try {
       const project = await this.agents.projectFolder(room);
       outcome = await this.runner.run({
@@ -720,6 +798,8 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
           await this.asked(task, questions);
           return await answered;
         },
+        observe: speaking.observe,
+        settings: await this.workerSettings(roomId),
       });
     } catch (error) {
       outcome = {
@@ -732,10 +812,12 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
         note: `The worker on “${task.title}” could not run: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+    speaking.end();
     await this.finish(roomId, task, outcome, null).catch(() => undefined);
   }
 
   private async asked(task: RoomTask, questions: RoomTaskQuestion[]): Promise<void> {
+    this.endRelay(task.id);
     await this.rooms.updateTask(task.id, { questions });
     const first = questions[0]?.title ?? 'a question';
     const more = questions.length > 1 ? ` (and ${questions.length - 1} more)` : '';
@@ -789,6 +871,7 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
     outcome: WorkerOutcome,
     bundlePath: string | null,
   ): Promise<void> {
+    this.endRelay(task.id);
     await this.rooms.updateTask(task.id, {
       state: outcome.state,
       questions: [],

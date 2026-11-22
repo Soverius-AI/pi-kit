@@ -7,6 +7,7 @@ import { HOST_ALREADY_RUNNING } from './host-process';
 import type { HostStatus } from './host-protocol';
 import { OPEN_USAGE, runOpenCli } from './open-cli';
 import { PEERS_USAGE, runPeersCli } from './peers-cli';
+import { RoomsCli } from './rooms-cli';
 import { bundledVersion } from './service-host';
 import { REMOTE_USAGE, runDevicesCli, runPairCli, runRemoteCli } from './remote-cli';
 import type { ServiceManager } from './service-registration';
@@ -86,6 +87,7 @@ const GROUPS: Record<string, (args: string[], io: CliIo, ctx: CliContext) => Pro
   pair: runPairCli,
   peers: runPeersCli,
   remote: runRemoteCli,
+  rooms: RoomsCli.run,
   serve,
   update: runUpdateCli,
   watchdog: runWatchdogCli,
@@ -115,6 +117,7 @@ ${OPEN_USAGE}
 ${DESKTOP_USAGE}
 ${REMOTE_USAGE}
 ${PEERS_USAGE}
+${RoomsCli.USAGE}
 pi-kit's backend runs as a service of this computer, so background agents and phone access keep working when the
 pi-kit window is closed. Settings › General › Background in the app does the same as install and uninstall.
 `;

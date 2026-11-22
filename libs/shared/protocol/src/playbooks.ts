@@ -1,4 +1,20 @@
 import { z } from 'zod';
+import { ThinkingLevelSchema } from './session';
+
+const AgentModel = z
+  .string()
+  .regex(/^[^\s/]+\/\S+$/)
+  .max(200)
+  .describe('The model as provider/id, such as anthropic/claude-opus-5-5; the host’s default when left out.');
+
+export const PlaybookAgentSettingsSchema = z
+  .object({
+    model: AgentModel.optional(),
+    thinking: ThinkingLevelSchema.optional().describe('The thinking effort; the host’s default when left out.'),
+  })
+  .strict()
+  .meta({ id: 'PlaybookAgentSettings' });
+export type PlaybookAgentSettings = z.infer<typeof PlaybookAgentSettingsSchema>;
 
 export const PlaybookParticipantSchema = z
   .object({
@@ -15,6 +31,8 @@ export const PlaybookParticipantSchema = z
       .strict()
       .default({ local: true }),
     instructions: z.string().max(4000).default(''),
+    model: AgentModel.optional(),
+    thinking: ThinkingLevelSchema.optional(),
   })
   .strict()
   .meta({ id: 'PlaybookParticipant' });
@@ -120,6 +138,8 @@ export type PlaybookPoll = z.infer<typeof PlaybookPollSchema>;
 
 export const PlaybookConfigSchema = z
   .object({
+    lead: PlaybookAgentSettingsSchema.optional(),
+    workers: PlaybookAgentSettingsSchema.optional(),
     participants: z.array(PlaybookParticipantSchema).max(8).default([]),
     tools: z.record(ToolName, PlaybookToolSchema).default({}),
     'safe-outputs': z.record(ToolName, PlaybookSafeOutputSchema).default({}),
@@ -146,6 +166,7 @@ export const PlaybookSummarySchema = z
     name: z.string(),
     description: z.string(),
     path: z.string(),
+    origin: z.enum(['room', 'repository']),
     roles: z.array(z.string()),
     tools: z.array(z.string()),
     outputs: z.array(z.string()),
@@ -236,8 +257,9 @@ export const PlaybookDetailSchema = z
   .object({
     name: z.string(),
     description: z.string(),
-    /** The playbook's folder, relative to the room's project folder. */
+    /** The playbook's folder, relative to the room's own folder or to its project folder. */
     folder: z.string(),
+    origin: z.enum(['room', 'repository']),
     skill: z.string(),
     yaml: z.string(),
     config: PlaybookConfigSchema.nullable(),

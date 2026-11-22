@@ -21,6 +21,7 @@ import { TerminalReplayRepository } from './terminal-replay.repository';
 import { ThreadProtectionRepository } from './thread-protection.repository';
 import { RoomsRepository } from './rooms.repository';
 import { RoomPlaybooksRepository } from './room-playbooks.repository';
+import { RoomRunsRepository } from './room-runs.repository';
 import { A2aTasksRepository } from './a2a-tasks.repository';
 import { A2aAgentsRepository } from './a2a-agents.repository';
 import { ThreadsRepository } from './threads.repository';
@@ -56,6 +57,7 @@ import { ThreadsRepository } from './threads.repository';
     ThreadProtectionRepository,
     RoomsRepository,
     RoomPlaybooksRepository,
+    RoomRunsRepository,
     A2aTasksRepository,
     A2aAgentsRepository,
   ],
@@ -80,6 +82,7 @@ import { ThreadsRepository } from './threads.repository';
     ThreadProtectionRepository,
     RoomsRepository,
     RoomPlaybooksRepository,
+    RoomRunsRepository,
     A2aTasksRepository,
     A2aAgentsRepository,
   ],

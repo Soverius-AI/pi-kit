@@ -4798,7 +4798,6 @@
       "reviewedN": "Vom Lead geprüft · {{value1}} Runde(n)"
     },
     "view": {
-      "integratesInto": "Integriert in",
       "tag": "Raum",
       "hostHere": "Dieser Computer",
       "sharedSummary": "Geteilte Zusammenfassung",
@@ -4842,14 +4841,25 @@
       },
       "worker": "Worker",
       "stages": "Phasen",
-      "notebookN": "Notizbuch · {{value1}} Notiz(en)",
       "playbookNote": "Playbook",
       "playbookPick": "Playbook",
       "noPlaybook": "Kein Playbook",
       "askLeadForPlaybook": "Den Lead eines schreiben lassen",
-      "playbookHint": "Hier gibt es noch keine Playbooks. Ein Playbook ist ein Ordner in .pi/skills oder .agents/skills mit einer SKILL.md und einer room.yaml.",
+      "playbookHint": "Hier gibt es noch keine Playbooks. Bitte den Lead, eines zu schreiben: Es landet im eigenen Ordner des Raums. Playbooks aus .pi/skills oder .agents/skills des Projekts erscheinen hier ebenfalls.",
       "askLeadForPlaybookMessage": "Schreibe ein Raum-Playbook für dieses Repository. Lies zuerst deinen Playbook-Leitfaden (room_playbook_guide), frag mich, was du wissen musst, und schlage dann beide Dateien mit room_playbook_propose vor.",
-      "consultant": "Berater"
+      "consultant": "Berater",
+      "menu": "Raum-Menü",
+      "rename": "Raum umbenennen",
+      "archive": "Raum archivieren…",
+      "sideToggle": "Raum-Panel",
+      "archiveTitle": "Diesen Raum archivieren?",
+      "archiveText": "„{{value1}}“ verschwindet aus der Raumliste, und nichts weckt seinen Lead mehr. Repositories, Worktrees, Sitzungen und der Ordner des Raums bleiben erhalten.",
+      "archiveRunningN": "{{value1}} Aufgabe(n) laufen noch.",
+      "archiveStop": "Stoppen",
+      "archiveLeave": "Weiterlaufen lassen",
+      "archiveConfirm": "Archivieren",
+      "cancel": "Abbrechen",
+      "usingTool": "nutzt {{value1}}"
     },
     "action": {
       "call": "Entwurf",
@@ -4860,7 +4870,7 @@
       "playbook": "Playbook-Änderung",
       "newPlaybook": "Neues Playbook",
       "apply": "Übernehmen",
-      "playbookWhere": "Übernehmen schreibt beide Dateien als nicht committete Änderungen in den Projektordner des Raums; der Lead folgt ihnen ab seinem nächsten Zug."
+      "playbookWhere": "Anwenden schreibt beide Dateien: ein neues Playbook in den eigenen Ordner des Raums, ein Playbook des Projekts als nicht committete Änderungen ins Projekt. Der Lead folgt ihnen ab seinem nächsten Zug."
     },
     "playbook": {
       "open": "Details",
@@ -4903,7 +4913,82 @@
       "statTools": "Tools",
       "statOutputs": "sichere Ausgaben",
       "statParticipants": "Beteiligte",
-      "noTools": "Das Playbook nennt keine Tools."
+      "noTools": "Das Playbook nennt keine Tools.",
+      "status": {
+        "active": "Aktiv",
+        "paused": "Pausiert",
+        "rehearsal": "Probe"
+      },
+      "origin": {
+        "room": "Im Ordner des Raums",
+        "repository": "Im Projekt"
+      },
+      "lead": {
+        "running": "arbeitet",
+        "failed": "mit Fehler gestoppt",
+        "pending": "wartet"
+      },
+      "stageState": {
+        "done": "Fertig",
+        "running": "In Arbeit",
+        "current": "Aktuelle Phase",
+        "pending": "Noch nicht erreicht"
+      },
+      "gate": "du gibst frei",
+      "workersRun": "Worker:",
+      "thinking": "Denkaufwand {{value1}}"
+    },
+    "side": {
+      "tasks": "Aufgaben",
+      "noTasks": "Noch keine Aufgaben. Der Lead schlägt sie vor.",
+      "group": {
+        "needsYou": "Braucht dich",
+        "running": "Läuft",
+        "done": "Erledigt"
+      },
+      "scheduled": "Geplant",
+      "nothingScheduled": "Nichts ist geplant. Ein Playbook kann den Lead nach Zeitplan wecken oder wenn etwas Neues eintrifft.",
+      "files": "Dateien",
+      "roomFolder": "Raumordner",
+      "noRoomPlaybooks": "Noch keine eigenen Playbooks",
+      "project": "Projekt",
+      "notebook": "Notizbuch",
+      "noRuns": "Noch keine Läufe."
+    },
+    "runs": {
+      "title": "Läufe",
+      "empty": "Noch keine Läufe. Jedes Mal, wenn der Lead geweckt wird — durch dich, einen Zeitplan, neue Einträge oder deine Freigabe —, erscheint der Lauf hier mit jedem Schritt.",
+      "cause": {
+        "owner": "Deine Frage",
+        "schedule": "Zeitplan",
+        "poll": "Neue Einträge",
+        "approval": "Deine Entscheidung",
+        "stage": "Phasenwechsel",
+        "agent": "Agent"
+      },
+      "state": {
+        "running": "Läuft",
+        "waiting": "Wartet auf dich",
+        "done": "Fertig",
+        "failed": "Fehlgeschlagen",
+        "stopped": "Gestoppt",
+        "discarded": "Verworfen"
+      },
+      "kind": {
+        "tool": "Tool",
+        "output": "Sichere Ausgabe",
+        "consult": "Gefragt",
+        "advance": "Phase"
+      },
+      "triggeredBy": "Ausgelöst durch",
+      "stage": "Phase",
+      "started": "Gestartet",
+      "took": "Dauer",
+      "ongoing": "läuft",
+      "stepsN": "{{value1}} Schritt(e)",
+      "noSteps": "Der Lead hat geantwortet, ohne ein Tool aufzurufen oder jemanden zu fragen.",
+      "result": "Ergebnis",
+      "all": "Alle Läufe"
     }
   },
   "common": {

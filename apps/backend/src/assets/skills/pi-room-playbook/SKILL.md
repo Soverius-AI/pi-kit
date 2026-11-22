@@ -33,10 +33,15 @@ How the lead works, step by step, in plain words: what to read, whom to consult,
 ## room.yaml
 
 ```yaml
+lead: { model: anthropic/claude-opus-5-5, thinking: high } # optional: the lead's model (provider/id) and thinking effort
+workers: { model: anthropic/claude-sonnet-5-5, thinking: medium } # optional: the same for workers on this computer
+
 participants: # whom the lead consults (room_consult, room_discuss)
   - role: security # kebab-case
     agent: { machine: Build box } # a paired pi-kit by name; leave out for this computer
     instructions: Look for injection, secrets and unsafe defaults.
+    model: anthropic/claude-opus-5-5 # optional, for a participant on this computer
+    thinking: high # optional: off, minimal, low, medium, high, xhigh or max
   - role: outside
     agent: { agent: Review bot } # an outside A2A agent added in Settings
 
@@ -96,6 +101,6 @@ gates:
 1. Ask what should start the work (a ticket, a schedule, new pull requests, new mail), who should weigh in, what the result is, and what must never happen without them.
 2. Find the commands, MCP tools or local sources that read and write the systems involved and try the reading ones.
 3. Write both files, keep the body short and concrete, and put every write under `safe-outputs` as a draft.
-4. In a read-only room thread, read this guide with `room_playbook_guide` instead of the file, and hand over both whole files with `room_playbook_propose` (also to change the room's own playbook). pi-kit checks them as it loads a playbook and gives the errors back; a valid proposal shows the owner its diff, and they apply it into the project folder.
+4. In a read-only room thread, read this guide with `room_playbook_guide` instead of the file, and hand over both whole files with `room_playbook_propose` (also to change the room's own playbook). pi-kit checks them as it loads a playbook and gives the errors back; a valid proposal shows the owner its diff, and they apply it. A new playbook goes into the room's own folder, so it stays out of the repository; a playbook that already lives in the project is changed there.
 5. Elsewhere, tell the user to start a room with the playbook from the room dialog; it appears there once the folder is committed or present in the clone.
 6. To test a playbook, the owner can try each tool and fire triggers from the room's playbook panel, and rehearse: then safe outputs only pretend to run.
