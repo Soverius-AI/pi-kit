@@ -2,7 +2,6 @@ import type { Translate } from '@pi-kit/i18n';
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import {
-  ChangeDetectionStrategy,
   Component,
   ElementRef,
   Injector,
@@ -25,7 +24,7 @@ import {
   connectorById,
 } from '@pi-kit/protocol';
 import { keepFocusInside, PkChoice, PkIcon, PkTip } from '@pi-kit/design-system';
-import { ConnectorsStore, SecretsStore } from '@pi-kit/settings/api';
+import { ComposioStore, ConnectorsStore, SecretsStore } from '@pi-kit/settings/api';
 import { type ServerForm, addServer, blankForm, letters, validateForm } from '@pi-kit/settings/util';
 import { ConnectorLogo } from './connector-logo';
 import { PkServerForm } from './server-form';
@@ -48,7 +47,6 @@ const exposureDescriptions = (translate: Translate): Record<ConnectorExposure, s
 @Component({
   selector: 'pk-add-server-wizard',
   imports: [ConnectorLogo, PkChoice, PkServerForm, PkTip, TranslocoPipe, PkIcon],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="pk-wf" data-testid="add-server-wizard">
       <button
@@ -134,13 +132,18 @@ const exposureDescriptions = (translate: Translate): Record<ConnectorExposure, s
                         @if (added(c.id)) {
                           <span class="chip ok">{{ 'settings.addServerWizard.added' | transloco }}</span>
                         }
-                        @if (c.verification.status === 'unverified') {
-                          <span class="chip warn" [pkTip]="c.verification.note">{{
-                            'settings.addServerWizard.unverified' | transloco
-                          }}</span>
-                        }
                       </ng-container>
                       <ng-container d>{{ c.summary }}</ng-container>
+                    </button>
+                  }
+                  @if (showsComposio()) {
+                    <button pkChoice data-testid="tile-composio-apps" (click)="composio.open()">
+                      <ng-container tile><pk-icon name="extension" /></ng-container>
+                      <ng-container t
+                        >{{ 'settings.composio.tile' | transloco }}
+                        <span class="chip">{{ 'settings.composio.optional' | transloco }}</span>
+                      </ng-container>
+                      <ng-container d>{{ 'settings.composio.tileHint' | transloco }}</ng-container>
                     </button>
                   }
                   @if (showsCustom()) {
@@ -193,7 +196,14 @@ const exposureDescriptions = (translate: Translate): Record<ConnectorExposure, s
                     [projectWhy]="projectWhy()"
                   />
                 } @else {
-                  <form class="pk-form" autocomplete="off" (submit)="submit($event)" data-testid="server-form">
+                  <form
+                    class="pk-form"
+                    autocomplete="off"
+                    data-testid="server-form"
+                    (submit)="submit($event)"
+                    (dragover)="clientFileOver($event)"
+                    (drop)="dropClientFile($event)"
+                  >
                     @if (connector()?.auth?.type === 'bearer') {
                       <label for="srv-token">{{ 'settings.addServerWizard.token' | transloco }}</label>
                       <input
@@ -209,33 +219,85 @@ const exposureDescriptions = (translate: Translate): Record<ConnectorExposure, s
                       />
                       <div class="hint">{{ setupText() }} {{ whereTokenGoes() }}</div>
                     } @else if (connector()?.auth?.type === 'oauth-client') {
-                      <label for="srv-client">{{ 'settings.addServerWizard.clientID' | transloco }}</label>
-                      <input
-                        id="srv-client"
-                        name="clientId"
-                        class="input input-sm mono"
-                        autocomplete="off"
-                        spellcheck="false"
-                        data-testid="connector-client-id"
-                        [value]="state().draft.clientId"
-                        (input)="patch({ clientId: $any($event.target).value })"
-                      />
-                      <div class="hint">{{ setupText() }}</div>
-                      <label for="srv-secret">{{ 'settings.addServerWizard.clientSecret' | transloco }}</label>
-                      <input
-                        id="srv-secret"
-                        name="clientSecret"
-                        type="password"
-                        class="input input-sm mono"
-                        [placeholder]="'settings.addServerWizard.ifYourAppHasOne' | transloco"
-                        autocomplete="off"
-                        autocapitalize="off"
-                        spellcheck="false"
-                        data-testid="connector-client-secret"
-                      />
-                      <div class="hint">{{ whereTokenGoes() }}</div>
+                      @if (sharedApp(); as shared) {
+                        <span class="pk-form-label">{{ 'settings.addServerWizard.yourApp' | transloco }}</span>
+                        <label class="flex items-center gap-2 text-sm" data-testid="connector-shared-app">
+                          <input
+                            type="checkbox"
+                            class="checkbox checkbox-sm"
+                            [checked]="!!state().draft.clientFrom"
+                            (change)="patch({ clientFrom: $any($event.target).checked ? shared.connector.id : '' })"
+                          />
+                          {{
+                            'settings.addServerWizard.useTheAppFrom'
+                              | transloco: { value1: shared.connector.vendor, value2: shared.connector.name }
+                          }}
+                        </label>
+                        @if (state().draft.clientFrom) {
+                          <div class="hint mono">{{ shared.server.clientId }}</div>
+                        }
+                      }
+                      @if (!state().draft.clientFrom) {
+                        @if (setupSteps(); as steps) {
+                          <span class="pk-form-label">{{ 'settings.addServerWizard.setUp' | transloco }}</span>
+                          <ol class="pk-setup-steps" data-testid="connector-setup-steps">
+                            @for (step of steps; track $index) {
+                              <li>
+                                {{ step.text }}
+                                @for (link of step.links ?? []; track link.url) {
+                                  <a class="link" [href]="link.url" target="_blank" rel="noopener noreferrer">{{
+                                    link.label
+                                  }}</a>
+                                }
+                              </li>
+                            }
+                          </ol>
+                        }
+                        <label for="srv-client">{{ 'settings.addServerWizard.clientID' | transloco }}</label>
+                        <input
+                          id="srv-client"
+                          name="clientId"
+                          class="input input-sm mono"
+                          autocomplete="off"
+                          spellcheck="false"
+                          data-testid="connector-client-id"
+                          [value]="state().draft.clientId"
+                          (input)="patch({ clientId: $any($event.target).value })"
+                        />
+                        <div class="hint">
+                          @if (!setupSteps()) {
+                            {{ setupText() }}
+                          }
+                          <input
+                            #clientFile
+                            type="file"
+                            hidden
+                            accept="application/json,.json"
+                            data-testid="connector-client-file"
+                            (change)="pickClientFile(clientFile)"
+                          />
+                          <button type="button" class="link" (click)="clientFile.click()">
+                            {{ 'settings.addServerWizard.loadTheClientFile' | transloco }}
+                          </button>
+                        </div>
+                        <label for="srv-secret">{{ 'settings.addServerWizard.clientSecret' | transloco }}</label>
+                        <input
+                          id="srv-secret"
+                          name="clientSecret"
+                          type="password"
+                          class="input input-sm mono"
+                          [placeholder]="'settings.addServerWizard.ifYourAppHasOne' | transloco"
+                          autocomplete="off"
+                          autocapitalize="off"
+                          spellcheck="false"
+                          data-testid="connector-client-secret"
+                        />
+                        <div class="hint">{{ whereTokenGoes() }}</div>
+                      }
+                    } @else if (connector()?.auth?.type === 'device') {
+                      <div class="hint" data-testid="connector-device-setup">{{ setupText() }}</div>
                     }
-                    @if (connector()?.endpoint?.variants; as variants) {
+                    @if (connector()?.endpoint?.variants ?? connector()?.local?.variants; as variants) {
                       <label for="srv-variant">{{ 'settings.addServerWizard.access' | transloco }}</label>
                       <select
                         id="srv-variant"
@@ -369,6 +431,7 @@ export class AddServerWizard implements OnInit {
   protected readonly i18n = inject(Language);
   protected readonly store = inject(ConnectorsStore);
   private readonly secrets = inject(SecretsStore);
+  protected readonly composio = inject(ComposioStore);
   private readonly win = viewChild<ElementRef<HTMLElement>>('win');
   private readonly customForm = viewChild<PkServerForm>('customForm');
   readonly closed = output<void>();
@@ -448,6 +511,10 @@ export class AddServerWizard implements OnInit {
     this.custom.set({ ...blankForm(this.state().scope), scope: this.state().scope });
   }
 
+  protected showsComposio(): boolean {
+    const query = this.state().query.trim().toLowerCase();
+    return !query || 'composio'.includes(query) || this.services().length === 0;
+  }
   protected showsCustom(): boolean {
     return addServer.showsCustom(this.state().query);
   }
@@ -503,13 +570,45 @@ export class AddServerWizard implements OnInit {
         return this.i18n.t('settings.addServerWizard.needsATokenYouCreateAt', { value1: c.vendor });
       case 'oauth-client':
         return this.i18n.t('settings.addServerWizard.needsYourOwnAppAClientId', { value1: c.vendor });
+      case 'device':
+        return this.i18n.t('settings.addServerWizard.runsHereAndSignsInWithACode');
       default:
         return this.i18n.t('settings.addServerWizard.signsInInYourBrowserOnceIt');
     }
   }
   protected setupText(): string {
     const auth = this.connector()?.auth;
-    return auth && (auth.type === 'bearer' || auth.type === 'oauth-client') ? auth.setup : '';
+    return auth && 'setup' in auth ? auth.setup : '';
+  }
+  protected readonly setupSteps = computed(() => {
+    const auth = this.connector()?.auth;
+    return auth?.type === 'oauth-client' && auth.steps?.length ? auth.steps : undefined;
+  });
+  protected readonly sharedApp = computed(() =>
+    addServer.sharedAppSource(this.connector(), this.catalog(), this.store.servers()),
+  );
+
+  protected clientFileOver(event: DragEvent): void {
+    if (this.connector()?.auth.type === 'oauth-client' && !this.state().draft.clientFrom) event.preventDefault();
+  }
+  protected async dropClientFile(event: DragEvent): Promise<void> {
+    const file = event.dataTransfer?.files[0];
+    if (!file || this.connector()?.auth.type !== 'oauth-client' || this.state().draft.clientFrom) return;
+    event.preventDefault();
+    await this.readClientFile(file);
+  }
+  protected async pickClientFile(input: HTMLInputElement): Promise<void> {
+    const file = input.files?.[0];
+    input.value = '';
+    if (file) await this.readClientFile(file);
+  }
+  /** Fills the client id and secret from the client's JSON file; the secret goes to its field only, like typed text. */
+  private async readClientFile(file: File): Promise<void> {
+    const client = addServer.oauthClientFile(await file.text());
+    if (!client) return void this.error.set(this.i18n.t('settings.addServerWizard.notAClientFile'));
+    this.patch({ clientId: client.clientId });
+    const secret = this.win()?.nativeElement.querySelector<HTMLInputElement>('[name="clientSecret"]');
+    if (secret && client.clientSecret) secret.value = client.clientSecret;
   }
   protected projectWhy(): string {
     if (!this.hasThread()) return this.i18n.t('settings.addServerWizard.thisProjectOnlyNeedsAThreadOpen');

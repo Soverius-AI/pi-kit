@@ -4,6 +4,7 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app/app.module';
+import { A2aWellKnownController } from './rooms/rooms.controller';
 import { configureJsonBody } from './app/http-body';
 import { loadConfig } from './app/config';
 import {
@@ -33,7 +34,7 @@ async function bootstrap() {
   });
   configureJsonBody(app);
   app.enableShutdownHooks(['SIGINT', 'SIGTERM']);
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix('api', { exclude: [A2aWellKnownController.CARD] });
   app.enableCors({
     origin: config.origins,
     allowedHeaders: ['Authorization', 'Content-Type', REPLAY_CURSOR_HEADER, THREAD_HYDRATION_HEADER],

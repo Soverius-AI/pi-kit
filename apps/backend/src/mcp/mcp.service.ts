@@ -8,12 +8,15 @@ import {
   type ProxiedMcpRequest,
   PROXIED_MCP_METHODS,
 } from '@pi-kit/protocol';
+import { loadPiInternals } from '../pi/load-pi';
 import { PiSessionService } from '../pi/pi-session.service';
 import { ThreadsService } from '../threads/threads.service';
+import { mcpOAuthSettings } from './mcp-call.service';
 import {
   type McpConfigEntry,
   projectMcpConfigPath,
   readMcpConfig,
+  readMcpEntry,
   setMcpServerEnabled,
   userMcpConfigPath,
 } from './mcp-config';
@@ -55,7 +58,7 @@ export class McpService {
     const agentDir = await this.sessions.agentDir();
     if (!threadId) {
       const config = readMcpConfig({ agentDir, projectTrusted: false });
-      return this.compose(config, undefined, false);
+      return this.compose(config, undefined, false, undefined, await this.storedSignIns(config.servers));
     }
     await this.threads.openSession(threadId);
     const trusted = this.sessions.isProjectTrusted(threadId);
@@ -99,7 +102,8 @@ export class McpService {
    * system browser and waits for the redirect on its loopback port. The call returns when pi has told us the URL
    * (so the panel can offer it as a link if the browser did not open), while the sign-in carries on in the background.
    */
-  async login(threadId: string, name: string): Promise<McpActionResult> {
+  async login(threadId: string | undefined, name: string): Promise<McpActionResult> {
+    if (!threadId) return await this.loginWithoutThread(name);
     await this.entry(threadId, name);
     const key = signInKey(threadId, name);
     // A sign-in still waiting for its browser is given up before the next one starts: pi would listen on two ports otherwise.
@@ -140,16 +144,87 @@ export class McpService {
     return { ...(message ? { message } : {}), ...(url ? { url } : {}), overview: await this.overview(threadId) };
   }
 
+  /** pi's sign-in without a session: the tokens land in the store every session reads when it connects. */
+  private async loginWithoutThread(name: string): Promise<McpActionResult> {
+    const agentDir = await this.sessions.agentDir();
+    const entry = readMcpConfig({ agentDir, projectTrusted: false }).servers.find((server) => server.name === name);
+    if (!entry) throw new NotFoundException(`No MCP server named "${name}" in your mcp.json.`);
+    const raw = readMcpEntry(userMcpConfigPath(agentDir), name);
+    const url = typeof raw?.['url'] === 'string' ? raw['url'] : undefined;
+    if (!entry.oauth || !url) throw new ConflictException(`The MCP server "${name}" does not sign in with OAuth.`);
+    const key = signInKey('', name);
+    this.answers.get(key)?.(undefined);
+    const state: SignInRun = { phase: 'waiting' };
+    this.signIns.set(key, state);
+    const cancel = new AbortController();
+    let redirect: (value: string | undefined) => void = () => undefined;
+    const answer = (value: string | undefined): void => (value === undefined ? cancel.abort() : redirect(value));
+    this.answers.set(key, answer);
+    let shown: () => void = () => undefined;
+    const opened = new Promise<void>((resolve) => (shown = resolve));
+    const { oauth, config, openBrowser } = await loadPiInternals();
+    const run = oauth.signInMcpServer({
+      serverUrl: url,
+      store: new oauth.McpOAuthCredentialStore().forServer(name, url),
+      settings: mcpOAuthSettings(raw?.['oauth'], name, config),
+      prompt: {
+        showAuthorizationUrl: (page) => {
+          state.url = page.href;
+          shown();
+          if (process.env['PI_KIT_NO_BROWSER'] !== '1') openBrowser(page.href);
+        },
+        promptForRedirectUrl: (signal) =>
+          new Promise((resolve) => {
+            redirect = resolve;
+            signal.addEventListener('abort', () => resolve(undefined), { once: true });
+          }),
+      },
+      signal: cancel.signal,
+    });
+    const settled = run.then(
+      () => {
+        if (this.signIns.get(key) === state) this.signIns.delete(key);
+      },
+      (error: unknown) => {
+        if (this.signIns.get(key) !== state) return;
+        state.phase = cancel.signal.aborted ? 'cancelled' : 'failed';
+        state.message = cancel.signal.aborted
+          ? 'Sign-in cancelled.'
+          : `Sign-in failed: ${error instanceof Error ? error.message : String(error)}`;
+        delete state.url;
+      },
+    );
+    void settled.finally(() => {
+      if (this.answers.get(key) === answer) this.answers.delete(key);
+    });
+    await Promise.race([opened, settled, new Promise((resolve) => setTimeout(resolve, LOGIN_URL_TIMEOUT_MS))]);
+    const message = state.url ? `Opened the sign-in page of ${name} in your browser.` : state.message;
+    return {
+      ...(message ? { message } : {}),
+      ...(state.url ? { url: state.url } : {}),
+      overview: await this.overview(),
+    };
+  }
+
+  /** The names of the OAuth servers pi holds tokens for. */
+  private async storedSignIns(entries: readonly McpConfigEntry[]): Promise<ReadonlySet<string>> {
+    const oauthEntries = entries.filter((entry) => entry.oauth && entry.transport === 'http');
+    if (oauthEntries.length === 0) return new Set();
+    const { oauth } = await loadPiInternals();
+    const store = new oauth.McpOAuthCredentialStore();
+    return new Set(oauthEntries.filter((entry) => store.tokens(entry.name, entry.target)).map((entry) => entry.name));
+  }
+
   /** The person gave up: pi's own sign-in is told there is no redirect to wait for, stops listening and says "Sign-in cancelled." */
-  async cancelSignIn(threadId: string, name: string): Promise<McpActionResult> {
-    this.answers.get(signInKey(threadId, name))?.(undefined);
+  async cancelSignIn(threadId: string | undefined, name: string): Promise<McpActionResult> {
+    this.answers.get(signInKey(threadId ?? '', name))?.(undefined);
     await new Promise((resolve) => setTimeout(resolve, 100));
     return { overview: await this.overview(threadId) };
   }
 
   /** The browser ran on another machine: the redirect URL the person copied from its address bar finishes the sign-in, as pi's own prompt asks. */
-  async pasteSignIn(threadId: string, name: string, redirectUrl: string): Promise<McpActionResult> {
-    const answer = this.answers.get(signInKey(threadId, name));
+  async pasteSignIn(threadId: string | undefined, name: string, redirectUrl: string): Promise<McpActionResult> {
+    const answer = this.answers.get(signInKey(threadId ?? '', name));
     if (!answer) throw new ConflictException(`No sign-in to "${name}" is waiting for a redirect URL.`);
     answer(redirectUrl);
     await new Promise((resolve) => setTimeout(resolve, 400));
@@ -250,12 +325,20 @@ export class McpService {
     report: McpStatusReport | undefined,
     projectTrusted: boolean,
     threadId?: string,
+    signedIn?: ReadonlySet<string>,
   ): McpOverview {
     const live = report !== undefined;
     const servers: McpServer[] = config.servers.map((entry) => {
       const status = report?.servers.get(entry.name);
       const server = toServer(entry, status, live);
-      if (!threadId) return server;
+      if (!threadId) {
+        const signIn = this.signInOf('', entry.name);
+        return {
+          ...server,
+          ...(signedIn?.has(entry.name) ? { signedIn: true } : {}),
+          ...(signIn ? { signIn, state: 'needs-auth' as const } : {}),
+        };
+      }
       const signIn = server.state === 'connected' ? undefined : this.signInOf(threadId, entry.name);
       if (server.state === 'connected') this.signIns.delete(signInKey(threadId, entry.name));
       const toolList = server.state === 'connected' ? this.sessions.mcpTools(threadId, entry.name) : [];
@@ -329,6 +412,8 @@ function toServer(
     ...(status?.tools !== undefined ? { tools: status.tools } : {}),
     ...(status?.error && state !== 'connected' ? { error: status.error } : {}),
     oauth: entry.oauth,
+    ...(entry.clientId ? { clientId: entry.clientId } : {}),
+    ...(entry.oauthScope ? { oauthScope: entry.oauthScope } : {}),
   };
 }
 

@@ -1,7 +1,7 @@
 import type { Translate } from '@pi-kit/i18n';
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
 import {
   CONNECTOR_EXPOSURE_TEXT,
   CONNECTOR_EXPOSURES,
@@ -13,10 +13,17 @@ import {
 import { ChatStore } from '@pi-kit/chat/api';
 import { IS_MAC } from '@pi-kit/data-access';
 import { PkIcon, PkItem, PkScrollArea, PkTabPanel, PkTabs, PkTip } from '@pi-kit/design-system';
-import { ConnectorsStore, type EditorSource, FileEditorDialog, SettingsStore } from '@pi-kit/settings/api';
+import {
+  ComposioStore,
+  ConnectorsStore,
+  type EditorSource,
+  FileEditorDialog,
+  SettingsStore,
+} from '@pi-kit/settings/api';
 import { type McpRow, fileRows } from '@pi-kit/settings/util';
 import { PkContextMenu, type PkMenuItem } from '@pi-kit/ui';
 import { AddServerWizard } from './add-server-wizard';
+import { ComposioDialog } from './composio/composio-dialog';
 import { ConnectorLogo } from './connector-logo';
 import { EditServerDialog } from './edit-server-dialog';
 
@@ -39,6 +46,7 @@ const serverActions = (translate: Translate): Record<string, string> => ({
   selector: 'pk-mcp-section',
   imports: [
     AddServerWizard,
+    ComposioDialog,
     ConnectorLogo,
     EditServerDialog,
     FileEditorDialog,
@@ -51,7 +59,6 @@ const serverActions = (translate: Translate): Record<string, string> => ({
     TranslocoPipe,
     PkIcon,
   ],
-  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-5" data-testid="section-mcp">
       @if (mcp.notice(); as notice) {
@@ -183,101 +190,108 @@ const serverActions = (translate: Translate): Record<string, string> => ({
                               }}</span
                             >
                           }
-                          @if (row.connector?.verification?.status === 'unverified') {
-                            <span class="chip warn" [pkTip]="row.connector?.verification?.note ?? ''">{{
-                              'settings.mcpSection.unverified' | transloco
-                            }}</span>
-                          }
                         </ng-container>
                         <ng-container ds>{{ row.detail }}</ng-container>
                         <ng-container act>
-                          @if (busy(row)) {
-                            <span
-                              class="loading loading-spinner loading-xs"
-                              [attr.aria-label]="'settings.mcpSection.working' | transloco"
-                            ></span>
-                          } @else {
-                            @if (row.editable && row.state !== 'off') {
-                              <select
-                                class="select select-xs"
-                                [pkTip]="'settings.mcpSection.howToolsReachTheModel' | transloco"
-                                [attr.data-testid]="'exposure-' + row.name"
-                                [attr.aria-label]="row.name + ('settings.mcpSection.toolExposure' | transloco)"
-                                [disabled]="!hasThread() || busy(row)"
-                                (change)="mcp.setExposure(row.name, $any($event.target).value)"
-                              >
-                                @for (e of exposures; track e) {
-                                  <option [value]="e" [selected]="row.exposure === e">{{ exposureText(e) }}</option>
-                                }
-                              </select>
-                            }
-                            @switch (row.primary) {
-                              @case ('sign-in') {
-                                <button
-                                  type="button"
-                                  class="btn btn-sm btn-primary"
-                                  [attr.data-testid]="'signin-' + row.name"
-                                  (click)="mcp.login(row.name)"
-                                >
-                                  {{ row.primaryText }}
-                                </button>
-                              }
-                              @case ('try-again') {
-                                <button
-                                  type="button"
-                                  class="btn btn-sm btn-primary"
-                                  [attr.data-testid]="'signin-' + row.name"
-                                  (click)="mcp.login(row.name)"
-                                >
-                                  {{ row.primaryText }}
-                                </button>
-                              }
-                              @case ('reconnect') {
-                                <button
-                                  type="button"
-                                  class="btn btn-sm"
-                                  [attr.data-testid]="'reconnect-' + row.name"
-                                  (click)="mcp.reconnect(row.name)"
-                                >
-                                  {{ row.primaryText }}
-                                </button>
-                              }
-                              @case ('turn-on') {
+                          <span class="flex items-center gap-1 flex-nowrap">
+                            @if (busy(row)) {
+                              <span
+                                class="loading loading-spinner loading-xs"
+                                [attr.aria-label]="'settings.mcpSection.working' | transloco"
+                              ></span>
+                            } @else {
+                              @if (row.connector?.id === 'composio' && row.state !== 'off') {
                                 <button
                                   type="button"
                                   class="btn btn-sm btn-ghost"
-                                  [attr.data-testid]="'turn-on-' + row.name"
-                                  [disabled]="reloadDisabled()"
-                                  (click)="mcp.setEnabled(row.name, true)"
+                                  [attr.data-testid]="'composio-apps-' + row.name"
+                                  (click)="composio.open()"
                                 >
-                                  {{ row.primaryText }}
+                                  <pk-icon name="settings-extensions" />{{ 'settings.composio.manageApps' | transloco }}
+                                </button>
+                              }
+                              @if (row.editable && row.state !== 'off') {
+                                <select
+                                  class="select select-xs"
+                                  [pkTip]="'settings.mcpSection.howToolsReachTheModel' | transloco"
+                                  [attr.data-testid]="'exposure-' + row.name"
+                                  [attr.aria-label]="row.name + ('settings.mcpSection.toolExposure' | transloco)"
+                                  [disabled]="!hasThread() || busy(row)"
+                                  (change)="mcp.setExposure(row.name, $any($event.target).value)"
+                                >
+                                  @for (e of exposures; track e) {
+                                    <option [value]="e" [selected]="row.exposure === e">{{ exposureText(e) }}</option>
+                                  }
+                                </select>
+                              }
+                              @switch (row.primary) {
+                                @case ('sign-in') {
+                                  <button
+                                    type="button"
+                                    class="btn btn-sm btn-primary"
+                                    [attr.data-testid]="'signin-' + row.name"
+                                    (click)="mcp.login(row.name)"
+                                  >
+                                    {{ row.primaryText }}
+                                  </button>
+                                }
+                                @case ('try-again') {
+                                  <button
+                                    type="button"
+                                    class="btn btn-sm btn-primary"
+                                    [attr.data-testid]="'signin-' + row.name"
+                                    (click)="mcp.login(row.name)"
+                                  >
+                                    {{ row.primaryText }}
+                                  </button>
+                                }
+                                @case ('reconnect') {
+                                  <button
+                                    type="button"
+                                    class="btn btn-sm"
+                                    [attr.data-testid]="'reconnect-' + row.name"
+                                    (click)="mcp.reconnect(row.name)"
+                                  >
+                                    {{ row.primaryText }}
+                                  </button>
+                                }
+                                @case ('turn-on') {
+                                  <button
+                                    type="button"
+                                    class="btn btn-sm btn-ghost"
+                                    [attr.data-testid]="'turn-on-' + row.name"
+                                    [disabled]="reloadDisabled()"
+                                    (click)="mcp.setEnabled(row.name, true)"
+                                  >
+                                    {{ row.primaryText }}
+                                  </button>
+                                }
+                              }
+                              @if (row.editable) {
+                                <button
+                                  type="button"
+                                  class="btn btn-sm btn-ghost btn-square"
+                                  [pkTip]="'settings.mcpSection.edit' | transloco"
+                                  [attr.aria-label]="('settings.mcpSection.edit16f01' | transloco) + row.name"
+                                  [attr.data-testid]="'edit-' + row.name"
+                                  (click)="mcp.openEdit(row.name, scopeOf(row))"
+                                >
+                                  <pk-icon name="pencil" />
+                                </button>
+                                <button
+                                  type="button"
+                                  class="btn btn-sm btn-ghost btn-square"
+                                  [pkTip]="'settings.mcpSection.more' | transloco"
+                                  [attr.aria-label]="('settings.mcpSection.moreFor' | transloco) + row.name"
+                                  aria-haspopup="menu"
+                                  [attr.data-testid]="'more-' + row.name"
+                                  (click)="openMenu($event, row)"
+                                >
+                                  <pk-icon name="more" />
                                 </button>
                               }
                             }
-                            @if (row.editable) {
-                              <button
-                                type="button"
-                                class="btn btn-sm btn-ghost btn-square"
-                                [pkTip]="'settings.mcpSection.edit' | transloco"
-                                [attr.aria-label]="('settings.mcpSection.edit16f01' | transloco) + row.name"
-                                [attr.data-testid]="'edit-' + row.name"
-                                (click)="mcp.openEdit(row.name, scopeOf(row))"
-                              >
-                                <pk-icon name="pencil" />
-                              </button>
-                              <button
-                                type="button"
-                                class="btn btn-sm btn-ghost btn-square"
-                                [pkTip]="'settings.mcpSection.more' | transloco"
-                                [attr.aria-label]="('settings.mcpSection.moreFor' | transloco) + row.name"
-                                aria-haspopup="menu"
-                                [attr.data-testid]="'more-' + row.name"
-                                (click)="openMenu($event, row)"
-                              >
-                                <pk-icon name="more" />
-                              </button>
-                            }
-                          }
+                          </span>
                         </ng-container>
 
                         <div extra class="extra">
@@ -427,7 +441,7 @@ const serverActions = (translate: Translate): Record<string, string> => ({
               }
             </section>
             @if (!store.searching()) {
-              <p class="t-xs muted break-all">
+              <p class="t-xs muted break-all px-4 mt-2">
                 {{
                   'settings.mcpSection.catalogEndpointsWereReadFromEachVendor'
                     | transloco: { value1: mcp.catalog().updated }
@@ -523,6 +537,11 @@ const serverActions = (translate: Translate): Record<string, string> => ({
         <pk-add-server-wizard />
       }
     }
+    @defer (when composio.visible(); prefetch on idle) {
+      @if (composio.visible()) {
+        <pk-composio-dialog />
+      }
+    }
     @defer (when mcp.edit() !== undefined; prefetch on idle) {
       @if (mcp.edit()) {
         <pk-edit-server-dialog />
@@ -538,6 +557,7 @@ const serverActions = (translate: Translate): Record<string, string> => ({
 export class McpSection {
   protected readonly i18n = inject(Language);
   protected readonly mcp = inject(ConnectorsStore);
+  protected readonly composio = inject(ComposioStore);
   protected readonly store = inject(SettingsStore);
   private readonly session = inject(ChatStore);
 

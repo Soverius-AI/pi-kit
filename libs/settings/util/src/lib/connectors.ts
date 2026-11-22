@@ -12,7 +12,8 @@ import {
  * `/` menu groups of the connected ones. A server is matched with its card by name or by URL, so one added with `pi mcp add` under another name still shows as connected.
  */
 
-export type ConnectorState = 'available' | 'connecting' | 'signing-in' | 'needs-signin' | 'connected' | 'error' | 'off';
+export type ConnectorState =
+  'available' | 'connecting' | 'signing-in' | 'needs-signin' | 'signed-in' | 'connected' | 'error' | 'off';
 
 export interface ConnectorCard {
   connector: Connector;
@@ -30,6 +31,7 @@ export const connectorStateLabels = (
   connecting: { text: translate('settings.connectors.connecting'), tone: 'warn' },
   'signing-in': { text: translate('settings.connectors.signingIn'), tone: 'warn' },
   'needs-signin': { text: translate('settings.connectors.needsSignIn'), tone: 'warn' },
+  'signed-in': { text: translate('settings.connectors.signedIn'), tone: 'ok' },
   connected: { text: translate('settings.connectors.connected'), tone: 'ok' },
   error: { text: translate('settings.connectors.error'), tone: 'err' },
   off: { text: translate('settings.connectors.off'), tone: 'off' },
@@ -49,8 +51,9 @@ export function connectorState(server: McpServer | undefined): ConnectorState {
     case 'failed':
       return 'error';
     default:
-      // disconnected, closed, unknown: the server is configured and not up; a sign-in or a reconnect is the next move
-      return server.oauth ? 'needs-signin' : 'connecting';
+      // disconnected, closed, unknown: configured but not up; without a stored sign-in, a sign-in or a reconnect is next
+      if (!server.oauth) return 'connecting';
+      return server.signedIn ? 'signed-in' : 'needs-signin';
   }
 }
 

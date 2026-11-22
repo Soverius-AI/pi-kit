@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
+  defaultEnvironmentLook,
+  EnvironmentLookSchema,
   EnvironmentNameSchema,
   EnvironmentSchema,
+  type EnvironmentLook,
   InstanceAccessPreferencesSchema,
   StoredDeviceGrantSchema,
   type Environment,
@@ -36,6 +39,26 @@ export class InstanceRepository {
         })
         .immediate(),
     );
+  }
+
+  /** Kept out of `identity()`: the pairing identity is strict and signed. */
+  async look(): Promise<EnvironmentLook> {
+    const row = (await this.database.db.prepare('SELECT look FROM instance_identity WHERE singleton = 1').get()) as {
+      look: string | null;
+    };
+    const stored = row.look ? EnvironmentLookSchema.safeParse(JSON.parse(row.look)) : undefined;
+    return stored?.success ? stored.data : defaultEnvironmentLook(this.instanceId);
+  }
+
+  async setLook(look: EnvironmentLook): Promise<EnvironmentLook> {
+    const valid = EnvironmentLookSchema.parse(look);
+    await this.durable(
+      async () =>
+        await this.database.db
+          .prepare('UPDATE instance_identity SET look = ? WHERE singleton = 1')
+          .run(JSON.stringify(valid)),
+    );
+    return valid;
   }
 
   async preferences(): Promise<InstanceAccessPreferences> {

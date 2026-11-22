@@ -355,6 +355,7 @@ describe('session opening', () => {
       await opening.promise;
       return { threadId: 'plain' };
     });
+    const lookups = vi.spyOn((service as unknown as { openingSessions: Map<string, unknown> }).openingSessions, 'get');
     const first = service.openSession('plain');
     const second = service.openSession('plain');
     await vi.waitFor(() => expect(refreshBase).toHaveBeenCalledTimes(1));
@@ -362,6 +363,7 @@ describe('session opening', () => {
     preparation.resolve();
     await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
     const third = service.openSession('plain');
+    await vi.waitFor(() => expect(lookups).toHaveBeenCalledTimes(3));
     expect(refreshBase).toHaveBeenCalledTimes(1);
     opening.resolve();
     const infos = await Promise.all([first, second, third]);

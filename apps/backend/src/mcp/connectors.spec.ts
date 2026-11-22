@@ -1,6 +1,13 @@
 import { CONNECTOR_CATALOG, connectorById } from '@pi-kit/protocol';
 import { describe, expect, it } from 'vitest';
-import { buildConnectorEntry, buildCustomEntry, endpointFor, endpointOverrides, needsSignIn } from './connectors';
+import {
+  buildConnectorEntry,
+  buildCustomEntry,
+  endpointFor,
+  endpointOverrides,
+  needsSignIn,
+  readOnlyServerNames,
+} from './connectors';
 
 const connector = (id: string) => connectorById(id, CONNECTOR_CATALOG)!;
 
@@ -16,6 +23,69 @@ describe('the mcp.json entry of a connector', () => {
       url: 'https://mcp.notion.com/mcp',
       description: connector('notion').summary,
     });
+  });
+
+  it('a server that runs here is its pinned command, with the variant’s flags and environment', () => {
+    expect(buildConnectorEntry(connector('outlook'), { exposure: 'deferred', variant: 'personal' })).toEqual({
+      command: 'npx',
+      args: ['-y', '@softeria/ms-365-mcp-server@0.179.1', '--preset', 'outlook'],
+      env: { MS365_MCP_TENANT_ID: 'consumers' },
+      description: connector('outlook').summary,
+      exposure: 'deferred',
+    });
+    expect(buildConnectorEntry(connector('outlook'), { exposure: 'codemode', variant: 'readonly' })['args']).toContain(
+      '--read-only',
+    );
+    expect(needsSignIn({ id: 'outlook', scope: 'user' }, connector('outlook'))).toBe(false);
+    expect(endpointFor(connector('outlook'), undefined, { outlook: 'http://127.0.0.1:1/mcp' })).toBeUndefined();
+  });
+
+  it('Google’s servers take the client of your own app and ask only for the access chosen', () => {
+    expect(
+      buildConnectorEntry(connector('gmail'), { exposure: 'codemode', clientId: 'id.apps', variant: 'readonly' }),
+    ).toEqual({
+      url: 'https://gmailmcp.googleapis.com/mcp/v1',
+      description: connector('gmail').summary,
+      oauth: { clientId: 'id.apps', callbackPort: 8766, scope: 'https://www.googleapis.com/auth/gmail.readonly' },
+    });
+    expect(buildConnectorEntry(connector('gmail'), { exposure: 'codemode', clientId: 'id' })['oauth']).toMatchObject({
+      scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose',
+    });
+    const calendar = buildConnectorEntry(connector('google-calendar'), {
+      exposure: 'codemode',
+      clientId: 'id',
+      variant: 'readonly',
+    });
+    expect(calendar['url']).toBe('https://calendarmcp.googleapis.com/mcp/v1');
+    expect(calendar['oauth']).toMatchObject({
+      callbackPort: 8766,
+      scope: 'https://www.googleapis.com/auth/calendar.readonly',
+    });
+  });
+
+  it('names the Google servers added read only, which a read-only room may use in full', () => {
+    const http = (name: string, target: string, oauthScope?: string) => ({
+      name,
+      transport: 'http',
+      target,
+      ...(oauthScope ? { oauthScope } : {}),
+    });
+    const servers = [
+      http('gmail', 'https://gmailmcp.googleapis.com/mcp/v1', 'https://www.googleapis.com/auth/gmail.readonly'),
+      http(
+        'google-calendar',
+        'https://calendarmcp.googleapis.com/mcp/v1',
+        'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+      ),
+      http(
+        'my-calendar',
+        'https://calendarmcp.googleapis.com/mcp/v1/',
+        'https://www.googleapis.com/auth/calendar.readonly',
+      ),
+      http('docs', 'https://example.com/mcp', 'https://www.googleapis.com/auth/drive.readonly'),
+      http('linear', 'https://mcp.linear.app/mcp'),
+    ];
+    expect(readOnlyServerNames(servers, CONNECTOR_CATALOG)).toEqual(['gmail', 'my-calendar']);
   });
 
   it('a variant is another URL; a vendor that only accepts known clients gets the client name', () => {
@@ -60,7 +130,8 @@ describe('the mcp.json entry of a connector', () => {
   it('every catalog entry builds with what its sign-in needs', () => {
     for (const c of CONNECTOR_CATALOG.connectors) {
       const entry = buildConnectorEntry(c, { exposure: c.exposure, authorization: 'Bearer x', clientId: 'id' });
-      expect(entry['url'], c.id).toMatch(/^https:\/\//);
+      if (c.local) expect(entry['command'], c.id).toBe(c.local.command);
+      else expect(entry['url'], c.id).toMatch(/^https:\/\//);
     }
   });
 

@@ -215,15 +215,24 @@ describe('read connections', () => {
   }
 
   it('runs consecutive reads side by side', async () => {
-    const timed = async (readers: number) => {
+    const stamped = `SELECT (julianday('now') - 2440587.5) * 86400000 AS started, (${slowRead}) AS n`;
+    const overlap = async (readers: number) => {
       const db = await pooled(readers);
-      const started = performance.now();
-      await Promise.all([db.prepare(slowRead).get(), db.prepare(slowRead).get()]);
-      return performance.now() - started;
+      let firstDone = 0;
+      const [first, second] = (await Promise.all([
+        db
+          .prepare(stamped)
+          .get()
+          .then((row) => {
+            firstDone = Date.now();
+            return row;
+          }),
+        db.prepare(stamped).get(),
+      ])) as { started: number }[];
+      return (second.started - first.started) / (firstDone - first.started);
     };
-    const serial = await timed(0);
-    const parallel = await timed(2);
-    expect(parallel).toBeLessThan(serial * 0.8);
+    expect(await overlap(0)).toBeGreaterThan(0.9);
+    expect(await overlap(2)).toBeLessThan(0.5);
   });
 
   it('settles reads and writes in the order they were issued, failures included', async () => {

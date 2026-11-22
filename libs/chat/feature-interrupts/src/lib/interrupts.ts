@@ -4,7 +4,7 @@ import { PkTurn } from '@pi-kit/design-system';
 import { type PiDialogAnswer, type PiDialogRequest, isPiInterruptReason } from '@pi-kit/protocol';
 import { ClockStore } from '@pi-kit/data-access';
 import { ChatStore, errorText } from '@pi-kit/chat/data';
-import { ConfirmBlock, EditorBlock, InputBlock, SelectBlock } from '@pi-kit/chat/ui';
+import { PiDialog } from '@pi-kit/chat/ui';
 import { ThreadsStore } from '@pi-kit/threads/api';
 
 interface InterruptView {
@@ -36,46 +36,18 @@ const clock = (ms: number): string => {
  */
 @Component({
   selector: 'pk-interrupts',
-  imports: [PkTurn, ConfirmBlock, SelectBlock, InputBlock, EditorBlock],
+  imports: [PkTurn, PiDialog],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'contents' },
   template: `
     @for (item of views(); track item.id) {
       <pk-turn role="pi" [attr.data-testid]="item.agent ? 'agent-question-card' : null">
-        @switch (item.request.method) {
-          @case ('confirm') {
-            <pk-confirm-block
-              [request]="item.request"
-              [timeout]="item.timeout"
-              (answered)="answer(item, $event)"
-              (dismissed)="dismiss(item)"
-            />
-          }
-          @case ('select') {
-            <pk-select-block
-              [request]="item.request"
-              [timeout]="item.timeout"
-              (answered)="answer(item, $event)"
-              (dismissed)="dismiss(item)"
-            />
-          }
-          @case ('input') {
-            <pk-input-block
-              [request]="item.request"
-              [timeout]="item.timeout"
-              (answered)="answer(item, $event)"
-              (dismissed)="dismiss(item)"
-            />
-          }
-          @default {
-            <pk-editor-block
-              [request]="item.request"
-              [timeout]="item.timeout"
-              (answered)="answer(item, $event)"
-              (dismissed)="dismiss(item)"
-            />
-          }
-        }
+        <pk-pi-dialog
+          [request]="item.request"
+          [timeout]="item.timeout"
+          (answered)="answer(item, $event)"
+          (dismissed)="dismiss(item)"
+        />
       </pk-turn>
     }
     @if (error(); as message) {

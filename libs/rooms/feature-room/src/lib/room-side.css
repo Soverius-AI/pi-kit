@@ -1,0 +1,274 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  width: 300px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-left: 1px solid var(--color-base-300);
+  background: var(--color-base-100);
+  font-size: 13px;
+}
+.section {
+  border-bottom: 1px solid var(--color-base-300);
+}
+.section > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+.section > summary::-webkit-details-marker {
+  display: none;
+}
+.section > summary:hover {
+  background: var(--color-base-200);
+}
+.section > summary pk-icon {
+  color: var(--pk-muted);
+}
+.count {
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-base-200);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--pk-muted);
+}
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0 14px 12px;
+}
+.hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--pk-muted);
+  list-style: none;
+}
+.hint.warn {
+  color: var(--color-warning);
+}
+.row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pick {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--color-base-300);
+  border-radius: 8px;
+}
+.pick select {
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 24px 5px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-base-content);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+.pick select:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+.pick .caret {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+  color: var(--pk-muted);
+}
+.stages {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--pk-muted);
+}
+.stages li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.stages li + li::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: -8px;
+  height: 14px;
+  border-left: 1px solid var(--color-base-300);
+}
+.stages .dot,
+.tasks .dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
+.stages li.done .dot {
+  background: currentColor;
+}
+.stages li[aria-current='step'] {
+  color: var(--color-base-content);
+  font-weight: 500;
+}
+.stages li[aria-current='step'] .dot {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+h4 {
+  margin: 2px 0 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--pk-muted);
+}
+.tasks,
+.triggers,
+.tree,
+.tree ul {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tasks button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--pk-muted);
+}
+.tasks button:hover {
+  background: var(--color-base-200);
+}
+.tasks .title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-base-content);
+}
+.tasks .state {
+  flex: none;
+  font-size: 11px;
+}
+.tasks button[data-state='proposed'] .dot,
+.tasks button[data-state='submitted'] .dot {
+  border-color: var(--color-warning);
+  background: var(--color-warning);
+}
+.tasks button[data-state='running'] .dot {
+  border-color: var(--color-info);
+  background: var(--color-info);
+}
+.tasks button[data-state='integrated'] .dot {
+  border-color: var(--color-success);
+  background: var(--color-success);
+}
+.tasks button[data-state='failed'] .dot {
+  border-color: var(--color-error);
+  background: var(--color-error);
+}
+.triggers {
+  gap: 8px;
+}
+.triggers li:not(.hint) {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.triggers pk-icon {
+  margin-top: 2px;
+  color: var(--pk-muted);
+}
+.triggers .main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.triggers .when,
+.triggers .next {
+  font-size: 11px;
+  color: var(--pk-muted);
+  overflow-wrap: anywhere;
+}
+.tree {
+  gap: 8px;
+}
+.tree ul {
+  margin-left: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--color-base-300);
+}
+.tree .node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-weight: 500;
+}
+.tree .node pk-icon {
+  color: var(--pk-muted);
+}
+.tree .node.leaf {
+  font-weight: 400;
+}
+.tree .node.current {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+.tree .node.current pk-icon {
+  color: currentColor;
+}
+.tree .path {
+  display: block;
+  margin: 0 0 2px 19px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  font-size: 11px;
+  color: var(--pk-muted);
+}
+.notebook dt {
+  font-weight: 500;
+}
+.notebook dt .scope {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--pk-muted);
+}
+.notebook dd {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+  color: var(--pk-muted);
+}

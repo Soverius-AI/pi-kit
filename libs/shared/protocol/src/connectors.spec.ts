@@ -7,9 +7,11 @@ import {
   connectorById,
   connectorMenuLine,
   connectorOfServer,
+  connectorScope,
   connectorUrl,
   humanToolName,
   normalizeEndpoint,
+  readOnlyScope,
 } from './connectors';
 import { bearerFromResolver, resolverCommand } from './secrets';
 
@@ -27,14 +29,20 @@ describe('the connector catalog', () => {
       'sentry',
       'atlassian',
       'figma',
+      'composio',
+      'gmail',
+      'google-calendar',
+      'outlook',
     ]);
   });
 
   it('every endpoint is https and every entry says what was checked and when', () => {
     for (const connector of CONNECTOR_CATALOG.connectors) {
-      expect(connector.endpoint.url, connector.id).toMatch(/^https:\/\//);
-      for (const variant of connector.endpoint.variants ?? [])
-        expect(variant.url, `${connector.id}/${variant.id}`).toMatch(/^https:\/\//);
+      if (connector.local) expect(connector.local.args.join(' '), connector.id).toMatch(/@\d+\.\d+\.\d+/);
+      else expect(connector.endpoint?.url, connector.id).toMatch(/^https:\/\//);
+      for (const variant of connector.endpoint?.variants ?? [])
+        if (variant.url) expect(variant.url, `${connector.id}/${variant.id}`).toMatch(/^https:\/\//);
+        else expect(variant.scope, `${connector.id}/${variant.id}`).toBeTruthy();
       expect(connector.docs, connector.id).toMatch(/^https:\/\//);
       expect(connector.verification.checkedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(connector.verification.note.length).toBeGreaterThan(20);
@@ -43,7 +51,7 @@ describe('the connector catalog', () => {
   });
 
   it('the endpoints and sign-in modes are the ones the vendors document', () => {
-    const url = (id: string) => connectorById(id, CONNECTOR_CATALOG)?.endpoint.url;
+    const url = (id: string) => connectorById(id, CONNECTOR_CATALOG)?.endpoint?.url;
     expect(url('linear')).toBe('https://mcp.linear.app/mcp');
     expect(connectorUrl(connectorById('linear', CONNECTOR_CATALOG)!, 'readonly')).toBe(
       'https://mcp.linear.app/mcp/readonly',
@@ -54,6 +62,12 @@ describe('the connector catalog', () => {
     expect(url('sentry')).toBe('https://mcp.sentry.dev/mcp');
     expect(url('atlassian')).toBe('https://mcp.atlassian.com/v2/mcp');
     expect(url('figma')).toBe('https://mcp.figma.com/mcp');
+    expect(url('composio')).toBe('https://connect.composio.dev/mcp');
+    expect(connectorById('composio', CONNECTOR_CATALOG)?.auth).toEqual({ type: 'oauth' });
+    expect(url('gmail')).toBe('https://gmailmcp.googleapis.com/mcp/v1');
+    expect(url('google-calendar')).toBe('https://calendarmcp.googleapis.com/mcp/v1');
+    expect(connectorById('gmail', CONNECTOR_CATALOG)?.auth.type).toBe('oauth-client');
+    expect(connectorById('outlook', CONNECTOR_CATALOG)?.auth.type).toBe('device');
     expect(connectorById('linear', CONNECTOR_CATALOG)?.auth).toEqual({ type: 'oauth' });
     expect(connectorById('figma', CONNECTOR_CATALOG)?.auth).toEqual({ type: 'oauth', clientName: 'Claude Code' });
     expect(connectorById('github', CONNECTOR_CATALOG)?.auth.type).toBe('bearer');
@@ -132,6 +146,28 @@ describe('matching a server with its connector', () => {
     });
     expect(connectorOfServer(server('mine', 'https://example.com/mcp'), CONNECTOR_CATALOG)).toBeUndefined();
     expect(connectorOfServer(server('files', 'npx server-files', 'stdio'), CONNECTOR_CATALOG)).toBeUndefined();
+    const outlook = 'npx -y @softeria/ms-365-mcp-server@0.179.1 --preset outlook';
+    expect(connectorOfServer(server('outlook', outlook, 'stdio'), CONNECTOR_CATALOG)).toEqual({
+      connector: expect.objectContaining({ id: 'outlook' }),
+    });
+    expect(connectorOfServer(server('outlook', `${outlook} --read-only`, 'stdio'), CONNECTOR_CATALOG)).toMatchObject({
+      variant: 'readonly',
+    });
+  });
+
+  it('tells the Google access levels apart by the scope the entry asks for', () => {
+    const gmail = (oauthScope?: string) => ({
+      ...server('gmail', 'https://gmailmcp.googleapis.com/mcp/v1'),
+      oauthScope,
+    });
+    const G = 'https://www.googleapis.com/auth/';
+    expect(connectorOfServer(gmail(`${G}gmail.readonly`), CONNECTOR_CATALOG)).toMatchObject({ variant: 'readonly' });
+    expect(connectorOfServer(gmail(`${G}gmail.compose ${G}gmail.readonly`), CONNECTOR_CATALOG)).toEqual({
+      connector: expect.objectContaining({ id: 'gmail' }),
+    });
+    expect(connectorOfServer(gmail(), CONNECTOR_CATALOG)).toEqual({
+      connector: expect.objectContaining({ id: 'gmail' }),
+    });
   });
 
   it('normalises a URL the way a comparison needs', () => {
@@ -193,5 +229,35 @@ describe('the bearer header that mcp.json holds', () => {
     expect(bearerFromResolver(resolverCommand('linux', 'connector-github'))).toBe(
       '!pi-kit-secret get connector-github --bearer',
     );
+  });
+});
+
+describe('the scope of a Google connector', () => {
+  const G = 'https://www.googleapis.com/auth/';
+  const gmail = connectorById('gmail', CONNECTOR_CATALOG)!;
+  const calendar = connectorById('google-calendar', CONNECTOR_CATALOG)!;
+
+  it('asks for read only by default and for no more than the card says', () => {
+    expect(gmail.endpoint?.defaultVariant).toBe('readonly');
+    expect(connectorScope(gmail, 'readonly')).toBe(`${G}gmail.readonly`);
+    expect(connectorScope(gmail)).toBe(`${G}gmail.readonly ${G}gmail.compose`);
+    expect(connectorScope(calendar, 'readonly')).toBe(`${G}calendar.readonly`);
+    expect(connectorScope(calendar)).toBe(`${G}calendar.readonly ${G}calendar.events`);
+    expect(connectorScope(connectorById('linear', CONNECTOR_CATALOG)!)).toBeUndefined();
+  });
+
+  it('shares one redirect URI and one app between Gmail and Calendar', () => {
+    for (const connector of [gmail, calendar]) {
+      expect(connector.auth).toMatchObject({ type: 'oauth-client', callbackPort: 8766, app: 'google' });
+      if (connector.auth.type === 'oauth-client') expect(connector.auth.steps?.length).toBeGreaterThanOrEqual(5);
+    }
+  });
+
+  it('counts a scope as read only when every part of it is', () => {
+    expect(readOnlyScope(`${G}gmail.readonly`)).toBe(true);
+    expect(readOnlyScope(`${G}calendar.readonly  ${G}gmail.readonly`)).toBe(true);
+    expect(readOnlyScope(`${G}gmail.readonly ${G}gmail.compose`)).toBe(false);
+    expect(readOnlyScope(undefined)).toBe(false);
+    expect(readOnlyScope('')).toBe(false);
   });
 });

@@ -1,6 +1,8 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import {
+  BrandLogosQuerySchema,
+  BrandLogosSchema,
   ConnectRequestSchema,
   type ConnectorCatalog,
   ConnectorCatalogSchema,
@@ -12,6 +14,7 @@ import {
 } from '@pi-kit/protocol';
 import type { z } from 'zod';
 import { Fails, Responds } from '../contract';
+import { BrandLogos } from './brand-logos.service';
 import { ConnectorsService } from './connectors.service';
 
 const SERVER_NAME = {
@@ -27,7 +30,23 @@ const SERVER_NAME = {
 @ApiTags('connectors')
 @Controller('connectors')
 export class ConnectorsController {
-  constructor(private readonly connectors: ConnectorsService) {}
+  constructor(
+    private readonly connectors: ConnectorsService,
+    private readonly logos: BrandLogos,
+  ) {}
+
+  @Get('logos')
+  @ApiOperation({
+    summary: 'Get brand logos',
+    description:
+      'The colour logo of each named brand (comma-separated, as Composio’s logo service names them: a catalog entry’s `brand`, or a Composio toolkit) as a data URL, fetched once per run of the backend. A name without a logo is left out.',
+  })
+  @Responds(BrandLogosSchema)
+  brandLogos(
+    @Query({ schema: BrandLogosQuerySchema }) query: z.infer<typeof BrandLogosQuerySchema>,
+  ): Promise<Record<string, string>> {
+    return this.logos.of(query.names.split(',').filter(Boolean));
+  }
 
   @Get('catalog')
   @ApiOperation({

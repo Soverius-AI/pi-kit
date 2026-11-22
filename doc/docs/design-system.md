@@ -167,7 +167,7 @@ One size per context, and everything in a row shares it:
 ```
 ┌────────────┬───────────────────────────────┬─────────────────┐
 │  sidebar   │          transcript           │   side panel    │
-│   280      │  fluid, fixed side gutters    │   400           │
+│   320      │  fluid, fixed side gutters    │   400           │
 │ projects   │  full-width content           │  tree / files / │
 │ + threads  │                               │  changes /      │
 │ status     ├───────────────────────────────┤  terminal / …   │
@@ -190,7 +190,7 @@ transcript for a diff and the composer for the comment tray; the columns stay th
 The sidebar can be collapsed and resized on a wide window (≥ 1024): the header's leading 32px ghost
 square (a panel icon, "Hide sidebar (⌘B)" / "Show sidebar (⌘B)"), the same button at the right end of the sidebar's footer and the `toggle-sidebar` shortcut (⌘B by
 default, Settings › Keybindings) collapse it to the **rail** (a 48px column of project tiles, see "Sidebar") and bring it back; a 6px separator over its right border drags
-its width between 220 and 480 (280 by default; a double-click resets it, ←/→ step 16px; the rail has none). The line shows in
+its width between 220 and 480 (320 by default; a double-click resets it, ←/→ step 16px; the rail has none). The line shows in
 primary on hover, focus and while dragging. Both are view preferences (`ViewPrefs.sidebarCollapsed`,
 `sidebarWidth`), saved like the text sizes. Below 1024 neither control exists and there is no rail: ☰ and ⌘B open the drawer, which always holds the full sidebar.
 
@@ -212,7 +212,7 @@ trailing actions and meta in a row. Header, transcript gutter and composer share
 Shared primitives and feature views use daisyUI classes and the shared tokens; specialized renderers include CopilotKit, xterm.js and sandboxed generated UI.
 
 - **Sidebar** ([ADR-0015](adr/0015-projects-and-thread-state.md)) projects are the structure; nothing in it hides behind a hover except the extra row actions. From the top:
-  the 48 bar with the **search field** at the full width left of the "+" (a 32px field on base-200 with a 14px magnifier, the filter icon button inside it at the right; `⌘⇧K` focuses it, because ⌘K is the palette's;
+  the 48 bar with the **search field** at the full width left of the "+" (a 32px field on base-200 with a 14px magnifier, the filter icon button inside it at the right; `⌘⇧K` focuses it, because ⌘K is the palette's; while Rooms (preview) is on, a **Rooms / Threads switch** (`pk-seg pk-seg-icons`, `room` and `code` icons, `role="radio"` items) sits before the field, which narrows to fit; with no rooms, Rooms mode shows a welcome (`pk-empty-state` with `[art]`: `.pk-rooms-hero`, a 48px gradient tile with the room icon inside a dashed orbit of three 10px dots in info, primary and success that turns once every 28s and stands still under reduced motion), then **Start a room** and three numbered steps (`.pk-rooms-steps`); Rooms mode lists **room rows** (`.pk-room-row`: a 28px info-tinted tile with the room icon, the title at 500, then "repository · host" in 11px muted), searches room titles, hides the filter, the quick-actions strip and the new-thread menu (its `+` starts a room from the selected thread), and replaces the environment switch with the muted note "Rooms span all paired environments" (`.pk-rooms-note`); Needs you stays in both modes, and an inactive Threads item carries a warning dot (`data-attention="wait"` on a `pk-seg` item, named in its accessible label);
   the filter menu holds Show archived, hidden projects and Attendant activity) and the primary `+` join (see "New-thread choice"); the static "Projects" title and the folder icon are gone. Under the bar the
   **quick-actions strip** for the current project (the open thread's, else the one picked last): a project switcher (22px tile, the name at 500, the branch in 11px mono, a chevron; its menu lists the projects and opens the one
   chosen like ⌘1…9 does) and five 26px icon buttons, each with a `pkTip` that carries the shortcut: **New worktree thread** (⌘⇧N), **Terminal in this project**, **Open in editor** (the desktop app only: in a browser the button is dimmed

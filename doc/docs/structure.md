@@ -44,13 +44,14 @@ libs/
     api/             what other domains use: the stores, and the components onboarding shares
                      (GetModel, KeyWorkflow, LoginFlow) plus PkSetting, the row every section uses, the file editor dialog (FileEditorDialog: llama-swap YAML,
                      mcp.json and SKILL.md), and the local model runtime (LocalRuntimeWizard, LocalModelSettings, LocalInstallGuide, LlamaRuntimeUpdatesPanel)
-    data/            settings.store, secrets.store, connectors.store, packages.store, provider-cards.store, project-page.store, computer-use.store,
+    data/            settings.store, secrets.store, connectors.store, composio.store, packages.store, provider-cards.store, project-page.store, computer-use.store,
                      litellm.store, local-runtime.store, local-model-catalog.store
     util/            the connectors' states, the rows of the Providers and MCP lists, the two wizards' step machines, the server form, the project rows,
                      the package rows with the Add a package steps, the control-column alignment check (pure)
     feature-settings/ SettingsDialog (the host) and SettingsWindow (lazy): nav, search; the General, Appearance, Voice and Computer use sections; the Versions block
     feature-providers/ Providers (the list and its "+" Add a provider wizard, the LiteLLM connection) and Models sections
-    feature-connectors/ MCP servers (the connectors merged in, its "+" Add a server wizard, the server form, the edit dialog and "Edit here")
+    feature-connectors/ MCP servers (the connectors merged in, its "+" Add a server wizard, the server form, the edit dialog and "Edit here", and the optional
+                     Composio dialog that adds one Composio app at a time)
     feature-attendant/ Attendant section        feature-keybindings/ Keybindings section
     feature-projects-trust/ Projects section: the list, a project's page, its setup scripts and open worktrees
     feature-advanced/ Advanced (with "Use previous release") and Extensions and skills (Packages with the Add a package wizard, Your skills, Your
@@ -92,6 +93,10 @@ libs/
     data/            AgentsStore (component-scoped: the list from the SDK, every change from the status channel through ThreadsStore.onStatusEvent)
     util/            agent states to labels and badges, durations, the Active and History lists (pure)
     feature-agents/  AgentsPanel (Active, History, questions) and AgentTranscript (the chat domain's transcript on a ChatStore for the AG-UI agent `pi-bg`)
+  rooms/           rooms across paired instances and their playbooks ([ADR-0038](adr/0038-rooms-for-cross-machine-work.md))
+    api/             `export *` of rooms/data: RoomsStore (the start-room dialog of threads/feature-sidebar uses it, playbook picker included)
+    data/            RoomsStore, OpenRoomStore (events, tasks, the playbook's stages, drafts to approve and notebook, from the room stream)
+    feature-room/    RoomView: the timeline, consultants by role and machine, the stage list, the notebook and the draft cards
   <domain>/        api/ feature-<name>/ ui/ data/ util/ (the shape every domain library follows)
 packages/           pi packages that ship with the app (Nx projects scope:shared type:util, tested with vitest)
   pi-kit-learn/    @pi-kit/learn: /learn, the analysis prompt; talks to pi-kit through the events of doc/docs/plugins.md

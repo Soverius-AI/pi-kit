@@ -142,6 +142,19 @@ describe('ViewPrefs', () => {
     expect(localStorage.getItem('pi-kit.copilotInspector')).toBe('false');
   });
 
+  it('keeps Rooms (preview) off by default and stores it in the backend as collaboration.rooms', async () => {
+    const prefs = TestBed.inject(ViewPrefs);
+    expect(prefs.roomsPreview()).toBe(false);
+    await prefs.set('roomsPreview', true);
+    expect(api.set).toHaveBeenCalledWith('collaboration.rooms', true);
+    saved['collaboration.rooms'] = false;
+    await prefs.load();
+    expect(prefs.roomsPreview()).toBe(false);
+    saved['collaboration.rooms'] = 'yes';
+    await prefs.load();
+    expect(prefs.roomsPreview()).toBe(false);
+  });
+
   it('keeps the sidebar width within its range', () => {
     expect(clampSidebarWidth(100)).toBe(SIDEBAR_WIDTH.min);
     expect(clampSidebarWidth(9000)).toBe(SIDEBAR_WIDTH.max);
@@ -153,7 +166,7 @@ describe('ViewPrefs', () => {
   it('collapses the sidebar and sizes its column on the page, and saves both', async () => {
     const prefs = TestBed.inject(ViewPrefs);
     TestBed.tick();
-    expect(document.documentElement.style.getPropertyValue('--pk-threads')).toBe('280px');
+    expect(document.documentElement.style.getPropertyValue('--pk-threads')).toBe('320px');
     expect(document.documentElement.dataset['sidebar']).toBeUndefined();
     await prefs.toggleSidebar();
     TestBed.tick();

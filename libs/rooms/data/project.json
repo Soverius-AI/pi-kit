@@ -1,0 +1,25 @@
+{
+  "name": "rooms-data",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/rooms/data/src",
+  "projectType": "library",
+  "prefix": "pk",
+  "tags": ["scope:rooms", "type:data"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "test": {
+      "executor": "@angular/build:unit-test",
+      "cache": true,
+      "inputs": ["default", "^production"],
+      "options": {
+        "tsConfig": "libs/rooms/data/tsconfig.spec.json",
+        "buildTarget": "renderer:build:development",
+        "runner": "vitest",
+        "include": ["libs/rooms/data/src/**/*.spec.ts"],
+        "setupFiles": ["libs/rooms/data/src/test-setup.ts"]
+      }
+    }
+  }
+}

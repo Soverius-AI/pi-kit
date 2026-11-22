@@ -69,10 +69,14 @@
         <pk-panel-switcher />
       </div>
     </header>
-    @if (review.mode() === 'review' && !threads.selected()?.learning) {
+    @if (review.mode() === 'review' && !threads.selected()?.learning && !openRoom.room()) {
       <pk-review-toolbar />
     }
-    @if (threads.selected()?.learning) {
+    @if (openRoom.room()) {
+      @defer (on immediate) {
+        <pk-room-view />
+      }
+    } @else if (threads.selected()?.learning) {
       @if (!learn.editing()) {
         @defer (on immediate) {
           <pk-skill-review-dialog [embedded]="true" />

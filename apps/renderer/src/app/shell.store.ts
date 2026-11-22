@@ -16,6 +16,7 @@ import {
 } from '@pi-kit/data-access';
 import type { PiDialogRequest, ThreadSuggestion, ThreadSummary } from '@pi-kit/protocol';
 import { ChangesStore } from '@pi-kit/review/api';
+import { OpenRoomStore } from '@pi-kit/rooms/api';
 import { GraphStore } from '@pi-kit/session-tree/api';
 import { AttendantStore, threadLabel, ThreadsStore } from '@pi-kit/threads/api';
 import { eventMatches } from '@pi-kit/ui';
@@ -32,12 +33,14 @@ export const ShellStore = signalStore(
     const translate = inject(Language).t;
     const health = inject(HealthStore);
     const threads = inject(ThreadsStore);
+    const openRoom = inject(OpenRoomStore);
     const chat = inject(ChatStore);
     const review = inject(ChangesStore);
     return {
       /** Only a genuinely empty chat may show the backdrop, never a replay or an optimistic first message. */
       emptyChat: computed(() => {
         if (review.mode() !== 'chat') return false;
+        if (openRoom.room()) return openRoom.events().length === 0;
         const selectedId = threads.selectedId();
         if (!selectedId) return true;
         const thread = threads.selected();
@@ -64,6 +67,8 @@ export const ShellStore = signalStore(
       }),
       /** The header's title: the thread's, else the app's name. */
       title: computed(() => {
+        const room = openRoom.room();
+        if (room) return room.title;
         const thread = threads.selected();
         return thread ? threadLabel(translate, thread) : 'pi-kit';
       }),

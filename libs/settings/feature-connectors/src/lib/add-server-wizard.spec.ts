@@ -2,7 +2,7 @@ import { english } from '@pi-kit/i18n/testing';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { CONNECTOR_CATALOG, type McpCheckResult, type McpServer } from '@pi-kit/protocol';
-import { ConnectorsStore, SecretsStore } from '@pi-kit/settings/api';
+import { ComposioStore, ConnectorsStore, SecretsStore } from '@pi-kit/settings/api';
 import { mcpRows } from '@pi-kit/settings/util';
 import { AddServerWizard } from './add-server-wizard';
 
@@ -58,6 +58,8 @@ describe('AddServerWizard', () => {
     f.detectChanges();
   };
 
+  const composio = { open: vi.fn() };
+
   beforeEach(() => {
     vi.clearAllMocks();
     wizard.set({});
@@ -69,6 +71,7 @@ describe('AddServerWizard', () => {
       providers: [
         { provide: ConnectorsStore, useValue: store },
         { provide: SecretsStore, useValue: secrets },
+        { provide: ComposioStore, useValue: composio },
       ],
     });
   });
@@ -78,8 +81,8 @@ describe('AddServerWizard', () => {
     const tiles = Array.from(root(f).querySelectorAll('.pk-choices.pk-gallery button')).map((b) =>
       b.getAttribute('data-testid'),
     );
-    expect(tiles.slice(0, -1)).toEqual(CONNECTOR_CATALOG.connectors.map((c) => `tile-${c.id}`));
-    expect(tiles.at(-1)).toBe('tile-custom');
+    expect(tiles.slice(0, -2)).toEqual(CONNECTOR_CATALOG.connectors.map((c) => `tile-${c.id}`));
+    expect(tiles.slice(-2)).toEqual(['tile-composio-apps', 'tile-custom']);
     expect(q(f, '[data-testid=gallery-search]')).not.toBeNull();
     expect(
       Array.from(q<HTMLSelectElement>(f, '[data-testid=gallery-scope]')?.options ?? []).map((o) =>
@@ -88,6 +91,13 @@ describe('AddServerWizard', () => {
     ).toEqual(['For me', 'This project only']);
     expect(root(f).querySelectorAll('.dots i.on')).toHaveLength(1);
     expect(q(f, '.foot .hint')?.textContent).toBe('Step 1 of 2, next: details');
+  });
+
+  it('offers Composio as an optional tile that opens its own dialog', () => {
+    const f = open();
+    expect(q(f, '[data-testid=tile-composio-apps]')?.textContent).toContain('optional');
+    q<HTMLButtonElement>(f, '[data-testid=tile-composio-apps]')?.click();
+    expect(composio.open).toHaveBeenCalled();
   });
 
   it('the search narrows the gallery', () => {
@@ -150,6 +160,85 @@ describe('AddServerWizard', () => {
     // the field is emptied before the request leaves, and the token is on no part of the page
     expect(field.value).toBe('');
     expect(root(f).innerHTML).not.toContain('ghp_secret_token_value');
+  });
+
+  it('Google: shows the setup steps, starts on read only, fills the client from the downloaded JSON and checks the id', async () => {
+    const f = open();
+    click(f, '[data-testid=tile-gmail]');
+    const steps = q(f, '[data-testid=connector-setup-steps]');
+    expect(steps?.querySelectorAll('li').length).toBeGreaterThanOrEqual(5);
+    expect(steps?.textContent).toContain('Error 403: access_denied');
+    expect(steps?.querySelector<HTMLAnchorElement>('a[href*="gmailmcp.googleapis.com"]')).not.toBeNull();
+    expect(q<HTMLSelectElement>(f, '[data-testid=variant]')?.value).toBe('readonly');
+
+    type(f, '[data-testid=connector-client-id]', 'GOCSPX-not-an-id');
+    click(f, '[data-testid=server-add]');
+    expect(q(f, '[data-testid=server-error]')?.textContent).toContain('.apps.googleusercontent.com');
+    expect(store.add).not.toHaveBeenCalled();
+
+    const input = q<HTMLInputElement>(f, '[data-testid=connector-client-file]') as HTMLInputElement;
+    const json = JSON.stringify({ web: { client_id: '1-a.apps.googleusercontent.com', client_secret: 'GOCSPX-s' } });
+    Object.defineProperty(input, 'files', { value: [new File([json], 'client_secret.json')], configurable: true });
+    input.dispatchEvent(new Event('change'));
+    await new Promise((resolve) => setTimeout(resolve));
+    await settle(f);
+    expect(q<HTMLInputElement>(f, '[data-testid=connector-client-id]')?.value).toBe('1-a.apps.googleusercontent.com');
+    expect(q<HTMLInputElement>(f, '[data-testid=connector-client-secret]')?.value).toBe('GOCSPX-s');
+    click(f, '[data-testid=server-add]');
+    await settle(f);
+    expect(store.add).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'gmail',
+        variant: 'readonly',
+        clientId: '1-a.apps.googleusercontent.com',
+        clientSecret: 'GOCSPX-s',
+      }),
+    );
+  });
+
+  it('Google: a file without a client is refused with a clear message', async () => {
+    const f = open();
+    click(f, '[data-testid=tile-google-calendar]');
+    const input = q<HTMLInputElement>(f, '[data-testid=connector-client-file]') as HTMLInputElement;
+    Object.defineProperty(input, 'files', { value: [new File(['{"type":"service_account"}'], 'key.json')] });
+    input.dispatchEvent(new Event('change'));
+    await new Promise((resolve) => setTimeout(resolve));
+    await settle(f);
+    expect(q(f, '[data-testid=server-error]')?.textContent).toContain('not an OAuth client file');
+  });
+
+  it('Google: once Gmail has an app, Calendar offers to use it and sends only a reference to it', async () => {
+    servers.set([
+      {
+        name: 'gmail',
+        scope: 'global',
+        source: '/u/mcp.json',
+        transport: 'http',
+        target: 'https://gmailmcp.googleapis.com/mcp/v1',
+        exposure: 'codemode',
+        enabled: true,
+        state: 'connected',
+        oauth: true,
+        clientId: '1-a.apps.googleusercontent.com',
+      },
+    ]);
+    const f = open();
+    click(f, '[data-testid=tile-google-calendar]');
+    const reuse = q<HTMLInputElement>(f, '[data-testid=connector-shared-app] input') as HTMLInputElement;
+    expect(q(f, '[data-testid=connector-shared-app]')?.textContent).toContain('Gmail');
+    reuse.click();
+    f.detectChanges();
+    expect(q(f, '[data-testid=connector-client-id]')).toBeNull();
+    expect(root(f).textContent).toContain('1-a.apps.googleusercontent.com');
+    click(f, '[data-testid=server-add]');
+    await settle(f);
+    expect(store.add).toHaveBeenCalledWith({
+      id: 'google-calendar',
+      scope: 'user',
+      exposure: CONNECTOR_CATALOG.connectors.find((c) => c.id === 'google-calendar')?.exposure,
+      variant: 'readonly',
+      clientFrom: 'gmail',
+    });
   });
 
   it('a server of your own: refuses a bad name or address before anything is checked or written', async () => {

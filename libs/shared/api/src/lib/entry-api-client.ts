@@ -15,6 +15,10 @@ export class EntryApiClient {
       ? this.client
       : this.connect(scopedBackendConnection(this.entry, instanceId));
   }
+  /** The backend that owns `instanceId`'s threads, for clients other than the typed API (an AG-UI agent). */
+  connectionFor(instanceId: string): BackendConnection {
+    return instanceId === this.context.entryId ? this.entry : scopedBackendConnection(this.entry, instanceId);
+  }
   private connect(connection: BackendConnection): TypedClient {
     return createTypedClient(async (path, init) => {
       const headers = new Headers(init?.headers);

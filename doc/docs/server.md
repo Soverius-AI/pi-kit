@@ -161,6 +161,16 @@ Tailscale gateway described in [Remote access](remote-access.md).
 | `pi-kit devices` | paired devices and waiting requests; `approve`, `reject`, `revoke` |
 | `pi-kit peers` | this instance, its paired instances and waiting requests; `invite`, `connect`, `approve`, `reject`, `unpair` |
 | `pi-kit peers key-file --yes` | seal the instance key with an owner-only file, for a machine without a keychain |
+| `pi-kit rooms`, `on`, `off` | whether rooms are on, and the rooms here with what waits for you; turn rooms on or off |
+| `pi-kit rooms start <folder> --title <t>` | start a room in a git repository on this computer; `--playbook <name>`, `--summary <text>` |
+| `pi-kit rooms show <room>` | its playbook, stage and triggers, what waits for you and its last runs; `--json` for scripts |
+| `pi-kit rooms runs <room> [<number>]` | its runs, or one run with every step, its call and its output |
+| `pi-kit rooms say <room> <text>` | message the lead; `--post` only posts |
+| `pi-kit rooms approve`, `discard <room> <id>` | decide a draft, a stage, a playbook change or a task |
+| `pi-kit rooms answer <room> <id> <answer>` | answer what the lead or a worker asks |
+| `pi-kit rooms fire <room> <trigger>` | run a playbook trigger now; `--dry` only shows what it would bring |
+| `pi-kit rooms pause`, `resume`, `playbook`, `rename`, `archive <room>` | pause or resume what wakes the lead, change the playbook, rename or archive the room |
+| `pi-kit rooms watch <room>` | follow the room until Ctrl+C |
 
 ## Where things are
 

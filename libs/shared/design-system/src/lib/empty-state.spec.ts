@@ -13,6 +13,16 @@ import { PkEmptyState } from './empty-state';
 })
 class Host {}
 
+@Component({
+  imports: [PkEmptyState],
+  template: `
+    <pk-empty-state heading="Your first room" icon="files" [art]="true">
+      <span art class="hero"></span>
+    </pk-empty-state>
+  `,
+})
+class ArtHost {}
+
 describe('PkEmptyState', () => {
   it('shows the heading, the text, the actions and the projected content', () => {
     const fixture = TestBed.createComponent(Host);
@@ -32,5 +42,14 @@ describe('PkEmptyState', () => {
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector('pk-logo.brand')).not.toBeNull();
     expect(root.querySelector('p')).toBeNull();
+  });
+
+  it('shows projected art in place of the mark when asked to', () => {
+    const fixture = TestBed.createComponent(ArtHost);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('.pk-empty-state > .hero + h2')).not.toBeNull();
+    expect(root.querySelector('.mark')).toBeNull();
+    expect(root.querySelector('pk-logo')).toBeNull();
   });
 });

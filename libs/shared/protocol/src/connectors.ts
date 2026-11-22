@@ -32,6 +32,23 @@ export const CONNECTOR_EXPOSURE_TEXT: Record<ConnectorExposure, { label: string;
   },
 };
 
+/** One step of setting up a vendor app, with the pages of the vendor's console it happens on. */
+const ConnectorSetupStepSchema = z.object({
+  text: z.string().min(1),
+  links: z
+    .array(
+      z.object({
+        label: z.string().min(1),
+        url: z
+          .string()
+          .url()
+          .refine((v) => v.startsWith('https://')),
+      }),
+    )
+    .max(3)
+    .optional(),
+});
+
 /**
  * How a server signs in:
  *  - `oauth`: pi registers itself with the vendor's authorization server (dynamic client registration) and the person approves in the browser. `clientName` is what pi registers as
@@ -39,6 +56,7 @@ export const CONNECTOR_EXPOSURE_TEXT: Record<ConnectorExposure, { label: string;
  *  - `cimd`: the same, identified by pi's Client ID Metadata Document instead of registering.
  *  - `oauth-client`: the vendor does not register clients dynamically; the person brings the client id (and secret) of an app they own.
  *  - `bearer`: a token the person creates at the vendor and pastes once; it goes to the credential store, and `mcp.json` holds the command that prints it.
+ *  - `device`: a server that runs on this machine and signs itself in with a device code the first time it is used; pi stores nothing for it.
  */
 export const ConnectorAuthSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('oauth'), clientName: z.string().min(1).optional() }),
@@ -48,6 +66,22 @@ export const ConnectorAuthSchema = z.discriminatedUnion('type', [
     /** The loopback port the redirect URI uses (`http://127.0.0.1:<port>/callback`), which the person registers with the vendor. */
     callbackPort: z.number().int().min(1024).max(65535),
     /** One sentence on where to create the app. */
+    setup: z.string().min(1),
+    /** The setup as steps, shown in place of `setup` where there is room. */
+    steps: z.array(ConnectorSetupStepSchema).max(8).optional(),
+    /** The OAuth scope of full access; a variant's `scope` narrows it. */
+    scope: z.string().min(1).optional(),
+    /** Connectors with the same `app` take one app of the person's (one Google app serves Gmail and Calendar). */
+    app: z
+      .string()
+      .regex(/^[a-z0-9-]+$/)
+      .optional(),
+    /** How the vendor's client ids end, to catch a pasted secret or project id early. */
+    clientIdSuffix: z.string().min(1).optional(),
+  }),
+  z.object({
+    type: z.literal('device'),
+    /** One sentence on how the first sign-in goes. */
     setup: z.string().min(1),
   }),
   z.object({
@@ -77,12 +111,36 @@ const httpsUrl = z
   .url()
   .refine((value) => value.startsWith('https://'), 'a connector endpoint is https');
 
-export const ConnectorVariantSchema = z.object({
-  id: z.string().regex(/^[a-z0-9-]+$/),
-  label: z.string().min(1),
-  url: httpsUrl,
-  note: z.string().min(1),
+export const ConnectorVariantSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9-]+$/),
+    label: z.string().min(1),
+    /** Another endpoint for this access, or the same one with a narrower OAuth `scope`. */
+    url: httpsUrl.optional(),
+    scope: z.string().min(1).optional(),
+    note: z.string().min(1),
+  })
+  .refine((variant) => !!variant.url || !!variant.scope, 'a variant has its own url or scope');
+
+/** A server pi starts on this machine: the command line, pinned to an exact package version, and the environment it needs. */
+export const ConnectorLocalSchema = z.object({
+  command: z.string().min(1),
+  args: z.array(z.string()).max(32),
+  env: z.record(z.string(), z.string()).optional(),
+  variants: z
+    .array(
+      z.object({
+        id: z.string().regex(/^[a-z0-9-]+$/),
+        label: z.string().min(1),
+        args: z.array(z.string()).max(8).optional(),
+        env: z.record(z.string(), z.string()).optional(),
+        note: z.string().min(1),
+      }),
+    )
+    .max(4)
+    .optional(),
 });
+export type ConnectorLocal = z.infer<typeof ConnectorLocalSchema>;
 
 export const ConnectorVerificationSchema = z.object({
   status: z.enum(['verified', 'unverified']),
@@ -99,7 +157,21 @@ export const ConnectorSchema = z
     name: z.string().min(1),
     vendor: z.string().min(1),
     logo: ConnectorLogoSchema,
-    endpoint: z.object({ url: httpsUrl, variants: z.array(ConnectorVariantSchema).max(4).optional() }),
+    /** The brand's name in Composio's logo service, for its colour logo; `logo` stays the fallback. */
+    brand: z
+      .string()
+      .regex(/^[a-z0-9_-]{1,64}$/)
+      .optional(),
+    endpoint: z
+      .object({
+        url: httpsUrl,
+        variants: z.array(ConnectorVariantSchema).max(4).optional(),
+        /** The variant the wizard picks first; without it, full access. */
+        defaultVariant: z.string().optional(),
+      })
+      .optional(),
+    /** Instead of an endpoint: the server runs on this machine. */
+    local: ConnectorLocalSchema.optional(),
     auth: ConnectorAuthSchema,
     /** What access the sign-in asks for, in a phrase. */
     scopes: z.string().min(1),
@@ -113,6 +185,7 @@ export const ConnectorSchema = z
     docs: httpsUrl,
     verification: ConnectorVerificationSchema,
   })
+  .refine((connector) => !!connector.endpoint !== !!connector.local, 'a connector has an endpoint or a local command')
   .meta({ id: 'Connector' });
 export type Connector = z.infer<typeof ConnectorSchema>;
 
@@ -195,6 +268,11 @@ export const ConnectRequestSchema = z
     token: z.string().min(1).max(4096).meta({ secret: true }).optional(),
     clientId: z.string().min(1).max(512).optional(),
     clientSecret: z.string().min(1).max(4096).meta({ secret: true }).optional(),
+    /** A configured server of the same `app` whose client id and secret this one reuses. */
+    clientFrom: z
+      .string()
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .optional(),
     custom: CustomConnectorSchema.optional(),
   })
   .strict()
@@ -231,12 +309,13 @@ const CHECKED = '2026-10-16';
 
 export const CONNECTOR_CATALOG: ConnectorCatalog = /* @__PURE__ */ ConnectorCatalogSchema.parse({
   version: CONNECTOR_CATALOG_VERSION,
-  updated: CHECKED,
+  updated: '2026-11-20',
   connectors: [
     {
       id: 'linear',
       name: 'Linear',
       vendor: 'Linear',
+      brand: 'linear',
       logo: {
         style: 'stroke',
         paths: ['M4 12.5L11.5 20', 'M4 8.5L15.5 20', 'M4.8 5.2A9 9 0 0 1 20 11.5', 'M8.5 4A9 9 0 0 1 20 15.5'],
@@ -269,6 +348,7 @@ export const CONNECTOR_CATALOG: ConnectorCatalog = /* @__PURE__ */ ConnectorCata
       id: 'github',
       name: 'GitHub',
       vendor: 'GitHub',
+      brand: 'github',
       logo: {
         style: 'stroke',
         paths: [
@@ -308,6 +388,7 @@ export const CONNECTOR_CATALOG: ConnectorCatalog = /* @__PURE__ */ ConnectorCata
       id: 'slack',
       name: 'Slack',
       vendor: 'Slack',
+      brand: 'slack',
       logo: {
         style: 'stroke',
         paths: ['M9 4v8', 'M15 12V4', 'M4 9h8', 'M12 15H4', 'M9 20v-5', 'M15 20v-8', 'M20 9h-8', 'M20 15h-5'],
@@ -335,6 +416,7 @@ export const CONNECTOR_CATALOG: ConnectorCatalog = /* @__PURE__ */ ConnectorCata
       id: 'notion',
       name: 'Notion',
       vendor: 'Notion',
+      brand: 'notion',
       logo: { style: 'stroke', paths: ['M5 4h11l3 3v13H5z', 'M9 16V8l6 8V8'] },
       endpoint: { url: 'https://mcp.notion.com/mcp' },
       auth: { type: 'oauth' },
@@ -354,6 +436,7 @@ export const CONNECTOR_CATALOG: ConnectorCatalog = /* @__PURE__ */ ConnectorCata
       id: 'sentry',
       name: 'Sentry',
       vendor: 'Sentry',
+      brand: 'sentry',
       logo: { style: 'stroke', paths: ['M12 4L21 19H15.5', 'M12 9.500L16.500 17', 'M3 19H8.500'] },
       endpoint: { url: 'https://mcp.sentry.dev/mcp' },
       auth: { type: 'oauth' },
@@ -373,6 +456,7 @@ export const CONNECTOR_CATALOG: ConnectorCatalog = /* @__PURE__ */ ConnectorCata
       id: 'atlassian',
       name: 'Atlassian',
       vendor: 'Atlassian',
+      brand: 'atlassian',
       logo: { style: 'stroke', paths: ['M4 17L10 6a1 1 0 0 1 1.800 0L19.500 20H9', 'M13 20L8 20'] },
       endpoint: { url: 'https://mcp.atlassian.com/v2/mcp' },
       auth: { type: 'oauth' },
@@ -392,6 +476,7 @@ export const CONNECTOR_CATALOG: ConnectorCatalog = /* @__PURE__ */ ConnectorCata
       id: 'figma',
       name: 'Figma',
       vendor: 'Figma',
+      brand: 'figma',
       logo: {
         style: 'stroke',
         paths: [
@@ -416,15 +501,229 @@ export const CONNECTOR_CATALOG: ConnectorCatalog = /* @__PURE__ */ ConnectorCata
         note: 'Figma’s page: https://mcp.figma.com/mcp, and only clients in Figma’s catalog may connect. pi’s own docs (mcp.md) register as "Claude Code" for it, which is what this entry does; Figma may stop accepting that. MCP Apps: named in Anthropic’s interactive-connectors announcement.',
       },
     },
+    {
+      id: 'composio',
+      name: 'Composio',
+      vendor: 'Composio',
+      brand: 'composio',
+      logo: { style: 'stroke', paths: ['M7 7h10v10H7z', 'M3 12h4', 'M17 12h4', 'M12 3v4', 'M12 17v4'] },
+      endpoint: { url: 'https://connect.composio.dev/mcp' },
+      auth: { type: 'oauth' },
+      scopes: 'Your Composio account: every app you connect there, through Composio’s search and run tools',
+      mcpApps: 'unknown',
+      summary:
+        'Sign in once and reach 850+ apps through Composio’s cloud; it asks you to connect each app on first use.',
+      highlights: ['search tools', 'multi execute tool', 'manage connections'],
+      exposure: 'codemode',
+      docs: 'https://docs.composio.dev/docs/composio-connect',
+      verification: {
+        status: 'verified',
+        checkedOn: '2026-11-20',
+        note: 'Composio Connect: https://connect.composio.dev/mcp over Streamable HTTP. The server answers 401 with OAuth protected-resource metadata; its authorization server offers PKCE (S256) and dynamic client registration. It exposes Composio’s meta tools, not one app’s tools, and has no read-only mode; “Composio, app by app” adds single apps read only with a project API key.',
+      },
+    },
+    {
+      id: 'gmail',
+      name: 'Gmail',
+      vendor: 'Google',
+      brand: 'gmail',
+      logo: { style: 'stroke', paths: ['M3 6h18v12H3z', 'M3 6l9 7 9-7'] },
+      endpoint: {
+        url: 'https://gmailmcp.googleapis.com/mcp/v1',
+        variants: [
+          {
+            id: 'readonly',
+            label: 'Read only',
+            scope: 'https://www.googleapis.com/auth/gmail.readonly',
+            note: 'Reads and searches mail; writes no drafts.',
+          },
+        ],
+        defaultVariant: 'readonly',
+      },
+      auth: {
+        type: 'oauth-client',
+        callbackPort: 8766,
+        setup:
+          'Google only lets your own app use its Gmail server. In a Google Cloud project, turn on the Gmail API and the Gmail MCP service, add yourself as a test user, create an OAuth client, and add http://127.0.0.1:8766/callback as its redirect URI. The same client serves Google Calendar.',
+        steps: [
+          {
+            text: 'Create a Google Cloud project, or pick one you already have.',
+            links: [{ label: 'New project', url: 'https://console.cloud.google.com/projectcreate' }],
+          },
+          {
+            text: 'In that project, turn on the Gmail API and the Gmail MCP service.',
+            links: [
+              { label: 'Gmail API', url: 'https://console.cloud.google.com/apis/library/gmail.googleapis.com' },
+              {
+                label: 'Gmail MCP service',
+                url: 'https://console.cloud.google.com/apis/library/gmailmcp.googleapis.com',
+              },
+            ],
+          },
+          {
+            text: 'Set up the OAuth consent screen and add your own Google account under Test users. Until Google verifies the app, only test users can sign in; anyone else gets “Error 403: access_denied”.',
+            links: [{ label: 'Audience and test users', url: 'https://console.cloud.google.com/auth/audience' }],
+          },
+          {
+            text: 'Create an OAuth client of the type Web application. One client serves Gmail and Google Calendar.',
+            links: [{ label: 'New OAuth client', url: 'https://console.cloud.google.com/auth/clients/create' }],
+          },
+          {
+            text: 'Add http://127.0.0.1:8766/callback as an authorized redirect URI, save, and download the client’s JSON file. Drop it below, or copy the client ID and secret.',
+          },
+        ],
+        scope: 'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose',
+        app: 'google',
+        clientIdSuffix: '.apps.googleusercontent.com',
+      },
+      scopes: 'Your Gmail: read and search threads; with full access also write drafts (gmail.readonly, gmail.compose)',
+      mcpApps: 'unknown',
+      summary: 'Search and read your Gmail threads; with full access, write drafts you send yourself.',
+      highlights: ['search threads', 'get thread', 'create draft'],
+      exposure: 'codemode',
+      docs: 'https://developers.google.com/workspace/guides/configure-mcp-servers',
+      verification: {
+        status: 'unverified',
+        checkedOn: '2026-11-20',
+        note: 'Google’s guide: https://gmailmcp.googleapis.com/mcp/v1 over Streamable HTTP, OAuth with a client from your own Google Cloud project, no dynamic registration, developer preview program only. The guide names redirect URIs for its own partners; pi’s loopback redirect has not been tried against it.',
+      },
+    },
+    {
+      id: 'google-calendar',
+      name: 'Google Calendar',
+      vendor: 'Google',
+      brand: 'googlecalendar',
+      logo: { style: 'stroke', paths: ['M4 6h16v14H4z', 'M4 10h16', 'M8 3v5', 'M16 3v5'] },
+      endpoint: {
+        url: 'https://calendarmcp.googleapis.com/mcp/v1',
+        variants: [
+          {
+            id: 'readonly',
+            label: 'Read only',
+            scope: 'https://www.googleapis.com/auth/calendar.readonly',
+            note: 'Reads calendars, events and free/busy; changes nothing.',
+          },
+        ],
+        defaultVariant: 'readonly',
+      },
+      auth: {
+        type: 'oauth-client',
+        callbackPort: 8766,
+        setup:
+          'Google only lets your own app use its Calendar server. In a Google Cloud project, turn on the Calendar API and the Calendar MCP service, add yourself as a test user, create an OAuth client (or reuse the Gmail one), and add http://127.0.0.1:8766/callback as its redirect URI.',
+        steps: [
+          {
+            text: 'Create a Google Cloud project, or pick one you already have.',
+            links: [{ label: 'New project', url: 'https://console.cloud.google.com/projectcreate' }],
+          },
+          {
+            text: 'In that project, turn on the Google Calendar API and the Calendar MCP service.',
+            links: [
+              {
+                label: 'Google Calendar API',
+                url: 'https://console.cloud.google.com/apis/library/calendar-json.googleapis.com',
+              },
+              {
+                label: 'Calendar MCP service',
+                url: 'https://console.cloud.google.com/apis/library/calendarmcp.googleapis.com',
+              },
+            ],
+          },
+          {
+            text: 'Set up the OAuth consent screen and add your own Google account under Test users. Until Google verifies the app, only test users can sign in; anyone else gets “Error 403: access_denied”.',
+            links: [{ label: 'Audience and test users', url: 'https://console.cloud.google.com/auth/audience' }],
+          },
+          {
+            text: 'Create an OAuth client of the type Web application. One client serves Gmail and Google Calendar.',
+            links: [{ label: 'New OAuth client', url: 'https://console.cloud.google.com/auth/clients/create' }],
+          },
+          {
+            text: 'Add http://127.0.0.1:8766/callback as an authorized redirect URI, save, and download the client’s JSON file. Drop it below, or copy the client ID and secret.',
+          },
+        ],
+        scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+        app: 'google',
+        clientIdSuffix: '.apps.googleusercontent.com',
+      },
+      scopes:
+        'Your calendars: read calendars, events and free/busy; with full access also create and change events (calendar.readonly, calendar.events)',
+      mcpApps: 'unknown',
+      summary: 'Read your Google calendars and events; with full access, create or change events.',
+      highlights: ['list events', 'free busy', 'create event'],
+      exposure: 'codemode',
+      docs: 'https://developers.google.com/workspace/guides/configure-mcp-servers',
+      verification: {
+        status: 'unverified',
+        checkedOn: '2026-11-20',
+        note: 'Google’s guide: https://calendarmcp.googleapis.com/mcp/v1 over Streamable HTTP, OAuth with a client from your own Google Cloud project, no dynamic registration, developer preview program only. pi’s loopback redirect has not been tried against it.',
+      },
+    },
+    {
+      id: 'outlook',
+      name: 'Outlook',
+      vendor: 'Microsoft (community server)',
+      brand: 'outlook',
+      logo: {
+        style: 'stroke',
+        paths: ['M3 6h11v12H3z', 'M14 8h7v9h-7', 'M14 9l3.5 3L21 9', 'M8.5 9.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5'],
+      },
+      local: {
+        command: 'npx',
+        args: ['-y', '@softeria/ms-365-mcp-server@0.179.1', '--preset', 'outlook'],
+        variants: [
+          {
+            id: 'personal',
+            label: 'Personal account (Outlook.com)',
+            env: { MS365_MCP_TENANT_ID: 'consumers' },
+            note: 'For outlook.com, hotmail.com and live.com accounts.',
+          },
+          {
+            id: 'readonly',
+            label: 'Work or school, read only',
+            args: ['--read-only'],
+            note: 'Reads mail and calendars; sends and changes nothing.',
+          },
+        ],
+      },
+      auth: {
+        type: 'device',
+        setup:
+          'Runs on this computer and needs no app of your own; under Access, Full is a work or school account, and outlook.com accounts choose Personal account. The first time it is used it shows a code: open microsoft.com/devicelogin, enter it and sign in. Its tokens stay in this computer’s credential store.',
+      },
+      scopes: 'Your Microsoft mail, calendars and contacts (Microsoft Graph), as the account you sign in with allows',
+      mcpApps: 'no',
+      summary:
+        'Read and search Outlook mail and calendars, draft replies and plan events (Microsoft 365 and Outlook.com).',
+      highlights: ['mail', 'calendar', 'drafts'],
+      exposure: 'deferred',
+      docs: 'https://github.com/Softeria/ms-365-mcp-server',
+      verification: {
+        status: 'unverified',
+        checkedOn: '2026-11-20',
+        note: 'Community server by Softeria (MIT), version 0.179.1: --preset outlook, --read-only, MS365_MCP_TENANT_ID=consumers for personal accounts, device-code sign-in through its login tool with its own Microsoft app. Microsoft’s own Outlook server is for Microsoft 365 Copilot tenants only and marked for backward compatibility, so it is not offered.',
+      },
+    },
   ],
 });
 
 export const connectorById = (id: string, catalog: ConnectorCatalog): Connector | undefined =>
   catalog.connectors.find((c) => c.id === id);
 
-/** The URL a connector's entry uses for a variant (the default endpoint when none, or an unknown, is named). */
+/** The URL a connector's entry uses for a variant (the default endpoint when none, or an unknown, is named); empty for a server that runs on this machine. */
 export function connectorUrl(connector: Connector, variant?: string): string {
-  return connector.endpoint.variants?.find((v) => v.id === variant)?.url ?? connector.endpoint.url;
+  return connector.endpoint?.variants?.find((v) => v.id === variant)?.url ?? connector.endpoint?.url ?? '';
+}
+
+/** The OAuth scope an `oauth-client` connector asks for with this variant, if the catalog names one. */
+export function connectorScope(connector: Connector, variant?: string): string | undefined {
+  const scope = connector.endpoint?.variants?.find((v) => v.id === variant)?.scope;
+  return scope ?? (connector.auth.type === 'oauth-client' ? connector.auth.scope : undefined);
+}
+
+/** Every scope is a `.readonly` one: what the sign-in grants cannot change anything. */
+export function readOnlyScope(scope: string | undefined): boolean {
+  const scopes = scope?.split(/\s+/).filter(Boolean) ?? [];
+  return scopes.length > 0 && scopes.every((one) => one.endsWith('.readonly'));
 }
 
 /** `https://Host/path/` and `https://host/path` are one endpoint when a server added by hand is matched with a card. */
@@ -440,17 +739,35 @@ export function normalizeEndpoint(url: string): string {
 
 /** The catalog entry a configured server belongs to: by its name, or by its URL when it was added by hand under another name. */
 export function connectorOfServer(
-  server: { name: string; transport: string; target: string },
+  server: { name: string; transport: string; target: string; oauthScope?: string },
   catalog: ConnectorCatalog,
 ): { connector: Connector; variant?: string } | undefined {
-  if (server.transport !== 'http') return undefined;
+  if (server.transport !== 'http') {
+    const local = catalog.connectors.find((c) => c.local && c.id === server.name);
+    if (!local?.local) return undefined;
+    const parts = server.target.split(' ');
+    const variant = local.local.variants?.find((v) => v.args?.length && v.args.every((arg) => parts.includes(arg)));
+    return variant ? { connector: local, variant: variant.id } : { connector: local };
+  }
   const target = normalizeEndpoint(server.target);
+  const scope = server.oauthScope?.split(/\s+/).filter(Boolean).sort().join(' ');
+  const sameScope = (other: string) => other.split(/\s+/).filter(Boolean).sort().join(' ') === scope;
   for (const connector of catalog.connectors) {
-    const variant = connector.endpoint.variants?.find((v) => normalizeEndpoint(v.url) === target);
+    if (!connector.endpoint) continue;
+    const variant = connector.endpoint.variants?.find((v) => v.url && normalizeEndpoint(v.url) === target);
     if (variant) return { connector, variant: variant.id };
-    if (normalizeEndpoint(connector.endpoint.url) === target) return { connector };
+    if (normalizeEndpoint(connector.endpoint.url) === target) {
+      const scoped = scope
+        ? connector.endpoint.variants?.find((v) => !v.url && v.scope && sameScope(v.scope))
+        : undefined;
+      return scoped ? { connector, variant: scoped.id } : { connector };
+    }
   }
   return catalog.connectors.find((c) => c.id === server.name && server.transport === 'http')
     ? { connector: connectorById(server.name, catalog) as Connector }
     : undefined;
 }
+
+export const BrandLogosQuerySchema = z.object({ names: z.string().regex(/^[a-z0-9_,-]{1,2000}$/) }).strict();
+/** Brand name to its logo as a data URL; a name with no logo is left out. */
+export const BrandLogosSchema = z.record(z.string(), z.string()).meta({ id: 'BrandLogos' });

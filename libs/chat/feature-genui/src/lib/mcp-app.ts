@@ -136,6 +136,8 @@ export class PkMcpApp implements ActivityRenderer<MCPAppsSnapshotContent> {
     activityType: string;
   }>();
   readonly agent = input<AbstractAgent | undefined>(undefined);
+  /** Where the app's `ui/message` goes instead of the agent's transcript (a room hands it to its lead). */
+  readonly send = input<((text: string) => void) | undefined>(undefined);
 
   private readonly config = inject(MCP_APPS_CONFIG);
   private readonly copilotKit = inject(CopilotKit);
@@ -257,7 +259,7 @@ export class PkMcpApp implements ActivityRenderer<MCPAppsSnapshotContent> {
         return this.respond(frame, message.id, { isError: false });
       }
       case 'ui/message': {
-        if (!agent) return this.respondError(frame, message.id, -32603, 'No agent is available.');
+        const send = this.send();
         const role = message.params?.['role'] === 'assistant' ? 'assistant' : 'user';
         const content = Array.isArray(message.params?.['content'])
           ? (message.params['content'] as unknown[])
@@ -268,6 +270,11 @@ export class PkMcpApp implements ActivityRenderer<MCPAppsSnapshotContent> {
               .map((part) => part.text)
               .join('\n')
           : '';
+        if (send) {
+          if (content && role === 'user') send(content);
+          return this.respond(frame, message.id, { isError: false });
+        }
+        if (!agent) return this.respondError(frame, message.id, -32603, 'No agent is available.');
         if (content) agent.addMessage({ id: crypto.randomUUID(), role, content });
         this.respond(frame, message.id, { isError: false });
         const followUp =

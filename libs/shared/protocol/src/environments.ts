@@ -8,11 +8,38 @@ export const EnvironmentNameSchema = z
   .max(80)
   .regex(/^[^\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+$/u, 'Use a plain-text environment name.');
 export const InstanceIdSchema = z.uuid();
+
+export const ENVIRONMENT_ICONS = [
+  'runner',
+  'neko',
+  'drone',
+  'mech',
+  'katana',
+  'skull',
+  'glitch',
+  'spinner',
+  'oni',
+] as const;
+/** Recognition only, never a routing key: one of nine icons in one of nine identity colours (`--pk-identity-1..9`). */
+export const EnvironmentLookSchema = z
+  .object({ icon: z.enum(ENVIRONMENT_ICONS), color: z.number().int().min(1).max(9) })
+  .strict()
+  .meta({ id: 'EnvironmentLook' });
+export type EnvironmentLook = z.infer<typeof EnvironmentLookSchema>;
+
+/** Hashed from the instance id, so a fresh install and an older peer that reports no look still have one. */
+export function defaultEnvironmentLook(instanceId: string): EnvironmentLook {
+  let hash = 2166136261;
+  for (const char of instanceId.toLowerCase()) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
+  return { icon: ENVIRONMENT_ICONS[hash % 9], color: (Math.floor(hash / 9) % 9) + 1 };
+}
+
 export const EnvironmentSchema = z
   .object({
     instanceId: InstanceIdSchema,
     name: EnvironmentNameSchema,
     protocolVersion: z.literal(1),
+    look: EnvironmentLookSchema.optional(),
   })
   .meta({ id: 'Environment' });
 export type Environment = z.infer<typeof EnvironmentSchema>;

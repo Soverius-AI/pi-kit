@@ -83,7 +83,10 @@
       "@pi-kit/agents/data": ["./libs/agents/data/src/index.ts"],
       "@pi-kit/agents/util": ["./libs/agents/util/src/index.ts"],
       "@pi-kit/agents/api": ["./libs/agents/api/src/index.ts"],
-      "@pi-kit/agents/feature-agents": ["./libs/agents/feature-agents/src/index.ts"]
+      "@pi-kit/agents/feature-agents": ["./libs/agents/feature-agents/src/index.ts"],
+      "@pi-kit/rooms/data": ["./libs/rooms/data/src/index.ts"],
+      "@pi-kit/rooms/api": ["./libs/rooms/api/src/index.ts"],
+      "@pi-kit/rooms/feature-room": ["./libs/rooms/feature-room/src/index.ts"]
     },
     "noImplicitOverride": true,
     "noImplicitReturns": true,

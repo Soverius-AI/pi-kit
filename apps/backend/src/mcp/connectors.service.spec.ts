@@ -183,6 +183,35 @@ describe('connect', () => {
     expect(w.store.get('connector-slack-secret')).toBe('shhh-secret');
   });
 
+  it('a second Google connector reuses the app of the first: its client id and the same secret reference', async () => {
+    await w.service.connect(
+      't1',
+      request({ id: 'gmail', variant: 'readonly', clientId: 'c.apps.googleusercontent.com', clientSecret: 'g-secret' }),
+    );
+    await w.service.connect('t1', request({ id: 'google-calendar', variant: 'readonly', clientFrom: 'gmail' }));
+    const servers = read(w.user).mcpServers;
+    const gmail = servers['gmail']['oauth'] as Record<string, unknown>;
+    const calendar = servers['google-calendar']['oauth'] as Record<string, unknown>;
+    expect(calendar['clientId']).toBe('c.apps.googleusercontent.com');
+    expect(calendar['clientSecret']).toBe(gmail['clientSecret']);
+    expect(calendar['scope']).toBe('https://www.googleapis.com/auth/calendar.readonly');
+    expect(await w.service.readOnlyServers()).toEqual(new Set(['gmail', 'google-calendar']));
+
+    await w.service.disconnect('t1', 'gmail');
+    expect(w.store.get('connector-gmail-secret')).toBe('g-secret');
+    await w.service.disconnect('t1', 'google-calendar');
+    expect(w.store.get('connector-gmail-secret')).toBeUndefined();
+  });
+
+  it('reuses only an app of the same vendor that is set up', async () => {
+    await expect(w.service.connect('t1', request({ id: 'google-calendar', clientFrom: 'gmail' }))).rejects.toThrow(
+      /not set up/,
+    );
+    await expect(w.service.connect('t1', request({ id: 'google-calendar', clientFrom: 'slack' }))).rejects.toThrow(
+      /same app/,
+    );
+  });
+
   it('a custom server: a command needs no sign-in, a URL does', async () => {
     await w.service.connect(
       't1',
