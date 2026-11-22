@@ -81,11 +81,12 @@ async function currentDir(colors: string | undefined, name = 'tokyo-night'): Pro
 }
 
 /** What `omarchy theme set` does: builds the next theme beside the current one, swaps the folders, then names the switch. */
-async function switchTheme(current: string, colors: string, name: string): Promise<void> {
+async function switchTheme(current: string, colors: string, name: string, pause = 0): Promise<void> {
   await mkdir(join(current, 'next-theme'));
   await writeFile(join(current, 'next-theme', 'colors.toml'), colors);
   await rm(join(current, 'theme'), { recursive: true });
   await rename(join(current, 'next-theme'), join(current, 'theme'));
+  await new Promise((resolve) => setTimeout(resolve, pause));
   await writeFile(join(current, 'theme.generation'), `${Date.now()}\n`);
   await writeFile(join(current, 'theme.name'), `${name}\n`);
 }
@@ -216,6 +217,21 @@ describe('following the theme', () => {
         ['tokyo-night', 'dark'],
       ]);
       expect(watcher.value?.name).toBe('tokyo-night');
+    } finally {
+      watcher.stop();
+    }
+  });
+
+  it('waits for the name of a switch whose files are written slowly, and reports it once', async () => {
+    const current = await currentDir(TOKYO_NIGHT);
+    const changes: (OmarchyTheme | undefined)[] = [];
+    const watcher = new OmarchyThemeWatcher(current, (theme) => changes.push(theme), 20);
+    watcher.start();
+    try {
+      await switchTheme(current, LATTE, 'catppuccin-latte', 150);
+      await next(changes, 1);
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      expect(changes.map((theme) => [theme?.name, theme?.mode])).toEqual([['catppuccin-latte', 'light']]);
     } finally {
       watcher.stop();
     }

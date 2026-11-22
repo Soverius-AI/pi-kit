@@ -1,4 +1,4 @@
-import { existsSync, type FSWatcher, readFileSync, watch } from 'node:fs';
+import { existsSync, type FSWatcher, readFileSync, statSync, watch } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -209,9 +209,10 @@ export function omarchyCurrentDir(platform: NodeJS.Platform = process.platform, 
  * Follows the Omarchy theme. `omarchy theme set` builds the next theme beside the current one, swaps the two folders and then
  * writes `theme.generation` and `theme.name`, so the folder that holds them is watched, not a file inside the theme, which
  * would be gone after the first switch. Every change there is read again after a short pause and reported once the
- * colours or the name differ; Omarchy runs its own `theme-set` hook only after its last app has been retinted, which is later.
+ * colours or the name differ, and not while the swapped-in folder is newer than `theme.name` (for a short while at most); Omarchy runs its own `theme-set` hook only after its last app has been retinted, which is later.
  */
 export class OmarchyThemeWatcher {
+  static readonly NAME_GRACE = 2000;
   private theme: OmarchyTheme | undefined;
   private watcher: FSWatcher | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -256,8 +257,20 @@ export class OmarchyThemeWatcher {
     const theme = readOmarchyTheme(this.current);
     // Mid-swap there is nothing to read; the event of the new folder arriving reads it.
     if (theme === 'swapping') return;
+    if (this.nameBehind()) return this.schedule();
     if (JSON.stringify(theme) === JSON.stringify(this.theme)) return;
     this.theme = theme;
     this.onChange(theme);
+  }
+
+  private nameBehind(): boolean {
+    const folder = statSync(join(this.current, 'theme'), { throwIfNoEntry: false });
+    const name = statSync(join(this.current, 'theme.name'), { throwIfNoEntry: false });
+    return (
+      !!folder &&
+      !!name &&
+      folder.mtimeMs > name.mtimeMs &&
+      Date.now() - folder.mtimeMs < OmarchyThemeWatcher.NAME_GRACE
+    );
   }
 }
