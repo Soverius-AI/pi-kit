@@ -15,9 +15,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const committed = join(root, 'doc/api/openapi.yaml');
 const committedSdk = join(root, config.output);
 const committedRoutes = join(root, 'libs/shared/protocol/src/remote-routes.generated.ts');
-const output = 'dist/openapi/backend';
-const entry = join(root, output, 'openapi.js');
 const args = new Set(process.argv.slice(2));
+const output = args.has('--skip-build') ? 'dist/apps/backend' : 'dist/openapi/backend';
+const entry = join(root, output, 'openapi.js');
 const check = args.has('--check');
 
 function run(command, args) {
@@ -60,7 +60,10 @@ const scratch = mkdtempSync(join(tmpdir(), 'pi-kit-openapi-'));
 try {
   if (!args.has('--skip-build'))
     run('pnpm', ['exec', 'nx', 'build', 'backend', '--output-style=static', `--outputPath=${output}`]);
-  if (!existsSync(entry)) throw new Error(`Build the backend first (nx build backend --outputPath=${output}).`);
+  if (!existsSync(entry))
+    throw new Error(
+      `Build the backend first (nx build backend${args.has('--skip-build') ? '' : ` --outputPath=${output}`}).`,
+    );
   const document = check ? join(scratch, 'openapi.yaml') : committed;
   run(process.execPath, [entry, document]);
   writeFileSync(

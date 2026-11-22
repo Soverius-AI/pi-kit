@@ -23,7 +23,9 @@ before(async () => {
   app = await _electron.launch({ args: [join(root, 'dist/apps/desktop/main.cjs')], env });
   const deadline = Date.now() + 60_000;
   while (!page && Date.now() < deadline) {
-    page = app.windows().find((window) => window.url().startsWith('app://pi-kit'));
+    page = app
+      .windows()
+      .find((window) => window.url().startsWith('app://pi-kit') && !window.url().endsWith('/__ui-storage'));
     if (!page) await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.ok(page, 'the native renderer opens');
@@ -31,7 +33,9 @@ before(async () => {
   await page.waitForSelector('pk-root .pk-shell');
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .find((w) => w.webContents.getURL().startsWith('app://pi-kit'))
+      .find(
+        (w) => w.webContents.getURL().startsWith('app://pi-kit') && !w.webContents.getURL().endsWith('/__ui-storage'),
+      )
       ?.setSize(1700, 1000),
   );
   await page.getByRole('button', { name: 'Trust once', exact: true }).click();
@@ -152,7 +156,9 @@ it('keeps native thumb geometry, painted coverage and reading anchors across res
   // Width invalidation must retain the message even though wrapping changes its within-row geometry.
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .find((w) => w.webContents.getURL().startsWith('app://pi-kit'))
+      .find(
+        (w) => w.webContents.getURL().startsWith('app://pi-kit') && !w.webContents.getURL().endsWith('/__ui-storage'),
+      )
       ?.setSize(1440, 1000),
   );
   await page.waitForTimeout(250);

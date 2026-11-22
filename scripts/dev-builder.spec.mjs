@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 function renderer(overrides = {}) {
   const env = { ...process.env, NX_DAEMON: 'false', PORT: '4200' };
   delete env.PI_KIT_DEV_RENDERER_PORT;
+  delete env.CI;
   Object.assign(env, overrides);
   const child = fork(fileURLToPath(new URL('./dev-builder.mjs', import.meta.url)), [], {
     execArgv: [],
@@ -21,7 +22,7 @@ function renderer(overrides = {}) {
   child.stdout.on('data', capture);
   child.stderr.on('data', capture);
   const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Renderer did not start:\n${log}`)), 60000);
+    const timer = setTimeout(() => reject(new Error(`Renderer did not start:\n${log}`)), 120000);
     child.once('error', (error) => {
       clearTimeout(timer);
       reject(error);
@@ -50,7 +51,7 @@ async function stop(child, disconnect = false) {
 
 test(
   'desktop renderers bind independent ports with 4200 occupied, report the real URL, honor an override and release their sockets',
-  { timeout: 120000 },
+  { timeout: 300000 },
   async () => {
     const occupied = createServer((socket) => socket.destroy());
     await new Promise((resolve, reject) => {

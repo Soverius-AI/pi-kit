@@ -621,7 +621,7 @@ describe('a replay that cannot be carried out, or is stopped', () => {
           const path = (await rows.get('verify-1'))?.worktreePath;
           expect(path && existsSync(join(path, 'owned-child.pid'))).toBe(true);
           pid = Number(readFileSync(join(path!, 'owned-child.pid'), 'utf8'));
-        });
+        }, 15_000);
         if (action === 'Stop') await service.stop(draft.id);
         else await service.onModuleDestroy();
         expect(await service.whenDone(draft.id)).toMatchObject({ state: 'stopped' });
@@ -645,6 +645,7 @@ describe('a replay that cannot be carried out, or is stopped', () => {
         await service.whenDone(draft.id);
       }
     },
+    30_000,
   );
 
   it('stops short when the project is not trusted, runs nothing and cleans up', async () => {

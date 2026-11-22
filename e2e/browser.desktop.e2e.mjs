@@ -60,7 +60,9 @@ async function newThread() {
 }
 async function nativeUrls() {
   return app.evaluate(({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().startsWith('app://pi-kit'));
+    const window = BrowserWindow.getAllWindows().find(
+      (w) => w.webContents.getURL().startsWith('app://pi-kit') && !w.webContents.getURL().endsWith('/__ui-storage'),
+    );
     return window?.contentView.children.map((view) => view.webContents?.getURL()).filter(Boolean) ?? [];
   });
 }
@@ -78,16 +80,28 @@ before(async () => {
   app = await _electron.launch({ args: [join(root, 'dist/apps/desktop/main.cjs')], env });
   await until(
     () => {
-      page = app.windows().find((window) => window.url().startsWith('app://pi-kit'));
+      page = app
+        .windows()
+        .find((window) => window.url().startsWith('app://pi-kit') && !window.url().endsWith('/__ui-storage'));
       return !!page;
     },
     'the desktop renderer',
     60_000,
   );
-  await page.waitForSelector('pk-root .pk-shell');
+  try {
+    await page.waitForSelector('pk-root .pk-shell');
+  } catch (error) {
+    for (const name of ['main.log', 'service.log', 'backend.log']) {
+      const file = join(world.data, 'logs', name);
+      console.error(`--- ${name}\n${existsSync(file) ? readFileSync(file, 'utf8').slice(-12000) : '(missing)'}`);
+    }
+    throw error;
+  }
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()
-      .find((w) => w.webContents.getURL().startsWith('app://pi-kit'))
+      .find(
+        (w) => w.webContents.getURL().startsWith('app://pi-kit') && !w.webContents.getURL().endsWith('/__ui-storage'),
+      )
       ?.setSize(1700, 1000),
   );
   // The page holds no backend token; smoke mode reports the endpoint for scripts.
@@ -246,7 +260,9 @@ describe('desktop browser artifact', () => {
   it('loads each panel from the compact menu and restores keyboard focus', async () => {
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
-        .find((w) => w.webContents.getURL().startsWith('app://pi-kit'))
+        .find(
+          (w) => w.webContents.getURL().startsWith('app://pi-kit') && !w.webContents.getURL().endsWith('/__ui-storage'),
+        )
         ?.setSize(1440, 1000),
     );
     const pocket = page.getByRole('button', { name: 'Side panels', exact: true });
@@ -286,7 +302,10 @@ describe('desktop browser artifact', () => {
     } finally {
       await app.evaluate(({ BrowserWindow }) =>
         BrowserWindow.getAllWindows()
-          .find((w) => w.webContents.getURL().startsWith('app://pi-kit'))
+          .find(
+            (w) =>
+              w.webContents.getURL().startsWith('app://pi-kit') && !w.webContents.getURL().endsWith('/__ui-storage'),
+          )
           ?.setSize(1700, 1000),
       );
     }
@@ -319,7 +338,10 @@ describe('desktop browser artifact', () => {
     await until(
       async () =>
         app.evaluate(({ BrowserWindow }, top) => {
-          const window = BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().startsWith('app://pi-kit'));
+          const window = BrowserWindow.getAllWindows().find(
+            (w) =>
+              w.webContents.getURL().startsWith('app://pi-kit') && !w.webContents.getURL().endsWith('/__ui-storage'),
+          );
           const view = window.contentView.children.find((v) => v.webContents?.getURL().startsWith('http://127.0.0.1:'));
           return view?.getBounds().y >= top;
         }, optionBounds.y + optionBounds.height),
@@ -719,7 +741,10 @@ describe('desktop browser artifact', () => {
       const processes = await app.evaluate(({ BrowserWindow }) => ({
         main: process.pid,
         gui: BrowserWindow.getAllWindows()
-          .find((w) => w.webContents.getURL().startsWith('app://pi-kit'))
+          .find(
+            (w) =>
+              w.webContents.getURL().startsWith('app://pi-kit') && !w.webContents.getURL().endsWith('/__ui-storage'),
+          )
           .webContents.getOSProcessId(),
         encoders: globalThis.encoderCheck.workers,
         activeEncoders: BrowserWindow.getAllWindows().filter((w) =>
