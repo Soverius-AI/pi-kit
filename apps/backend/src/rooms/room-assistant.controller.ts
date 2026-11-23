@@ -33,7 +33,10 @@ export class RoomAssistantController {
   @Remote()
   @Get()
   @Responds(RoomAssistantStatusSchema)
-  @ApiOperation({ summary: 'Read room assistant state' })
+  @ApiOperation({
+    summary: 'Read room assistant state',
+    description: 'Returns this room’s policy, memory, commitments, linked folders, owned files, and recorded work.',
+  })
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
   status(@Param('roomId') id: string): Promise<RoomAssistantStatus> {
     return this.assistant.status(id);
@@ -41,7 +44,11 @@ export class RoomAssistantController {
   @Remote()
   @Get('file')
   @Responds(RoomFileSchema)
-  @ApiOperation({ summary: 'Download an owned room upload or output' })
+  @ApiOperation({
+    summary: 'Download an owned room upload or output',
+    description:
+      'Returns a bounded file from this room’s inbox or outputs as base64 data, without granting access to linked source folders.',
+  })
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
   file(
     @Param('roomId') id: string,
@@ -52,7 +59,11 @@ export class RoomAssistantController {
   @Remote()
   @Put('policy')
   @Responds(RoomAssistantStatusSchema)
-  @ApiOperation({ summary: 'Set proactive execution and notification policy' })
+  @ApiOperation({
+    summary: 'Set proactive execution and notification policy',
+    description:
+      'Sets proactive execution, timezone, quiet hours, and daily notification and run limits for this room.',
+  })
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
   policy(
     @Param('roomId') id: string,
@@ -77,7 +88,10 @@ export class RoomAssistantController {
   @Remote()
   @Post('commitments')
   @Responds(RoomCommitmentSchema, { status: 201 })
-  @ApiOperation({ summary: 'Create a commitment or daily routine' })
+  @ApiOperation({
+    summary: 'Create a commitment or daily routine',
+    description: 'Records a room commitment with its due time, timezone, and optional daily recurrence.',
+  })
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
   create(
     @Param('roomId') id: string,
@@ -89,7 +103,10 @@ export class RoomAssistantController {
   @Patch('commitments/:id')
   @Responds(RoomAssistantStatusSchema)
   @ApiParam({ name: 'id', description: 'The commitment id.' })
-  @ApiOperation({ summary: 'Complete, cancel or snooze a commitment' })
+  @ApiOperation({
+    summary: 'Complete, cancel or snooze a commitment',
+    description: 'Changes a commitment’s state or due time to complete, cancel, reopen, or snooze it.',
+  })
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
   change(
     @Param('roomId') room: string,
@@ -101,7 +118,11 @@ export class RoomAssistantController {
   @Remote()
   @Post('folders')
   @Responds(RoomAssistantStatusSchema, { status: 201 })
-  @ApiOperation({ summary: 'Attach a host folder as a read-only room link' })
+  @ApiOperation({
+    summary: 'Attach a host folder as a read-only room link',
+    description:
+      'Attaches a host folder under a stable room alias with read-only sandbox access; room agents must be idle before access changes.',
+  })
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}`, 409: 'The room is busy or the alias already exists.' })
   folder(
     @Param('roomId') id: string,

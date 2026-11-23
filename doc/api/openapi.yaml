@@ -11689,6 +11689,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/phone/config:
     put:
+      description: Sets the HTTPS application URL used for links in this room’s WhatsApp messages; an empty URL clears it.
       operationId: RoomPhone_config
       parameters:
         - name: roomId
@@ -12047,6 +12048,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/channels/{channel}:
     get:
+      description: Returns the provider connection, any required pairing QR, the room binding, and channel queue health.
       operationId: RoomChannel_status
       parameters:
         - name: roomId
@@ -12089,6 +12091,7 @@ paths:
         - rooms
       x-remote: true
     delete:
+      description: Revokes this room’s conversation binding and clears pending channel messages and deliveries without disconnecting the host account.
       operationId: RoomChannel_unlink
       parameters:
         - name: roomId
@@ -12126,6 +12129,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/channels/{channel}/connect:
     post:
+      description: Starts or reconnects the provider account shared by this host’s rooms and enables automatic startup reconnection.
       operationId: RoomChannel_connect
       parameters:
         - name: roomId
@@ -12163,6 +12167,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/channels/{channel}/disconnect:
     post:
+      description: Stops this provider for all rooms on the host and disables automatic startup reconnection while retaining room bindings.
       operationId: RoomChannel_disconnect
       parameters:
         - name: roomId
@@ -12200,6 +12205,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/channels/{channel}/link:
     post:
+      description: Creates a ten-minute challenge for linking a conversation and its sender; confirmation in Rooms is required before accepting work.
       operationId: RoomChannel_begin
       parameters:
         - name: roomId
@@ -12237,6 +12243,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/channels/{channel}/confirm:
     post:
+      description: Binds the detected conversation and sender to this room after validating its unexpired challenge.
       operationId: RoomChannel_confirm
       parameters:
         - name: roomId
@@ -12286,6 +12293,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/channels/{channel}/config:
     put:
+      description: Sets the HTTPS application URL used for links in this room’s channel messages; an empty URL clears it.
       operationId: RoomChannel_config
       parameters:
         - name: roomId
@@ -12335,6 +12343,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/channels/{channel}/settings:
     put:
+      description: Validates and saves provider credentials or a local executable path on the room host, leaving the provider disconnected.
       operationId: RoomChannel_settings
       parameters:
         - name: roomId
@@ -12384,6 +12393,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/channels/{channel}/test:
     post:
+      description: Sends a single-use test to the linked conversation and requires its authorized owner to reply before marking the binding verified.
       operationId: RoomChannel_test
       parameters:
         - name: roomId
@@ -12421,6 +12431,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/channels/{channel}/review:
     post:
+      description: Dismisses an input or delivery after the owner reviewed its uncertain effects, without replaying work or sending another message.
       operationId: RoomChannel_dismiss
       parameters:
         - name: roomId
@@ -12470,6 +12481,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/assistant:
     get:
+      description: Returns this room’s policy, memory, commitments, linked folders, owned files, and recorded work.
       operationId: RoomAssistant_status
       parameters:
         - name: roomId
@@ -12503,6 +12515,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/assistant/file:
     get:
+      description: Returns a bounded file from this room’s inbox or outputs as base64 data, without granting access to linked source folders.
       operationId: RoomAssistant_file
       parameters:
         - name: roomId
@@ -12548,6 +12561,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/assistant/policy:
     put:
+      description: Sets proactive execution, timezone, quiet hours, and daily notification and run limits for this room.
       operationId: RoomAssistant_policy
       parameters:
         - name: roomId
@@ -12639,6 +12653,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/assistant/commitments:
     post:
+      description: Records a room commitment with its due time, timezone, and optional daily recurrence.
       operationId: RoomAssistant_create
       parameters:
         - name: roomId
@@ -12684,6 +12699,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/assistant/commitments/{id}:
     patch:
+      description: Changes a commitment’s state or due time to complete, cancel, reopen, or snooze it.
       operationId: RoomAssistant_change
       parameters:
         - name: roomId
@@ -12735,6 +12751,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/assistant/folders:
     post:
+      description: Attaches a host folder under a stable room alias with read-only sandbox access; room agents must be idle before access changes.
       operationId: RoomAssistant_folder
       parameters:
         - name: roomId

@@ -173,6 +173,7 @@ export class RoomSlackTransport implements RoomMessagingTransport {
   private identity?: { team: string; user: string };
   private botToken?: string;
   private generation = 0;
+  private admissionEpoch = 0;
   private readonly roots = new Map<string, string>();
   private rootWrites: Promise<void> = Promise.resolve();
   private pendingConnect?: Promise<void>;
@@ -271,12 +272,16 @@ export class RoomSlackTransport implements RoomMessagingTransport {
         webClientOptions: { agent, timeout: 15000, retryConfig: { retries: 0 }, rejectRateLimitedCalls: true },
       },
       async (body) => {
-        if (generation !== this.generation) return;
+        const epoch = this.admissionEpoch,
+          account = this.account;
         try {
-          await this.admit(body, generation);
+          this.requireAdmission(generation, epoch, account);
+          await this.admit(body, generation, epoch, account);
+          this.requireAdmission(generation, epoch, account);
         } catch {
-          this.error = 'Slack could not durably accept a channel message. Slack may retry it.';
-          throw new Error(this.error);
+          if (this.currentAdmission(generation, epoch, account))
+            this.error = 'Slack could not durably accept a channel message. Slack may retry it.';
+          throw new Error('Slack input was not durably accepted. It may be retried.');
         }
       },
       {
@@ -287,6 +292,7 @@ export class RoomSlackTransport implements RoomMessagingTransport {
             this.phase = 'connected';
             this.error = null;
           } else {
+            this.admissionEpoch++;
             this.phase = 'connecting';
             this.error = 'Slack disconnected. Reconnecting.';
             if (this.hasConnected) this.scheduleReconnect();
@@ -351,7 +357,25 @@ export class RoomSlackTransport implements RoomMessagingTransport {
       throw new Error('Slack bot authentication failed.');
     return { team: result.team_id, user: result.user_id };
   }
-  private async admit(body: Record<string, unknown>, generation: number): Promise<void> {
+  private currentAdmission(generation: number, epoch: number, account: string | undefined): boolean {
+    return (
+      generation === this.generation &&
+      epoch === this.admissionEpoch &&
+      this.phase === 'connected' &&
+      account !== undefined &&
+      account === this.account
+    );
+  }
+  private requireAdmission(generation: number, epoch: number, account: string | undefined): void {
+    if (!this.currentAdmission(generation, epoch, account))
+      throw new Error('Slack connection changed before durable admission.');
+  }
+  private async admit(
+    body: Record<string, unknown>,
+    generation: number,
+    epoch: number,
+    account: string | undefined,
+  ): Promise<void> {
     const parsed = Envelope.safeParse(body);
     if (!parsed.success || !this.identity) return;
     const { event, team_id: team, event_id: sourceId } = parsed.data;
@@ -396,7 +420,7 @@ export class RoomSlackTransport implements RoomMessagingTransport {
     this.rootWrites = write;
     await write;
     const groupName = event.channel;
-    if (generation !== this.generation) return;
+    this.requireAdmission(generation, epoch, account);
     await this.receive({
       id: event.ts,
       group: event.channel,
@@ -407,6 +431,7 @@ export class RoomSlackTransport implements RoomMessagingTransport {
       ...(event.thread_ts ? { quoteId: event.thread_ts } : {}),
       ...(files.length ? { files, raw: JSON.stringify({ team, sourceId, files: acceptedFiles }) } : {}),
     });
+    this.requireAdmission(generation, epoch, account);
     this.input.lastAcceptedAt = Date.now();
   }
   async send(
@@ -493,13 +518,14 @@ export class RoomSlackTransport implements RoomMessagingTransport {
       if (timer) clearTimeout(timer);
     }
   }
-  private logger(): ChatLogger {
+  private logger(generation = this.generation): ChatLogger {
     const logger: ChatLogger = {
       child: () => logger,
       debug: () => undefined,
       info: () => undefined,
       warn: () => undefined,
       error: () => {
+        if (generation !== this.generation || this.stopped) return;
         this.error = 'Slack encountered a connection error.';
       },
     };

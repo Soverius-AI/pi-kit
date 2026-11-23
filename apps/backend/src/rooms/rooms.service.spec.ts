@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConflictException, NotFoundException } from '@nestjs/common';
@@ -14,6 +14,8 @@ import { RoomsEnabledGuard } from './rooms-enabled.guard';
 import { RepositoryIdentity } from './repository-identity';
 import { RoomsService } from './rooms.service';
 import { RoomPlaybookFiles } from './room-playbook-files.service';
+import { RoomFolders } from './room-folders';
+import type { BackendConfig } from '../app/config';
 
 let base: string;
 let project: string;
@@ -68,6 +70,23 @@ describe('rooms', () => {
       projectFolder: null,
       summary: 'Remember my preferences.',
     });
+  });
+
+  it('rejects a personal room with a requested existing playbook before creating a room or folder', async () => {
+    const dataDir = join(base, 'data');
+    const rooms = new RoomsRepository(db);
+    const personal = new RoomsService(
+      rooms,
+      threads,
+      new InstanceRepository(db),
+      meta,
+      new RoomPlaybookFiles(new RoomFolders({ dataDir } as BackendConfig)),
+    );
+    await expect(personal.create({ title: 'Personal', summary: 'My notes', playbook: 'daily-brief' })).rejects.toThrow(
+      'Create the personal room first and add a playbook, or select a project folder',
+    );
+    expect(await rooms.active()).toEqual([]);
+    expect(existsSync(join(dataDir, 'rooms'))).toBe(false);
   });
 
   it('previews a room from a thread: origin as the repository, the branch, HEAD and uncommitted files', async () => {

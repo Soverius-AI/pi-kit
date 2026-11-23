@@ -29,7 +29,11 @@ export class RoomPhoneController {
   @Remote()
   @Put('config')
   @Responds(RoomPhoneStatusSchema)
-  @ApiOperation({ summary: 'Set the private phone application URL for room links' })
+  @ApiOperation({
+    summary: 'Set the private phone application URL for room links',
+    description:
+      'Sets the HTTPS application URL used for links in this room’s WhatsApp messages; an empty URL clears it.',
+  })
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
   config(
     @Param('roomId') room: string,

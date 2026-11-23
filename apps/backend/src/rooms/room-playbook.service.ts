@@ -30,6 +30,7 @@ import { RoomA2aClient } from './room-a2a.client';
 import { RoomBus } from './room-bus';
 import { type ToolCall, type ToolRun, RoomPlaybookTools } from './room-playbook-tools.service';
 import { RoomMemory } from './room-memory';
+import { roomMemoryScopes } from './room-memory-scopes';
 import { RoomSchedule } from './room-schedule';
 import { RoomConsultant } from './room-consultant.service';
 import { NO_ROOM, RoomLeadService } from './room-lead.service';
@@ -82,13 +83,18 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
       const action = await this.store.action(pending.roomId, pending.actionId);
       if (!found || !action) continue;
       const execution = await this.store.execution(pending.roomId, pending.actionId);
-      const settlement = execution?.settlement ?? {
+      const unknown: RoomActionSettlement = {
         state: 'failed' as const,
         result:
           'Execution interrupted; the external outcome is unknown. Review the destination before creating another action.',
         note: `Action ${action.name} was interrupted. Its external outcome needs review.`,
         nudge: `Action ${action.id} (${action.name}) may already have run before restart. Ask the owner to review the destination; never repeat it automatically.`,
       };
+      let settlement = execution?.settlement ?? unknown;
+      if (settlement.state === 'discarded') {
+        await this.store.reviewLegacyDiscardedExecution(pending.roomId, pending.actionId, unknown);
+        settlement = unknown;
+      }
       await this.settleAction(
         found,
         action,
@@ -120,10 +126,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
   }
 
   scopes(found: FoundRoom): string[] {
-    return [
-      `room:${found.room.id}`,
-      ...(found.playbook ? [`playbook:${found.room.repository}/${found.playbook}`] : []),
-    ];
+    return roomMemoryScopes(found);
   }
 
   async extras(found: FoundRoom): Promise<{
@@ -360,7 +363,13 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         throw new ConflictException('This action was already claimed for execution.');
     }
     if (action.kind === 'playbook') {
-      const { ok, result } = await this.editor.apply(found, action);
+      let applied: Awaited<ReturnType<RoomPlaybookEditor['apply']>>;
+      try {
+        applied = await this.editor.apply(found, action);
+      } catch {
+        return this.executionFailed(found, action, true);
+      }
+      const { ok, result } = applied;
       return await this.settleAction(
         found,
         action,
@@ -383,7 +392,20 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         `You approved ${action.name}; in the rehearsal it did not run.`,
         `The owner approved action ${action.id} (${action.name}). Rehearsal: it did not run, nothing went out. Go on as if it had worked.`,
       );
-    const result = await this.tools.run(await this.agents.projectFolder(found), this.tools.callOf(action.payload));
+    let folder: string;
+    let call: ToolCall;
+    try {
+      folder = await this.agents.projectFolder(found);
+      call = this.tools.callOf(action.payload);
+    } catch {
+      return this.executionFailed(found, action, false);
+    }
+    let result: ToolRun;
+    try {
+      result = await this.tools.run(folder, call);
+    } catch {
+      return this.executionFailed(found, action, true);
+    }
     return await this.settleAction(
       found,
       action,
@@ -393,6 +415,23 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         ? `You approved ${action.name}; it ran.`
         : `You approved ${action.name}, but it failed: ${result.output.slice(0, 500)}`,
       `The owner approved action ${action.id} (${action.name}). ${result.ok ? 'It ran' : 'It failed'}:\n\n${result.output.slice(0, 4000)}`,
+    );
+  }
+
+  private executionFailed(found: FoundRoom, action: RoomAction, started: boolean): Promise<RoomAction> {
+    const result = started
+      ? 'The approved operation failed before reporting its outcome. Its external outcome is unknown. Review the destination before creating another action.'
+      : 'The approved operation could not start. No external operation was started. Review this failure before creating another action.';
+    const note = started
+      ? `Action ${action.name} needs review: its external outcome is unknown.`
+      : `Action ${action.name} could not start and needs review.`;
+    return this.settleAction(
+      found,
+      action,
+      'failed',
+      result,
+      note,
+      `Approved action ${action.id} (${action.name}) needs owner review. ${result} Never repeat it automatically.`,
     );
   }
 
@@ -406,11 +445,18 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     drain = true,
   ): Promise<RoomAction> {
     const roomId = found.room.id;
-    const settlement: RoomActionSettlement = { state, result, note, nudge };
-    if (await this.store.execution(roomId, action.id)) await this.store.saveExecution(action.id, settlement);
+    let settlement: RoomActionSettlement = { state, result, note, nudge };
+    // Discard never owns an external reservation. Save the executor's first known outcome before settlement.
+    if (state !== 'discarded' && (await this.store.execution(roomId, action.id)))
+      settlement = await this.store.saveExecution(action.id, settlement);
+    ({ state, result, note, nudge } = settlement);
     const cause = { kind: 'approval' as const, title: note };
     const sourceKey = `action:${action.id}`;
     const event = await this.rooms.inTransaction(async () => {
+      if (state === 'discarded' && (await this.store.execution(roomId, action.id)))
+        throw new ConflictException(
+          'This action may already be executing. Review its outcome before creating another action.',
+        );
       if (!(await this.store.decide(roomId, action.id, state, result)))
         throw new ConflictException('This action was decided already.');
       const event = await this.rooms.append(roomId, { kind: 'note', actor: 'coordinator', text: note });

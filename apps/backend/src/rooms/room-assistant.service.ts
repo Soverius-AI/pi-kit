@@ -27,6 +27,7 @@ import { RoomWorkspace } from './room-workspace.service';
 import { RoomTime } from './room-time';
 import { RoomBus } from './room-bus';
 import { RoomMemory } from './room-memory';
+import { roomMemoryScopes } from './room-memory-scopes';
 
 @Injectable()
 export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
@@ -157,10 +158,7 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
   async briefing(found: FoundRoom): Promise<string | undefined> {
     const status = await this.status(found.room.id);
     const execution = await this.workspace.execution(found.room.id, found.leadThreadId ?? undefined);
-    const memory = await this.notes.memory([
-      `room:${found.room.id}`,
-      ...(found.playbook ? [`playbook:${found.room.repository}/${found.playbook}`] : []),
-    ]);
+    const memory = await this.notes.memory(roomMemoryScopes(found));
     const fingerprint = JSON.stringify({
       policy: status.policy,
       memory,

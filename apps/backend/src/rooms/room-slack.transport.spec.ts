@@ -318,11 +318,12 @@ async function socketFixture(stall = false) {
     SlackAdapter: FakeSocketAdapter,
     SocketModeClient: FakeSocket,
   } as never);
+  const meta = { getSetting: vi.fn(async () => undefined), setSetting: vi.fn(async (): Promise<void> => undefined) };
   const transport = new RoomSlackTransport(
     { configured: true, read: async () => tokens } as unknown as RoomSlackCredentials,
-    { getSetting: async () => undefined, setSetting: async () => undefined } as unknown as MetaRepository,
+    meta as unknown as MetaRepository,
   );
-  return { transport, clients };
+  return { transport, clients, meta };
 }
 
 it('initializes real Chat and official Slack adapter with bounded public Socket Mode options', async () => {
@@ -402,5 +403,94 @@ it('reconnects established sockets in the background with bounded attempts and c
   } finally {
     await transport.disconnect();
     vi.useRealTimers();
+  }
+});
+
+it('does not ACK a live Socket Mode event while reconnecting, and admits its later redelivery', async () => {
+  const { transport, clients } = await socketFixture();
+  try {
+    await transport.connect();
+    const receive = vi.fn(async () => undefined);
+    transport.receive = receive;
+    const ack = vi.fn(async () => undefined);
+    clients[0].emit('error', new Error('temporary socket error'));
+    await clients[0].deliver(event(), ack);
+    expect(receive).not.toHaveBeenCalled();
+    expect(ack).not.toHaveBeenCalled();
+    expect(transport.error).toBe('Slack disconnected. Reconnecting.');
+    clients[0].emit('connected');
+    await clients[0].deliver(event(), ack);
+    expect(receive).toHaveBeenCalledOnce();
+    expect(ack).toHaveBeenCalledOnce();
+  } finally {
+    await transport.disconnect();
+  }
+});
+
+it('withholds ACK if the connection changes while waiting to persist routing metadata', async () => {
+  const { transport, clients, meta } = await socketFixture();
+  try {
+    await transport.connect();
+    let release: () => void = () => undefined;
+    meta.setSetting.mockImplementationOnce(() => new Promise<void>((resolve) => (release = resolve)));
+    const receive = vi.fn(async () => undefined);
+    transport.receive = receive;
+    const ack = vi.fn(async () => undefined);
+    const delivered = clients[0].deliver(event(), ack);
+    await vi.waitFor(() => expect(meta.setSetting).toHaveBeenCalledOnce());
+    clients[0].emit('disconnected');
+    release();
+    await delivered;
+    expect(receive).not.toHaveBeenCalled();
+    expect(ack).not.toHaveBeenCalled();
+    expect(transport.error).toBe('Slack disconnected. Reconnecting.');
+  } finally {
+    await transport.disconnect();
+  }
+});
+
+it('fences in-flight admission across a phase change even if the same socket becomes connected again', async () => {
+  const { transport, clients } = await socketFixture();
+  try {
+    await transport.connect();
+    let release: () => void = () => undefined;
+    const receive = vi.fn(() => new Promise<void>((resolve) => (release = resolve)));
+    transport.receive = receive;
+    const ack = vi.fn(async () => undefined);
+    const delivered = clients[0].deliver(event(), ack);
+    await vi.waitFor(() => expect(receive).toHaveBeenCalledOnce());
+    clients[0].emit('error', new Error('temporary'));
+    clients[0].emit('connected');
+    release();
+    await delivered;
+    expect(ack).not.toHaveBeenCalled();
+    expect(transport.phase).toBe('connected');
+    expect(transport.error).toBeNull();
+    expect(transport.input.lastAcceptedAt).toBeNull();
+    receive.mockResolvedValueOnce(undefined);
+    await clients[0].deliver(event(), ack);
+    expect(ack).toHaveBeenCalledOnce();
+  } finally {
+    await transport.disconnect();
+  }
+});
+
+it('refuses a queued old-socket event without overwriting the new connection status', async () => {
+  const { transport, clients } = await socketFixture();
+  try {
+    await transport.connect();
+    const old = clients[0];
+    await transport.disconnect();
+    await transport.connect();
+    const receive = vi.fn(async () => undefined);
+    transport.receive = receive;
+    const ack = vi.fn(async () => undefined);
+    await old.deliver(event(), ack);
+    expect(receive).not.toHaveBeenCalled();
+    expect(ack).not.toHaveBeenCalled();
+    expect(transport.phase).toBe('connected');
+    expect(transport.error).toBeNull();
+  } finally {
+    await transport.disconnect();
   }
 });

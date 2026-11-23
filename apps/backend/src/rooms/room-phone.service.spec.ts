@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ServiceUnavailableException } from '@nestjs/common';
 import {
   ROOMS_SETTING_KEY,
   type PostRoomMessage,
@@ -474,6 +475,54 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     expect(await wa.peekPrompt('a', 'same-token')).toBeUndefined();
     expect(await signal.peekPrompt('a', 'same-token')).toBeDefined();
     expect((await signal.health('a')).pendingDeliveries).toBe(1);
+  });
+
+  it('signals transient lifecycle failures for provider redelivery while intentional disabled and unauthorized drops remain successful', async () => {
+    await bind();
+    transport.phase = 'connecting';
+    await expect(transport.receive(message('during reconnect', 'transient-connection'))).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+    transport.phase = 'connected';
+    transport.account = '';
+    await expect(transport.receive(message('missing account', 'transient-account'))).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+    transport.account = 'assistant@s.whatsapp.net';
+    await expect(
+      transport.receive(message('unauthorized', 'ignored-owner', undefined, 'somebody-else')),
+    ).resolves.toBeUndefined();
+    await meta.setSetting(ROOMS_SETTING_KEY, false);
+    transport.phase = 'disconnected';
+    await expect(transport.receive(message('disabled intentionally', 'ignored-disabled'))).resolves.toBeUndefined();
+    expect(await store.counts('a')).toEqual({ queued: 0, needsReview: 0 });
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('rejects a queued callback when the connected account changes before durable admission', async () => {
+    await bind();
+    let entered!: () => void;
+    let release!: () => void;
+    const enteredQueue = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const continueAdmission = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(store, 'isOutgoing').mockImplementationOnce(async () => {
+      entered();
+      await continueAdmission;
+      return false;
+    });
+    const delivery = transport.receive(message('Retry this event', 'changing-account'));
+    // Attach the rejection observer before releasing the asynchronous guard.
+    const rejected = expect(delivery).rejects.toThrow(ServiceUnavailableException);
+    await enteredQueue;
+    transport.account = 'another-assistant';
+    release();
+    await rejected;
+    expect(await store.counts('a')).toEqual({ queued: 0, needsReview: 0 });
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('requires an expiring challenge and paired-app confirmation before admitting commands', async () => {

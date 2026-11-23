@@ -101,9 +101,9 @@ export class RoomPlaybooksRepository {
   ): Promise<boolean> {
     const changed = await this.db
       .prepare(
-        "UPDATE room_actions SET state = ?, result = ?, decided_at = ? WHERE id = ? AND room_id = ? AND state = 'pending'",
+        "UPDATE room_actions SET state = ?, result = ?, decided_at = ? WHERE id = ? AND room_id = ? AND state = 'pending' AND (? <> 'discarded' OR NOT EXISTS(SELECT 1 FROM room_action_executions x WHERE x.action_id=room_actions.id))",
       )
-      .run(state, result === null ? null : (redact(result) as string), now, id, roomId);
+      .run(state, result === null ? null : (redact(result) as string), now, id, roomId, state);
     return Number(changed.changes) > 0;
   }
 
@@ -127,10 +127,29 @@ export class RoomPlaybooksRepository {
       ? { settlement: row.settlement_json ? (JSON.parse(row.settlement_json) as RoomActionSettlement) : null }
       : undefined;
   }
-  async saveExecution(actionId: string, settlement: RoomActionSettlement): Promise<void> {
+  async saveExecution(actionId: string, settlement: RoomActionSettlement): Promise<RoomActionSettlement> {
+    if (settlement.state === 'discarded') throw new Error('Discard is not an external execution outcome.');
     await this.db
-      .prepare('UPDATE room_action_executions SET settlement_json=? WHERE action_id=?')
+      .prepare('UPDATE room_action_executions SET settlement_json=? WHERE action_id=? AND settlement_json IS NULL')
       .run(JSON.stringify(redactValue(settlement)), actionId);
+    const saved = await this.db
+      .prepare('SELECT settlement_json FROM room_action_executions WHERE action_id=?')
+      .get<{ settlement_json: string | null }>(actionId);
+    if (!saved?.settlement_json) throw new Error('The approved execution journal is missing.');
+    return JSON.parse(saved.settlement_json) as RoomActionSettlement;
+  }
+  async reviewLegacyDiscardedExecution(
+    roomId: string,
+    actionId: string,
+    review: Omit<RoomActionSettlement, 'state'>,
+  ): Promise<void> {
+    // Older builds could journal a discard while an approved external operation was running.
+    // It is not a confirmed external outcome: repair only that invalid legacy state to owner review.
+    await this.db
+      .prepare(
+        `UPDATE room_action_executions SET settlement_json=? WHERE action_id=? AND json_extract(settlement_json,'$.state')='discarded' AND EXISTS(SELECT 1 FROM room_actions a WHERE a.id=room_action_executions.action_id AND a.room_id=? AND a.state='pending')`,
+      )
+      .run(JSON.stringify(redactValue({ ...review, state: 'failed' })), actionId, roomId);
   }
   async unfinishedExecutions(): Promise<{ roomId: string; actionId: string }[]> {
     return this.db

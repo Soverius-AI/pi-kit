@@ -38,6 +38,10 @@ export class RoomsService {
 
   async create(input: CreateRoom, now = Date.now()): Promise<Room> {
     if (!input.threadId && !input.projectFolder && !input.repository) {
+      if (input.playbook)
+        throw new ConflictException(
+          'Create the personal room first and add a playbook, or select a project folder to load an existing playbook.',
+        );
       const id = randomUUID();
       this.playbooks.roomFolder(id);
       return this.rooms.insert({

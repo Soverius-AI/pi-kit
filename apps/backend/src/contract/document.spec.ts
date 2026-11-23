@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { HTTP_CODE_METADATA, METHOD_METADATA, MODULE_METADATA } from '@nestjs/common/constants.js';
 import { RequestMethod, type Type } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { MetadataScanner, NestFactory } from '@nestjs/core';
 import SwaggerParser from '@apidevtools/swagger-parser';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { OpenAPIObject } from '@nestjs/swagger';
@@ -51,7 +51,8 @@ beforeAll(async () => {
 /** Every route of the controllers on the contract, with what Nest will really answer. */
 function routes(): { controller: string; handler: string; method: Method; status: number }[] {
   return controllers.flatMap((controller) =>
-    Object.getOwnPropertyNames(controller.prototype)
+    new MetadataScanner()
+      .getAllMethodNames(controller.prototype)
       .filter(
         (name) =>
           name !== 'constructor' && Reflect.hasMetadata(METHOD_METADATA, controller.prototype[name as keyof object]),

@@ -233,18 +233,16 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     )
       message = { ...message, text: '/' + message.text.slice(prefix.length) };
     const account = this.transport.account;
-    if (this.stopping || !(await this.enabled()) || this.transport.phase !== 'connected' || !account) return;
+    if (!(await this.enabled())) return;
+    if (this.stopping || this.transport.phase !== 'connected' || !account)
+      throw new ServiceUnavailableException('The messaging channel is temporarily unavailable. Retry this message.');
     // Echoes can arrive while the serial outbox is awaiting its send. Reject them before entering that queue.
     if (await this.store.isOutgoing(message.group, account, message.id)) return;
     if (message.sender === account) return;
     const completion = await this.serial(async () => {
-      if (
-        this.stopping ||
-        this.transport.account !== account ||
-        this.transport.phase !== 'connected' ||
-        !(await this.enabled())
-      )
-        return;
+      if (this.stopping || this.transport.account !== account || this.transport.phase !== 'connected')
+        throw new ServiceUnavailableException('The messaging channel is temporarily unavailable. Retry this message.');
+      if (!(await this.enabled())) return;
       if (await this.store.isOutgoing(message.group, account, message.id)) return;
       const link = /^\/room-link ([a-f0-9]{24})$/.exec(message.text);
       if (link) {

@@ -3908,6 +3908,8 @@ export const roomsEvents = <ThrowOnError extends boolean = false>(options: Optio
 
 /**
  * Set the private phone application URL for room links
+ *
+ * Sets the HTTPS application URL used for links in this room’s WhatsApp messages; an empty URL clears it.
  */
 export const roomPhoneConfig = <ThrowOnError extends boolean = false>(options: Options<RoomPhoneConfigData, ThrowOnError>): RequestResult<RoomPhoneConfigResponses, RoomPhoneConfigErrors, ThrowOnError> => (options.client ?? client).put<RoomPhoneConfigResponses, RoomPhoneConfigErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4017,6 +4019,8 @@ export const roomPhoneConfirm = <ThrowOnError extends boolean = false>(options: 
 
 /**
  * Unlink a room conversation
+ *
+ * Revokes this room’s conversation binding and clears pending channel messages and deliveries without disconnecting the host account.
  */
 export const roomChannelUnlink = <ThrowOnError extends boolean = false>(options: Options<RoomChannelUnlinkData, ThrowOnError>): RequestResult<RoomChannelUnlinkResponses, RoomChannelUnlinkErrors, ThrowOnError> => (options.client ?? client).delete<RoomChannelUnlinkResponses, RoomChannelUnlinkErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4026,6 +4030,8 @@ export const roomChannelUnlink = <ThrowOnError extends boolean = false>(options:
 
 /**
  * Read a room messaging channel
+ *
+ * Returns the provider connection, any required pairing QR, the room binding, and channel queue health.
  */
 export const roomChannelStatus = <ThrowOnError extends boolean = false>(options: Options<RoomChannelStatusData, ThrowOnError>): RequestResult<RoomChannelStatusResponses, RoomChannelStatusErrors, ThrowOnError> => (options.client ?? client).get<RoomChannelStatusResponses, RoomChannelStatusErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4035,6 +4041,8 @@ export const roomChannelStatus = <ThrowOnError extends boolean = false>(options:
 
 /**
  * Connect a messaging channel
+ *
+ * Starts or reconnects the provider account shared by this host’s rooms and enables automatic startup reconnection.
  */
 export const roomChannelConnect = <ThrowOnError extends boolean = false>(options: Options<RoomChannelConnectData, ThrowOnError>): RequestResult<RoomChannelConnectResponses, RoomChannelConnectErrors, ThrowOnError> => (options.client ?? client).post<RoomChannelConnectResponses, RoomChannelConnectErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4044,6 +4052,8 @@ export const roomChannelConnect = <ThrowOnError extends boolean = false>(options
 
 /**
  * Disconnect a messaging channel
+ *
+ * Stops this provider for all rooms on the host and disables automatic startup reconnection while retaining room bindings.
  */
 export const roomChannelDisconnect = <ThrowOnError extends boolean = false>(options: Options<RoomChannelDisconnectData, ThrowOnError>): RequestResult<RoomChannelDisconnectResponses, RoomChannelDisconnectErrors, ThrowOnError> => (options.client ?? client).post<RoomChannelDisconnectResponses, RoomChannelDisconnectErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4053,6 +4063,8 @@ export const roomChannelDisconnect = <ThrowOnError extends boolean = false>(opti
 
 /**
  * Start linking a room conversation
+ *
+ * Creates a ten-minute challenge for linking a conversation and its sender; confirmation in Rooms is required before accepting work.
  */
 export const roomChannelBegin = <ThrowOnError extends boolean = false>(options: Options<RoomChannelBeginData, ThrowOnError>): RequestResult<RoomChannelBeginResponses, RoomChannelBeginErrors, ThrowOnError> => (options.client ?? client).post<RoomChannelBeginResponses, RoomChannelBeginErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4062,6 +4074,8 @@ export const roomChannelBegin = <ThrowOnError extends boolean = false>(options: 
 
 /**
  * Confirm a conversation and its authorized owner
+ *
+ * Binds the detected conversation and sender to this room after validating its unexpired challenge.
  */
 export const roomChannelConfirm = <ThrowOnError extends boolean = false>(options: Options<RoomChannelConfirmData, ThrowOnError>): RequestResult<RoomChannelConfirmResponses, RoomChannelConfirmErrors, ThrowOnError> => (options.client ?? client).post<RoomChannelConfirmResponses, RoomChannelConfirmErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4075,6 +4089,8 @@ export const roomChannelConfirm = <ThrowOnError extends boolean = false>(options
 
 /**
  * Set this channel binding application URL
+ *
+ * Sets the HTTPS application URL used for links in this room’s channel messages; an empty URL clears it.
  */
 export const roomChannelConfig = <ThrowOnError extends boolean = false>(options: Options<RoomChannelConfigData, ThrowOnError>): RequestResult<RoomChannelConfigResponses, RoomChannelConfigErrors, ThrowOnError> => (options.client ?? client).put<RoomChannelConfigResponses, RoomChannelConfigErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4088,6 +4104,8 @@ export const roomChannelConfig = <ThrowOnError extends boolean = false>(options:
 
 /**
  * Configure provider credentials or local dependencies
+ *
+ * Validates and saves provider credentials or a local executable path on the room host, leaving the provider disconnected.
  */
 export const roomChannelSettings = <ThrowOnError extends boolean = false>(options: Options<RoomChannelSettingsData, ThrowOnError>): RequestResult<RoomChannelSettingsResponses, RoomChannelSettingsErrors, ThrowOnError> => (options.client ?? client).put<RoomChannelSettingsResponses, RoomChannelSettingsErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4101,6 +4119,8 @@ export const roomChannelSettings = <ThrowOnError extends boolean = false>(option
 
 /**
  * Verify an actual messaging round trip
+ *
+ * Sends a single-use test to the linked conversation and requires its authorized owner to reply before marking the binding verified.
  */
 export const roomChannelTest = <ThrowOnError extends boolean = false>(options: Options<RoomChannelTestData, ThrowOnError>): RequestResult<RoomChannelTestResponses, RoomChannelTestErrors, ThrowOnError> => (options.client ?? client).post<RoomChannelTestResponses, RoomChannelTestErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4110,6 +4130,8 @@ export const roomChannelTest = <ThrowOnError extends boolean = false>(options: O
 
 /**
  * Dismiss a reviewed uncertain channel item
+ *
+ * Dismisses an input or delivery after the owner reviewed its uncertain effects, without replaying work or sending another message.
  */
 export const roomChannelDismiss = <ThrowOnError extends boolean = false>(options: Options<RoomChannelDismissData, ThrowOnError>): RequestResult<RoomChannelDismissResponses, RoomChannelDismissErrors, ThrowOnError> => (options.client ?? client).post<RoomChannelDismissResponses, RoomChannelDismissErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4123,6 +4145,8 @@ export const roomChannelDismiss = <ThrowOnError extends boolean = false>(options
 
 /**
  * Read room assistant state
+ *
+ * Returns this room’s policy, memory, commitments, linked folders, owned files, and recorded work.
  */
 export const roomAssistantStatus = <ThrowOnError extends boolean = false>(options: Options<RoomAssistantStatusData, ThrowOnError>): RequestResult<RoomAssistantStatusResponses, RoomAssistantStatusErrors, ThrowOnError> => (options.client ?? client).get<RoomAssistantStatusResponses, RoomAssistantStatusErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4132,6 +4156,8 @@ export const roomAssistantStatus = <ThrowOnError extends boolean = false>(option
 
 /**
  * Download an owned room upload or output
+ *
+ * Returns a bounded file from this room’s inbox or outputs as base64 data, without granting access to linked source folders.
  */
 export const roomAssistantFile = <ThrowOnError extends boolean = false>(options: Options<RoomAssistantFileData, ThrowOnError>): RequestResult<RoomAssistantFileResponses, RoomAssistantFileErrors, ThrowOnError> => (options.client ?? client).get<RoomAssistantFileResponses, RoomAssistantFileErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4141,6 +4167,8 @@ export const roomAssistantFile = <ThrowOnError extends boolean = false>(options:
 
 /**
  * Set proactive execution and notification policy
+ *
+ * Sets proactive execution, timezone, quiet hours, and daily notification and run limits for this room.
  */
 export const roomAssistantPolicy = <ThrowOnError extends boolean = false>(options: Options<RoomAssistantPolicyData, ThrowOnError>): RequestResult<RoomAssistantPolicyResponses, RoomAssistantPolicyErrors, ThrowOnError> => (options.client ?? client).put<RoomAssistantPolicyResponses, RoomAssistantPolicyErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4169,6 +4197,8 @@ export const roomAssistantMemory = <ThrowOnError extends boolean = false>(option
 
 /**
  * Create a commitment or daily routine
+ *
+ * Records a room commitment with its due time, timezone, and optional daily recurrence.
  */
 export const roomAssistantCreate = <ThrowOnError extends boolean = false>(options: Options<RoomAssistantCreateData, ThrowOnError>): RequestResult<RoomAssistantCreateResponses, RoomAssistantCreateErrors, ThrowOnError> => (options.client ?? client).post<RoomAssistantCreateResponses, RoomAssistantCreateErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4182,6 +4212,8 @@ export const roomAssistantCreate = <ThrowOnError extends boolean = false>(option
 
 /**
  * Complete, cancel or snooze a commitment
+ *
+ * Changes a commitment’s state or due time to complete, cancel, reopen, or snooze it.
  */
 export const roomAssistantChange = <ThrowOnError extends boolean = false>(options: Options<RoomAssistantChangeData, ThrowOnError>): RequestResult<RoomAssistantChangeResponses, RoomAssistantChangeErrors, ThrowOnError> => (options.client ?? client).patch<RoomAssistantChangeResponses, RoomAssistantChangeErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -4195,6 +4227,8 @@ export const roomAssistantChange = <ThrowOnError extends boolean = false>(option
 
 /**
  * Attach a host folder as a read-only room link
+ *
+ * Attaches a host folder under a stable room alias with read-only sandbox access; room agents must be idle before access changes.
  */
 export const roomAssistantFolder = <ThrowOnError extends boolean = false>(options: Options<RoomAssistantFolderData, ThrowOnError>): RequestResult<RoomAssistantFolderResponses, RoomAssistantFolderErrors, ThrowOnError> => (options.client ?? client).post<RoomAssistantFolderResponses, RoomAssistantFolderErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

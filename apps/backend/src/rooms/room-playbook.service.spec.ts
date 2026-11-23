@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -113,6 +114,8 @@ let service: RoomPlaybookService;
 let nudge: ReturnType<typeof vi.fn>;
 let rebriefNext: ReturnType<typeof vi.fn>;
 let editor: RoomPlaybookEditor;
+let tools: RoomPlaybookTools;
+let agents: RoomAgents;
 let ask: ReturnType<typeof vi.fn>;
 let roomId: string;
 let agentDir: string;
@@ -173,7 +176,7 @@ beforeEach(async () => {
   rebriefNext = vi.fn();
   const mcp = new McpCallService({ agentDir: async () => agentDir } as unknown as PiSessionService);
   const files = new RoomPlaybookFiles(new RoomFolders({ dataDir: join(base, 'data') } as BackendConfig));
-  const tools = new RoomPlaybookTools(mcp, new RoomSources());
+  tools = new RoomPlaybookTools(mcp, new RoomSources());
   bus = new RoomBus(rooms);
   paired = [];
   const lead = {
@@ -182,7 +185,7 @@ beforeEach(async () => {
     resumePending: vi.fn(async () => undefined),
     setPlaybooks: () => undefined,
   } as unknown as RoomLeadService;
-  const agents = {
+  agents = {
     projectFolder: async () => project,
     models: async () => [
       { provider: 'anthropic', id: 'claude-opus-5-5', reasoning: true },
@@ -340,6 +343,196 @@ describe('room playbooks', () => {
     });
     expect(await rooms.wakeBySource(roomId, `action:${action!.id}`)).toMatchObject({ state: 'queued' });
     await expect(service.decide(roomId, action!.id, { decision: 'approve' })).rejects.toThrow('decided already');
+  });
+
+  it('does not let a stale discard overwrite an approval reservation while its tool is running', async () => {
+    await service.call('lead', { tool: 'comment', params: { pr: '7' }, reason: 'Post it.' });
+    const action = (await store.actions(roomId))[0];
+    if (!action) throw new Error('Missing fixture action.');
+    let sawUnclaimed!: () => void;
+    let resumeDiscard!: () => void;
+    let toolStarted!: () => void;
+    let finishTool!: () => void;
+    const readDone = new Promise<void>((resolve) => {
+      sawUnclaimed = resolve;
+    });
+    const releaseDiscard = new Promise<void>((resolve) => {
+      resumeDiscard = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      toolStarted = resolve;
+    });
+    const toolResult = new Promise<void>((resolve) => {
+      finishTool = resolve;
+    });
+    const execution = store.execution.bind(store);
+    vi.spyOn(store, 'execution').mockImplementationOnce(async (...args) => {
+      const previous = await execution(...args);
+      expect(previous).toBeUndefined();
+      sawUnclaimed();
+      await releaseDiscard;
+      return previous;
+    });
+    const run = vi.spyOn(tools, 'run').mockImplementationOnce(async () => {
+      toolStarted();
+      await toolResult;
+      return { ok: true, output: 'External post completed.' };
+    });
+    const discard = service.decide(roomId, action.id, { decision: 'discard' });
+    const rejected = expect(discard).rejects.toThrow('already be executing');
+    await readDone;
+    const approval = service.decide(roomId, action.id, { decision: 'approve' });
+    await started;
+    resumeDiscard();
+    await rejected;
+    expect((await store.execution(roomId, action.id))?.settlement).toBeNull();
+    expect((await store.action(roomId, action.id))?.state).toBe('pending');
+    finishTool();
+    expect(await approval).toMatchObject({ state: 'done', result: 'External post completed.' });
+    expect((await store.execution(roomId, action.id))?.settlement).toMatchObject({
+      state: 'done',
+      result: 'External post completed.',
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('atomically discards an unclaimed action so a competing approval never starts its external tool', async () => {
+    await service.call('lead', { tool: 'comment', params: { pr: '7' }, reason: 'Post it.' });
+    const action = (await store.actions(roomId))[0];
+    if (!action) throw new Error('Missing fixture action.');
+    const run = vi.spyOn(tools, 'run');
+    expect(await service.decide(roomId, action.id, { decision: 'discard' })).toMatchObject({ state: 'discarded' });
+    expect(await store.claimExecution(roomId, action.id)).toBe(false);
+    await expect(service.decide(roomId, action.id, { decision: 'approve' })).rejects.toThrow('decided already');
+    expect(await store.execution(roomId, action.id)).toBeUndefined();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it.each(['tool', 'editor', 'cwd'] as const)(
+    'settles an unexpected %s failure immediately without replaying the approved operation',
+    async (kind) => {
+      if (kind !== 'editor') await service.call('lead', { tool: 'comment', params: { pr: '7' }, reason: 'Post it.' });
+      const action =
+        kind === 'editor'
+          ? await store.insertAction({
+              id: randomUUID(),
+              roomId,
+              kind: 'playbook',
+              name: 'playbook-edit',
+              summary: 'Apply the approved edit',
+              payload: {},
+            })
+          : (await store.actions(roomId))[0];
+      if (!action) throw new Error('Missing fixture action.');
+      const run = vi.spyOn(tools, 'run');
+      const apply = vi.spyOn(editor, 'apply');
+      const fail = async () => {
+        expect((await store.execution(roomId, action.id))?.settlement).toBeNull();
+        throw new Error('Unexpected provider error with private details');
+      };
+      if (kind === 'tool') run.mockImplementationOnce(fail);
+      else if (kind === 'editor') apply.mockImplementationOnce(fail);
+      else vi.spyOn(agents, 'projectFolder').mockImplementationOnce(fail);
+      const decided = await service.decide(roomId, action.id, { decision: 'approve' });
+      expect(decided).toMatchObject({
+        state: 'failed',
+        result: expect.stringContaining(kind === 'cwd' ? 'No external operation was started' : 'outcome is unknown'),
+      });
+      expect(decided.result).not.toContain('private details');
+      expect((await store.execution(roomId, action.id))?.settlement).toMatchObject({
+        state: 'failed',
+        result: decided.result,
+      });
+      expect(await rooms.wakeBySource(roomId, `action:${action.id}`)).toMatchObject({ state: 'queued' });
+      expect(nudge).toHaveBeenCalledWith(
+        roomId,
+        expect.stringContaining('Never repeat it automatically'),
+        expect.any(Object),
+        `action:${action.id}`,
+      );
+      await expect(service.decide(roomId, action.id, { decision: 'approve' })).rejects.toThrow('decided already');
+      await service.onModuleInit();
+      expect(run).toHaveBeenCalledTimes(kind === 'tool' ? 1 : 0);
+      expect(apply).toHaveBeenCalledTimes(kind === 'editor' ? 1 : 0);
+    },
+  );
+
+  it('keeps the first journaled outcome when another settlement attempts to overwrite it', async () => {
+    const action = await store.insertAction({
+      id: randomUUID(),
+      roomId,
+      kind: 'call',
+      name: 'reserved',
+      summary: 'Reserved',
+      payload: {},
+    });
+    await store.claimExecution(roomId, action.id);
+    const first = { state: 'done' as const, result: 'confirmed', note: 'Confirmed result', nudge: 'Tell the owner.' };
+    expect(await store.saveExecution(action.id, first)).toEqual(first);
+    expect(
+      await store.saveExecution(action.id, { state: 'failed', result: 'competing', note: 'Wrong', nudge: 'Wrong' }),
+    ).toEqual(first);
+    await expect(
+      store.saveExecution(action.id, { state: 'discarded', result: null, note: 'Wrong', nudge: 'Wrong' }),
+    ).rejects.toThrow('not an external execution outcome');
+    expect(await store.decide(roomId, action.id, 'discarded', null)).toBe(false);
+  });
+
+  it('keeps room_note playbook memory private between personal rooms with the same playbook name', async () => {
+    const create = async (id: string, lead: string) => {
+      await rooms.insert({
+        id,
+        title: 'Personal',
+        repository: '',
+        baseCommit: '',
+        summary: '',
+        sourceThreadId: null,
+        projectFolder: null,
+        playbook: 'pr-review',
+        createdAt: 1,
+      });
+      await rooms.setLead(id, lead);
+      const found = await rooms.get(id);
+      if (!found) throw new Error('Missing fixture room.');
+      return found;
+    };
+    const first = await create(randomUUID(), 'personal-lead-a');
+    const second = await create(randomUUID(), 'personal-lead-b');
+    await service.note('personal-lead-a', {
+      key: 'private-fact',
+      text: 'Only the first room knows this.',
+      scope: 'playbook',
+    });
+    expect((await service.extras(first)).memory).toEqual([
+      expect.objectContaining({ key: 'private-fact', text: 'Only the first room knows this.' }),
+    ]);
+    expect((await service.extras(second)).memory).toEqual([]);
+  });
+
+  it('recovers an invalid legacy discarded journal as unknown owner review without blocking startup or running the action', async () => {
+    await service.call('lead', { tool: 'comment', params: { pr: '7' }, reason: 'Post it.' });
+    const action = (await store.actions(roomId))[0];
+    if (!action) throw new Error('Missing fixture action.');
+    await store.claimExecution(roomId, action.id);
+    await db.db
+      .prepare('UPDATE room_action_executions SET settlement_json=? WHERE action_id=?')
+      .run(
+        JSON.stringify({ state: 'discarded', result: null, note: 'Old raced discard', nudge: 'Discarded' }),
+        action.id,
+      );
+    const run = vi.spyOn(tools, 'run');
+    await service.onModuleInit();
+    expect(await store.action(roomId, action.id)).toMatchObject({
+      state: 'failed',
+      result: expect.stringContaining('unknown'),
+    });
+    expect((await store.execution(roomId, action.id))?.settlement).toMatchObject({
+      state: 'failed',
+      result: expect.stringContaining('unknown'),
+    });
+    expect(await rooms.wakeBySource(roomId, `action:${action.id}`)).toMatchObject({ state: 'queued' });
+    expect(run).not.toHaveBeenCalled();
+    await expect(service.decide(roomId, action.id, { decision: 'approve' })).rejects.toThrow('decided already');
   });
 
   it('hands a long output over a page at a time', async () => {

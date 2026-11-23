@@ -19,6 +19,7 @@ import { RoomPlaybookFiles } from './room-playbook-files.service';
 import { RoomWorkspace } from './room-workspace.service';
 import { RoomBus } from './room-bus';
 import { RoomMemory } from './room-memory';
+import { roomMemoryScopes } from './room-memory-scopes';
 import { RoomTime } from './room-time';
 
 describe('personal room assistant persistence', () => {
@@ -134,6 +135,40 @@ describe('personal room assistant persistence', () => {
       createdAt: Date.now(),
     });
     expect((await assistant.status(other.id)).memory).toEqual([]);
+  });
+
+  it('isolates personal playbook notes while preserving existing repository playbook memory', async () => {
+    await rooms.setPlaybook(roomId, 'daily', null);
+    const other = await rooms.insert({
+      id: crypto.randomUUID(),
+      title: 'Research',
+      repository: '',
+      baseCommit: '',
+      summary: '',
+      sourceThreadId: null,
+      projectFolder: null,
+      playbook: 'daily',
+      createdAt: Date.now(),
+    });
+    const first = (await rooms.get(roomId))!;
+    const second = (await rooms.get(other.id))!;
+    const notes = new RoomPlaybooksRepository(db);
+    await notes.remember('playbook:/daily', 'legacy', 'Unattributed legacy shared note.', 'lead');
+    await notes.remember(roomMemoryScopes(first)[1], 'preference', 'Private first-room playbook fact.', 'lead');
+    const firstBriefing = await assistant.briefing(first);
+    const secondBriefing = await assistant.briefing(second);
+    expect(firstBriefing).toContain('Private first-room playbook fact.');
+    expect(secondBriefing).not.toContain('Private first-room playbook fact.');
+    expect(firstBriefing).not.toContain('Unattributed legacy shared note.');
+    expect(secondBriefing).not.toContain('Unattributed legacy shared note.');
+
+    const repository = 'https://example.test/shared.git';
+    await notes.remember(`playbook:${repository}/daily`, 'shared', 'Existing repository playbook fact.', 'lead');
+    for (const found of [first, second]) {
+      const briefing = await assistant.briefing({ ...found, room: { ...found.room, repository } });
+      expect(briefing).toContain('Existing repository playbook fact.');
+      expect(briefing).not.toContain('Private first-room playbook fact.');
+    }
   });
 
   it('only runs opted-in commitments and durably enqueues a due occurrence once', async () => {
