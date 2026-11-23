@@ -7,6 +7,7 @@
 //   @napi-rs/keyring                one package per platform (`@napi-rs/keyring-<triple>-msvc` ...): the host's comes with the
 //                                   install; the others are downloaded from the registry into a cache and checked against pnpm-lock.yaml's integrity
 //   @appthreat/sqlite3             `prebuilds/<platform>-<arch>/@appthreat+sqlite3[.glibc].node` (ESM lib/ copied intact)
+//   sharp                         @img/sharp-<triple> plus @img/sharp-libvips-<triple> (libvips is inside the Windows package)
 //   node-pty                        `prebuilds/<platform>-<arch>/` inside the package's own tarball (darwin and win32; Linux has none)
 //   @earendil-works/pi-tui          `native/<platform>/prebuilds/<platform>-<arch>/` inside the package's own tarball
 //   @trycua/cua-driver              computer use (packages/pi-computer-use): one package per platform (`@trycua/cua-driver-<triple>`, the SDK
@@ -225,6 +226,28 @@ export async function provisionAppThreatPrebuild({ sqlite, triple, cacheDir, log
   return { module: name, file, source };
 }
 
+/** Select Sharp's locked platform addon and shared libraries without copying host binaries. */
+export async function provisionSharp({ modulesOut, triple, cacheDir, log = console.log }) {
+  const manifest = JSON.parse(readFileSync(join(modulesOut, 'sharp/package.json'), 'utf8'));
+  const names = [`@img/sharp-${triple}`];
+  if (TRIPLES[triple].platform !== 'win32') names.push(`@img/sharp-libvips-${triple}`);
+  const img = join(modulesOut, '@img');
+  for (const entry of existsSync(img) ? readdirSync(img) : [])
+    if (entry.startsWith('sharp-')) rmSync(join(img, entry), { recursive: true, force: true });
+  const rows = [];
+  for (const name of names) {
+    const version = manifest.optionalDependencies?.[name];
+    if (!version) throw new Error(`No sharp binary for ${triple}: ${name} is not a pinned optional dependency`);
+    const part = await packageDir(name, version, cacheDir, log);
+    const destination = join(modulesOut, name);
+    cpSync(part.dir, destination, { recursive: true });
+    const files = walk(destination, (file) => /\.(node|dll|dylib|so(?:\.\d+)*)$/.test(file));
+    if (!files.length) throw new Error(`No sharp binary for ${triple}: ${name}@${version} has no native files`);
+    for (const file of files) rows.push({ module: 'sharp', file: relative(modulesOut, file), source: part.source });
+  }
+  return rows;
+}
+
 /**
  * Selects one target's binaries from the Nx runtime assets and provisions its keyring binary.
  * @returns {{ module: string, file: string, source: string }[]} one row per native file, for the report
@@ -236,6 +259,8 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
     throw new Error(`No ${module} binary for ${triple}: ${why}`);
   };
   const prune = (path) => rmSync(join(modulesOut, path), { recursive: true, force: true });
+
+  rows.push(...(await provisionSharp({ modulesOut, triple, cacheDir, log })));
 
   // ---- @napi-rs/keyring: one optional package per platform
   const keyringManifest = JSON.parse(readFileSync(join(modulesOut, '@napi-rs', 'keyring', 'package.json'), 'utf8'));
@@ -371,7 +396,8 @@ export async function provisionNatives({ modulesOut, triple, cacheDir, log = con
   }
 
   // ---- @microsoft/mxc-sdk (Windows thread protection), loaded by SRT at run time, with its locked dependencies (node-pty is staged above).
-  for (const name of ['@microsoft/mxc-sdk', 'koffi', '@koromix', 'semver']) prune(name);
+  // semver is also required by Sharp on every platform.
+  for (const name of ['@microsoft/mxc-sdk', 'koffi', '@koromix']) prune(name);
   if (t.platform === 'win32') {
     const sdk = installedDir('@microsoft/mxc-sdk');
     if (!sdk)
@@ -525,6 +551,12 @@ function walk(dir, keep, out = []) {
 function expectedFiles(triple) {
   const t = TRIPLES[triple];
   const list = [
+    'sharp/dist/index.cjs',
+    'sharp/dist/index.mjs',
+    `@img/sharp-${triple}/package.json`,
+    '@img/colour/package.json',
+    'detect-libc/package.json',
+    'semver/package.json',
     `@napi-rs/keyring-${t.keyring}`,
     `@appthreat/sqlite3/${appThreatBinary(triple)}`,
     '@appthreat/sqlite3/lib/sqlite3.js',
@@ -535,6 +567,7 @@ function expectedFiles(triple) {
     `../assets/pi/native/${t.platform}/prebuilds/${triple}`,
     `../${RIPGREP_DIR}/${ripgrepName(t.platform)}`,
   ];
+  if (t.platform !== 'win32') list.push(`@img/sharp-libvips-${triple}/package.json`);
   if (t.platform === 'win32')
     list.push(
       `node-pty/prebuilds/${triple}/pty.node`,
@@ -579,7 +612,7 @@ export function verifyStaged({ backend, triple, electron, log = console.log }) {
   // Every native file in the tree has the target's CPU (a leftover of the host, or of another platform, shows up here).
   const natives = walk(
     backend,
-    (name) => /\.(node|dll|dylib|exe)$/.test(name) || ['spawn-helper', 'rg'].includes(name),
+    (name) => /\.(node|dll|dylib|exe|so(?:\.\d+)*)$/.test(name) || ['spawn-helper', 'rg'].includes(name),
   );
   for (const file of natives) {
     const header = readHeader(file);
@@ -619,6 +652,11 @@ export function loadInElectron({ backend, electron, log = console.log, label = '
     const { join } = require('node:path');
     const req = createRequire(process.env.BACKEND + '/main.js');
     const out = [];
+    const sharp = req('sharp');
+    const image = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#123456' } }).resize(4, 4).png().toBuffer();
+    const metadata = await sharp(image).metadata();
+    if (metadata.width !== 4 || metadata.height !== 4 || metadata.format !== 'png') throw new Error('sharp image resize failed');
+    out.push('sharp: native image resize and PNG decode ok');
     const { default: sqlite3 } = await import(pathToFileURL(req.resolve('@appthreat/sqlite3')).href);
     const asyncDb = await sqlite3.open(':memory:');
     try {

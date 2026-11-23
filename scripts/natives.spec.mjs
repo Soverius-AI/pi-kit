@@ -2,7 +2,81 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+
+test('Sharp stages all six target addons and libvips packages and resizes in isolation', async () => {
+  const { cpSync } = await import('node:fs');
+  // Nx uses tinyglobby to copy assets; use the same matcher to catch lost entry files.
+  const { globSync } = await import('tinyglobby');
+  const { execFileSync } = await import('node:child_process');
+  const { provisionSharp, TRIPLES, readHeader } = await import('./natives.mjs');
+  const root = mkdtempSync(join(tmpdir(), 'sharp-stage-'));
+  const project = JSON.parse(readFileSync(new URL('../apps/backend-runtime/project.json', import.meta.url), 'utf8'));
+  const assets = project.targets['bundle-natives'].options.assets;
+  try {
+    for (const [triple, target] of Object.entries(TRIPLES)) {
+      const modulesOut = join(root, triple, 'node_modules');
+      for (const name of ['sharp', '@img/colour', 'detect-libc', 'semver']) {
+        const asset = assets.find((entry) => entry.output === name);
+        assert.ok(asset, `${name} must be copied by the production build`);
+        const source = new URL(`../${asset.input}/`, import.meta.url);
+        for (const file of globSync(asset.glob, { cwd: fileURLToPath(source), onlyFiles: true })) {
+          const destination = join(modulesOut, asset.output, file);
+          mkdirSync(join(destination, '..'), { recursive: true });
+          cpSync(new URL(file, source), destination);
+        }
+      }
+      // A previous target must never leak into a new stage.
+      mkdirSync(join(modulesOut, '@img/sharp-linuxmusl-x64'), { recursive: true });
+      const rows = await provisionSharp({ modulesOut, triple, cacheDir: join(root, 'cache') });
+      assert.ok(
+        rows.some((row) => row.file.endsWith('.node')),
+        triple,
+      );
+      assert.deepEqual(
+        readdirSync(join(modulesOut, '@img'))
+          .filter((name) => name.startsWith('sharp-'))
+          .sort(),
+        [`sharp-${triple}`, ...(target.platform === 'win32' ? [] : [`sharp-libvips-${triple}`])].sort(),
+      );
+      for (const row of rows) {
+        const file = join(modulesOut, row.file);
+        const header = readHeader(file);
+        assert.equal(header.format, target.format, row.file);
+        assert.ok((header.machines ?? [header.machine]).includes(target.machine), row.file);
+      }
+      if (triple !== `${process.platform}-${process.arch}`) continue;
+      const script = join(root, triple, 'smoke.mjs');
+      writeFileSync(
+        script,
+        `
+        import assert from 'node:assert/strict';
+        import sharp from 'sharp';
+        import { createRequire } from 'node:module';
+        const require = createRequire(import.meta.url);
+        const png = await sharp({ create: { width: 8, height: 8, channels: 3, background: '#123456' } }).resize(4, 4).png().toBuffer();
+        const metadata = await require('sharp')(png).metadata();
+        assert.equal(metadata.width, 4);
+        assert.equal(metadata.height, 4);
+        assert.equal(metadata.format, 'png');
+        console.log('isolated ESM and CJS native image resize ok');
+      `,
+      );
+      assert.match(
+        execFileSync(process.execPath, [script], {
+          encoding: 'utf8',
+          timeout: 15000,
+          env: { ...process.env, NODE_PATH: '' },
+        }),
+        /isolated ESM and CJS native image resize ok/,
+      );
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 // Use the published package rather than mock bytes for the new runtime: this
 // catches package-type changes, missing worker entrypoints and loader closure.
 test('AppThreat package copy preserves ESM, selects all six targets, and runs asynchronously in isolation', async () => {

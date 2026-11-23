@@ -233,6 +233,26 @@
             "input": "node_modules/node-addon-api",
             "glob": "**/*",
             "output": "node-addon-api"
+          },
+          {
+            "input": "node_modules/sharp",
+            "glob": "{package.json,LICENSE,dist/**/*.{cjs,mjs,json}}",
+            "output": "sharp"
+          },
+          {
+            "input": "node_modules/@img/colour",
+            "glob": "{package.json,LICENSE*,*.cjs}",
+            "output": "@img/colour"
+          },
+          {
+            "input": "node_modules/detect-libc",
+            "glob": "{package.json,LICENSE,lib/*.js}",
+            "output": "detect-libc"
+          },
+          {
+            "input": "node_modules/semver",
+            "glob": "{package.json,LICENSE,*.js,**/*.js}",
+            "output": "semver"
           }
         ],
         "includeIgnoredAssetFiles": true
