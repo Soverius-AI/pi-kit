@@ -181,7 +181,7 @@ export const PlaybookListSchema = z.array(PlaybookSummarySchema).meta({ id: 'Pla
 
 export const PlaybooksQuerySchema = z
   .object({
-    repository: z.string().min(1).max(512),
+    repository: z.string().max(512),
     baseCommit: z
       .string()
       .regex(/^[0-9a-f]{40,64}$/)
@@ -190,7 +190,10 @@ export const PlaybooksQuerySchema = z
     /** Read from this open room's project folder instead. */
     roomId: z.uuid().optional(),
   })
-  .strict();
+  .strict()
+  .refine((query) => !!query.roomId || !!query.threadId || !!query.repository, {
+    message: 'Choose a room, thread or repository.',
+  });
 
 export const RoomActionSchema = z
   .object({

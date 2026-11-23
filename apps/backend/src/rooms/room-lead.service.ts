@@ -1,4 +1,13 @@
-import { ConflictException, Injectable, Logger, NotFoundException, type OnModuleInit, Optional } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  type OnModuleInit,
+  type OnApplicationShutdown,
+  Optional,
+} from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import type {
   PlaybookSummary,
   PostRoomMessage,
@@ -36,9 +45,21 @@ export interface LeadPlaybooks {
 }
 
 @Injectable()
-export class RoomLeadService implements OnModuleInit {
+export class RoomLeadService implements OnModuleInit, OnApplicationShutdown {
   static readonly AGENT_TURN_LIMIT = 12;
-  private readonly inbox = new Map<string, { text: string; cause: RunCause }[]>();
+  private readonly draining = new Set<string>();
+  private readonly activeWake = new Map<string, string>();
+  private timer: ReturnType<typeof setInterval> | undefined;
+  private stopping = false;
+  private readonly turns = new Map<string, Promise<void>>();
+  private assistant:
+    | {
+        briefing(found: FoundRoom): Promise<string>;
+        prepare(found: FoundRoom, threadId: string): Promise<string>;
+        canWake(found: FoundRoom): Promise<boolean>;
+        enabled(): Promise<boolean>;
+      }
+    | undefined;
   private readonly briefed = new Set<string>();
   /** Rooms whose playbook changed since the lead's last turn: the next prompt carries the new briefing. */
   private readonly rebrief = new Set<string>();
@@ -66,6 +87,7 @@ export class RoomLeadService implements OnModuleInit {
   }
 
   async onModuleInit(): Promise<void> {
+    if (this.timer) clearInterval(this.timer);
     this.sessions.setReadOnlyThreads(async (threadId) =>
       (await this.rooms.isLead(threadId))
         ? 'ask-owner'
@@ -74,6 +96,11 @@ export class RoomLeadService implements OnModuleInit {
           : undefined,
     );
     await this.rooms.clearLeadQuestions();
+    await this.rooms.recoverWakes();
+    this.timer = setInterval(() => {
+      void this.resumePending().catch(() => undefined);
+    }, 1000);
+    this.timer.unref();
   }
 
   async detail(roomId: string): Promise<RoomDetail> {
@@ -102,21 +129,39 @@ export class RoomLeadService implements OnModuleInit {
     return this.states.get(roomId) ?? 'idle';
   }
 
-  async post(roomId: string, message: PostRoomMessage): Promise<RoomEvent> {
-    const found = await this.rooms.get(roomId);
-    if (!found) throw new NotFoundException(NO_ROOM);
+  setAssistant(assistant: NonNullable<RoomLeadService['assistant']>): void {
+    this.assistant = assistant;
+  }
+  async proactive(roomId: string): Promise<boolean> {
+    return this.assistant ? this.assistant.canWake(await this.found(roomId)) : true;
+  }
+  async onApplicationShutdown(): Promise<void> {
+    this.stopping = true;
+    if (this.timer) clearInterval(this.timer);
+    for (const roomId of this.turns.keys()) this.questions.cancel(this.key(roomId));
+    await Promise.allSettled(
+      [...this.turns.keys()].map(async (roomId) => {
+        const found = await this.rooms.get(roomId);
+        if (found?.leadThreadId) await this.sessions.abort(found.leadThreadId);
+      }),
+    );
+    await Promise.allSettled([...this.turns.values()]);
+  }
+  pending(roomId: string): Promise<number> {
+    return this.rooms.pendingWakes(roomId);
+  }
+  async resumePending(): Promise<void> {
+    for (const id of await this.rooms.queuedRooms()) await this.drain(id);
+  }
+  async post(roomId: string, message: PostRoomMessage, sourceKey: string = randomUUID()): Promise<RoomEvent> {
+    const found = await this.found(roomId);
     if (message.route === 'lead' && found.leadQuestions.length) throw new ConflictException(LEAD_WAITS);
-    if (message.route === 'lead' && this.state(roomId) === 'working') throw new ConflictException(LEAD_BUSY);
-    const event = await this.bus.record(roomId, {
-      kind: 'message',
-      actor: 'owner',
-      text: message.text,
-      images: message.images?.length ?? 0,
-    });
-    if (message.route === 'lead') {
-      await this.rooms.setAgentTurns(roomId, 0);
-      this.prompt(roomId, message.text, message.images ?? [], { kind: 'owner', title: message.text });
-    }
+    if (message.route !== 'lead')
+      return this.bus.record(roomId, { kind: 'message', actor: 'owner', text: message.text });
+    const { event, fresh } = await this.rooms.acceptMessage(roomId, message, sourceKey);
+    if (fresh) this.bus.emit(roomId, { type: 'event', event });
+    await this.rooms.setAgentTurns(roomId, 0);
+    await this.drain(roomId);
     return event;
   }
 
@@ -211,9 +256,10 @@ export class RoomLeadService implements OnModuleInit {
   async archive(roomId: string, now = Date.now()): Promise<void> {
     const found = await this.rooms.get(roomId);
     if (!found) throw new NotFoundException(NO_ROOM);
+    this.questions.cancel(this.key(roomId));
     if (found.leadThreadId && this.state(roomId) === 'working')
       await this.sessions.abort(found.leadThreadId).catch(() => undefined);
-    this.inbox.delete(roomId);
+
     await this.rooms.archive(roomId, now);
   }
 
@@ -221,35 +267,44 @@ export class RoomLeadService implements OnModuleInit {
     this.rebrief.add(roomId);
   }
 
-  async nudge(roomId: string, text: string, cause: RunCause = { kind: 'agent', title: text }): Promise<void> {
-    const queue = this.inbox.get(roomId) ?? [];
-    queue.push({ text, cause });
-    this.inbox.set(roomId, queue);
+  async nudge(
+    roomId: string,
+    text: string,
+    cause: RunCause = { kind: 'agent', title: text },
+    sourceKey?: string,
+  ): Promise<void> {
+    await this.found(roomId);
+    await this.rooms.enqueueWake(roomId, text, cause, sourceKey);
     await this.drain(roomId);
   }
 
-  pending(roomId: string): number {
-    return this.inbox.get(roomId)?.length ?? 0;
-  }
-
   private async drain(roomId: string): Promise<void> {
-    if (this.state(roomId) === 'working' || !this.inbox.get(roomId)?.length) return;
-    const found = await this.rooms.get(roomId);
-    if (!found || found.paused || this.state(roomId) === 'working') return;
-    if (found.agentTurns >= RoomLeadService.AGENT_TURN_LIMIT) {
-      await this.rooms.setPaused(roomId, true);
-      await this.bus.record(roomId, {
-        kind: 'note',
-        actor: 'coordinator',
-        text: `Paused: the agents woke the lead ${found.agentTurns} times in a row without you. Read the room and resume when it should go on.`,
-      });
-      this.bus.emit(roomId, { type: 'room', mode: found.mode, paused: true });
-      return;
+    if (this.stopping || this.state(roomId) === 'working' || this.draining.has(roomId)) return;
+    this.draining.add(roomId);
+    try {
+      const found = await this.rooms.get(roomId);
+      if (!found || found.paused || found.leadQuestions.length || this.state(roomId) === 'working') return;
+      if (this.assistant && !(await this.assistant.enabled())) return;
+      const next = await this.rooms.nextWake(roomId);
+      if (!next) return;
+      if (['schedule', 'poll'].includes(next.cause.kind) && !(await this.proactive(roomId))) return;
+      if (next.cause.kind === 'agent' && found.agentTurns >= RoomLeadService.AGENT_TURN_LIMIT) {
+        await this.rooms.setPaused(roomId, true);
+        await this.bus.record(roomId, {
+          kind: 'note',
+          actor: 'coordinator',
+          text: 'Paused after twelve agent turns. Review the room and resume to continue.',
+        });
+        this.bus.emit(roomId, { type: 'room', mode: found.mode, paused: true });
+        return;
+      }
+      if (!(await this.rooms.claimWake(next.id))) return;
+      await this.rooms.setAgentTurns(roomId, next.cause.kind === 'agent' ? found.agentTurns + 1 : 0);
+      this.activeWake.set(roomId, next.id);
+      this.prompt(roomId, next.text, next.images, next.cause);
+    } finally {
+      this.draining.delete(roomId);
     }
-    const next = this.inbox.get(roomId)?.shift();
-    if (!next) return;
-    await this.rooms.setAgentTurns(roomId, found.agentTurns + 1);
-    this.prompt(roomId, next.text, [], next.cause);
   }
 
   prompt(
@@ -260,7 +315,13 @@ export class RoomLeadService implements OnModuleInit {
   ): boolean {
     if (this.state(roomId) === 'working') return false;
     this.setState(roomId, 'working');
-    void this.answer(roomId, text, images, cause);
+    const turn = this.answer(roomId, text, images, cause);
+    this.turns.set(roomId, turn);
+    void turn
+      .finally(() => {
+        if (this.turns.get(roomId) === turn) this.turns.delete(roomId);
+      })
+      .catch(() => undefined);
     return true;
   }
 
@@ -282,19 +343,26 @@ export class RoomLeadService implements OnModuleInit {
     const found = await this.rooms.get(roomId);
     if (!found) throw new NotFoundException(NO_ROOM);
     if (found.leadThreadId) return found.leadThreadId;
-    return await this.createLead(roomId, found.room.title, await this.agents.projectFolder(found));
+    return await this.createLead(
+      roomId,
+      found.room.title,
+      this.files.workspace(roomId) ?? (await this.agents.projectFolder(found)),
+    );
   }
 
   private async answer(roomId: string, text: string, images: readonly RoomImage[], cause: RunCause): Promise<void> {
     let outcome: { state: 'done' | 'failed' | 'stopped'; summary: string | null } = { state: 'failed', summary: null };
     let runId: string | undefined;
+    let resultSeq: number | undefined;
+    const wakeId = this.activeWake.get(roomId);
+    let requeued = false;
     const speaking = this.live.turn({ roomId, actor: 'lead' });
     try {
       const found = await this.rooms.get(roomId);
       if (!found) return;
       runId = await this.runs?.start(roomId, cause, found);
-      const cwd = await this.agents.projectFolder(found);
       const leadId = found.leadThreadId ?? (await this.prepare(roomId));
+      const cwd = this.assistant ? await this.assistant.prepare(found, leadId) : await this.agents.projectFolder(found);
       const first =
         !this.briefed.has(roomId) && !(await this.rooms.events(roomId)).some((event) => event.actor === 'lead');
       this.briefed.add(roomId);
@@ -317,7 +385,25 @@ export class RoomLeadService implements OnModuleInit {
               text,
             ].join('\n\n')
           : text;
-      let run = await this.agui.runHeadless(leadId, prompt, { cwd, images, observe: speaking.observe });
+      const assistantContext = await this.assistant?.briefing(found);
+      const current = await this.rooms.get(roomId);
+      if (!current || current.paused) {
+        if (current?.paused && wakeId) {
+          await this.rooms.requeueWake(wakeId);
+          requeued = true;
+        }
+        outcome = { state: 'stopped', summary: 'The room was paused or archived before its turn started.' };
+        return;
+      }
+      if (wakeId && !(await this.rooms.wakeCurrent(wakeId))) {
+        outcome = { state: 'done', summary: 'The commitment changed before its turn started.' };
+        return;
+      }
+      let run = await this.agui.runHeadless(leadId, [assistantContext, prompt].filter(Boolean).join('\n\n'), {
+        cwd,
+        images,
+        observe: speaking.observe,
+      });
       while (run.status === 'interrupted') {
         const questions = RoomQuestions.fromDialogs(this.sessions.pendingDialogs(leadId));
         if (questions.length === 0) break;
@@ -326,7 +412,6 @@ export class RoomLeadService implements OnModuleInit {
           await this.sessions.abort(leadId).catch(() => undefined);
           await this.bus.record(roomId, { kind: 'note', actor: 'coordinator', text: 'The lead’s turn was stopped.' });
           outcome = { state: 'stopped', summary: null };
-          this.setState(roomId, 'idle');
           return;
         }
         run = await this.agui.resumeHeadless(leadId, RoomQuestions.toResume(answers), {
@@ -342,7 +427,6 @@ export class RoomLeadService implements OnModuleInit {
           text: 'The lead stopped at a question nobody could answer. Its turn was cancelled.',
         });
         outcome = { state: 'stopped', summary: null };
-        this.setState(roomId, 'idle');
         return;
       }
       if (run.status !== 'finished') {
@@ -355,21 +439,20 @@ export class RoomLeadService implements OnModuleInit {
               : `The lead could not answer: ${run.error ?? 'pi reported an error.'}`,
         });
         outcome = { state: run.status === 'aborted' ? 'stopped' : 'failed', summary: run.error ?? null };
-        this.setState(roomId, run.status === 'aborted' ? 'idle' : 'error');
         return;
       }
       speaking.end();
       for (const app of await this.agents.apps(leadId))
         await this.bus.record(roomId, { kind: 'app', actor: 'lead', text: app.tool ?? app.serverId, app });
       const reply = await this.agents.lastReply(leadId);
-      await this.bus.record(
+      const result = await this.bus.record(
         roomId,
         reply
-          ? { kind: 'message', actor: 'lead', text: reply }
+          ? { kind: 'message', actor: 'lead', text: reply, workId: wakeId }
           : { kind: 'note', actor: 'coordinator', text: 'The lead finished without a written answer.' },
       );
+      resultSeq = result.seq;
       outcome = { state: 'done', summary: reply ?? null };
-      this.setState(roomId, 'idle');
     } catch (error) {
       outcome = { state: 'failed', summary: error instanceof Error ? error.message : String(error) };
       this.logger.warn(`The lead of room ${roomId} failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -380,13 +463,19 @@ export class RoomLeadService implements OnModuleInit {
           text: `The lead could not answer: ${error instanceof Error ? error.message : String(error)}`,
         })
         .catch(() => undefined);
-      this.setState(roomId, 'error');
     } finally {
+      if (this.activeWake.get(roomId) === wakeId) this.activeWake.delete(roomId);
+      if (wakeId && !requeued)
+        await this.rooms
+          .finishWake(wakeId, outcome.state === 'done' ? 'done' : 'failed', resultSeq)
+          .catch(() => undefined);
       speaking.end();
       if (runId) {
         const stage = (await this.rooms.get(roomId).catch(() => undefined))?.stage ?? null;
         await this.runs?.end(roomId, runId, outcome.state, outcome.summary, stage).catch(() => undefined);
       }
+      this.setState(roomId, outcome.state === 'failed' ? 'error' : 'idle');
+      void this.drain(roomId).catch(() => undefined);
     }
   }
 
@@ -420,6 +509,7 @@ export class RoomLeadService implements OnModuleInit {
 
   private async createLead(roomId: string, title: string, cwd: string): Promise<string> {
     const detail = await this.threads.create(cwd, `Room lead: ${title}`.slice(0, 200), undefined, undefined, {
+      internal: true,
       onId: async (threadId) => await this.rooms.setLead(roomId, threadId),
     });
     const unavailable = await this.agents.sandbox(detail.id);
@@ -447,17 +537,19 @@ export class RoomLeadService implements OnModuleInit {
     composio?: string,
   ): string {
     return [
-      `You are the lead of the pi-kit room “${title}” for the repository ${repository}.`,
+      repository
+        ? `You are the lead of the pi-kit room “${title}” for the repository ${repository}.`
+        : `You are the personal assistant in the pi-kit room “${title}”. This room needs no Git repository or source thread.`,
       'The owner talks to you here. Answer them and work out how the goal splits into tasks.',
-      'When a piece of work is ready to hand off, call room_propose_task with a title, a brief and acceptance criteria. The owner approves each task before a worker runs it in its own worktree; you are told when its result arrives.',
-      'You are read-only: do not try to edit files or run commands that change anything.',
-      'To write or change a room playbook, read room_playbook_guide, then send both whole files with room_playbook_propose; the owner applies them.',
+      repository
+        ? 'When a piece of work is ready to hand off, call room_propose_task with a title, a brief and acceptance criteria. The owner approves each task before a worker runs it in its own worktree; you are told when its result arrives.'
+        : 'Help the owner with their goal, preferences and commitments using room_assistant. This room has no coding workers and needs no repository or source thread.',
+      'Host reference files are read-only: do not edit them or run commands that change them. You may save generated reports and other room-owned files with room_assistant action="output"; it writes only to this room’s outputs folder.',
+      'Playbooks are optional. To write or change one, read room_playbook_guide, then send both whole files with room_playbook_propose; the owner applies them.',
       'You can use the owner’s connected apps: find their MCP tools with tool_search. Tools that only read run at once; one that may change something (signing an app in, running an action) first asks the owner. A tool with an MCP App shows that app to the owner in the room.',
       composio ?? '',
       briefing ?? '',
-      summary
-        ? `The owner shared this summary from the thread the room started from:\n\n${summary}`
-        : 'The owner shared no summary yet.',
+      summary ? `The owner shared this purpose and context:\n\n${summary}` : 'The owner shared no summary yet.',
       `The owner says:\n\n${text}`,
     ]
       .filter(Boolean)
@@ -468,6 +560,5 @@ export class RoomLeadService implements OnModuleInit {
     if (state === 'idle') this.states.delete(roomId);
     else this.states.set(roomId, state);
     this.bus.emit(roomId, { type: 'lead', state });
-    if (state !== 'working') void this.drain(roomId).catch(() => undefined);
   }
 }

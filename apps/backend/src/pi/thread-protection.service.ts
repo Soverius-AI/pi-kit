@@ -70,6 +70,10 @@ export class ThreadProtectionService implements OnModuleDestroy {
   private readonly changing = new Set<string>();
   private readonly admittedBindings = new Map<string, ProtectionBinding>();
   private agentGuard: ((threadId: string) => boolean | Promise<boolean>) | undefined;
+  private roomRoots: ((threadId: string) => Promise<{ readOnlyRoots: string[]; immutablePaths: string[] }>) | undefined;
+  setRoomRoots(resolve: NonNullable<ThreadProtectionService['roomRoots']>): void {
+    this.roomRoots = resolve;
+  }
 
   constructor(
     private readonly store: ThreadProtectionRepository,
@@ -121,6 +125,7 @@ export class ThreadProtectionService implements OnModuleDestroy {
   /** Before every sandboxed tool call. */
   async assertCurrent(threadId: string, generation: number): Promise<void> {
     await this.assertGeneration(threadId, generation);
+    await this.roomRoots?.(threadId);
     const owner = this.owners.get(`thread:${threadId}`);
     if (owner?.client?.state !== 'active')
       throw new ConflictException(owner?.error ?? owner?.client?.reason ?? 'The sandbox is unavailable.');
@@ -164,7 +169,8 @@ export class ThreadProtectionService implements OnModuleDestroy {
       const failed = this.failedCleanup.get(ownerId);
       if (failed) throw new ConflictException(failed);
     }
-    const key = JSON.stringify([resolve(cwd), binding.generation, binding.experimentalWindowsAccepted]);
+    const grants = await this.roomRoots?.(ownerId.replace(/^thread:/, ''));
+    const key = JSON.stringify([resolve(cwd), binding.generation, binding.experimentalWindowsAccepted, grants]);
     const existing = this.owners.get(ownerId);
     if (existing && (existing.error === undefined || this.failedCleanup.has(ownerId))) {
       if (existing.key !== key) throw new Error('The sandbox owner changed without stopping first.');
@@ -286,6 +292,7 @@ export class ThreadProtectionService implements OnModuleDestroy {
         cwd,
         experimentalWindowsAccepted: binding.experimentalWindowsAccepted,
         protectedPaths: [resolve(this.config.dataDir)],
+        ...(await this.roomRoots?.(ownerId.replace(/^thread:/, ''))),
       });
       started(client);
       if (client.state !== 'active') throw new Error(client.reason ?? 'The sandbox did not start.');

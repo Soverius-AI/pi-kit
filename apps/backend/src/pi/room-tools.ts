@@ -4,8 +4,10 @@ import type { ExtensionAPI, ExtensionFactory, ToolDefinition } from '@earendil-w
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { RoomAssistantCommandSchema, type RoomAssistantCommand } from '@pi-kit/protocol';
 
 export interface RoomToolsHook {
+  assistant?(threadId: string, input: RoomAssistantCommand): Promise<string>;
   propose(threadId: string, task: { title: string; brief: string; acceptance: string }): Promise<string>;
   answer(threadId: string, input: { taskId: string; answer: string }): Promise<string>;
   escalate(threadId: string, input: { taskId: string; reason: string }): Promise<string>;
@@ -38,6 +40,7 @@ export class RoomTools {
   static readonly CONSULT = 'room_consult';
   static readonly DISCUSS = 'room_discuss';
   static readonly NOTE = 'room_note';
+  static readonly ASSISTANT = 'room_assistant';
   static readonly ADVANCE = 'room_advance';
   static readonly GUIDE = 'room_playbook_guide';
   static readonly PROPOSE_PLAYBOOK = 'room_playbook_propose';
@@ -51,6 +54,7 @@ export class RoomTools {
     RoomTools.CONSULT,
     RoomTools.DISCUSS,
     RoomTools.NOTE,
+    RoomTools.ASSISTANT,
     RoomTools.ADVANCE,
     RoomTools.GUIDE,
     RoomTools.PROPOSE_PLAYBOOK,
@@ -216,6 +220,19 @@ export class RoomTools {
       },
     });
     return (api: ExtensionAPI) => {
+      api.registerTool(
+        tool(
+          RoomTools.ASSISTANT,
+          'Manage the room assistant',
+          'Read assistant status; remember/forget facts; create a requested commitment (dueAt is Unix milliseconds, timezone is IANA, optional dailyAt HH:mm); complete/cancel/snooze by commitment id; search approved linked folders with query; or write a generated output with a simple filename path and text. Never changes filesystem grants or enables proactive work. Check status before changing an existing commitment.',
+          RoomAssistantCommandSchema,
+          async (input) => {
+            const assistant = hook().assistant;
+            if (!assistant) throw new Error('The assistant service is unavailable.');
+            return assistant(threadId, input);
+          },
+        ),
+      );
       api.on('tool_result', (event) => {
         const result = event.structuredContent;
         if (!('toolName' in event) || !event.toolName.startsWith('mcp__') || !result || typeof result !== 'object')

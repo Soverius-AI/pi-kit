@@ -117,7 +117,13 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
 
   async briefing(found: FoundRoom): Promise<string | undefined> {
     const playbook = await this.of(found);
-    if (!playbook) return undefined;
+    if (!playbook) {
+      const memory = await this.store.memory(this.scopes(found));
+      return [
+        'Use room_note to remember or correct room facts. Empty text forgets a note.',
+        ...memory.map((entry) => `- ${entry.key}: ${entry.text}`),
+      ].join('\n');
+    }
     const { config } = playbook;
     const memory = await this.store.memory(this.scopes(found));
     const line = (name: string, what: string, description: string) => {
@@ -250,7 +256,10 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
   }
 
   async note(threadId: string, input: { key: string; text: string; scope: 'room' | 'playbook' }): Promise<string> {
-    const { found } = await this.leadRoom(threadId);
+    const roomId = await this.rooms.roomOfLead(threadId);
+    const found = roomId ? await this.rooms.get(roomId) : undefined;
+    if (!found) throw new Error('This session is not the lead of a room.');
+    if (input.scope === 'playbook' && !found.playbook) throw new Error('Choose room scope: this room has no playbook.');
     const [room, playbook] = this.scopes(found);
     const scope = (input.scope === 'playbook' ? playbook : room) as string;
     if (input.text.trim()) await this.store.remember(scope, input.key, input.text, 'lead');
@@ -365,7 +374,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     await this.store.decide(roomId, action.id, state, result);
     await this.runs?.settleAction(roomId, action.id, state, result);
     await this.bus.record(roomId, { kind: 'note', actor: 'coordinator', text: note });
-    void this.lead.nudge(roomId, nudge, { kind: 'approval', title: note });
+    await this.lead.nudge(roomId, nudge, { kind: 'approval', title: note });
     return await this.publish(roomId, action.id);
   }
 
@@ -387,22 +396,33 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
   private async fire(roomId: string, now: number): Promise<void> {
     const found = await this.rooms.get(roomId);
     if (!found || found.paused) return;
+    if (this.lead.proactive && !(await this.lead.proactive(roomId))) return;
     const playbook = await this.of(found).catch(() => undefined);
     if (!playbook) return;
     const runs = await this.store.lastRuns(roomId);
     for (const schedule of playbook.config.on.schedule) {
-      const stamp = schedule.cron ? Math.floor(now / 60_000) * 60_000 : now;
+      const interval = RoomSchedule.duration(schedule.every ?? '1h');
+      const stamp = schedule.cron ? Math.floor(now / 60_000) * 60_000 : Math.floor(now / interval) * interval;
       const due = schedule.cron
         ? RoomSchedule.matches(schedule.cron, new Date(now)) && runs.get(schedule.id) !== stamp
         : now - (runs.get(schedule.id) ?? 0) >= RoomSchedule.duration(schedule.every ?? '1h');
       if (!due) continue;
-      await this.store.setLastRun(roomId, schedule.id, stamp);
-      await this.rooms.setAgentTurns(roomId, 0);
-      void this.lead.nudge(roomId, RoomPlaybookService.wake(schedule), {
-        kind: 'schedule',
-        trigger: schedule.id,
-        title: schedule.say || schedule.id,
+
+      await this.rooms.inTransaction(async () => {
+        await this.rooms.enqueueWake(
+          roomId,
+          RoomPlaybookService.wake(schedule),
+          {
+            kind: 'schedule',
+            trigger: schedule.id,
+            title: schedule.say || schedule.id,
+          },
+          `schedule:${schedule.id}:${stamp}`,
+        );
+        await this.store.setLastRun(roomId, schedule.id, stamp);
       });
+      await this.rooms.setAgentTurns(roomId, 0);
+      await this.lead.resumePending();
     }
     for (const trigger of playbook.config.on.poll) {
       if (now - (runs.get(trigger.id) ?? 0) < RoomSchedule.duration(trigger.every)) continue;
@@ -434,8 +454,8 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         text: `You ran the schedule ${schedule.id} now.`,
       });
       await this.rooms.setAgentTurns(roomId, 0);
-      void this.lead.nudge(roomId, text, {
-        kind: 'schedule',
+      await this.lead.nudge(roomId, text, {
+        kind: 'owner',
         trigger: schedule.id,
         title: schedule.say || schedule.id,
       });
@@ -445,7 +465,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     if (!trigger) throw new NotFoundException(`The playbook has no trigger ${triggerId}.`);
     if (!dry) await this.store.setLastRun(roomId, trigger.id, now);
     try {
-      return await this.poll(found, playbook, trigger, now, dry);
+      return await this.poll(found, playbook, trigger, now, dry, true);
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : String(error));
     }
@@ -457,6 +477,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     trigger: PlaybookPoll,
     now: number,
     dry: boolean,
+    ownerRequested = false,
   ): Promise<PlaybookFireResult> {
     const roomId = found.room.id;
     const call = this.tools.prepare(playbook, trigger.tool, trigger.with, this.context(found));
@@ -469,39 +490,35 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
       throw new Error(`${trigger.tool} did not print JSON.`);
     }
     const keys = items.map((item) => item.key);
-    const fresh = new Set(
-      dry
-        ? await this.store.peekUnseen(roomId, trigger.id, keys)
-        : await this.store.unseen(roomId, trigger.id, keys, now),
-    );
+    const fresh = new Set(await this.store.peekUnseen(roomId, trigger.id, keys));
     const listed = items.slice(0, 50).map((item) => ({ key: item.key, fresh: fresh.has(item.key) }));
-    const news = items.filter((item) => fresh.has(item.key)).slice(0, 5);
+    const news = items.filter((item) => fresh.has(item.key));
     if (!news.length) return { text: `Nothing new among ${items.length}; the lead is not woken.`, items: listed };
-    if (dry)
-      return {
-        text: `${fresh.size} new among ${items.length}; the lead would be woken with ${news.length}.`,
-        items: listed,
-      };
+    if (dry) return { text: `${news.length} new among ${items.length}; the lead would be woken.`, items: listed };
+    await this.rooms.inTransaction(async () => {
+      const accepted = new Set(await this.store.unseen(roomId, trigger.id, keys, now));
+      const pending = items.filter((item) => accepted.has(item.key));
+      for (let at = 0; at < pending.length; at += 5) {
+        const batch = pending.slice(at, at + 5);
+        await this.rooms.enqueueWake(
+          roomId,
+          `Trigger ${trigger.id}: ${trigger.say}\n${JSON.stringify(batch.map((item) => item.item))}`,
+          {
+            kind: ownerRequested ? 'owner' : 'poll',
+            trigger: trigger.id,
+            title: `${batch.length} new: ${batch.map((item) => item.key).join(', ')}`,
+          },
+        );
+      }
+    });
+    await this.rooms.setAgentTurns(roomId, 0);
     await this.bus.record(roomId, {
       kind: 'note',
       actor: 'coordinator',
-      text: `Trigger ${trigger.id} found ${news.length} new: ${news.map((item) => item.key).join(', ')}.`,
+      text: `Trigger ${trigger.id} queued ${news.length} new items.`,
     });
-    await this.rooms.setAgentTurns(roomId, 0);
-    void this.lead.nudge(
-      roomId,
-      `Trigger ${trigger.id} found ${news.length} new item${news.length === 1 ? '' : 's'}. ${trigger.say}\n\n${JSON.stringify(
-        news.map((item) => item.item),
-        null,
-        2,
-      ).slice(0, 8000)}`,
-      {
-        kind: 'poll',
-        trigger: trigger.id,
-        title: `${news.length} new: ${news.map((item) => item.key).join(', ')}`,
-      },
-    );
-    return { text: `Found ${news.length} new; woke the lead.`, items: listed };
+    await this.lead.resumePending();
+    return { text: `Found ${news.length} new; queued every item for the lead.`, items: listed };
   }
 
   private async ask(found: FoundRoom, playbook: Playbook, role: string, question: string): Promise<string> {
@@ -652,7 +669,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     });
     this.bus.emit(found.room.id, { type: 'room', mode: found.mode, paused: found.paused, stage });
     if (actor === 'coordinator')
-      void this.lead.nudge(found.room.id, `The owner moved the room to the stage “${stage}”. Go on with it.`, {
+      await this.lead.nudge(found.room.id, `The owner moved the room to the stage “${stage}”. Go on with it.`, {
         kind: 'stage',
         title: stage,
       });

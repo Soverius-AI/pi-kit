@@ -60,6 +60,16 @@ afterEach(async () => {
 });
 
 describe('rooms', () => {
+  it('creates a room from its purpose without any thread, folder or Git repository', async () => {
+    const room = await service.create({ title: 'Personal assistant', summary: 'Remember my preferences.' });
+    expect(room).toMatchObject({ title: 'Personal assistant', repository: '', baseCommit: '' });
+    expect(await new RoomsRepository(db).get(room.id)).toMatchObject({
+      sourceThreadId: null,
+      projectFolder: null,
+      summary: 'Remember my preferences.',
+    });
+  });
+
   it('previews a room from a thread: origin as the repository, the branch, HEAD and uncommitted files', async () => {
     git('remote', 'add', 'origin', 'git@github.com:acme/pi-kit.git');
     writeFileSync(join(project, 'b.txt'), 'b\n');
@@ -78,12 +88,19 @@ describe('rooms', () => {
     expect((await service.preview('t1')).repository).toBe('github.com/acme/pi-kit');
   });
 
-  it('refuses an unknown thread and a folder that is not a repository with commits', async () => {
+  it('refuses an unknown thread and previews a personal room from a non-Git thread', async () => {
     await expect(service.preview('missing')).rejects.toBeInstanceOf(NotFoundException);
     const plain = join(base, 'plain');
     mkdirSync(plain);
     await thread('t2', plain);
-    await expect(service.preview('t2')).rejects.toBeInstanceOf(ConflictException);
+    expect(await service.preview('t2')).toMatchObject({
+      repository: '',
+      baseCommit: '',
+      branch: null,
+      uncommittedFiles: 0,
+    });
+    const personal = await service.create({ threadId: 't2', title: 'Personal', summary: 'My notes' });
+    expect(personal).toMatchObject({ repository: '', baseCommit: '' });
   });
 
   it('creates rooms from threads with the base read here, newest first', async () => {
@@ -112,16 +129,20 @@ describe('rooms', () => {
     await expect(service.create({ ...offer, baseCommit: 'f'.repeat(40) })).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('creates a room from a folder alone, which becomes a project, and refuses a folder that is no repository', async () => {
+  it('creates a project room from a repository folder and a personal room from a plain folder', async () => {
     const other = join(base, 'other');
     execFileSync('git', ['clone', '-q', project, other]);
     const room = await service.create({ title: 'From a server', summary: '', projectFolder: join(other, '.') });
     expect(room).toMatchObject({ repository: project, baseCommit: git('rev-parse', 'HEAD') });
     expect((await new RoomsRepository(db).get(room.id))?.projectFolder).toBe(other);
     expect((await meta.listWorkspaces()).map((workspace) => workspace.cwd)).toContain(other);
-    await expect(service.create({ title: 'Nowhere', summary: '', projectFolder: base })).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    expect(await service.create({ title: 'Personal folder', summary: '', projectFolder: base })).toMatchObject({
+      repository: '',
+      baseCommit: '',
+    });
+    await expect(
+      service.create({ title: 'Missing', summary: '', projectFolder: join(base, 'missing') }),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('asks which folder when several clones match, skips worktrees, and lists clean clones first', async () => {

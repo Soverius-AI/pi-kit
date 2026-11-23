@@ -54,6 +54,7 @@ import {
 } from '@pi-kit/threads/data';
 import { FocusSelect } from '@pi-kit/threads/ui';
 import { StartRoomDialog } from './start-room-dialog';
+import { NewRoomDialog } from './new-room-dialog';
 import {
   type AnswerChip,
   type CollapsedTag,
@@ -126,6 +127,7 @@ type ScrollTarget = { needs: true } | { project: string } | { thread: string };
     PkTip,
     PkViewportMenu,
     StartRoomDialog,
+    NewRoomDialog,
     TranslocoPipe,
     PkIcon,
   ],
@@ -742,6 +744,7 @@ export class ThreadSidebar {
   }
 
   protected readonly startingRoom = signal<ThreadSummary | undefined>(undefined);
+  protected readonly creatingRoom = signal(false);
 
   protected startRoom(event: Event, thread: ThreadSummary | undefined): void {
     closeMenu(event);
@@ -756,6 +759,7 @@ export class ThreadSidebar {
   }
 
   protected roomCreated(room: Room): void {
+    this.creatingRoom.set(false);
     this.startingRoom.set(undefined);
     this.openRoomView(room);
     this.toasts.show('info', this.i18n.t('threads.startRoom.createdN', { value1: room.title }));

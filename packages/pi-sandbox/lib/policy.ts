@@ -53,6 +53,20 @@ export class SandboxPolicy {
         'WINDOWS_EXPERIMENTAL_REQUIRED',
       );
     const protectedPaths = options.protectedPaths;
+    for (const key of ['readOnlyRoots', 'immutablePaths']) {
+      const roots = options[key];
+      if (
+        roots !== undefined &&
+        (!Array.isArray(roots) ||
+          roots.length > 64 ||
+          !roots.every((p) => SandboxPolicy.isLiteralPath(p)) ||
+          roots.reduce((bytes: number, p: string) => bytes + Buffer.byteLength(p), 0) > 65536)
+      )
+        throw new SandboxError(`${key} must contain at most 64 absolute literal paths`, 'INVALID_ARGUMENT');
+    }
+    for (const root of (options.readOnlyRoots ?? []) as string[]) SandboxPolicy.assertWorkspace(root);
+    if (process.platform === 'win32' && (options.readOnlyRoots as string[] | undefined)?.length)
+      throw new SandboxError('Read-only linked folders require macOS or Linux sandbox support.', 'INVALID_ARGUMENT');
     if (
       protectedPaths !== undefined &&
       (!Array.isArray(protectedPaths) ||
@@ -180,7 +194,12 @@ export class SandboxPolicy {
   }
 
   static compile(
-    { cwd, protectedPaths = [] }: Pick<SandboxOptions, 'cwd' | 'protectedPaths'>,
+    {
+      cwd,
+      protectedPaths = [],
+      readOnlyRoots = [],
+      immutablePaths = [],
+    }: Pick<SandboxOptions, 'cwd' | 'protectedPaths' | 'readOnlyRoots' | 'immutablePaths'>,
     temp: string,
     helpers: { seccomp?: string; javaAgent?: string; ripgrep?: string },
   ): SandboxRuntimeConfig {
@@ -191,7 +210,13 @@ export class SandboxPolicy {
     const node =
       process.platform === 'darwin' && path.basename(executable) === 'MacOS' ? path.dirname(executable) : executable;
     // pi-kit's scratch projects live in its data folder, inside ~/.config or ~/Library: those keep the way to the workspace open.
-    const around = (p: string) => (SandboxPolicy.contains(p, cwd) ? SandboxPolicy.profileDenies(p, cwd, [cwd]) : [p]);
+    const allowedRoots = [cwd, ...readOnlyRoots];
+    const around = (p: string) => {
+      const within = allowedRoots.filter((root) => SandboxPolicy.contains(p, root));
+      return within.length
+        ? [...new Set(within.flatMap((root) => SandboxPolicy.profileDenies(p, root, allowedRoots)))]
+        : [p];
+    };
     const guarded = protectedPaths.flatMap(around);
     const credentials = [...SandboxPolicy.CREDENTIALS.map((p) => path.join(home, p)).flatMap(around), ...guarded];
     for (const runtime of [lib, node]) {
@@ -203,8 +228,14 @@ export class SandboxPolicy {
           'RUNTIME_PROTECTED',
         );
     }
-    const envFiles = ['.env', '.env.*', path.join('**', '.env'), path.join('**', '.env.*')].map((p) =>
-      path.join(cwd, p),
+    const envFiles = allowedRoots.flatMap((root) =>
+      [
+        '.env',
+        '.env.*',
+        path.join('**', '.env'),
+        path.join('**', '.env.*'),
+        ...SandboxPolicy.CREDENTIALS.flatMap((p) => [p, path.join('**', p)]),
+      ].map((p) => path.join(root, p)),
     );
     // MXC reads the whole system drive unless denied, so Windows denies the profile instead of the drive and needs no system allow list.
     const windows = process.platform === 'win32';
@@ -242,12 +273,18 @@ export class SandboxPolicy {
       },
       filesystem: {
         denyRead: windows ? SandboxPolicy.profileDenies(home, cwd, [cwd, temp, lib, node]) : [path.parse(cwd).root],
-        allowRead: [...systems, ...developer, cwd, temp, lib, node].map((p) => ({ path: p, literal: true })),
+        allowRead: [...systems, ...developer, ...allowedRoots, temp, lib, node].map((p) => ({
+          path: p,
+          literal: true,
+        })),
         allowWrite: [
           { path: cwd, literal: true },
           { path: temp, literal: true },
         ],
-        denyWrite: [...immutable.map((p) => ({ path: p, literal: true as const })), ...envFiles],
+        denyWrite: [
+          ...[...immutable, ...readOnlyRoots, ...immutablePaths].map((p) => ({ path: p, literal: true as const })),
+          ...envFiles,
+        ],
       },
       // SRT's allowRead beats a nested denyRead, so .env files and credentials need credential denies to stay unreadable.
       credentials: { files: [...envFiles, ...credentials].map((p) => ({ path: p, mode: 'deny' })) },

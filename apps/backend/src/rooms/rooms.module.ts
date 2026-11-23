@@ -33,9 +33,16 @@ import { RoomFolders } from './room-folders';
 import { RoomRuns } from './room-runs';
 import { RoomLive } from './room-live';
 import { RoomPlaybookEditor } from './room-playbook-editor.service';
+import { RoomPhoneController } from './room-phone.controller';
+import { RoomPhoneService } from './room-phone.service';
+import { RoomWhatsAppTransport } from './room-whatsapp.transport';
+import { RoomWorkspace } from './room-workspace.service';
+import { RoomAssistant } from './room-assistant.service';
+import { RoomAssistantController } from './room-assistant.controller';
+import { TranscribeModule } from '../transcribe/transcribe.module';
 
 @Module({
-  imports: [DbModule, PiModule, ThreadsModule, AguiModule, PeersModule, McpModule],
+  imports: [DbModule, PiModule, ThreadsModule, AguiModule, PeersModule, McpModule, TranscribeModule],
   providers: [
     RoomsService,
     RoomBus,
@@ -64,7 +71,11 @@ import { RoomPlaybookEditor } from './room-playbook-editor.service';
     RoomConsultant,
     RoomPlaybookService,
     RoomPlaybookEditor,
+    RoomPhoneService,
+    RoomWhatsAppTransport,
+    RoomWorkspace,
+    RoomAssistant,
   ],
-  controllers: [RoomsController, A2aController, A2aWellKnownController],
+  controllers: [RoomsController, RoomPhoneController, RoomAssistantController, A2aController, A2aWellKnownController],
 })
 export class RoomsModule {}

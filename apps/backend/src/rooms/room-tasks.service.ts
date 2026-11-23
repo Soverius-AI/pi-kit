@@ -8,8 +8,10 @@ import {
   type OnApplicationShutdown,
   type OnModuleInit,
   ServiceUnavailableException,
+  Optional,
 } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { RoomAssistant } from './room-assistant.service';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { StreamResponse, TaskState, type Message, type Task } from '@a2a-js/sdk';
@@ -87,10 +89,15 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
     private readonly editor: RoomPlaybookEditor,
     @Inject(CONFIG) private readonly config: BackendConfig,
     private readonly live: RoomLive,
+    @Optional() private readonly assistant?: RoomAssistant,
   ) {}
 
   onModuleInit(): void {
     this.sessions.setRoomTools({
+      assistant: async (threadId, input) => {
+        if (!this.assistant) throw new Error('The assistant service is unavailable.');
+        return this.assistant.command(threadId, input);
+      },
       propose: async (threadId, task) => await this.propose(threadId, task),
       answer: async (threadId, input) => await this.leadAnswer(threadId, input.taskId, input.answer),
       escalate: async (threadId, input) => await this.leadEscalate(threadId, input.taskId, input.reason),
@@ -150,6 +157,10 @@ export class RoomTasksService implements OnModuleInit, OnApplicationShutdown {
     const roomId = await this.rooms.roomOfLead(leadThreadId);
     const found = roomId ? await this.rooms.get(roomId) : undefined;
     if (!roomId || !found) throw new Error('This session is not the lead of a room.');
+    if (!found.room.baseCommit)
+      throw new Error(
+        'Coding workers need a project room with a Git repository. This personal room can use its assistant tools and linked reference folders.',
+      );
     const now = Date.now();
     const task = await this.rooms.insertTask({
       id: randomUUID(),

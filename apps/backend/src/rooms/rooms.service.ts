@@ -1,5 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { existsSync, statSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import type { CreateRoom, PlaybookSummary, Room, RoomClone, RoomStartPreview } from '@pi-kit/protocol';
 import { InstanceRepository } from '../db/instance.repository';
 import { MetaRepository } from '../db/meta.repository';
@@ -35,6 +37,20 @@ export class RoomsService {
   }
 
   async create(input: CreateRoom, now = Date.now()): Promise<Room> {
+    if (!input.threadId && !input.projectFolder && !input.repository) {
+      const id = randomUUID();
+      this.playbooks.roomFolder(id);
+      return this.rooms.insert({
+        id,
+        title: input.title,
+        repository: '',
+        baseCommit: '',
+        summary: input.summary,
+        sourceThreadId: null,
+        projectFolder: null,
+        createdAt: now,
+      });
+    }
     const start = input.threadId
       ? await this.start(input.threadId)
       : !input.repository && input.projectFolder
@@ -118,7 +134,11 @@ export class RoomsService {
   private async startIn(folder: string, title: string): Promise<RoomStartPreview & { root: string }> {
     const root = await toplevel(folder);
     const head = root ? await run(root, ['rev-parse', '--verify', 'HEAD']) : undefined;
-    if (!root || !head?.ok) throw new ConflictException(NOT_A_REPOSITORY);
+    if (!root || !head?.ok) {
+      if (!isAbsolute(folder) || !existsSync(folder) || !statSync(folder).isDirectory())
+        throw new ConflictException('Choose an existing room folder.');
+      return { title, repository: '', branch: null, baseCommit: '', uncommittedFiles: 0, root: folder };
+    }
     const identity = await RepositoryIdentity.of(root);
     return {
       title,

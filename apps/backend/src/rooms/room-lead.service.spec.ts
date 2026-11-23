@@ -143,11 +143,79 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await lead.onApplicationShutdown();
   await db.onApplicationShutdown();
   rmSync(base, { recursive: true, force: true });
 });
 
 describe('the room lead', () => {
+  it('continues an owner-approved worker result ahead of a disabled proactive wake', async () => {
+    lead.setAssistant({
+      enabled: async () => true,
+      canWake: async () => false,
+      briefing: async () => '',
+      prepare: async () => project,
+    });
+    await lead.nudge(roomId, 'Scheduled check', { kind: 'schedule', title: 'Scheduled check' });
+    expect(await lead.pending(roomId)).toBe(1);
+    expect(runHeadless).not.toHaveBeenCalled();
+    await lead.nudge(roomId, 'Worker finished', { kind: 'agent', title: 'Worker finished' });
+    await vi.waitFor(() => expect(runHeadless).toHaveBeenCalledTimes(1));
+    await settle();
+    expect((runHeadless.mock.calls[0] as unknown as [string, string])[1]).toContain('Worker finished');
+    expect(await lead.pending(roomId)).toBe(1);
+    expect((await rooms.nextWake(roomId))?.cause.kind).toBe('schedule');
+  });
+  it('gives a personal assistant prompt without coding-worker delegation and permits owned outputs', async () => {
+    const personal = await rooms.insert({
+      id: '27f5d2ca-8608-4c92-bf71-a011a7b7f966',
+      title: 'Personal',
+      repository: '',
+      baseCommit: '',
+      summary: 'Help me plan tomorrow.',
+      sourceThreadId: null,
+      projectFolder: null,
+      createdAt: Date.now(),
+    });
+    lead.setAssistant({
+      enabled: async () => true,
+      canWake: async () => false,
+      briefing: async () => '',
+      prepare: async () => project,
+    });
+    await lead.post(personal.id, { text: 'Prepare a brief.', route: 'lead' });
+    await vi.waitFor(() => expect(lead.state(personal.id)).toBe('idle'));
+    const prompt = (runHeadless.mock.calls[0] as unknown as [string, string])[1];
+    expect(prompt).toContain('personal assistant');
+    expect(prompt).not.toContain('room_propose_task');
+    expect(prompt).toContain('action="output"');
+    expect(prompt).toContain('Help me plan tomorrow.');
+  });
+  it('preserves an owner message paused while its workspace is being prepared', async () => {
+    let release: () => void = () => undefined;
+    const prepared = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    lead.setAssistant({
+      enabled: async () => true,
+      canWake: async () => true,
+      briefing: async () => '',
+      prepare: async () => {
+        await prepared;
+        return project;
+      },
+    });
+    await lead.post(roomId, { text: 'Hold this message', route: 'lead' });
+    await rooms.setPaused(roomId, true);
+    release();
+    await settle();
+    expect(runHeadless).not.toHaveBeenCalled();
+    expect(await rooms.pendingWakes(roomId)).toBe(1);
+    await lead.update(roomId, { paused: false });
+    await vi.waitFor(() => expect(runHeadless).toHaveBeenCalledTimes(1));
+    await settle();
+    expect((await rooms.events(roomId)).filter((event) => event.actor === 'owner')).toHaveLength(1);
+  });
   it('makes every room lead a read-only session that asks its owner, and only leads', async () => {
     await lead.onModuleInit();
     const leadId = await lead.prepare(roomId);
@@ -290,15 +358,22 @@ describe('the room lead', () => {
     expect((await rows.visible()).map((row) => row.id)).toEqual(['source']);
   });
 
-  it('posts without prompting anyone, and refuses a second prompt while the lead works', async () => {
+  it('posts notes without prompting and preserves a second owner message while the lead works', async () => {
     await lead.post(roomId, { text: 'A note', route: 'none' });
     expect(runHeadless).not.toHaveBeenCalled();
     let release: (value: HeadlessRun) => void = () => undefined;
     runHeadless.mockImplementationOnce(() => new Promise<HeadlessRun>((resolve) => (release = resolve)));
     await lead.post(roomId, { text: 'Busy?', route: 'lead' });
     await vi.waitFor(() => expect(runHeadless).toHaveBeenCalled(), { timeout: 5000 });
-    await expect(lead.post(roomId, { text: 'Again', route: 'lead' })).rejects.toBeInstanceOf(ConflictException);
+    await lead.post(roomId, { text: 'Again', route: 'lead' });
+    expect(await lead.pending(roomId)).toBe(1);
+    expect((await rooms.events(roomId)).filter((event) => event.actor === 'owner').map((event) => event.text)).toEqual([
+      'A note',
+      'Busy?',
+      'Again',
+    ]);
     release({ status: 'finished' });
+    await vi.waitFor(() => expect(runHeadless).toHaveBeenCalledTimes(2));
     await settle();
     expect(lead.state(roomId)).toBe('idle');
   });
@@ -371,12 +446,12 @@ describe('the room lead', () => {
     await lead.post(roomId, { text: 'Plan it', route: 'lead' });
     await vi.waitFor(() => expect(runHeadless).toHaveBeenCalledTimes(1), { timeout: 5000 });
     await lead.nudge(roomId, 'Result of the task X');
-    expect(lead.pending(roomId)).toBe(1);
+    expect(await lead.pending(roomId)).toBe(1);
     release({ status: 'finished' });
     await vi.waitFor(() => expect(runHeadless).toHaveBeenCalledTimes(2), { timeout: 5000 });
     expect((runHeadless.mock.calls[1] as unknown as [string, string])[1]).toBe('Result of the task X');
     await settle();
-    expect(lead.pending(roomId)).toBe(0);
+    expect(await lead.pending(roomId)).toBe(0);
   });
 
   it('pauses the room when agents wake the lead too often in a row, and resumes on the owner’s word', async () => {

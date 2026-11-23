@@ -1,6 +1,6 @@
 import { Language } from '@pi-kit/i18n';
 import { TranslocoPipe } from '@pi-kit/i18n';
-import { Component, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Component, computed, effect, inject, signal, untracked, DestroyRef } from '@angular/core';
 import { AgentsPanel } from '@pi-kit/agents/feature-agents';
 import { ArtifactsPanel } from '@pi-kit/artifacts/feature-artifacts';
 import { ChatStore, CommandRegistry } from '@pi-kit/chat/api';
@@ -48,7 +48,7 @@ import { ShellStore } from './shell.store';
  * (tree, files, changes, terminal, agents, artifacts), the status bar, and every dialog and overlay. It renders what `ShellStore`,
  * `UiStore` and `ViewPrefs` say and forwards intent; its own code is the panel resize handle and the theme, onboarding and redaction start-up.
  */
-import { OpenRoomStore } from '@pi-kit/rooms/api';
+import { OpenRoomStore, RoomsStore } from '@pi-kit/rooms/api';
 import { RoomView } from '@pi-kit/rooms/feature-room';
 @Component({
   selector: 'pk-root',
@@ -100,6 +100,8 @@ export class App {
   protected readonly shell = inject(ShellStore);
   protected readonly threads = inject(ThreadsStore);
   protected readonly openRoom = inject(OpenRoomStore);
+  private readonly roomDirectory = inject(RoomsStore);
+  private readonly roomLink = signal<string | null>(null);
   protected readonly session = inject(ChatStore);
   protected readonly bus = inject(UiStore);
   protected readonly review = inject(ChangesStore);
@@ -161,6 +163,28 @@ export class App {
   private readonly learningSource = computed(() => this.threads.selected()?.learning?.sourceThreadId);
 
   constructor() {
+    const readRoomLink = () => this.roomLink.set(new URLSearchParams(location.hash.slice(1)).get('room'));
+    readRoomLink();
+    window.addEventListener('hashchange', readRoomLink);
+    inject(DestroyRef).onDestroy(() => window.removeEventListener('hashchange', readRoomLink));
+    effect(() => {
+      const id = this.roomLink();
+      const entry = id ? this.roomDirectory.entry(id) : undefined;
+      if (!entry) return;
+      untracked(() => {
+        this.threads.select(undefined);
+        this.openRoom.open(entry.room);
+        const parameters = new URLSearchParams(location.hash.slice(1));
+        parameters.delete('room');
+        parameters.delete('work');
+        history.replaceState(
+          null,
+          '',
+          location.pathname + location.search + (parameters.size ? '#' + parameters.toString() : ''),
+        );
+        this.roomLink.set(null);
+      });
+    });
     this.shell.start();
     this.review.showSummary(true);
     let previewThread: string | undefined;

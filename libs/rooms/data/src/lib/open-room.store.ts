@@ -161,7 +161,6 @@ export class OpenRoomStore {
         }),
       );
       if (this.room()?.id === room.id) this.add(event);
-      if (route === 'lead' && this.room()?.id === room.id && this.lead() === 'idle') this.lead.set('working');
       return true;
     } catch (error) {
       if (this.room()?.id === room.id) this.error.set(error instanceof Error ? error.message : String(error));

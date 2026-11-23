@@ -175,7 +175,12 @@ beforeEach(async () => {
   const tools = new RoomPlaybookTools(mcp, new RoomSources());
   bus = new RoomBus(rooms);
   paired = [];
-  const lead = { nudge, rebriefNext, setPlaybooks: () => undefined } as unknown as RoomLeadService;
+  const lead = {
+    nudge,
+    rebriefNext,
+    resumePending: vi.fn(async () => undefined),
+    setPlaybooks: () => undefined,
+  } as unknown as RoomLeadService;
   const agents = {
     projectFolder: async () => project,
     models: async () => [
@@ -358,10 +363,26 @@ describe('room playbooks', () => {
     const monday = new Date(2026, 10, 23, 8, 0, 10).getTime();
     await service.tick(monday);
     await service.tick(monday + 15_000);
-    expect(nudge.mock.calls.filter((call) => String(call[1]).startsWith('Schedule brief'))).toHaveLength(1);
+    expect(
+      (
+        await db.db
+          .prepare(
+            "SELECT count(*) AS n FROM room_wakeups WHERE room_id=? AND json_extract(cause_json,'$.trigger')='brief'",
+          )
+          .get<{ n: number }>(roomId)
+      )?.n,
+    ).toBe(1);
     expect((await store.lastRuns(roomId)).get('brief')).toBe(Math.floor(monday / 60_000) * 60_000);
     await service.tick(new Date(2026, 10, 22, 8, 0, 10).getTime());
-    expect(nudge.mock.calls.filter((call) => String(call[1]).startsWith('Schedule brief'))).toHaveLength(1);
+    expect(
+      (
+        await db.db
+          .prepare(
+            "SELECT count(*) AS n FROM room_wakeups WHERE room_id=? AND json_extract(cause_json,'$.trigger')='brief'",
+          )
+          .get<{ n: number }>(roomId)
+      )?.n,
+    ).toBe(1);
   });
 
   it('keeps connector values from becoming options', async () => {
@@ -371,15 +392,47 @@ describe('room playbooks', () => {
   it('wakes the lead only for items it has not seen, by their key', async () => {
     const sunday = new Date(2026, 10, 22, 12, 0).getTime();
     await service.tick(sunday);
-    expect(nudge).toHaveBeenCalledTimes(1);
-    expect(nudge.mock.calls[0]?.[1]).toContain('found 2 new items');
+    expect(await rooms.pendingWakes(roomId)).toBe(1);
+    expect((await rooms.nextWake(roomId))?.text).toContain('"number":2');
     await service.tick(sunday + 120_000);
-    expect(nudge).toHaveBeenCalledTimes(1);
+    expect(await rooms.pendingWakes(roomId)).toBe(1);
     await rooms.setPaused(roomId, true);
     await service.tick(sunday + 240_000);
-    expect(nudge).toHaveBeenCalledTimes(1);
+    expect(await rooms.pendingWakes(roomId)).toBe(1);
   });
 
+  it('queues every polling item beyond the first five and retains full payloads', async () => {
+    const items = Array.from({ length: 7 }, (_, number) => ({
+      number,
+      head: `head-${number}`,
+      detail: number === 6 ? 'tail-' + '.'.repeat(25000) : 'small',
+    }));
+    writeFileSync(join(project, 'poll-items.json'), JSON.stringify(items));
+    writeFileSync(
+      join(project, '.pi', 'skills', 'pr-review', 'room.yaml'),
+      ROOM.replace(
+        "console.log(JSON.stringify([{number: 1, head: 'a'}, {number: 2, head: 'b'}]))",
+        "console.log(require('node:fs').readFileSync('poll-items.json','utf8'))",
+      ),
+    );
+    await service.fireNow(roomId, 'prs', false);
+    const queued = await db.db
+      .prepare('SELECT text FROM room_wakeups WHERE room_id=? ORDER BY created_at,rowid')
+      .all<{ text: string }>(roomId);
+    expect(queued).toHaveLength(2);
+    expect(queued[1].text).toContain('head-6');
+    expect(queued[1].text).toContain('tail-' + '.'.repeat(25000));
+    expect((await service.fireNow(roomId, 'prs', true)).items.every((item) => !item.fresh)).toBe(true);
+  });
+  it('does not consume polling seen keys if durable enqueue fails', async () => {
+    const enqueue = vi.spyOn(rooms, 'enqueueWake').mockRejectedValueOnce(new Error('Simulated queue failure'));
+    await expect(service.fireNow(roomId, 'prs', false)).rejects.toThrow('Simulated queue failure');
+    expect(await rooms.pendingWakes(roomId)).toBe(0);
+    expect((await service.fireNow(roomId, 'prs', true)).items.every((item) => item.fresh)).toBe(true);
+    enqueue.mockRestore();
+    await service.fireNow(roomId, 'prs', false);
+    expect(await rooms.pendingWakes(roomId)).toBe(1);
+  });
   it('consults participants and records their answers under their role', async () => {
     const answer = await service.discuss('lead', { question: 'Is PR 7 safe?' });
     expect(answer).toContain('security says fine');
@@ -536,7 +589,8 @@ describe('room playbooks', () => {
     ]);
     expect(nudge).not.toHaveBeenCalled();
     await service.fireNow(roomId, 'prs', false);
-    expect(nudge.mock.calls[0]?.[1]).toContain('found 2 new items');
+    expect(await rooms.pendingWakes(roomId)).toBe(1);
+    expect((await rooms.nextWake(roomId))?.cause).toMatchObject({ kind: 'owner', trigger: 'prs' });
     expect((await service.fireNow(roomId, 'prs', true)).items.every((item) => !item.fresh)).toBe(true);
   });
 

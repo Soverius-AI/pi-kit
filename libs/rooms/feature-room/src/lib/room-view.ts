@@ -72,7 +72,11 @@ import { RoomSide } from './room-side';
             />
           } @else {
             <p class="meta" data-testid="room-meta">
-              <span class="font-mono">{{ room.repository }}</span> · {{ room.baseCommit.slice(0, 7) }} ·
+              @if (room.repository) {
+                <span class="font-mono">{{ room.repository }}</span> · {{ room.baseCommit.slice(0, 7) }} ·
+              } @else {
+                <span>{{ 'rooms.create.personal' | transloco }}</span> ·
+              }
               {{ hostName() ?? ('rooms.view.hostHere' | transloco) }}
             </p>
           }
@@ -1017,7 +1021,7 @@ export class RoomView {
 
   protected canSend(): boolean {
     if (!this.draft().trim() || this.store.sending()) return false;
-    return !(this.route() === 'lead' && this.store.lead() === 'working');
+    return this.route() !== 'lead' || this.store.leadQuestions().length === 0;
   }
 
   protected enter(event: KeyboardEvent): void {

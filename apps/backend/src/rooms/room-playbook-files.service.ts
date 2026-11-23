@@ -45,6 +45,10 @@ export class RoomPlaybookFiles {
     return this.folders?.ensure(roomId);
   }
 
+  workspace(roomId: string): string | undefined {
+    return this.folders?.workspace(roomId);
+  }
+
   origin(place: PlaybookPlace, path: string): 'room' | 'repository' {
     return place.room && path.startsWith(place.room + sep) ? 'room' : 'repository';
   }

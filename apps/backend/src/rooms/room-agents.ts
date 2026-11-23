@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { RoomFolders } from './room-folders';
 import { type PiSessionEntry, sessionToMessages } from '@pi-kit/pi-adapter';
 import {
   genUiId,
@@ -27,6 +28,7 @@ export class RoomAgents {
     private readonly threads: ThreadsService,
     private readonly sessions: PiSessionService,
     private readonly meta: MetaRepository,
+    @Optional() private readonly folders?: RoomFolders,
   ) {}
 
   async configure(threadId: string, settings: PlaybookAgentSettings | undefined): Promise<void> {
@@ -58,8 +60,13 @@ export class RoomAgents {
     }
   }
 
-  async projectFolder(room: { projectFolder: string | null; sourceThreadId: string | null }): Promise<string> {
+  async projectFolder(room: {
+    projectFolder: string | null;
+    sourceThreadId: string | null;
+    room?: { id: string };
+  }): Promise<string> {
     if (room.projectFolder) return room.projectFolder;
+    if (room.room && this.folders) return this.folders.workspace(room.room.id);
     const sourceThreadId = room.sourceThreadId;
     const source = sourceThreadId ? await this.threadRows.get(sourceThreadId) : undefined;
     if (!source) throw new Error('The thread this room was started from no longer exists.');

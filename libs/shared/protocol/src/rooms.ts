@@ -10,9 +10,9 @@ export const RoomSchema = z
   .object({
     id: RoomIdSchema,
     title: z.string().min(1).max(200),
-    repository: z.string().min(1).max(512),
+    repository: z.string().max(512),
     hostInstanceId: InstanceIdSchema,
-    baseCommit: z.string().regex(/^[0-9a-f]{40,64}$/),
+    baseCommit: z.string().regex(/^(?:[0-9a-f]{40,64})?$/),
     waiting: z.number().int().nonnegative(),
     createdAt: z.number().int().nonnegative(),
   })
@@ -27,9 +27,9 @@ export const RoomStartQuerySchema = z.object({ threadId: z.string().min(1).max(5
 export const RoomStartPreviewSchema = z
   .object({
     title: z.string().max(200),
-    repository: z.string().min(1).max(512),
+    repository: z.string().max(512),
     branch: z.string().nullable(),
-    baseCommit: z.string().regex(/^[0-9a-f]{40,64}$/),
+    baseCommit: z.string().regex(/^(?:[0-9a-f]{40,64})?$/),
     uncommittedFiles: z.number().int().nonnegative(),
   })
   .strict()
@@ -50,8 +50,8 @@ export const CreateRoomSchema = z
     playbook: z.string().min(1).max(200).optional(),
   })
   .strict()
-  .refine((input) => !!input.threadId || (!!input.repository && !!input.baseCommit) || !!input.projectFolder, {
-    message: 'Start a room from a thread, from a folder, or give the repository and base commit.',
+  .refine((input) => !!input.repository === !!input.baseCommit, {
+    message: 'Give both repository and base commit, or leave both empty for a personal room.',
   })
   .meta({ id: 'CreateRoom' });
 export type CreateRoom = z.infer<typeof CreateRoomSchema>;
@@ -75,6 +75,7 @@ export const RoomEventSchema = z
   .object({
     roomId: RoomIdSchema,
     seq: z.number().int().positive(),
+    workId: z.string().nullable().optional(),
     kind: z.enum(['message', 'note', 'task', 'app']),
     actor: z.enum(['owner', 'lead', 'coordinator', 'worker', 'consultant']),
     text: z.string().max(32000),

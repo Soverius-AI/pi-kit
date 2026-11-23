@@ -291,10 +291,9 @@
         type="button"
         class="btn btn-sm btn-primary btn-square rounded-lg border-0 shadow-none"
         data-testid="start-room-plus"
-        [disabled]="!store.selected()"
-        [pkTip]="'threads.startRoom.startARoomFromThisThread' | transloco"
-        [attr.aria-label]="'threads.startRoom.startARoomFromThisThread' | transloco"
-        (click)="startRoom($event, store.selected())"
+        [pkTip]="'rooms.create.title' | transloco"
+        [attr.aria-label]="'rooms.create.title' | transloco"
+        (click)="creatingRoom.set(true)"
       >
         <pk-icon name="plus" size="16" />
       </button>
@@ -1156,7 +1155,7 @@
             <span class="pk-room-main">
               <span class="pk-room-title">{{ entry.room.title }}</span>
               <span class="pk-room-meta"
-                >{{ entry.room.repository }} ·
+                >{{ entry.room.repository || ('rooms.create.personal' | transloco) }} ·
                 {{
                   'threads.threadSidebar.hostN'
                     | transloco
@@ -1201,8 +1200,7 @@
                   type="button"
                   class="btn btn-primary"
                   data-testid="rooms-welcome-start"
-                  [disabled]="!store.selected()"
-                  (click)="startRoom($event, store.selected())"
+                  (click)="creatingRoom.set(true)"
                 >
                   <pk-icon name="plus" />
                   {{ 'threads.roomsWelcome.start' | transloco }}
@@ -1487,4 +1485,7 @@
     (closed)="startingRoom.set(undefined)"
     (created)="roomCreated($event)"
   />
+}
+@if (creatingRoom()) {
+  <pk-new-room-dialog (closed)="creatingRoom.set(false)" (created)="roomCreated($event)" />
 }

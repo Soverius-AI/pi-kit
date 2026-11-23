@@ -76,7 +76,7 @@ import { RoomsStore } from '@pi-kit/rooms/api';
               }
             </dd>
           </dl>
-          @if (elsewhere(); as chosen) {
+          @if (start.repository ? elsewhere() : undefined; as chosen) {
             <dl class="pk-room-start-facts" data-testid="start-room-folder">
               <dt>{{ 'threads.startRoom.folder' | transloco }}</dt>
               <dd>
@@ -261,7 +261,7 @@ export class StartRoomDialog {
       !!this.preview() &&
       !!this.name().trim() &&
       !this.creating() &&
-      (!this.elsewhere() || (this.clones()?.length ?? 0) > 0),
+      (!this.elsewhere() || !this.preview()?.repository || (this.clones()?.length ?? 0) > 0),
   );
 
   constructor() {
@@ -302,6 +302,7 @@ export class StartRoomDialog {
     this.playbook.set(undefined);
     this.askLead.set(false);
     if (!start) return;
+    if (away && !start.repository) return;
     try {
       const found = await this.rooms.playbooks(
         away
@@ -318,7 +319,7 @@ export class StartRoomDialog {
   private async loadClones(host: RoomWorkerCandidate | undefined, start: RoomStartPreview | undefined): Promise<void> {
     this.clones.set(undefined);
     this.folder.set(undefined);
-    if (!host || !start) return;
+    if (!host || !start?.repository) return;
     try {
       const clones = await this.rooms.clones(start.repository, start.baseCommit, host);
       if (this.elsewhere() !== host) return;
@@ -372,8 +373,7 @@ export class StartRoomDialog {
               {
                 title,
                 summary,
-                repository: start.repository,
-                baseCommit: start.baseCommit,
+                ...(start.repository ? { repository: start.repository, baseCommit: start.baseCommit } : {}),
                 ...(this.folder() ? { projectFolder: this.folder() } : {}),
                 ...(this.playbook() ? { playbook: this.playbook() } : {}),
               },

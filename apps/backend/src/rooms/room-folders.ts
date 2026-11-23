@@ -16,7 +16,13 @@ export class RoomFolders {
     const folder = join(this.config.dataDir, 'rooms', roomId);
     if (this.made.has(folder)) return folder;
     mkdirSync(join(folder, RoomFolders.PLAYBOOKS), { recursive: true });
+    for (const name of ['folders', 'inbox', 'outputs'])
+      mkdirSync(join(folder, 'workspace', name), { recursive: true, mode: 0o700 });
     this.made.add(folder);
     return folder;
+  }
+
+  workspace(roomId: string): string {
+    return join(this.ensure(roomId), 'workspace');
   }
 }

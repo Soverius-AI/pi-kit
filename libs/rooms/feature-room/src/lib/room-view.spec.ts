@@ -550,7 +550,7 @@ describe('RoomView', () => {
     expect((el.querySelector('[data-testid=room-attach]') as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('sends to the lead with Enter, can just post, and waits while the lead answers', async () => {
+  it('sends to the lead with Enter, can just post, and accepts the next message while the lead answers', async () => {
     const { fixture, el } = render();
     const draft = el.querySelector('[data-testid=room-draft]') as HTMLTextAreaElement;
     draft.value = 'Can Desktop run this?';
@@ -569,7 +569,10 @@ describe('RoomView', () => {
     draft.value = 'Again';
     draft.dispatchEvent(new Event('input'));
     fixture.detectChanges();
-    expect((el.querySelector('[data-testid=room-send]') as HTMLButtonElement).disabled).toBe(true);
+    expect((el.querySelector('[data-testid=room-send]') as HTMLButtonElement).disabled).toBe(false);
+    (el.querySelector('[data-testid=room-send]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    expect(post).toHaveBeenLastCalledWith('Again', 'lead', []);
   });
   it('shows a playbook the lead proposes as a diff with what the check found, and applies it', () => {
     const action: RoomAction = {

@@ -2,6 +2,10 @@
 
 Reviewed 2026-11-23 against Soverius-AI/pi-kit main, `29e7fa0` (0.93.0).
 
+Messaging follow-up: [Rooms through phone conversations](rooms-phone-channels.md) updates the WhatsApp/Signal and SDK recommendations below. It covers the separate personal WhatsApp Agent Platform, the owner's lack of access to it, and the group-per-room onboarding proposal.
+
+The follow-up also includes [ideas from Vercel Board](rooms-phone-channels.md#ideas-from-vercel-board): persistent work items, reply routing, recoverable follow-ups and a view of work needing the owner's attention. The [linked-folder proposal](rooms-linked-folders.md) specifies the stable room workspace these items use.
+
 ## Recommendation
 
 Keep Rooms as the durable home for a goal, its conversation, decisions, routines and results. Add a personal assistant room that can be reached from WhatsApp and the web, with opt-in proactive work and memory independent of a playbook. Playbooks become optional reusable routines inside that room. Cross-machine coding remains one capability of a room.
@@ -81,7 +85,7 @@ Composio has a directly relevant Pi/Slack assistant example: inbound triggers wa
 
 Sources: [Composio Pi assistant example](https://docs.composio.dev/examples/general-agent-with-pi), [triggers](https://docs.composio.dev/docs/triggers), [delivery semantics](https://docs.composio.dev/kb/guide/platform-triggers).
 
-For WhatsApp, distinguish two products. The [Composio WhatsApp toolkit](https://docs.composio.dev/toolkits/whatsapp) uses WhatsApp Business accounts, not personal accounts. Messages outside the 24-hour customer-service window require an existing approved template. Hermes documents both a personal-account bridge and an official Business Cloud API adapter; the latter needs a dedicated business number and public HTTPS webhook endpoint. Personal-account bridges are a different implementation route, not something the existing Composio connection supplies.
+The [Composio WhatsApp toolkit](https://docs.composio.dev/toolkits/whatsapp) uses WhatsApp Business accounts, not personal accounts. Messages outside the 24-hour customer-service window require an existing approved template. Those are Business integration constraints; the separate personal Agent Platform and linked-device bridges have different setup and delivery behavior. See the [phone conversation follow-up](rooms-phone-channels.md) for the updated comparison and the owner's available options. The existing Composio connection does not itself supply a linked-device bridge.
 
 Source: [Hermes WhatsApp Business setup and bridge comparison](https://hermes-agent.nousresearch.com/docs/user-guide/messaging/whatsapp-cloud).
 
@@ -103,7 +107,7 @@ Start with morning briefing plus commitments. They exercise channel continuity, 
 
 1. **Mobile reliability:** ship the panel/layout fix and verify on physical phones, including rotation, the software keyboard and long playbook names.
 2. **Core assistant room:** allow non-Git rooms; provide basic memory controls; make wake-ups durable and fix polling acknowledgement/batching.
-3. **One WhatsApp channel:** bind one owner and destination to one room first; support text, reply continuity and web handoff. Verify the intended WhatsApp Business account, webhook and template requirements before committing to that transport.
+3. **Phone conversations:** follow the updated [messaging plan](rooms-phone-channels.md): for the owner's current account, evaluate QR-linked WhatsApp groups or Signal groups with explicit room bindings. Treat Business Cloud and the personal WhatsApp Agent Platform as separate transport choices with different onboarding and limits.
 4. **Proactive routine:** one morning brief and commitment reminders with quiet hours, notification limits and delivery status. Add more routines after this complete loop works.
 
 Release acceptance should cover duplicate inbound messages, replying to a proactive delivery, corrections to remembered facts, restart recovery, expired tool authentication, blocked outbound delivery and pause/resume. A successful run is not proof that a notification arrived.

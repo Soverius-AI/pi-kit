@@ -25,6 +25,8 @@ import { RoomRunsRepository } from './room-runs.repository';
 import { A2aTasksRepository } from './a2a-tasks.repository';
 import { A2aAgentsRepository } from './a2a-agents.repository';
 import { ThreadsRepository } from './threads.repository';
+import { RoomPhoneRepository } from './room-phone.repository';
+import { RoomAssistantRepository } from './room-assistant.repository';
 
 /**
  * The database: `DatabaseService`, opened from the config, the repositories that each own a
@@ -60,6 +62,8 @@ import { ThreadsRepository } from './threads.repository';
     RoomRunsRepository,
     A2aTasksRepository,
     A2aAgentsRepository,
+    RoomPhoneRepository,
+    RoomAssistantRepository,
   ],
   exports: [
     DatabaseService,
@@ -85,6 +89,8 @@ import { ThreadsRepository } from './threads.repository';
     RoomRunsRepository,
     A2aTasksRepository,
     A2aAgentsRepository,
+    RoomPhoneRepository,
+    RoomAssistantRepository,
   ],
 })
 export class DbModule {}

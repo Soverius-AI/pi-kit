@@ -1,0 +1,72 @@
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 87a47564c96295e7e3d35860996b069121b0d1eb..1beb35c5326f02006e44ec041d9104d233cb6e41 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -71,6 +71,8 @@ interface BaileysPollVote {
+ }
+ /** Configuration for the Baileys adapter */
+ interface BaileysAdapterConfig {
++    onConnectionUpdate?: (update: {connection?: string; loggedOut: boolean}) => void;
++    onDelivery?: (update: {id:string; threadId:string; status:number}) => Promise<void>;
+     /**
+      * Adapter identity used by Chat SDK serialization and thread ID prefixes.
+      *
+@@ -230,6 +232,8 @@ declare class BaileysAdapter implements Adapter<BaileysThreadId, WAMessage> {
+      * ```
+      */
+     connect(): Promise<void>;
++    sendText(threadId:string,text:string,messageId:string,quote?:{id:string;sender:string;text:string}):Promise<RawMessage<WAMessage>>;
++    fetchMedia(raw:WAMessage,maxBytes:number):Promise<Uint8Array>;
+     /** Disconnect from WhatsApp and clean up the socket. */
+     disconnect(): Promise<void>;
+     private _createSocket;
+diff --git a/dist/index.js b/dist/index.js
+index aab399f0a50bff79e2781f91685308f7cfe26d39..dd67bece52293d1a5c917c545a015a6d0a6d3ba4 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -187,6 +187,7 @@ var BaileysAdapter = class {
+       }
+       if (events["connection.update"]) {
+         const { connection, lastDisconnect, qr } = events["connection.update"];
++        this._config.onConnectionUpdate?.({connection, loggedOut: lastDisconnect?.error?.output?.statusCode === DisconnectReason.loggedOut});
+         if (qr && this._config.onQR) {
+           await this._config.onQR(qr);
+         }
+@@ -213,6 +214,12 @@ var BaileysAdapter = class {
+           }
+         }
+       }
++      if (events["messages.update"] && this._config.onDelivery) {
++        for (const {key,update} of events["messages.update"]) {
++          if (key.id && key.remoteJid && typeof update.status === "number")
++            await this._config.onDelivery({id:key.id,threadId:this.encodeThreadId({jid:key.remoteJid}),status:update.status});
++        }
++      }
+       if (events["messages.upsert"] && this._chat) {
+         const { messages, type } = events["messages.upsert"];
+         if (type !== "notify") return;
+@@ -333,6 +340,24 @@ var BaileysAdapter = class {
+   // ---------------------------------------------------------------------------
+   // Sending messages
+   // ---------------------------------------------------------------------------
++  async sendText(threadId, text, messageId, quote) {
++    const {jid}=this.decodeThreadId(threadId);
++    const quoted=quote ? {key:{id:quote.id,remoteJid:jid,participant:quote.sender,fromMe:false},message:{conversation:quote.text}} : undefined;
++    return this._sendPostable(jid,text,threadId,{messageId,...(quoted?{quoted}:{})});
++  }
++  async fetchMedia(raw,maxBytes) {
++    const socket=this._requireSocket();
++    const stream=await downloadMediaMessage(raw,"stream",{}, {logger:this._config.socketOptions?.logger,reuploadRequest:message=>socket.updateMediaMessage(message)});
++    const chunks=[];let bytes=0;
++    try {
++      for await (const chunk of stream) {
++        bytes+=chunk.length;
++        if(bytes>maxBytes)throw new Error("Attachment exceeds the room upload limit.");
++        chunks.push(chunk);
++      }
++      return Buffer.concat(chunks);
++    } finally {stream.destroy();}
++  }
+   async postMessage(threadId, message) {
+     const { jid } = this.decodeThreadId(threadId);
+     return this._sendPostable(jid, message, threadId);

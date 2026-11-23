@@ -1202,8 +1202,8 @@ describe('ThreadSidebar', () => {
       expect(el(fixture).querySelector('[data-testid=start-room-plus]')).not.toBeNull();
       (welcome.querySelector('[data-testid=rooms-welcome-start]') as HTMLButtonElement).click();
       await flush(fixture);
-      expect(start.mock.calls.at(-1)?.[0]).toBe('t1');
-      expect(el(fixture).querySelector('[data-testid=start-room-dialog]')).not.toBeNull();
+      expect(start).not.toHaveBeenCalled();
+      expect(el(fixture).querySelector('[data-testid=new-room-dialog]')).not.toBeNull();
     });
 
     it('keeps the search bar beside the switch: the filter and new thread in Threads, a room search and + in Rooms', async () => {

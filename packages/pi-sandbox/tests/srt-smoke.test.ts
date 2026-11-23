@@ -153,3 +153,70 @@ test(
     );
   },
 );
+
+test(
+  'real SRT: room links grant reads only and managed paths cannot be retargeted',
+  { skip: !enabled || process.platform === 'win32', timeout: 60000 },
+  async () => {
+    const base = await realpath(await mkdtemp(path.join(os.tmpdir(), 'pi-srt-room-links-')));
+    const data = path.join(base, 'data');
+    const workspace = path.join(data, 'rooms', 'a', 'workspace');
+    const notes = path.join(data, 'scratch', 'notes');
+    const outside = path.join(base, 'outside');
+    let client: SandboxClient | undefined;
+    try {
+      for (const dir of [
+        workspace,
+        notes,
+        outside,
+        path.join(workspace, 'folders'),
+        path.join(workspace, 'inbox'),
+        path.join(workspace, 'outputs'),
+      ])
+        await mkdir(dir, { recursive: true });
+      await writeFile(path.join(notes, 'note.md'), 'approved-reference');
+      await writeFile(path.join(notes, '.env'), 'hidden-reference-secret');
+      await writeFile(path.join(outside, 'secret.md'), 'unapproved-secret');
+      await writeFile(path.join(data, 'pi-kit.sqlite'), 'private-database');
+      const { symlink } = await import('node:fs/promises');
+      await symlink(notes, path.join(workspace, 'folders', 'notes'));
+      await symlink(outside, path.join(notes, 'escape'));
+      client = await Sandbox.create({
+        cwd: workspace,
+        readOnlyRoots: [notes],
+        immutablePaths: ['folders', 'inbox', 'outputs'].map((name) => path.join(workspace, name)),
+        protectedPaths: [data],
+      });
+      assert.equal(
+        (await client.request<Buffer>('readFile', [path.join(workspace, 'folders', 'notes', 'note.md')])).toString(),
+        'approved-reference',
+      );
+      for (const target of [
+        path.join(notes, '.env'),
+        path.join(notes, 'escape', 'secret.md'),
+        path.join(data, 'pi-kit.sqlite'),
+      ])
+        await assert.rejects(client.request('readFile', [target]));
+      await assert.rejects(client.request('writeFile', [path.join(notes, 'note.md'), 'unsafe']));
+      await assert.rejects(client.request('writeFile', [path.join(workspace, 'outputs', 'agent.txt'), 'unsafe']));
+      let text = '';
+      assert.equal(
+        (await client.exec('cat folders/notes/note.md', workspace, { onData: (b) => (text += b) })).exitCode,
+        0,
+      );
+      assert.equal(text, 'approved-reference');
+      assert.notEqual((await client.exec('printf unsafe > folders/notes/note.md', workspace, quiet)).exitCode, 0);
+      assert.notEqual((await client.exec('rm folders/notes && ln -s / folders/notes', workspace, quiet)).exitCode, 0);
+      assert.notEqual((await client.exec('mv outputs outputs-old', workspace, quiet)).exitCode, 0);
+      const grep = await client.request<{ content: { text?: string }[] }>('pi.grep', [
+        { pattern: 'approved-reference', literal: true, path: notes, limit: 10 },
+        workspace,
+      ]);
+      assert.ok(grep.content.some((part) => part.text?.includes('approved-reference')));
+      assert.equal(await readFile(path.join(notes, 'note.md'), 'utf8'), 'approved-reference');
+    } finally {
+      await client?.close();
+      await rm(base, { recursive: true, force: true });
+    }
+  },
+);

@@ -267,6 +267,11 @@ export type Changelog = {
     text: string;
 };
 
+export type ChangeRoomCommitment = {
+    state?: 'open' | 'done' | 'cancelled';
+    dueAt?: number;
+};
+
 export type ChangesList = {
     source: 'thread' | 'worktree' | 'outcome';
     cwd: string;
@@ -424,6 +429,11 @@ export type ComputerUseState = {
     } | null;
     needsRelaunch: boolean;
     hyprland?: boolean;
+};
+
+export type ConfirmRoomPhone = {
+    group: string;
+    sender: string;
 };
 
 export type Connector = {
@@ -2353,6 +2363,11 @@ export type ReviewComment = {
     text: string;
 };
 
+export type ReviewRoomPhone = {
+    id: number;
+    direction: 'input' | 'delivery';
+};
+
 export type RevokeTrust = {
     path: string;
 };
@@ -2397,12 +2412,66 @@ export type RoomActionDecision = {
     decision: 'approve' | 'discard';
 };
 
+export type RoomAssistantPolicy = {
+    enabled: boolean;
+    timezone: string;
+    quietStart: string | null;
+    quietEnd: string | null;
+    dailyLimit: number;
+    dailyRunLimit?: number;
+};
+
+export type RoomAssistantStatus = {
+    policy: RoomAssistantPolicy;
+    memory: Array<{
+        key: string;
+        text: string;
+        updatedBy: string;
+        updatedAt: number;
+    }>;
+    commitments: Array<RoomCommitment>;
+    folders: Array<RoomFolder>;
+    workspace: string;
+    files?: Array<{
+        path: string;
+        size: number;
+    }>;
+    work: Array<{
+        id: string;
+        title: string;
+        state: 'queued' | 'running' | 'done' | 'failed' | 'review';
+        kind: string;
+        createdAt: number;
+    }>;
+};
+
 export type RoomClone = {
     folder: string;
     clean: boolean;
 };
 
 export type RoomCloneList = Array<RoomClone>;
+
+export type RoomCommitment = {
+    title: string;
+    details: string;
+    dueAt: number;
+    timezone: string;
+    dailyAt: string | null;
+    source: string;
+    id: string;
+    state: 'open' | 'done' | 'cancelled';
+    lastFiredAt: number | null;
+};
+
+export type RoomCommitmentInput = {
+    title: string;
+    details?: string;
+    dueAt: number;
+    timezone: string;
+    dailyAt?: string | null;
+    source?: string;
+};
 
 export type RoomDetail = {
     room: Room;
@@ -2437,6 +2506,7 @@ export type RoomDirectoryEntry = {
 export type RoomEvent = {
     roomId: string;
     seq: number;
+    workId?: string | null;
     kind: 'message' | 'note' | 'task' | 'app';
     actor: 'owner' | 'lead' | 'coordinator' | 'worker' | 'consultant';
     text: string;
@@ -2465,6 +2535,33 @@ export type RoomEvent = {
         [key: string]: unknown;
     } | null;
     createdAt: number;
+};
+
+export type RoomFactInput = {
+    key: string;
+    text: string;
+};
+
+export type RoomFile = {
+    name: string;
+    data: string;
+    mime: string;
+};
+
+export type RoomFolder = {
+    alias: string;
+    target: string;
+    id: string;
+    environmentId: string;
+    canonical: string;
+    access: 'read';
+    available: boolean;
+    reason: string | null;
+};
+
+export type RoomFolderInput = {
+    alias: string;
+    target: string;
 };
 
 export type RoomImage = {
@@ -2497,6 +2594,49 @@ export type RoomMemoryEntry = {
 };
 
 export type RoomMode = 'supervised' | 'assisted';
+
+export type RoomPhoneConfig = {
+    appUrl: string;
+};
+
+export type RoomPhoneLink = {
+    code: string;
+    expiresAt: number;
+};
+
+export type RoomPhoneStatus = {
+    connection: 'disconnected' | 'connecting' | 'qr' | 'connected' | 'error';
+    qr: string | null;
+    error: string | null;
+    binding: {
+        group: string;
+        groupName: string;
+        sender: string;
+        senderName: string;
+    } | null;
+    candidate: {
+        group: string;
+        groupName: string;
+        sender: string;
+        senderName: string;
+    } | null;
+    expiresAt: number | null;
+    appUrl?: string | null;
+    verifiedAt?: number | null;
+    pendingDeliveries?: number;
+    lastDelivery?: {
+        sentAt: number | null;
+        deliveredAt: number | null;
+        readAt: number | null;
+    } | null;
+    queued: number;
+    needsReview: number;
+    review: Array<{
+        id: number;
+        direction: 'input' | 'delivery';
+        text: string;
+    }>;
+};
 
 export type RoomRun = {
     id: string;
@@ -2614,6 +2754,10 @@ export type RoomTaskQuestion = {
 };
 
 export type RoomTaskState = 'proposed' | 'declined' | 'running' | 'submitted' | 'failed' | 'stopped' | 'integrated';
+
+export type RoomWorkDecision = {
+    retry: boolean;
+};
 
 export type RoomWorkerCandidate = {
     environmentId: string;
@@ -14143,6 +14287,696 @@ export type RoomsEventsResponses = {
 };
 
 export type RoomsEventsResponse = RoomsEventsResponses[keyof RoomsEventsResponses];
+
+export type RoomPhoneConfigData = {
+    body: RoomPhoneConfig;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/phone/config';
+};
+
+export type RoomPhoneConfigErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomPhoneConfigError = RoomPhoneConfigErrors[keyof RoomPhoneConfigErrors];
+
+export type RoomPhoneConfigResponses = {
+    /**
+     * OK
+     */
+    200: RoomPhoneStatus;
+};
+
+export type RoomPhoneConfigResponse = RoomPhoneConfigResponses[keyof RoomPhoneConfigResponses];
+
+export type RoomPhoneTestData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/phone/test';
+};
+
+export type RoomPhoneTestErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomPhoneTestError = RoomPhoneTestErrors[keyof RoomPhoneTestErrors];
+
+export type RoomPhoneTestResponses = {
+    /**
+     * Created
+     */
+    201: RoomPhoneStatus;
+};
+
+export type RoomPhoneTestResponse = RoomPhoneTestResponses[keyof RoomPhoneTestResponses];
+
+export type RoomPhoneUnlinkData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/phone';
+};
+
+export type RoomPhoneUnlinkErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomPhoneUnlinkError = RoomPhoneUnlinkErrors[keyof RoomPhoneUnlinkErrors];
+
+export type RoomPhoneUnlinkResponses = {
+    /**
+     * OK
+     */
+    200: RoomPhoneStatus;
+};
+
+export type RoomPhoneUnlinkResponse = RoomPhoneUnlinkResponses[keyof RoomPhoneUnlinkResponses];
+
+export type RoomPhoneStatusData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/phone';
+};
+
+export type RoomPhoneStatusErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomPhoneStatusError = RoomPhoneStatusErrors[keyof RoomPhoneStatusErrors];
+
+export type RoomPhoneStatusResponses = {
+    /**
+     * OK
+     */
+    200: RoomPhoneStatus;
+};
+
+export type RoomPhoneStatusResponse = RoomPhoneStatusResponses[keyof RoomPhoneStatusResponses];
+
+export type RoomPhoneConnectData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/phone/connect';
+};
+
+export type RoomPhoneConnectErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+    /**
+     * WhatsApp could not connect.
+     */
+    503: Problem;
+};
+
+export type RoomPhoneConnectError = RoomPhoneConnectErrors[keyof RoomPhoneConnectErrors];
+
+export type RoomPhoneConnectResponses = {
+    /**
+     * Created
+     */
+    201: RoomPhoneStatus;
+};
+
+export type RoomPhoneConnectResponse = RoomPhoneConnectResponses[keyof RoomPhoneConnectResponses];
+
+export type RoomPhoneDisconnectData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/phone/disconnect';
+};
+
+export type RoomPhoneDisconnectErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomPhoneDisconnectError = RoomPhoneDisconnectErrors[keyof RoomPhoneDisconnectErrors];
+
+export type RoomPhoneDisconnectResponses = {
+    /**
+     * Created
+     */
+    201: RoomPhoneStatus;
+};
+
+export type RoomPhoneDisconnectResponse = RoomPhoneDisconnectResponses[keyof RoomPhoneDisconnectResponses];
+
+export type RoomPhoneDismissData = {
+    body: ReviewRoomPhone;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/phone/review';
+};
+
+export type RoomPhoneDismissErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomPhoneDismissError = RoomPhoneDismissErrors[keyof RoomPhoneDismissErrors];
+
+export type RoomPhoneDismissResponses = {
+    /**
+     * Created
+     */
+    201: RoomPhoneStatus;
+};
+
+export type RoomPhoneDismissResponse = RoomPhoneDismissResponses[keyof RoomPhoneDismissResponses];
+
+export type RoomPhoneBeginData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/phone/link';
+};
+
+export type RoomPhoneBeginErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+    /**
+     * Unlink the existing group first.
+     */
+    409: Problem;
+};
+
+export type RoomPhoneBeginError = RoomPhoneBeginErrors[keyof RoomPhoneBeginErrors];
+
+export type RoomPhoneBeginResponses = {
+    /**
+     * Created
+     */
+    201: RoomPhoneLink;
+};
+
+export type RoomPhoneBeginResponse = RoomPhoneBeginResponses[keyof RoomPhoneBeginResponses];
+
+export type RoomPhoneConfirmData = {
+    body: ConfirmRoomPhone;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/phone/confirm';
+};
+
+export type RoomPhoneConfirmErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+    /**
+     * The challenge expired or changed, or the group is already bound.
+     */
+    409: Problem;
+};
+
+export type RoomPhoneConfirmError = RoomPhoneConfirmErrors[keyof RoomPhoneConfirmErrors];
+
+export type RoomPhoneConfirmResponses = {
+    /**
+     * Created
+     */
+    201: RoomPhoneStatus;
+};
+
+export type RoomPhoneConfirmResponse = RoomPhoneConfirmResponses[keyof RoomPhoneConfirmResponses];
+
+export type RoomAssistantStatusData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/assistant';
+};
+
+export type RoomAssistantStatusErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomAssistantStatusError = RoomAssistantStatusErrors[keyof RoomAssistantStatusErrors];
+
+export type RoomAssistantStatusResponses = {
+    /**
+     * OK
+     */
+    200: RoomAssistantStatus;
+};
+
+export type RoomAssistantStatusResponse = RoomAssistantStatusResponses[keyof RoomAssistantStatusResponses];
+
+export type RoomAssistantFileData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query: {
+        path: string;
+    };
+    url: '/api/rooms/{roomId}/assistant/file';
+};
+
+export type RoomAssistantFileErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomAssistantFileError = RoomAssistantFileErrors[keyof RoomAssistantFileErrors];
+
+export type RoomAssistantFileResponses = {
+    /**
+     * OK
+     */
+    200: RoomFile;
+};
+
+export type RoomAssistantFileResponse = RoomAssistantFileResponses[keyof RoomAssistantFileResponses];
+
+export type RoomAssistantPolicyData = {
+    body: RoomAssistantPolicy;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/assistant/policy';
+};
+
+export type RoomAssistantPolicyErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomAssistantPolicyError = RoomAssistantPolicyErrors[keyof RoomAssistantPolicyErrors];
+
+export type RoomAssistantPolicyResponses = {
+    /**
+     * OK
+     */
+    200: RoomAssistantStatus;
+};
+
+export type RoomAssistantPolicyResponse = RoomAssistantPolicyResponses[keyof RoomAssistantPolicyResponses];
+
+export type RoomAssistantMemoryData = {
+    body: RoomFactInput;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/assistant/memory';
+};
+
+export type RoomAssistantMemoryErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomAssistantMemoryError = RoomAssistantMemoryErrors[keyof RoomAssistantMemoryErrors];
+
+export type RoomAssistantMemoryResponses = {
+    /**
+     * OK
+     */
+    200: RoomAssistantStatus;
+};
+
+export type RoomAssistantMemoryResponse = RoomAssistantMemoryResponses[keyof RoomAssistantMemoryResponses];
+
+export type RoomAssistantCreateData = {
+    body: RoomCommitmentInput;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/assistant/commitments';
+};
+
+export type RoomAssistantCreateErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomAssistantCreateError = RoomAssistantCreateErrors[keyof RoomAssistantCreateErrors];
+
+export type RoomAssistantCreateResponses = {
+    /**
+     * Created
+     */
+    201: RoomCommitment;
+};
+
+export type RoomAssistantCreateResponse = RoomAssistantCreateResponses[keyof RoomAssistantCreateResponses];
+
+export type RoomAssistantChangeData = {
+    body: ChangeRoomCommitment;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        /**
+         * The commitment id.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/assistant/commitments/{id}';
+};
+
+export type RoomAssistantChangeErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomAssistantChangeError = RoomAssistantChangeErrors[keyof RoomAssistantChangeErrors];
+
+export type RoomAssistantChangeResponses = {
+    /**
+     * OK
+     */
+    200: RoomAssistantStatus;
+};
+
+export type RoomAssistantChangeResponse = RoomAssistantChangeResponses[keyof RoomAssistantChangeResponses];
+
+export type RoomAssistantFolderData = {
+    body: RoomFolderInput;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/assistant/folders';
+};
+
+export type RoomAssistantFolderErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+    /**
+     * The room is busy or the alias already exists.
+     */
+    409: Problem;
+};
+
+export type RoomAssistantFolderError = RoomAssistantFolderErrors[keyof RoomAssistantFolderErrors];
+
+export type RoomAssistantFolderResponses = {
+    /**
+     * Created
+     */
+    201: RoomAssistantStatus;
+};
+
+export type RoomAssistantFolderResponse = RoomAssistantFolderResponses[keyof RoomAssistantFolderResponses];
+
+export type RoomAssistantRemoveFolderData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        /**
+         * The attachment id.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/assistant/folders/{id}';
+};
+
+export type RoomAssistantRemoveFolderErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+    /**
+     * The room is busy.
+     */
+    409: Problem;
+};
+
+export type RoomAssistantRemoveFolderError = RoomAssistantRemoveFolderErrors[keyof RoomAssistantRemoveFolderErrors];
+
+export type RoomAssistantRemoveFolderResponses = {
+    /**
+     * OK
+     */
+    200: RoomAssistantStatus;
+};
+
+export type RoomAssistantRemoveFolderResponse = RoomAssistantRemoveFolderResponses[keyof RoomAssistantRemoveFolderResponses];
+
+export type RoomAssistantWorkData = {
+    body: RoomWorkDecision;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        /**
+         * The work item id.
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/assistant/work/{id}';
+};
+
+export type RoomAssistantWorkErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+    /**
+     * The item cannot be retried.
+     */
+    409: Problem;
+};
+
+export type RoomAssistantWorkError = RoomAssistantWorkErrors[keyof RoomAssistantWorkErrors];
+
+export type RoomAssistantWorkResponses = {
+    /**
+     * Created
+     */
+    201: RoomAssistantStatus;
+};
+
+export type RoomAssistantWorkResponse = RoomAssistantWorkResponses[keyof RoomAssistantWorkResponses];
 
 export type A2aCardData = {
     body?: never;

@@ -62,3 +62,5 @@ export * from './preview';
 
 export * from './watchdog';
 export * from './database-reset';
+export * from './room-phone';
+export * from './room-assistant';

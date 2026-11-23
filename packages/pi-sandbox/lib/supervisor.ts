@@ -100,6 +100,9 @@ class Supervisor {
       throw new SandboxError(`The thread’s folder ${options.cwd} no longer exists.`, 'WORKSPACE_MISSING');
     });
     SandboxPolicy.assertWorkspace(cwd);
+    options.readOnlyRoots = await Promise.all((options.readOnlyRoots ?? []).map((root) => realpath(root)));
+    options.immutablePaths = await Promise.all((options.immutablePaths ?? []).map((root) => realpath(root)));
+    SandboxPolicy.validate({ ...options, cwd });
     void Supervisor.sweepTrash();
     this.temp = await realpath(await mkdtemp(path.join(tmpdir(), 'pi-srt-')));
     const ripgrep = await Supervisor.provideRipgrep(this.temp);

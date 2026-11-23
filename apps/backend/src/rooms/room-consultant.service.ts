@@ -1,6 +1,7 @@
 import type { BaseEvent } from '@ag-ui/core';
 import type { PlaybookAgentSettings } from '@pi-kit/protocol';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { RoomWorkspace } from './room-workspace.service';
 import { AguiService } from '../agui/agui.service';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
 import { ThreadsRepository } from '../db/threads.repository';
@@ -33,6 +34,7 @@ export class RoomConsultant {
     private readonly sessions: PiSessionService,
     private readonly agents: RoomAgents,
     private readonly live: RoomLive,
+    @Optional() private readonly workspace?: RoomWorkspace,
   ) {}
 
   async ask(request: ConsultRequest): Promise<string> {
@@ -50,6 +52,7 @@ export class RoomConsultant {
   private async turn(request: ConsultRequest): Promise<string> {
     const existing = await this.playbooks.consultThread(request.roomId, request.role);
     const threadId = existing && (await this.threadRows.get(existing)) ? existing : await this.create(request);
+    if (this.workspace) request = { ...request, folder: await this.workspace.prepare(request.roomId, threadId) };
     const prompt = existing === threadId ? request.question : this.firstPrompt(request);
     await this.agents.configure(threadId, request.settings);
     const speaking = this.live.turn({ roomId: request.roomId, actor: 'consultant', role: request.role });
@@ -78,6 +81,7 @@ export class RoomConsultant {
       undefined,
       undefined,
       {
+        internal: true,
         onId: async (threadId) => await this.playbooks.addConsultThread(threadId, request.roomId, request.role),
       },
     );

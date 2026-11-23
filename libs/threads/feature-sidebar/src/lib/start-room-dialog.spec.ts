@@ -1,9 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { RoomsStore } from '@pi-kit/rooms/api';
+import { CreateRoomSchema, type RoomStartPreview } from '@pi-kit/protocol';
 import { StartRoomDialog } from './start-room-dialog';
 
 describe('StartRoomDialog', () => {
-  const start = vi.fn(async (_threadId: string, _ownerId?: string) => ({
+  const start = vi.fn(async (_threadId: string, _ownerId?: string): Promise<RoomStartPreview> => ({
     title: 'Watcher',
     repository: 'github.com/acme/pi-kit',
     branch: 'main',
@@ -80,6 +81,34 @@ describe('StartRoomDialog', () => {
         baseCommit: 'b'.repeat(40),
         projectFolder: '/srv/pi-kit',
       },
+      expect.objectContaining({ environmentId: 'server' }),
+    );
+  });
+
+  it('creates a personal room on another host from a non-Git thread without invalid repository fields', async () => {
+    start.mockResolvedValueOnce({
+      title: 'Watcher',
+      repository: '',
+      baseCommit: '',
+      branch: null,
+      uncommittedFiles: 0,
+    });
+    const el = await render('desktop');
+    const host = el.querySelector('[data-testid=start-room-host]') as HTMLSelectElement;
+    host.value = 'server';
+    host.dispatchEvent(new Event('change'));
+    TestBed.tick();
+    await vi.waitFor(() =>
+      expect((el.querySelector('[data-testid=start-room-create]') as HTMLButtonElement).disabled).toBe(false),
+    );
+    expect(clones).not.toHaveBeenCalled();
+    expect(el.querySelector('[data-testid=start-room-no-clone]')).toBeNull();
+    (el.querySelector('[data-testid=start-room-create]') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(create).toHaveBeenCalled());
+    const body = create.mock.calls[0]?.[0];
+    expect(CreateRoomSchema.parse(body)).toEqual({ title: 'Watcher', summary: '' });
+    expect(create).toHaveBeenCalledWith(
+      { title: 'Watcher', summary: '' },
       expect.objectContaining({ environmentId: 'server' }),
     );
   });

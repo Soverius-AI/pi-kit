@@ -207,7 +207,11 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     title?: string,
     worktree?: NewWorktree,
     local?: NewLocal,
-    options: { setup?: 'terminal' | 'skip'; onId?: (threadId: string) => void | Promise<void> } = {},
+    options: {
+      setup?: 'terminal' | 'skip';
+      internal?: boolean;
+      onId?: (threadId: string) => void | Promise<void>;
+    } = {},
   ): Promise<ThreadDetail> {
     this.requireDirectory(cwd);
     const id = randomUUID();
@@ -245,6 +249,7 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
     });
     void this.outcomes.track(facts?.path ?? cwd);
     await this.meta.touchWorkspace(cwd);
+    if (options.internal) await this.meta.forgetWorkspace(cwd);
     this.status.listChanged();
     return await this.detail((await this.threads.get(session.id)) as ThreadRow);
   }

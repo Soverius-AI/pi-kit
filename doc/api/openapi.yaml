@@ -10685,7 +10685,6 @@ paths:
           in: query
           schema:
             type: string
-            minLength: 1
             maxLength: 512
         - name: baseCommit
           required: false
@@ -11688,6 +11687,784 @@ paths:
       tags:
         - rooms
       x-remote: true
+  /api/rooms/{roomId}/phone/config:
+    put:
+      operationId: RoomPhone_config
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomPhoneConfig'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomPhoneStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Set the private phone application URL for room links
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/phone/test:
+    post:
+      description: Sends a test to the bound group and requires a reply from its authorized owner. Merely connecting an account is not delivery verification.
+      operationId: RoomPhone_test
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomPhoneStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Verify an actual phone round trip
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/phone:
+    get:
+      description: Returns a QR for linking a dedicated assistant account, a group binding and queue health. Available only to authenticated paired clients.
+      operationId: RoomPhone_status
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomPhoneStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Read the room WhatsApp connection
+      tags:
+        - rooms
+      x-remote: true
+    delete:
+      description: Revokes this room binding and clears pending phone messages and deliveries. Room history and the host account session remain.
+      operationId: RoomPhone_unlink
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomPhoneStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Unlink the room WhatsApp group
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/phone/connect:
+    post:
+      description: Starts or reconnects the one host-owned assistant account. Sessions are stored in the protected application data directory. A QR appears in status when required.
+      operationId: RoomPhone_connect
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomPhoneStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: WhatsApp could not connect.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Connect the host WhatsApp account
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/phone/disconnect:
+    post:
+      description: Stops the account for all rooms and disables automatic reconnection on startup. Keeps bindings, pending messages and credentials for explicit reconnection. Unlink the device in WhatsApp to revoke its credentials.
+      operationId: RoomPhone_disconnect
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomPhoneStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Disconnect the host WhatsApp account
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/phone/review:
+    post:
+      description: Acknowledges that the owner reviewed room and WhatsApp history. Does not send a message or execute a turn again; resend manually if necessary.
+      operationId: RoomPhone_dismiss
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRoomPhone'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomPhoneStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Dismiss an uncertain phone item after review
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/phone/link:
+    post:
+      description: Returns a ten-minute challenge. Send /room-link CODE from the owner account in a group with the assistant. Confirmation in this app is required before accepting messages.
+      operationId: RoomPhone_begin
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomPhoneLink'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: Unlink the existing group first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Start linking a WhatsApp group
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/phone/confirm:
+    post:
+      description: Binds the challenge sender and group to this room. Subsequent lead replies, including scheduled replies, go to that group. Other group members cannot command the room. Room pause/archive suspends processing and delivery.
+      operationId: RoomPhone_confirm
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmRoomPhone'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomPhoneStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The challenge expired or changed, or the group is already bound.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Confirm the group and authorized owner
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/assistant:
+    get:
+      operationId: RoomAssistant_status
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomAssistantStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Read room assistant state
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/assistant/file:
+    get:
+      operationId: RoomAssistant_file
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: path
+          required: true
+          in: query
+          schema:
+            type: string
+            pattern: ^(inbox|outputs)\/[a-zA-Z0-9_.-]+$
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomFile'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Download an owned room upload or output
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/assistant/policy:
+    put:
+      operationId: RoomAssistant_policy
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomAssistantPolicy'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomAssistantStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Set proactive execution and notification policy
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/assistant/memory:
+    put:
+      description: An empty text forgets the key. Facts belong only to this room; they do not require a playbook.
+      operationId: RoomAssistant_memory
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomFactInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomAssistantStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Remember, correct or forget a fact
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/assistant/commitments:
+    post:
+      operationId: RoomAssistant_create
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomCommitmentInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomCommitment'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Create a commitment or daily routine
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/assistant/commitments/{id}:
+    patch:
+      operationId: RoomAssistant_change
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: id
+          required: true
+          in: path
+          description: The commitment id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeRoomCommitment'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomAssistantStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Complete, cancel or snooze a commitment
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/assistant/folders:
+    post:
+      operationId: RoomAssistant_folder
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomFolderInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomAssistantStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The room is busy or the alias already exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Attach a host folder as a read-only room link
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/assistant/folders/{id}:
+    delete:
+      description: Never deletes target contents. The room agents must finish before grants change.
+      operationId: RoomAssistant_removeFolder
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: id
+          required: true
+          in: path
+          description: The attachment id.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomAssistantStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The room is busy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Remove a link and revoke its grant
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/assistant/work/{id}:
+    post:
+      description: retry=true explicitly retries a failed/interrupted turn after the owner reviewed its effects. retry=false dismisses it without repeating any action.
+      operationId: RoomAssistant_work
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: id
+          required: true
+          in: path
+          description: The work item id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomWorkDecision'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomAssistantStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The item cannot be retried.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Review interrupted work
+      tags:
+        - rooms
+      x-remote: true
   /api/a2a/.well-known/agent-card.json:
     get:
       description: 'The A2A 1.0 agent card of this environment: a pi-kit coding agent that takes room tasks over JSON-RPC with push notifications.'
@@ -12630,6 +13407,20 @@ components:
         - version
         - text
       additionalProperties: false
+    ChangeRoomCommitment:
+      type: object
+      properties:
+        state:
+          type: string
+          enum:
+            - open
+            - done
+            - cancelled
+        dueAt:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+      additionalProperties: false
     ChangesList:
       type: object
       properties:
@@ -13081,6 +13872,21 @@ components:
         - host
         - permissions
         - needsRelaunch
+      additionalProperties: false
+    ConfirmRoomPhone:
+      type: object
+      properties:
+        group:
+          type: string
+          minLength: 1
+          maxLength: 300
+        sender:
+          type: string
+          minLength: 1
+          maxLength: 300
+      required:
+        - group
+        - sender
       additionalProperties: false
     Connector:
       type: object
@@ -19241,6 +20047,22 @@ components:
         - snippet
         - text
       additionalProperties: false
+    ReviewRoomPhone:
+      type: object
+      properties:
+        id:
+          type: integer
+          exclusiveMinimum: 0
+          maximum: 9007199254740991
+        direction:
+          type: string
+          enum:
+            - input
+            - delivery
+      required:
+        - id
+        - direction
+      additionalProperties: false
     RevokeTrust:
       type: object
       properties:
@@ -19301,7 +20123,6 @@ components:
           maxLength: 200
         repository:
           type: string
-          minLength: 1
           maxLength: 512
         hostInstanceId:
           type: string
@@ -19309,7 +20130,7 @@ components:
           pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
         baseCommit:
           type: string
-          pattern: ^[0-9a-f]{40,64}$
+          pattern: ^(?:[0-9a-f]{40,64})?$
         waiting:
           type: integer
           minimum: 0
@@ -19392,6 +20213,122 @@ components:
       required:
         - decision
       additionalProperties: false
+    RoomAssistantPolicy:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        timezone:
+          type: string
+          maxLength: 100
+        quietStart:
+          anyOf:
+            - type: string
+              pattern: ^([01]\d|2[0-3]):[0-5]\d$
+            - type: 'null'
+        quietEnd:
+          anyOf:
+            - type: string
+              pattern: ^([01]\d|2[0-3]):[0-5]\d$
+            - type: 'null'
+        dailyLimit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        dailyRunLimit:
+          type: integer
+          minimum: 1
+          maximum: 100
+      required:
+        - enabled
+        - timezone
+        - quietStart
+        - quietEnd
+        - dailyLimit
+      additionalProperties: false
+    RoomAssistantStatus:
+      type: object
+      properties:
+        policy:
+          $ref: '#/components/schemas/RoomAssistantPolicy'
+        memory:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              text:
+                type: string
+              updatedBy:
+                type: string
+              updatedAt:
+                type: number
+            required:
+              - key
+              - text
+              - updatedBy
+              - updatedAt
+            additionalProperties: false
+        commitments:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomCommitment'
+        folders:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomFolder'
+        workspace:
+          type: string
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              size:
+                type: number
+            required:
+              - path
+              - size
+            additionalProperties: false
+        work:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              title:
+                type: string
+              state:
+                type: string
+                enum:
+                  - queued
+                  - running
+                  - done
+                  - failed
+                  - review
+              kind:
+                type: string
+              createdAt:
+                type: number
+            required:
+              - id
+              - title
+              - state
+              - kind
+              - createdAt
+            additionalProperties: false
+      required:
+        - policy
+        - memory
+        - commitments
+        - folders
+        - workspace
+        - work
+      additionalProperties: false
     RoomClone:
       type: object
       properties:
@@ -19407,6 +20344,92 @@ components:
       type: array
       items:
         $ref: '#/components/schemas/RoomClone'
+    RoomCommitment:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        details:
+          default: ''
+          type: string
+          maxLength: 8000
+        dueAt:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        timezone:
+          type: string
+          maxLength: 100
+        dailyAt:
+          default: null
+          anyOf:
+            - type: string
+              pattern: ^([01]\d|2[0-3]):[0-5]\d$
+            - type: 'null'
+        source:
+          default: owner
+          type: string
+          maxLength: 500
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        state:
+          type: string
+          enum:
+            - open
+            - done
+            - cancelled
+        lastFiredAt:
+          type:
+            - number
+            - 'null'
+      required:
+        - title
+        - details
+        - dueAt
+        - timezone
+        - dailyAt
+        - source
+        - id
+        - state
+        - lastFiredAt
+      additionalProperties: false
+    RoomCommitmentInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        details:
+          default: ''
+          type: string
+          maxLength: 8000
+        dueAt:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        timezone:
+          type: string
+          maxLength: 100
+        dailyAt:
+          default: null
+          anyOf:
+            - type: string
+              pattern: ^([01]\d|2[0-3]):[0-5]\d$
+            - type: 'null'
+        source:
+          default: owner
+          type: string
+          maxLength: 500
+      required:
+        - title
+        - dueAt
+        - timezone
+      additionalProperties: false
     RoomDetail:
       type: object
       properties:
@@ -19526,6 +20549,10 @@ components:
           type: integer
           exclusiveMinimum: 0
           maximum: 9007199254740991
+        workId:
+          type:
+            - string
+            - 'null'
         kind:
           type: string
           enum:
@@ -19618,6 +20645,88 @@ components:
         - images
         - taskId
         - createdAt
+      additionalProperties: false
+    RoomFactInput:
+      type: object
+      properties:
+        key:
+          type: string
+          minLength: 1
+          maxLength: 80
+        text:
+          type: string
+          maxLength: 8000
+      required:
+        - key
+        - text
+      additionalProperties: false
+    RoomFile:
+      type: object
+      properties:
+        name:
+          type: string
+        data:
+          type: string
+        mime:
+          type: string
+      required:
+        - name
+        - data
+        - mime
+      additionalProperties: false
+    RoomFolder:
+      type: object
+      properties:
+        alias:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$
+        target:
+          type: string
+          minLength: 1
+          maxLength: 4096
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        environmentId:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+        canonical:
+          type: string
+        access:
+          type: string
+          enum:
+            - read
+        available:
+          type: boolean
+        reason:
+          type:
+            - string
+            - 'null'
+      required:
+        - alias
+        - target
+        - id
+        - environmentId
+        - canonical
+        - access
+        - available
+        - reason
+      additionalProperties: false
+    RoomFolderInput:
+      type: object
+      properties:
+        alias:
+          type: string
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$
+        target:
+          type: string
+          minLength: 1
+          maxLength: 4096
+      required:
+        - alias
+        - target
       additionalProperties: false
     RoomImage:
       type: object
@@ -19721,6 +20830,155 @@ components:
       enum:
         - supervised
         - assisted
+    RoomPhoneConfig:
+      type: object
+      properties:
+        appUrl:
+          type: string
+          maxLength: 2000
+      required:
+        - appUrl
+      additionalProperties: false
+    RoomPhoneLink:
+      type: object
+      properties:
+        code:
+          type: string
+        expiresAt:
+          type: number
+      required:
+        - code
+        - expiresAt
+      additionalProperties: false
+    RoomPhoneStatus:
+      type: object
+      properties:
+        connection:
+          type: string
+          enum:
+            - disconnected
+            - connecting
+            - qr
+            - connected
+            - error
+        qr:
+          type:
+            - string
+            - 'null'
+        error:
+          type:
+            - string
+            - 'null'
+        binding:
+          anyOf:
+            - type: object
+              properties:
+                group:
+                  type: string
+                groupName:
+                  type: string
+                sender:
+                  type: string
+                senderName:
+                  type: string
+              required:
+                - group
+                - groupName
+                - sender
+                - senderName
+              additionalProperties: false
+            - type: 'null'
+        candidate:
+          anyOf:
+            - type: object
+              properties:
+                group:
+                  type: string
+                groupName:
+                  type: string
+                sender:
+                  type: string
+                senderName:
+                  type: string
+              required:
+                - group
+                - groupName
+                - sender
+                - senderName
+              additionalProperties: false
+            - type: 'null'
+        expiresAt:
+          type:
+            - number
+            - 'null'
+        appUrl:
+          type:
+            - string
+            - 'null'
+        verifiedAt:
+          type:
+            - number
+            - 'null'
+        pendingDeliveries:
+          type: number
+        lastDelivery:
+          anyOf:
+            - type: object
+              properties:
+                sentAt:
+                  type:
+                    - number
+                    - 'null'
+                deliveredAt:
+                  type:
+                    - number
+                    - 'null'
+                readAt:
+                  type:
+                    - number
+                    - 'null'
+              required:
+                - sentAt
+                - deliveredAt
+                - readAt
+              additionalProperties: false
+            - type: 'null'
+        queued:
+          type: number
+        needsReview:
+          type: number
+        review:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+              direction:
+                type: string
+                enum:
+                  - input
+                  - delivery
+              text:
+                type: string
+            required:
+              - id
+              - direction
+              - text
+            additionalProperties: false
+      required:
+        - connection
+        - qr
+        - error
+        - binding
+        - candidate
+        - expiresAt
+        - queued
+        - needsReview
+        - review
+      additionalProperties: false
     RoomRun:
       type: object
       properties:
@@ -19860,7 +21118,6 @@ components:
           maxLength: 200
         repository:
           type: string
-          minLength: 1
           maxLength: 512
         branch:
           type:
@@ -19868,7 +21125,7 @@ components:
             - 'null'
         baseCommit:
           type: string
-          pattern: ^[0-9a-f]{40,64}$
+          pattern: ^(?:[0-9a-f]{40,64})?$
         uncommittedFiles:
           type: integer
           minimum: 0
@@ -20173,6 +21430,14 @@ components:
         - failed
         - stopped
         - integrated
+    RoomWorkDecision:
+      type: object
+      properties:
+        retry:
+          type: boolean
+      required:
+        - retry
+      additionalProperties: false
     RoomWorkerCandidate:
       type: object
       properties:

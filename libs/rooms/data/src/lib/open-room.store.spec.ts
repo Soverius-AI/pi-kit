@@ -215,14 +215,16 @@ describe('OpenRoomStore', () => {
     await vi.waitFor(() => expect(store.runs()[0]?.state).toBe('stopped'), { timeout: 4000 });
   });
 
-  it('posts, adds its own message once, and marks the lead working', async () => {
+  it('posts and adds its message once; only a lead state event marks work running', async () => {
     const store = TestBed.inject(OpenRoomStore);
     store.open(room);
     await vi.waitFor(() => expect(stream).toHaveBeenCalled());
     expect(await store.post('  Can Desktop run it?  ', 'lead')).toBe(true);
     expect(post).toHaveBeenCalledWith({ text: 'Can Desktop run it?', route: 'lead' });
     expect(store.events().map((e) => e.seq)).toEqual([1, 2]);
-    expect(store.lead()).toBe('working');
+    expect(store.lead()).toBe('idle');
+    lines.next({ type: 'lead', state: 'working' });
+    await vi.waitFor(() => expect(store.lead()).toBe('working'));
     store.close();
   });
 

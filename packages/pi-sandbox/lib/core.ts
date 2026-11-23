@@ -9,6 +9,8 @@ export interface SandboxOptions {
   cwd: string;
   experimentalWindowsAccepted?: boolean;
   protectedPaths?: string[];
+  readOnlyRoots?: string[];
+  immutablePaths?: string[];
 }
 export interface SandboxExecOptions {
   onData: (data: Buffer) => void;

@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import type { RoomImage, RoomRun } from '@pi-kit/protocol';
 import {
   type McpAppActivity,
   redact,
@@ -27,7 +29,7 @@ export interface NewRoom {
   baseCommit: string;
   summary: string;
   sourceThreadId: string | null;
-  projectFolder: string;
+  projectFolder: string | null;
   playbook?: string | null;
   stage?: string | null;
   createdAt: number;
@@ -272,6 +274,7 @@ export class RoomsRepository {
       environmentId?: string | null;
       role?: string | null;
       app?: McpAppActivity | null;
+      workId?: string | null;
     },
     createdAt = Date.now(),
   ): Promise<RoomEvent> {
@@ -284,7 +287,7 @@ export class RoomsRepository {
       const seq = Number(last.seq) + 1;
       await this.db
         .prepare(
-          'INSERT INTO room_events (room_id, seq, kind, actor, text, images, task_id, environment_id, role, app, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO room_events (room_id, seq, kind, actor, text, images, task_id, environment_id, role, app, created_at, work_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
         )
         .run(
           roomId,
@@ -298,6 +301,7 @@ export class RoomsRepository {
           event.role ?? null,
           app ? JSON.stringify(app) : null,
           createdAt,
+          event.workId ?? null,
         );
       return {
         roomId,
@@ -311,6 +315,7 @@ export class RoomsRepository {
         role: event.role ?? null,
         ...(app ? { app } : {}),
         createdAt,
+        ...(event.workId ? { workId: event.workId } : {}),
       };
     })();
   }
@@ -318,10 +323,11 @@ export class RoomsRepository {
   async events(roomId: string, afterSeq = 0): Promise<RoomEvent[]> {
     const rows = (await this.db
       .prepare(
-        'SELECT room_id, seq, kind, actor, text, images, task_id, environment_id, role, app, created_at FROM room_events WHERE room_id = ? AND seq > ? ORDER BY seq',
+        'SELECT room_id, seq, kind, actor, text, images, task_id, environment_id, role, app, created_at, work_id FROM room_events WHERE room_id = ? AND seq > ? ORDER BY seq',
       )
       .all(roomId, afterSeq)) as {
       room_id: string;
+      work_id: string | null;
       seq: number;
       kind: RoomEvent['kind'];
       actor: RoomEvent['actor'];
@@ -335,6 +341,7 @@ export class RoomsRepository {
     }[];
     return rows.map((row) => ({
       roomId: row.room_id,
+      ...(row.work_id ? { workId: row.work_id } : {}),
       seq: Number(row.seq),
       kind: row.kind,
       actor: row.actor,
@@ -636,6 +643,139 @@ export class RoomsRepository {
       .run(...hostInstanceIds);
   }
 
+  async enqueueWake(
+    roomId: string,
+    text: string,
+    cause: WakeCause,
+    sourceKey: string = randomUUID(),
+    images: readonly RoomImage[] = [],
+    ownerSeq: number | null = null,
+    commitmentRevision: number | null = null,
+  ): Promise<string> {
+    const id = randomUUID();
+    await this.db
+      .prepare(
+        `INSERT INTO room_wakeups(id, room_id, source_key, title, text, cause_json, images_json, owner_seq, created_at, updated_at, commitment_revision)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(room_id, source_key) DO NOTHING`,
+      )
+      .run(
+        id,
+        roomId,
+        sourceKey,
+        redact(cause.title) as string,
+        redact(text) as string,
+        JSON.stringify(cause),
+        JSON.stringify(images),
+        ownerSeq,
+        Date.now(),
+        Date.now(),
+        commitmentRevision,
+      );
+    const saved = await this.db
+      .prepare('SELECT id FROM room_wakeups WHERE room_id=? AND source_key=?')
+      .get<{ id: string }>(roomId, sourceKey);
+    if (!saved) throw new Error('The durable room message is missing.');
+    return saved.id;
+  }
+
+  async acceptMessage(
+    roomId: string,
+    message: { text: string; images?: RoomImage[] },
+    sourceKey: string,
+  ): Promise<{ event: RoomEvent; fresh: boolean }> {
+    return this.db.transaction(async () => {
+      const existing = await this.db
+        .prepare('SELECT owner_seq FROM room_wakeups WHERE room_id = ? AND source_key = ?')
+        .get<{ owner_seq: number }>(roomId, sourceKey);
+      if (existing) {
+        const event = (await this.events(roomId, existing.owner_seq - 1))[0];
+        if (!event) throw new Error('The accepted message is missing.');
+        return { event, fresh: false };
+      }
+      const event = await this.append(roomId, {
+        kind: 'message',
+        actor: 'owner',
+        text: message.text,
+        images: message.images?.length ?? 0,
+      });
+      await this.enqueueWake(
+        roomId,
+        message.text,
+        { kind: 'owner', title: message.text },
+        sourceKey,
+        message.images ?? [],
+        event.seq,
+      );
+      return { event, fresh: true };
+    })();
+  }
+
+  async nextWake(roomId: string): Promise<RoomWake | undefined> {
+    const row = await this.db
+      .prepare(
+        "SELECT * FROM room_wakeups WHERE room_id = ? AND state = 'queued' ORDER BY CASE WHEN json_extract(cause_json,'$.kind') IN ('owner','approval') THEN 0 WHEN json_extract(cause_json,'$.kind') IN ('schedule','poll') THEN 2 ELSE 1 END, created_at, rowid LIMIT 1",
+      )
+      .get<{ id: string; text: string; cause_json: string; images_json: string }>(roomId);
+    return row
+      ? { id: row.id, text: row.text, cause: JSON.parse(row.cause_json), images: JSON.parse(row.images_json) }
+      : undefined;
+  }
+  async pendingWakes(roomId: string): Promise<number> {
+    return (
+      (
+        await this.db
+          .prepare("SELECT count(*) AS n FROM room_wakeups WHERE room_id=? AND state='queued'")
+          .get<{ n: number }>(roomId)
+      )?.n ?? 0
+    );
+  }
+  async claimWake(id: string): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        "UPDATE room_wakeups SET state = 'running', updated_at = ?, started_at = ? WHERE id = ? AND state = 'queued'",
+      )
+      .run(Date.now(), Date.now(), id);
+    return Number(result.changes) === 1;
+  }
+  async requeueWake(id: string): Promise<void> {
+    await this.db
+      .prepare("UPDATE room_wakeups SET state='queued',updated_at=? WHERE id=? AND state='running'")
+      .run(Date.now(), id);
+  }
+  async wakeCurrent(id: string): Promise<boolean> {
+    return !!(await this.db
+      .prepare(
+        `SELECT 1 FROM room_wakeups w WHERE w.id=? AND w.state='running'
+      AND NOT EXISTS (SELECT 1 FROM room_commitments c WHERE c.room_id=w.room_id AND c.id=json_extract(w.cause_json,'$.trigger')
+        AND (c.state<>'open' OR c.revision<>w.commitment_revision))`,
+      )
+      .get(id));
+  }
+  async finishWake(id: string, state: 'done' | 'failed' | 'review', resultSeq?: number): Promise<void> {
+    await this.db
+      .prepare(
+        "UPDATE room_wakeups SET state = ?, result_seq = ?, images_json = CASE WHEN ? = 'done' THEN '[]' ELSE images_json END, updated_at = ? WHERE id = ?",
+      )
+      .run(state, resultSeq ?? null, state, Date.now(), id);
+  }
+  async recoverWakes(): Promise<void> {
+    await this.db
+      .prepare("UPDATE room_wakeups SET state = 'review', updated_at = ? WHERE state = 'running'")
+      .run(Date.now());
+  }
+  async queuedRooms(): Promise<string[]> {
+    return (
+      await this.db
+        .prepare(
+          "SELECT DISTINCT w.room_id FROM room_wakeups w JOIN rooms r ON r.id = w.room_id WHERE w.state = 'queued' AND r.archived_at IS NULL AND r.paused = 0",
+        )
+        .all<{ room_id: string }>()
+    ).map((r) => r.room_id);
+  }
+  async inTransaction<T>(action: () => Promise<T>): Promise<T> {
+    return this.db.transaction(action)();
+  }
+
   async directory(): Promise<Omit<RoomDirectoryEntry, 'local'>[]> {
     const rows = (await this.db
       .prepare('SELECT host_name, room_json, last_seen_at, reachable FROM room_directory ORDER BY last_seen_at DESC')
@@ -657,3 +797,14 @@ export class RoomsRepository {
 }
 
 export type FoundRoom = NonNullable<Awaited<ReturnType<RoomsRepository['get']>>>;
+export interface WakeCause {
+  kind: RoomRun['cause'];
+  title: string;
+  trigger?: string;
+}
+export interface RoomWake {
+  id: string;
+  text: string;
+  cause: WakeCause;
+  images: RoomImage[];
+}
