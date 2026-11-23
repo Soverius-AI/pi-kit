@@ -27,6 +27,15 @@ test('the home directory and its ancestors are not workspaces', () => {
   SandboxPolicy.validate({ cwd: `${home}-sibling` });
 });
 
+test('credential directories share admission and runtime rules without reserving content named Library', () => {
+  assert.equal(SandboxPolicy.isCredentialPath(path.join(os.tmpdir(), 'books', 'Library')), false);
+  assert.equal(SandboxPolicy.isCredentialPath(path.join(os.homedir(), '.ssh', 'keys')), true);
+  if (process.platform === 'darwin')
+    assert.equal(SandboxPolicy.isCredentialPath(path.join(os.homedir(), 'Library', 'Keychains')), true);
+  const policy = SandboxPolicy.compile({ cwd: '/workspace/Library' }, '/sandbox-temp', {});
+  assert.ok(!(policy.credentials?.files ?? []).some((entry) => entry.path === '/workspace/Library/Library'));
+});
+
 test('protected paths are bounded in count and total size', () => {
   assert.throws(
     () =>

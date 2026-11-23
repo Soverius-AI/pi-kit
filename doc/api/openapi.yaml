@@ -10454,7 +10454,7 @@ paths:
       x-remote: true
   /api/rooms:
     get:
-      description: Returns the rooms this environment hosts that are not archived, newest first.
+      description: 'Returns hosted rooms, newest first. Peer callers must advertise Accept: application/vnd.pi-kit.rooms+json; personal=1 to include personal rooms. Older peers receive repository rooms only; local owners always receive all rooms.'
       operationId: Rooms_hosted
       parameters: []
       responses:
@@ -20254,22 +20254,7 @@ components:
         memory:
           type: array
           items:
-            type: object
-            properties:
-              key:
-                type: string
-              text:
-                type: string
-              updatedBy:
-                type: string
-              updatedAt:
-                type: number
-            required:
-              - key
-              - text
-              - updatedBy
-              - updatedAt
-            additionalProperties: false
+            $ref: '#/components/schemas/RoomFact'
         commitments:
           type: array
           items:
@@ -20646,6 +20631,25 @@ components:
         - taskId
         - createdAt
       additionalProperties: false
+    RoomFact:
+      type: object
+      properties:
+        key:
+          type: string
+        text:
+          type: string
+        updatedBy:
+          type: string
+        updatedAt:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+      required:
+        - key
+        - text
+        - updatedBy
+        - updatedAt
+      additionalProperties: false
     RoomFactInput:
       type: object
       properties:
@@ -20803,11 +20807,6 @@ components:
     RoomMemoryEntry:
       type: object
       properties:
-        scope:
-          type: string
-          enum:
-            - room
-            - playbook
         key:
           type: string
         text:
@@ -20818,12 +20817,17 @@ components:
           type: integer
           minimum: 0
           maximum: 9007199254740991
+        scope:
+          type: string
+          enum:
+            - room
+            - playbook
       required:
-        - scope
         - key
         - text
         - updatedBy
         - updatedAt
+        - scope
       additionalProperties: false
     RoomMode:
       type: string

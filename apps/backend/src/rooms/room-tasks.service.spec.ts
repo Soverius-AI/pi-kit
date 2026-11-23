@@ -1149,6 +1149,38 @@ describe('choosing among a worker’s options', () => {
 describe('an assisted room', () => {
   const nudges = () => lead.nudge.mock.calls.map((call) => String(call[1]));
 
+  it('commits a worker result and its review continuation together, retaining a retryable report on failure', async () => {
+    await host.rooms.setMode(roomId, 'assisted');
+    const task = await propose();
+    await host.rooms.updateTask(task.id, { state: 'running', environmentId: desktop.id });
+    const report: RoomTaskReport = {
+      attempt: task.attempt,
+      environmentId: desktop.id,
+      state: 'submitted',
+      branch: null,
+      head: null,
+      report: 'Ready for review',
+      files: [],
+      bundle: null,
+      note: 'Worker finished',
+      questions: [],
+    };
+    const before = (await host.rooms.events(roomId)).length;
+    const fault = vi.spyOn(host.rooms, 'enqueueWake').mockRejectedValueOnce(new Error('disk fault'));
+    await expect(host.tasks.report(desktop.id, roomId, task.id, report)).rejects.toThrow('disk fault');
+    expect(await host.rooms.task(task.id)).toMatchObject({ state: 'running', report: null });
+    expect((await host.rooms.events(roomId)).length).toBe(before);
+    fault.mockRestore();
+    expect(await host.tasks.report(desktop.id, roomId, task.id, report)).toMatchObject({
+      state: 'submitted',
+      review: 'pending',
+    });
+    expect(await host.rooms.wakeBySource(roomId, `task:${task.id}:${task.attempt}:result:submitted`)).toMatchObject({
+      state: 'queued',
+    });
+    expect(await host.rooms.pendingWakes(roomId)).toBe(1);
+  });
+
   it('lets the lead answer a worker on Desktop, review, send it back once and accept the second round', async () => {
     await host.rooms.setMode(roomId, 'assisted');
     asking = true;

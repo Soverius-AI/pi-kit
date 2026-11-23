@@ -1,14 +1,30 @@
-import { mkdtemp, mkdir, writeFile, readFile, realpath, readlink, rename, symlink, rm, link } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  readFile,
+  realpath,
+  readlink,
+  rename,
+  symlink,
+  rm,
+  link,
+  unlink,
+} from 'node:fs/promises';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { homedir, tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MetaRepository } from '../db/meta.repository';
 import { DatabaseService } from '../db/database.service';
 import { RoomAssistantRepository } from '../db/room-assistant.repository';
 import { RoomsRepository } from '../db/rooms.repository';
 import { ThreadsRepository } from '../db/threads.repository';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
+import { ROOMS_SANDBOX_SETTING_KEY } from '@pi-kit/protocol';
 import type { BackendConfig } from '../app/config';
 import type { PiSessionService } from '../pi/pi-session.service';
+import { SandboxPackage } from '../pi/thread-protection.service';
 import type { ThreadProtectionService } from '../pi/thread-protection.service';
 import type { RoomLive } from './room-live';
 import { RoomFolders } from './room-folders';
@@ -27,13 +43,16 @@ describe('room workspaces and read-only folder attachments', () => {
     setRoomRoots: (value: typeof resolver) => {
       resolver = value;
     },
-    binding: async () => ({ mode: 'sandboxed' }),
+    binding: vi.fn(),
     prepare: vi.fn(),
     release,
     set: vi.fn(),
   };
   beforeEach(async () => {
     vi.clearAllMocks();
+    const { SandboxPolicy } = await import(pathToFileURL(join(SandboxPackage.dir(), 'dist/core.js')).href);
+    vi.spyOn(SandboxPackage, 'load').mockResolvedValue({ SandboxPolicy } as never);
+    protection.binding.mockResolvedValue({ mode: 'sandboxed', generation: 1 });
     root = await realpath(await mkdtemp(join(tmpdir(), 'pi-room-workspace-')));
     dataDir = join(root, 'Library', 'data');
     project = join(root, 'project');
@@ -84,12 +103,30 @@ describe('room workspaces and read-only folder attachments', () => {
       protection as unknown as ThreadProtectionService,
       { snapshot: () => [] } as unknown as RoomLive,
       { dataDir },
+      new MetaRepository(db),
     );
     service.onModuleInit();
   });
   afterEach(async () => {
+    vi.restoreAllMocks();
     await db.onApplicationShutdown();
     await rm(root, { recursive: true, force: true });
+  });
+
+  it('keeps path, folder inspection, grants and empty file listing read-only, and recreates owned directories on prepare', async () => {
+    const cwd = service.path('a');
+    await expect(realpath(cwd)).rejects.toThrow();
+    expect(await service.list('a')).toEqual([]);
+    expect(await service.files('a')).toEqual([]);
+    expect((await resolver?.('lead-a'))?.readOnlyRoots).toEqual([]);
+    await expect(realpath(cwd)).rejects.toThrow();
+    await service.add('a', { alias: 'notes', target: notes });
+    await service.prepare('a', 'lead-a');
+    cwdOf.mockReturnValue(cwd);
+    await rm(cwd, { recursive: true });
+    expect(await service.prepare('a', 'lead-a')).toBe(cwd);
+    expect(await realpath(join(cwd, 'outputs'))).toBe(join(cwd, 'outputs'));
+    expect(await readlink(join(cwd, 'folders', 'notes'))).toBe(notes);
   });
 
   it('links an approved folder under a stable room cwd, preserves session history, and searches in the sandbox', async () => {
@@ -112,6 +149,69 @@ describe('room workspaces and read-only folder attachments', () => {
     );
   });
 
+  it('keeps repository cwd and explicit protection while personal and explicitly linked rooms require a sandbox', async () => {
+    const meta = new MetaRepository(db);
+    protection.binding.mockResolvedValue({ mode: 'bypass', generation: 0 });
+    await service.ensureProject('b');
+    expect(await service.execution('b', 'lead-b')).toEqual({ cwd: project, workspace: false, sandbox: false });
+    expect(await service.prepare('b', 'lead-b')).toBe(project);
+    expect(protection.set).not.toHaveBeenCalled();
+    expect(protection.prepare).not.toHaveBeenCalled();
+    expect((await resolver?.('lead-b'))?.readOnlyRoots).toEqual([]);
+    await meta.setSetting(ROOMS_SANDBOX_SETTING_KEY, true);
+    expect((await service.execution('b', 'lead-b')).sandbox).toBe(true);
+    protection.binding.mockResolvedValue({ mode: 'bypass', generation: 2 });
+    expect((await service.execution('b', 'lead-b')).sandbox).toBe(false);
+    await service.add('b', { alias: 'notes', target: notes });
+    expect(await service.execution('b', 'lead-b')).toEqual({ cwd: service.path('b'), workspace: true, sandbox: true });
+    await service.prepare('b', 'lead-b');
+    expect(protection.set).toHaveBeenCalledWith(
+      'lead-b',
+      service.path('b'),
+      { mode: 'sandboxed' },
+      expect.any(Function),
+    );
+    await service.remove('b', (await store.folders('b')).find((folder) => folder.alias === 'notes')!.id);
+    expect((await service.execution('b', 'lead-b')).workspace).toBe(true);
+    expect((await service.execution('a', 'lead-a')).sandbox).toBe(true);
+  });
+
+  it('inspects folders and resolves grants without creating or removing managed symlinks', async () => {
+    await service.add('a', { alias: 'notes', target: notes });
+    const link = join(service.path('a'), 'folders', 'notes');
+    await unlink(link);
+    expect((await service.list('a'))[0].available).toBe(true);
+    expect((await resolver?.('lead-a'))?.readOnlyRoots).toEqual([notes]);
+    await expect(readlink(link)).rejects.toThrow();
+    await service.prepare('a', 'lead-a');
+    expect(await readlink(link)).toBe(notes);
+    await rename(notes, notes + '-old');
+    await symlink(project, notes);
+    expect((await service.list('a'))[0].available).toBe(false);
+    expect((await resolver?.('lead-a'))?.readOnlyRoots).toEqual([]);
+    expect(await readlink(link)).toBe(notes);
+    await service.prepare('a', 'lead-a');
+    await expect(readlink(link)).rejects.toThrow();
+  });
+
+  it('allows ordinary content named Library while refusing credential directories', async () => {
+    const library = join(root, 'books', 'Library');
+    await mkdir(library, { recursive: true });
+    await service.add('a', { alias: 'books', target: library });
+    expect((await service.list('a'))[0]).toMatchObject({ canonical: library, available: true });
+    const credentials = join(root, '.ssh');
+    await mkdir(credentials);
+    await expect(service.add('a', { alias: 'secrets', target: credentials })).rejects.toThrow(/credential/);
+    protection.prepare.mockRejectedValue(new Error('Sandbox unsupported on this platform'));
+    await expect(service.prepare('a', 'lead-a')).rejects.toThrow(/Sandbox unsupported/);
+    expect(protection.set).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ mode: 'bypass' }),
+      expect.anything(),
+    );
+  });
+
   it('initializes the project link once, revokes both lead and consultant grants, and never deletes the target', async () => {
     await Promise.all([service.ensureProject('b'), service.ensureProject('b')]);
     expect(await store.folders('b')).toHaveLength(1);
@@ -125,6 +225,37 @@ describe('room workspaces and read-only folder attachments', () => {
     expect(await store.folders('b')).toEqual([]);
     expect(await readFile(join(project, 'kept.md'), 'utf8')).toBe('project text');
     expect(await readFile(join(root, 'lead-b.jsonl'), 'utf8')).toBe('original persisted history\n');
+  });
+
+  it('uses a protected workspace for a non-Git source and keeps invalid automatic links unavailable', async () => {
+    const source = join(root, '.ssh', 'personal');
+    await mkdir(source, { recursive: true });
+    await rooms.insert({
+      id: 'personal-source',
+      title: 'Personal source',
+      summary: '',
+      repository: '',
+      baseCommit: '',
+      sourceThreadId: null,
+      projectFolder: source,
+      createdAt: 1,
+    });
+    await rows.insertDraft({
+      id: 'personal-lead',
+      sessionPath: join(root, 'personal.jsonl'),
+      cwd: source,
+      baseCommit: null,
+    });
+    await rooms.setLead('personal-source', 'personal-lead');
+    await service.ensureProject('personal-source');
+    expect((await service.list('personal-source'))[0]).toMatchObject({ available: false });
+    expect(await service.execution('personal-source', 'personal-lead')).toEqual({
+      cwd: service.path('personal-source'),
+      workspace: true,
+      sandbox: true,
+    });
+    expect(await service.prepare('personal-source', 'personal-lead')).toBe(service.path('personal-source'));
+    expect((await resolver?.('personal-lead'))?.readOnlyRoots).toEqual([]);
   });
 
   it('keeps an existing managed scratch project readable without admitting arbitrary application folders', async () => {
@@ -154,6 +285,8 @@ describe('room workspaces and read-only folder attachments', () => {
     await symlink(project, notes);
     expect((await service.list('a'))[0]).toMatchObject({ available: false });
     expect((await resolver?.('lead-a'))?.readOnlyRoots).toEqual([]);
+    expect(await readlink(join(service.path('a'), 'folders', 'notes'))).toBe(notes);
+    await service.prepare('a', 'lead-a');
     await expect(readlink(join(service.path('a'), 'folders', 'notes'))).rejects.toThrow();
   });
 

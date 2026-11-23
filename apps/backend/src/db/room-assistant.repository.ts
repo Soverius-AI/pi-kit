@@ -11,6 +11,7 @@ import {
   type RoomAssistantStatus,
 } from '@pi-kit/protocol';
 import { DatabaseService } from './database.service';
+import { defaultRoomAssistantPolicy } from './room-assistant-policy';
 
 @Injectable()
 export class RoomAssistantRepository {
@@ -24,23 +25,25 @@ export class RoomAssistantRepository {
       .get<{ value_json: string }>();
     return row?.value_json === 'true';
   }
+  async initializePolicies(): Promise<void> {
+    const rows = await this.db
+      .prepare('SELECT room_id,policy FROM room_assistant_policy')
+      .all<{ room_id: string; policy: string }>();
+    for (const row of rows) {
+      const policy = JSON.parse(row.policy) as Record<string, unknown>;
+      if (policy['timezone'] !== null) continue;
+      policy['timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      await this.setPolicy(row.room_id, RoomAssistantPolicySchema.parse(policy));
+    }
+  }
   async policy(roomId: string): Promise<RoomAssistantPolicy> {
     const row = await this.db
-      .prepare('SELECT policy FROM room_assistant_policy WHERE room_id = ?')
+      .prepare('SELECT policy FROM room_assistant_policy WHERE room_id=?')
       .get<{ policy: string }>(roomId);
-    const legacy = await this.db
-      .prepare('SELECT playbook FROM rooms WHERE id=?')
-      .get<{ playbook: string | null }>(roomId);
-    return row
-      ? RoomAssistantPolicySchema.parse(JSON.parse(row.policy))
-      : {
-          enabled: !!legacy?.playbook,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          quietStart: '22:00',
-          quietEnd: '08:00',
-          dailyLimit: 10,
-          dailyRunLimit: 20,
-        };
+    if (!row) return defaultRoomAssistantPolicy();
+    const policy = JSON.parse(row.policy) as Record<string, unknown>;
+    if (policy['timezone'] === null) policy['timezone'] = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return RoomAssistantPolicySchema.parse(policy);
   }
   async setPolicy(roomId: string, policy: RoomAssistantPolicy): Promise<void> {
     await this.db
@@ -118,7 +121,7 @@ export class RoomAssistantRepository {
     return (
       await this.db
         .prepare(
-          "SELECT c.* FROM room_commitments c JOIN rooms r ON r.id=c.room_id WHERE c.state='open' AND c.due_at<=? AND (c.last_fired_at IS NULL OR c.last_fired_at<c.due_at) AND r.archived_at IS NULL AND r.paused=0 ORDER BY c.due_at LIMIT 100",
+          "SELECT c.* FROM room_commitments c JOIN rooms r ON r.id=c.room_id JOIN room_assistant_policy p ON p.room_id=c.room_id WHERE c.state='open' AND c.due_at<=? AND (c.last_fired_at IS NULL OR c.last_fired_at<c.due_at) AND r.archived_at IS NULL AND r.paused=0 AND COALESCE(json_extract(p.policy,'$.enabled'),0)=1 ORDER BY c.due_at LIMIT 100",
         )
         .all<CommitmentRow>(now)
     ).map((row) => ({ roomId: row.room_id, item: commitment(row) }));
@@ -130,9 +133,14 @@ export class RoomAssistantRepository {
   }
   async folders(roomId: string): Promise<RoomFolder[]> {
     return (
-      await this.db
-        .prepare('SELECT * FROM room_folders WHERE room_id=? ORDER BY alias')
-        .all<{ id: string; alias: string; target: string; canonical: string; environment_id: string }>(roomId)
+      await this.db.prepare('SELECT * FROM room_folders WHERE room_id=? ORDER BY alias').all<{
+        id: string;
+        alias: string;
+        target: string;
+        canonical: string;
+        environment_id: string;
+        automatic: number;
+      }>(roomId)
     ).map((row) => ({
       id: row.id,
       alias: row.alias,
@@ -144,10 +152,15 @@ export class RoomAssistantRepository {
       reason: null,
     }));
   }
-  async addFolder(roomId: string, alias: string, target: string, canonical: string): Promise<void> {
-    await this.db
-      .prepare('INSERT INTO room_folders(id,room_id,alias,target,canonical,environment_id) VALUES (?,?,?,?,?,?)')
-      .run(randomUUID(), roomId, alias, target, canonical, this.database.instanceId);
+  async addFolder(roomId: string, alias: string, target: string, canonical: string, automatic = false): Promise<void> {
+    await this.db.transaction(async () => {
+      await this.db
+        .prepare(
+          'INSERT INTO room_folders(id,room_id,alias,target,canonical,environment_id,automatic) VALUES (?,?,?,?,?,?,?)',
+        )
+        .run(randomUUID(), roomId, alias, target, canonical, this.database.instanceId, automatic ? 1 : 0);
+      if (!automatic) await this.db.prepare('UPDATE rooms SET workspace_mode=1 WHERE id=?').run(roomId);
+    })();
   }
   async removeFolder(roomId: string, id: string): Promise<void> {
     await this.db.prepare('DELETE FROM room_folders WHERE room_id=? AND id=?').run(roomId, id);
@@ -169,6 +182,12 @@ export class RoomAssistantRepository {
         )
         .all<{ id: string }>(roomId, roomId)
     ).map((row) => row.id);
+  }
+  async workspaceMode(roomId: string): Promise<boolean> {
+    const row = await this.db
+      .prepare('SELECT workspace_mode AS mode FROM rooms WHERE id=?')
+      .get<{ mode: number }>(roomId);
+    return row?.mode === 1;
   }
   async workspaceVersion(roomId: string): Promise<number> {
     return (

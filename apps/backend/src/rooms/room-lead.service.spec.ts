@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConflictException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ROOMS_SANDBOX_SETTING_KEY, type RoomStreamLine } from '@pi-kit/protocol';
+import type { RoomStreamLine } from '@pi-kit/protocol';
 import type { AguiService, HeadlessRun } from '../agui/agui.service';
 import { DatabaseService } from '../db/database.service';
 import { InstanceRepository } from '../db/instance.repository';
@@ -299,23 +299,19 @@ describe('the room lead', () => {
     expect(threads.setProtection).not.toHaveBeenCalled();
   });
 
-  it('sandboxes the lead when rooms use the sandbox and it runs here', async () => {
-    await new MetaRepository(db).setSetting(ROOMS_SANDBOX_SETTING_KEY, true);
+  it('delegates cwd selection to the workspace execution policy without setting another sandbox policy', async () => {
+    const cwd = join(base, 'selected-room-workspace');
+    const initialCwd = vi.fn(async () => cwd);
+    lead.setAssistant({
+      initialCwd,
+      prepare: async () => cwd,
+      briefing: async () => undefined,
+      enabled: async () => true,
+      canWake: async () => true,
+    });
     await lead.prepare(roomId);
-    expect(threads.setProtection).toHaveBeenCalledWith('lead-1', expect.objectContaining({ mode: 'sandboxed' }));
-    expect(threads.setProtection).not.toHaveBeenCalledWith('lead-1', expect.objectContaining({ mode: 'bypass' }));
-    expect((await lead.detail(roomId)).events).toEqual([]);
-  });
-
-  it('keeps a read-only lead on the host and says so when the sandbox is unavailable', async () => {
-    sandboxState = 'unavailable';
-    await new MetaRepository(db).setSetting(ROOMS_SANDBOX_SETTING_KEY, true);
-    await lead.prepare(roomId);
-    expect(threads.setProtection).toHaveBeenLastCalledWith('lead-1', { mode: 'bypass', confirmBypass: true });
-    const note = (await lead.detail(roomId)).events.at(-1);
-    expect(note).toMatchObject({ actor: 'coordinator', kind: 'note' });
-    expect(note?.text).toContain('srt missing');
-    expect(note?.text).toContain('read-only');
+    expect(initialCwd).toHaveBeenCalledWith(expect.objectContaining({ room: expect.objectContaining({ id: roomId }) }));
+    expect(threads.setProtection).not.toHaveBeenCalled();
   });
 
   it('passes images to the lead and records how many came with the message', async () => {

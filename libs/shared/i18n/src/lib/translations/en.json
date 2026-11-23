@@ -5095,7 +5095,8 @@
       "retry": "Retry after review",
       "dismiss": "Dismiss",
       "loading": "Loading assistant…",
-      "invalidDate": "Choose a valid date and time in the room timezone."
+      "invalidDate": "Choose a valid date and time in the room timezone.",
+      "runLimitHint": "Leave empty for no daily run limit. Existing playbooks keep their previous limit until you change it."
     }
   },
   "common": {

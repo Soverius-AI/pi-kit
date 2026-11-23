@@ -38,6 +38,7 @@ import { RoomPhoneService } from './room-phone.service';
 import { RoomWhatsAppTransport } from './room-whatsapp.transport';
 import { RoomWorkspace } from './room-workspace.service';
 import { RoomAssistant } from './room-assistant.service';
+import { RoomMemory } from './room-memory';
 import { RoomAssistantController } from './room-assistant.controller';
 import { TranscribeModule } from '../transcribe/transcribe.module';
 
@@ -75,6 +76,7 @@ import { TranscribeModule } from '../transcribe/transcribe.module';
     RoomWhatsAppTransport,
     RoomWorkspace,
     RoomAssistant,
+    RoomMemory,
   ],
   controllers: [RoomsController, RoomPhoneController, RoomAssistantController, A2aController, A2aWellKnownController],
 })

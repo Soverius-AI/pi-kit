@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RoomListSchema, type RoomDirectoryEntry } from '@pi-kit/protocol';
+import { RoomListSchema, ROOMS_PERSONAL_ACCEPT, type RoomDirectoryEntry } from '@pi-kit/protocol';
 import { RoomsRepository } from '../db/rooms.repository';
 import { PeerProxy } from '../peers/peer-proxy';
 import { PeersService } from '../peers/peers.service';
@@ -34,6 +34,7 @@ export class RoomDirectoryService {
     try {
       const answer = await this.proxy.call(peerId, '/api/rooms', 'GET', undefined, {
         signal: AbortSignal.timeout(5000),
+        headers: { accept: ROOMS_PERSONAL_ACCEPT },
       });
       if (answer.status === 404) return await this.rooms.rememberHost(peerId, name, [], now);
       const parsed = answer.status === 200 ? RoomListSchema.safeParse(answer.body) : undefined;

@@ -4,7 +4,33 @@ import type { ExtensionAPI, ExtensionFactory, ToolDefinition } from '@earendil-w
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
-import { RoomAssistantCommandSchema, type RoomAssistantCommand } from '@pi-kit/protocol';
+import { RoomAssistantCommandSchema, RoomFactInputSchema, type RoomAssistantCommand } from '@pi-kit/protocol';
+
+/** Providers require an object at the tool root. Derive its discoverable fields
+ * from the strict command variants; execution still parses the discriminated union. */
+export function roomAssistantToolParameters(): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  const actions: string[] = [];
+  const requirements: string[] = [];
+  for (const variant of RoomAssistantCommandSchema.options) {
+    const json = z.toJSONSchema(variant, { target: 'draft-7' }) as {
+      properties: Record<string, Record<string, unknown>>;
+      required?: string[];
+    };
+    const action = json.properties['action']?.['const'] as string;
+    actions.push(action);
+    requirements.push(
+      `${action}: ${(json.required ?? []).filter((key) => key !== 'action').join(', ') || 'no required fields'}`,
+    );
+    Object.assign(properties, json.properties);
+  }
+  properties['action'] = {
+    type: 'string',
+    enum: actions,
+    description: `Required fields by action: ${requirements.join('; ')}.`,
+  };
+  return { type: 'object', properties, required: ['action'], additionalProperties: false };
+}
 
 export interface RoomToolsHook {
   assistant?(threadId: string, input: RoomAssistantCommand): Promise<string>;
@@ -91,21 +117,12 @@ export class RoomTools {
       roles: z.array(RoomTools.Role).max(8).optional().describe('Whom to ask; all participants when left out.'),
     })
     .strict();
-  private static readonly NoteSchema = z
-    .object({
-      key: z
-        .string()
-        .trim()
-        .min(1)
-        .max(80)
-        .describe('A short name for the note, such as spec, decision or reviewed-prs. The same key replaces it.'),
-      text: z.string().max(8000).describe('The note; empty forgets it.'),
-      scope: z
-        .enum(['room', 'playbook'])
-        .default('room')
-        .describe('room for this room only; playbook to carry it to later rooms of this playbook.'),
-    })
-    .strict();
+  private static readonly NoteSchema = RoomFactInputSchema.extend({
+    scope: z
+      .enum(['room', 'playbook'])
+      .default('room')
+      .describe('room for this room only; playbook to carry it to later rooms of this playbook.'),
+  }).strict();
   private static readonly AdvanceSchema = z
     .object({
       stage: z.string().trim().min(1).max(40).describe('The stage to move to, as the playbook names it.'),
@@ -212,7 +229,9 @@ export class RoomTools {
       name,
       label,
       description,
-      parameters: z.toJSONSchema(schema, { target: 'draft-7' }) as unknown as ToolDefinition['parameters'],
+      parameters: (Object.is(schema, RoomAssistantCommandSchema)
+        ? roomAssistantToolParameters()
+        : z.toJSONSchema(schema, { target: 'draft-7' })) as unknown as ToolDefinition['parameters'],
       executionMode: 'sequential' as const,
       async execute(_id: string, input: unknown) {
         const text = await run(schema.parse(input));

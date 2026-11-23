@@ -7,6 +7,7 @@ import type { WAMessage } from 'baileys';
 import type { RoomPhoneStatus } from '@pi-kit/protocol';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
+import type { PhoneAttachment } from './room-phone.types';
 
 export interface PhoneMessage {
   id: string;
@@ -17,7 +18,7 @@ export interface PhoneMessage {
   text: string;
   quoteId?: string;
   raw?: string;
-  files?: { name: string; mime: string; size: number; type: string }[];
+  files?: PhoneAttachment[];
 }
 
 /** One host-owned WhatsApp account, either the owner or a separate assistant. Durable routing lives outside the SDK's transient state. */

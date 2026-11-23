@@ -237,6 +237,17 @@ export class MetaRepository {
       .run(cwd, basename(cwd) || cwd, openedAt, options.passive ? 1 : 0);
   }
 
+  /** Generated room workspaces stay absent from sidebar reconciliation; existing owner registrations keep their state. */
+  async registerInternalWorkspace(cwd: string): Promise<void> {
+    await this.db
+      .prepare(
+        `INSERT INTO workspaces (cwd, name, last_opened_at, sort_order, forgotten)
+       VALUES (?, ?, 0, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM workspaces), 1)
+       ON CONFLICT (cwd) DO NOTHING`,
+      )
+      .run(cwd, basename(cwd) || cwd);
+  }
+
   /** Takes a folder off the list of projects without touching its threads or files; false when it is not listed. Its settings are kept for when it is added again. */
   async forgetWorkspace(cwd: string): Promise<boolean> {
     return (

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RoomFactSchema } from './playbooks';
 
 export const RoomTimezoneSchema = z
   .string()
@@ -71,17 +72,15 @@ export const RoomFolderSchema = RoomFolderInputSchema.extend({
 }).meta({ id: 'RoomFolder' });
 export type RoomFolder = z.infer<typeof RoomFolderSchema>;
 
-export const RoomFactInputSchema = z
-  .object({ key: z.string().trim().min(1).max(80), text: z.string().max(8000) })
+export const RoomFactInputSchema = RoomFactSchema.pick({ key: true, text: true })
+  .extend({ key: RoomFactSchema.shape.key.trim().min(1).max(80), text: RoomFactSchema.shape.text.max(8000) })
   .strict()
   .meta({ id: 'RoomFactInput' });
 export type RoomFactInput = z.infer<typeof RoomFactInputSchema>;
 export const RoomAssistantStatusSchema = z
   .object({
     policy: RoomAssistantPolicySchema,
-    memory: z.array(
-      z.object({ key: z.string(), text: z.string(), updatedBy: z.string(), updatedAt: z.number() }).strict(),
-    ),
+    memory: z.array(RoomFactSchema),
     commitments: z.array(RoomCommitmentSchema),
     folders: z.array(RoomFolderSchema),
     workspace: z.string(),
@@ -102,20 +101,36 @@ export const RoomAssistantStatusSchema = z
   .meta({ id: 'RoomAssistantStatus' });
 export type RoomAssistantStatus = z.infer<typeof RoomAssistantStatusSchema>;
 
-export const RoomAssistantCommandSchema = z
-  .object({
-    action: z.enum(['status', 'remember', 'forget', 'commitment', 'complete', 'snooze', 'cancel', 'output', 'search']),
-    key: z.string().max(80).optional(),
-    text: z.string().max(8000).optional(),
-    title: z.string().max(200).optional(),
-    id: z.uuid().optional(),
-    dueAt: z.number().int().nonnegative().optional(),
-    timezone: RoomTimezoneSchema.optional(),
-    dailyAt: time.optional(),
-    path: z.string().max(500).optional(),
-    query: z.string().max(200).optional(),
-  })
-  .strict();
+export const RoomAssistantCommandSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('status'), query: z.string().trim().min(1).max(200).optional() }).strict(),
+  RoomFactInputSchema.extend({ action: z.literal('remember') }).strict(),
+  z.object({ action: z.literal('forget'), key: RoomFactInputSchema.shape.key }).strict(),
+  z
+    .object({
+      action: z.literal('commitment'),
+      title: RoomCommitmentInputSchema.shape.title,
+      text: RoomCommitmentInputSchema.shape.details.optional(),
+      dueAt: RoomCommitmentInputSchema.shape.dueAt.optional(),
+      timezone: RoomTimezoneSchema.optional(),
+      dailyAt: time.optional(),
+    })
+    .strict()
+    .refine(
+      (value) => value.dueAt !== undefined || value.dailyAt !== undefined,
+      'A due time or daily time is required.',
+    ),
+  z.object({ action: z.literal('complete'), id: z.uuid() }).strict(),
+  z.object({ action: z.literal('cancel'), id: z.uuid() }).strict(),
+  z.object({ action: z.literal('snooze'), id: z.uuid(), dueAt: RoomCommitmentInputSchema.shape.dueAt }).strict(),
+  z
+    .object({
+      action: z.literal('output'),
+      path: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,119}$/),
+      text: z.string().min(1).max(8000),
+    })
+    .strict(),
+  z.object({ action: z.literal('search'), query: z.string().trim().min(1).max(200) }).strict(),
+]);
 export type RoomAssistantCommand = z.infer<typeof RoomAssistantCommandSchema>;
 export const RoomFileQuerySchema = z.object({ path: z.string().regex(/^(inbox|outputs)\/[a-zA-Z0-9_.-]+$/) }).strict();
 export const RoomFileSchema = z

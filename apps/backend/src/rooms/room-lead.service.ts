@@ -54,7 +54,9 @@ export class RoomLeadService implements OnModuleInit, OnApplicationShutdown {
   private readonly turns = new Map<string, Promise<void>>();
   private assistant:
     | {
-        briefing(found: FoundRoom): Promise<string>;
+        briefing(found: FoundRoom): Promise<string | undefined>;
+        acknowledgeBriefing?(roomId: string, text: string): void;
+        initialCwd?(found: FoundRoom): Promise<string>;
         prepare(found: FoundRoom, threadId: string): Promise<string>;
         canWake(found: FoundRoom): Promise<boolean>;
         enabled(): Promise<boolean>;
@@ -346,7 +348,11 @@ export class RoomLeadService implements OnModuleInit, OnApplicationShutdown {
     return await this.createLead(
       roomId,
       found.room.title,
-      this.files.workspace(roomId) ?? (await this.agents.projectFolder(found)),
+      this.assistant?.initialCwd
+        ? await this.assistant.initialCwd(found)
+        : found.room.repository
+          ? await this.agents.projectFolder(found)
+          : (this.files.workspace(roomId) ?? (await this.agents.projectFolder(found))),
     );
   }
 
@@ -399,11 +405,17 @@ export class RoomLeadService implements OnModuleInit, OnApplicationShutdown {
         outcome = { state: 'done', summary: 'The commitment changed before its turn started.' };
         return;
       }
-      let run = await this.agui.runHeadless(leadId, [assistantContext, prompt].filter(Boolean).join('\n\n'), {
-        cwd,
-        images,
-        observe: speaking.observe,
-      });
+      let run = await this.agui.runHeadless(
+        leadId,
+        [assistantContext, ...(this.assistant ? [`Current time: ${new Date().toISOString()}.`] : []), prompt]
+          .filter(Boolean)
+          .join('\n\n'),
+        {
+          cwd,
+          images,
+          observe: speaking.observe,
+        },
+      );
       while (run.status === 'interrupted') {
         const questions = RoomQuestions.fromDialogs(this.sessions.pendingDialogs(leadId));
         if (questions.length === 0) break;
@@ -441,6 +453,7 @@ export class RoomLeadService implements OnModuleInit, OnApplicationShutdown {
         outcome = { state: run.status === 'aborted' ? 'stopped' : 'failed', summary: run.error ?? null };
         return;
       }
+      if (assistantContext) this.assistant?.acknowledgeBriefing?.(roomId, assistantContext);
       speaking.end();
       for (const app of await this.agents.apps(leadId))
         await this.bus.record(roomId, { kind: 'app', actor: 'lead', text: app.tool ?? app.serverId, app });
@@ -512,13 +525,6 @@ export class RoomLeadService implements OnModuleInit, OnApplicationShutdown {
       internal: true,
       onId: async (threadId) => await this.rooms.setLead(roomId, threadId),
     });
-    const unavailable = await this.agents.sandbox(detail.id);
-    if (unavailable)
-      await this.bus.record(roomId, {
-        kind: 'note',
-        actor: 'coordinator',
-        text: `${unavailable} The lead runs on this computer without it, still read-only.`,
-      });
     return detail.id;
   }
 

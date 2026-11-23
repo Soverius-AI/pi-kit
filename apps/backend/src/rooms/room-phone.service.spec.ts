@@ -19,6 +19,7 @@ import type { RoomWorkspace } from './room-workspace.service';
 import type { TranscribeService } from '../transcribe/transcribe.service';
 import type { RoomPlaybookService } from './room-playbook.service';
 import { RoomPhoneService } from './room-phone.service';
+import { presentPhonePrompt } from './room-phone.presenter';
 import { RoomLeadService } from './room-lead.service';
 import { RoomWhatsAppTransport, type PhoneMessage } from './room-whatsapp.transport';
 
@@ -59,7 +60,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     connect: vi.fn(),
     disconnect: vi.fn(),
     send: vi.fn(),
-    media: vi.fn(async () => new Uint8Array([1, 2, 3])),
+    media: vi.fn(async (): Promise<Uint8Array> => new Uint8Array([1, 2, 3])),
     receipt: async (_id: string, _status: number, _group: string) => undefined,
   };
   const message = (text: string, id = text, group = 'baileys:group-a@g.us', sender = 'owner@lid'): PhoneMessage => ({
@@ -133,12 +134,12 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
       transport as unknown as RoomWhatsAppTransport,
       meta,
       {
-        remember: async (id: string, input: { key: string; text: string }) => {
+        rememberFact: async (id: string, input: { key: string; text: string }) => {
           if (input.text) await notes.remember(`room:${id}`, input.key, input.text, 'phone owner');
           else await notes.forget(`room:${id}`, input.key);
         },
         status: async (id: string) => ({ memory: await notes.memory([`room:${id}`]) }),
-        change,
+        changeCommitment: change,
       } as unknown as RoomAssistant,
       policy,
       workspace as unknown as RoomWorkspace,
@@ -289,7 +290,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     expect((await phone.status('a')).error).toContain('Generate a fresh code');
   });
 
-  it('deduplicates input, queues while busy, and isolates rooms and sender identities', async () => {
+  it('deduplicates input, canonically queues while busy, and isolates rooms and sender identities', async () => {
     await bind();
     await bind('b', 'baileys:group-b@g.us');
     await transport.receive(message('first', '1'));
@@ -304,7 +305,8 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     ]);
     expect((await phone.status('a')).queued).toBe(1);
     await phone.flush();
-    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenCalledTimes(3);
+    expect((await phone.status('a')).queued).toBe(0);
     states.set('a', 'idle');
     await phone.flush();
     expect(post).toHaveBeenLastCalledWith(
@@ -312,6 +314,188 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
       { text: 'second', route: 'lead', images: [] },
       'phone:assistant@s.whatsapp.net:baileys:group-a@g.us:2',
     );
+  });
+
+  it('keeps other rooms and owner controls responsive while attachment I/O is stalled, and revokes the pending commit on unlink', async () => {
+    await bind();
+    await bind('b', 'baileys:group-b@g.us');
+    let entered!: () => void;
+    let release!: (bytes: Uint8Array) => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const media = new Promise<Uint8Array>((resolve) => {
+      release = resolve;
+    });
+    transport.media.mockImplementationOnce(async () => {
+      entered();
+      return media;
+    });
+    await transport.receive({
+      ...message('', 'stalled-a'),
+      raw: '{}',
+      files: [{ name: 'voice.ogg', mime: 'audio/ogg', type: 'audio', size: 3 }],
+    });
+    await transport.receive(message('Do this in parallel', 'parallel-b', 'baileys:group-b@g.us'));
+    const processing = phone.flush();
+    await started;
+    await transport.receive(message('/pause', 'pause-during-io'));
+    expect((await rooms.get('a'))?.paused).toBe(true);
+    await vi.waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        'b',
+        expect.objectContaining({ text: 'Do this in parallel' }),
+        expect.any(String),
+      ),
+    );
+    await phone.unlink('a');
+    await processing;
+    release(new Uint8Array([1, 2, 3]));
+    await Promise.resolve();
+    expect(workspace.upload).not.toHaveBeenCalled();
+    expect(post.mock.calls.some(([room]) => room === 'a')).toBe(false);
+  });
+
+  it('lets unlink and another room proceed while a send is unresolved, without committing a late send result', async () => {
+    await bind();
+    await bind('b', 'baileys:group-b@g.us');
+    let entered!: () => void;
+    let release!: (id: string) => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const sending = new Promise<string>((resolve) => {
+      release = resolve;
+    });
+    transport.send.mockImplementationOnce(async () => {
+      entered();
+      return sending;
+    });
+    await rooms.append('a', { kind: 'message', actor: 'lead', text: 'Slow network' });
+    const processing = phone.flush();
+    await started;
+    await transport.receive(message('Second room input', 'parallel-input', 'baileys:group-b@g.us'));
+    const parallel = phone.flush();
+    await vi.waitFor(() =>
+      expect(post).toHaveBeenCalledWith(
+        'b',
+        expect.objectContaining({ text: 'Second room input' }),
+        expect.any(String),
+      ),
+    );
+    await phone.unlink('a');
+    await Promise.all([processing, parallel]);
+    release('late-provider-id');
+    await Promise.resolve();
+    expect((await phone.status('a')).binding).toBeNull();
+    expect(post).toHaveBeenCalledWith('b', expect.objectContaining({ text: 'Second room input' }), expect.any(String));
+  });
+
+  it('returns cancelled inbox claims to pending on disconnect and bounds shutdown while I/O never resolves', async () => {
+    await bind();
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    transport.media.mockImplementationOnce(async () => {
+      entered();
+      return new Promise<Uint8Array>(() => undefined);
+    });
+    await transport.receive({
+      ...message('', 'cancelled-inbox'),
+      raw: '{}',
+      files: [{ name: 'note.ogg', mime: 'audio/ogg', type: 'audio', size: 3 }],
+    });
+    const processing = phone.flush();
+    await started;
+    await phone.disconnect('a');
+    await processing;
+    expect((await store.pending('a'))?.provider_id).toBe('cancelled-inbox');
+    let enteredAgain!: () => void;
+    const startedAgain = new Promise<void>((resolve) => {
+      enteredAgain = resolve;
+    });
+    transport.media.mockImplementationOnce(async () => {
+      enteredAgain();
+      return new Promise<Uint8Array>(() => undefined);
+    });
+    const second = phone.flush();
+    await startedAgain;
+    await phone.onApplicationShutdown();
+    await second;
+    expect(post).not.toHaveBeenCalled();
+    expect((await store.pending('a'))?.provider_id).toBe('cancelled-inbox');
+  });
+
+  it('derives each input status from its own canonical wake rather than the global lead state', async () => {
+    await bind();
+    await transport.receive(message('First operation', 'work-one'));
+    await phone.flush();
+    await transport.receive(message('Second operation', 'work-two'));
+    await phone.flush();
+    const work = await db.db
+      .prepare('SELECT id,provider_id,work_id FROM room_phone_inbox ORDER BY id')
+      .all<{ id: number; provider_id: string; work_id: string }>();
+    expect(work.every((row) => !!row.work_id)).toBe(true);
+    await db.db.prepare("UPDATE room_wakeups SET state='failed' WHERE id=?").run(work[0].work_id);
+    await db.db.prepare("UPDATE room_wakeups SET state='queued' WHERE id=?").run(work[1].work_id);
+    states.set('a', 'idle');
+    await phone.flush();
+    expect(await db.db.prepare('SELECT provider_id,state FROM room_phone_inbox ORDER BY id').all()).toEqual([
+      { provider_id: 'work-one', state: 'review' },
+      { provider_id: 'work-two', state: 'accepted' },
+    ]);
+    await db.db.prepare("UPDATE room_wakeups SET state='queued' WHERE id=?").run(work[0].work_id);
+    await db.db.prepare("UPDATE room_wakeups SET state='done' WHERE id=?").run(work[1].work_id);
+    await phone.flush();
+    expect(await db.db.prepare('SELECT provider_id,state FROM room_phone_inbox ORDER BY id').all()).toEqual([
+      { provider_id: 'work-one', state: 'accepted' },
+      { provider_id: 'work-two', state: 'done' },
+    ]);
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it('recognizes canonical acceptance after an uncertain dispatch instead of re-enqueueing work', async () => {
+    await bind();
+    post.mockImplementationOnce(async (id: string, body: PostRoomMessage, sourceKey: string) => {
+      await rooms.acceptMessage(id, body, sourceKey);
+      throw new Error('Acknowledgement lost');
+    });
+    await transport.receive(message('Exactly one operation', 'uncertain-input'));
+    await phone.flush();
+    await phone.flush();
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(await store.counts('a')).toEqual({ queued: 0, needsReview: 0 });
+    expect(await db.db.prepare('SELECT COUNT(*) AS n FROM room_wakeups').get()).toEqual({ n: 1 });
+  });
+
+  it('quarantines malformed persisted attachments without blocking another room', async () => {
+    await bind();
+    await bind('b', 'baileys:group-b@g.us');
+    await transport.receive(message('Bad stored metadata', 'bad-metadata'));
+    await db.db
+      .prepare("UPDATE room_phone_inbox SET files_json=? WHERE room_id='a'")
+      .run(JSON.stringify([{ size: 'invalid' }]));
+    await transport.receive(message('Unaffected', 'good-metadata', 'baileys:group-b@g.us'));
+    await phone.flush();
+    expect(await store.counts('a')).toEqual({ queued: 0, needsReview: 1 });
+    expect(post).toHaveBeenCalledExactlyOnceWith(
+      'b',
+      expect.objectContaining({ text: 'Unaffected' }),
+      expect.any(String),
+    );
+  });
+
+  it('expires prompt deliveries by their explicit relation even when rendered text contains no token', async () => {
+    await bind();
+    const token = await store.prompt('a', 'localized-question', 'question', presentPhonePrompt('question', 'Question'));
+    await db.db.prepare("UPDATE room_phone_deliveries SET text='Localized display' WHERE prompt_id=?").run(token);
+    await db.db.prepare('UPDATE room_phone_prompts SET expires_at=1 WHERE token=?').run(token);
+    await phone.flush();
+    expect(transport.send).not.toHaveBeenCalled();
+    expect(await db.db.prepare('SELECT state FROM room_phone_deliveries WHERE prompt_id=?').get(token)).toEqual({
+      state: 'dismissed',
+    });
   });
 
   it('mirrors only new lead replies once and holds work while paused or Rooms is disabled', async () => {
@@ -337,7 +521,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     );
   });
 
-  it('retains pending input and binding across reopening and flags interrupted effects for review', async () => {
+  it('retains pending and accepted canonical work across reopening without a false interruption', async () => {
     await bind();
     await transport.receive(message('accepted turn', '1'));
     await transport.receive(message('still queued', '2'));
@@ -349,7 +533,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await store.recover();
     expect((await store.get('a'))?.sender_id).toBe('owner@lid');
     expect((await store.pending('a'))?.text).toBe('still queued');
-    expect(await store.counts('a')).toEqual({ queued: 1, needsReview: 1 });
+    expect(await store.counts('a')).toEqual({ queued: 1, needsReview: 0 });
   });
 
   it('retries an uncertain send with the same provider id at most three times, and unlink revokes queued work', async () => {
@@ -407,8 +591,8 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await phone.flush();
     expect((await rooms.events('a')).filter((event) => event.actor === 'owner')).toHaveLength(1);
     expect(await db.db.prepare('SELECT count(*) AS n FROM room_wakeups').get()).toEqual({ n: 1 });
-    expect(post).toHaveBeenCalledTimes(2);
-    expect(post.mock.calls[0][2]).toBe(post.mock.calls[1][2]);
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(await store.counts('a')).toEqual({ queued: 0, needsReview: 0 });
   });
 
   it('reconciles server receipts during an uncertain send and scopes receipts to the bound account', async () => {
@@ -486,6 +670,114 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     expect(transport.send.mock.calls.map((call) => call[1]).join('\n')).not.toContain('/approve');
     await transport.receive(message(`/approve ${prompt?.token}`, 'approval'));
     expect(decide).not.toHaveBeenCalled();
+  });
+
+  it('keeps pause and unlink responsive during approved external execution and fences its late notification after relinking', async () => {
+    await bind();
+    await bind('b', 'baileys:group-b@g.us');
+    const action = await notes.insertAction({
+      id: '40c4fb71-6070-4f72-a157-dfce7113eb87',
+      roomId: 'a',
+      kind: 'call',
+      name: 'slow-tool',
+      summary: 'Approved external work',
+      payload: {},
+    });
+    await phone.flush();
+    const prompt = await db.db
+      .prepare('SELECT token FROM room_phone_prompts WHERE target=?')
+      .get<{ token: string }>(action.id);
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const outcome = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    decide.mockImplementationOnce(async (roomId: string, id: string) => {
+      entered();
+      await outcome;
+      await notes.decide(roomId, id, 'done', 'complete');
+      return notes.action(roomId, id);
+    });
+    const approved = transport.receive(message(`/approve ${prompt?.token}`, 'slow-approval'));
+    await started;
+    await transport.receive(message('/pause', 'parallel-pause', 'baileys:group-b@g.us'));
+    expect((await rooms.get('b'))?.paused).toBe(true);
+    await phone.unlink('a');
+    await bind();
+    release();
+    await approved;
+    expect((await notes.action('a', action.id))?.state).toBe('done');
+    expect((await rooms.events('a')).some((event) => event.text === 'Your decision was recorded.')).toBe(false);
+    expect(decide).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns after approval admission so subsequent messages in the same SDK batch can pause the room', async () => {
+    await bind();
+    const action = await notes.insertAction({
+      id: '3e36c8ab-6070-4f72-a157-dfce7113eb87',
+      roomId: 'a',
+      kind: 'call',
+      name: 'batch-tool',
+      summary: 'Slow approved call',
+      payload: {},
+    });
+    await phone.flush();
+    const prompt = await db.db
+      .prepare('SELECT token FROM room_phone_prompts WHERE target=?')
+      .get<{ token: string }>(action.id);
+    let release!: () => void;
+    let finished = false;
+    const external = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    decide.mockImplementationOnce(async (roomId: string, id: string) => {
+      await external;
+      finished = true;
+      await notes.decide(roomId, id, 'done', 'complete');
+      return notes.action(roomId, id);
+    });
+    // The adapter awaits each callback in a batch; this sequence must not await external completion.
+    await transport.receive(message(`/approve ${prompt?.token}`, 'batch-approval'));
+    expect(finished).toBe(false);
+    await transport.receive(message('/pause', 'batch-pause'));
+    expect((await rooms.get('a'))?.paused).toBe(true);
+    release();
+    await vi.waitFor(() => expect(finished).toBe(true));
+  });
+
+  it('does not hold admission while an answered question is returning its refreshed detail', async () => {
+    await bind();
+    await bind('b', 'baileys:group-b@g.us');
+    await rooms.setLeadQuestions('a', [{ id: 'slow-question', method: 'confirm', title: 'Continue?' }]);
+    await phone.flush();
+    const prompt = await db.db
+      .prepare("SELECT token FROM room_phone_prompts WHERE target='slow-question'")
+      .get<{ token: string }>();
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const detail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    answerQuestions.mockImplementationOnce(async (roomId: string, body: RoomTaskAnswer) => {
+      await rooms.setLeadQuestions(roomId, []);
+      entered();
+      await detail;
+      return body;
+    });
+    const answered = transport.receive(message(`/answer ${prompt?.token} yes`, 'slow-answer'));
+    await started;
+    await transport.receive(message('/pause', 'pause-during-answer', 'baileys:group-b@g.us'));
+    expect((await rooms.get('b'))?.paused).toBe(true);
+    await phone.unlink('a');
+    release();
+    await answered;
+    expect((await rooms.events('a')).some((event) => event.text === 'Answer recorded.')).toBe(false);
   });
 
   it('applies short action approvals to that exact draft once', async () => {
@@ -638,12 +930,12 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
   it('does not expose approvable tokens after their request expires or is answered in the app', async () => {
     await bind();
     await rooms.setLeadQuestions('a', [{ id: 'stale-question', method: 'confirm', title: 'Approve?' }]);
-    await store.prompt('a', 'stale-question', 'question', 'Approve?');
+    await store.prompt('a', 'stale-question', 'question', presentPhonePrompt('question', 'Approve?'));
     await rooms.setLeadQuestions('a', []);
     await phone.flush();
     expect(transport.send).not.toHaveBeenCalled();
     await rooms.setLeadQuestions('a', [{ id: 'expired-question', method: 'confirm', title: 'Approve later?' }]);
-    await store.prompt('a', 'expired-question', 'question', 'Approve later?');
+    await store.prompt('a', 'expired-question', 'question', presentPhonePrompt('question', 'Approve later?'));
     await db.db.prepare("UPDATE room_phone_prompts SET expires_at=1 WHERE target='expired-question'").run();
     await phone.flush();
     await phone.flush();

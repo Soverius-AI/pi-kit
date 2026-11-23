@@ -23,7 +23,7 @@ export function createTypedClient(backend: BackendFetch): TypedClient {
   });
 }
 
-type Result<Data> = { data?: Data; error?: unknown; response?: Response };
+export type ApiResult<Data> = { data?: Data; error?: unknown; response?: Response };
 
 export function problemText(error: unknown, response?: Response): string {
   if (error instanceof Error) return error.message;
@@ -41,7 +41,7 @@ export function problemText(error: unknown, response?: Response): string {
 }
 
 /** Preserve the backend's Problem message, including transport/network errors. */
-export async function unwrap<Data>(call: Promise<Result<Data>>): Promise<Data> {
+export async function unwrap<Data>(call: Promise<ApiResult<Data>>): Promise<Data> {
   const result = await call;
   if (result.error !== undefined || !result.response?.ok) throw new Error(problemText(result.error, result.response));
   return (result.response.status === 204 ? undefined : result.data) as Data;

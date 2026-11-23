@@ -39,9 +39,26 @@ export class SandboxPolicy {
     '.netrc',
     '.git-credentials',
     '.gnupg',
-    'Library',
   ];
 
+  /** Home-level OS data is sensitive; unrelated content directories named Library remain usable. */
+  static credentialRoots(home = os.homedir()): string[] {
+    return [
+      ...SandboxPolicy.CREDENTIALS,
+      ...(process.platform === 'darwin' ? ['Library'] : []),
+      ...(process.platform === 'win32' ? ['AppData'] : []),
+    ].map((name) => path.join(home, name));
+  }
+  static isCredentialPath(value: string, trustedParent?: string): boolean {
+    const parts = (trustedParent ? path.relative(trustedParent, value) : value).split(path.sep);
+    return (
+      parts.some((part) => SandboxPolicy.CREDENTIALS.includes(part)) ||
+      SandboxPolicy.credentialRoots().some(
+        (root) =>
+          SandboxPolicy.contains(root, value) && !(trustedParent && SandboxPolicy.contains(root, trustedParent)),
+      )
+    );
+  }
   static validate(value: unknown): asserts value is SandboxOptions {
     const options = Object(value) as Record<string, unknown>;
     if (!value || !SandboxPolicy.isLiteralPath(options.cwd))
@@ -218,7 +235,7 @@ export class SandboxPolicy {
         : [p];
     };
     const guarded = protectedPaths.flatMap(around);
-    const credentials = [...SandboxPolicy.CREDENTIALS.map((p) => path.join(home, p)).flatMap(around), ...guarded];
+    const credentials = [...SandboxPolicy.credentialRoots(home).flatMap(around), ...guarded];
     for (const runtime of [lib, node]) {
       const denied = credentials.find((p) => SandboxPolicy.contains(p, runtime));
       if (denied)

@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { IpcChannel, SandboxError, type WireError } from './protocol.js';
 import { SandboxPolicy } from './policy.js';
 import { ProcessTree } from './process-tree.js';
+export { SandboxPolicy } from './policy.js';
+export type SandboxFilesystemGrants = Required<Pick<SandboxOptions, 'readOnlyRoots' | 'immutablePaths'>>;
 export { SandboxError } from './protocol.js';
 
 export interface SandboxOptions {

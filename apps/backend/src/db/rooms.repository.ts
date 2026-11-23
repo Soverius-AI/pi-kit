@@ -12,6 +12,7 @@ import {
   type RoomTask,
 } from '@pi-kit/protocol';
 import { DatabaseService } from './database.service';
+import { defaultRoomAssistantPolicy } from './room-assistant-policy';
 
 interface RoomRow {
   id: string;
@@ -131,22 +132,27 @@ export class RoomsRepository {
       base_commit: room.baseCommit,
       created_at: room.createdAt,
     };
-    await this.db
-      .prepare(
-        'INSERT INTO rooms (id, title, repository, base_commit, summary, source_thread_id, project_folder, playbook, stage, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      )
-      .run(
-        row.id,
-        row.title,
-        row.repository,
-        row.base_commit,
-        redact(room.summary) as string,
-        room.sourceThreadId,
-        room.projectFolder,
-        room.playbook ?? null,
-        room.stage ?? null,
-        row.created_at,
-      );
+    await this.db.transaction(async () => {
+      await this.db
+        .prepare(
+          'INSERT INTO rooms (id, title, repository, base_commit, summary, source_thread_id, project_folder, playbook, stage, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          row.id,
+          row.title,
+          row.repository,
+          row.base_commit,
+          redact(room.summary) as string,
+          room.sourceThreadId,
+          room.projectFolder,
+          room.playbook ?? null,
+          room.stage ?? null,
+          row.created_at,
+        );
+      await this.db
+        .prepare('INSERT INTO room_assistant_policy(room_id,policy) VALUES (?,?)')
+        .run(room.id, JSON.stringify(defaultRoomAssistantPolicy()));
+    })();
     return this.toRoom(row);
   }
 
@@ -708,6 +714,17 @@ export class RoomsRepository {
       );
       return { event, fresh: true };
     })();
+  }
+
+  async wakeBySource(
+    roomId: string,
+    sourceKey: string,
+  ): Promise<
+    { id: string; ownerSeq: number | null; state: 'queued' | 'running' | 'done' | 'failed' | 'review' } | undefined
+  > {
+    return this.db
+      .prepare('SELECT id,owner_seq AS ownerSeq,state FROM room_wakeups WHERE room_id=? AND source_key=?')
+      .get(roomId, sourceKey);
   }
 
   async nextWake(roomId: string): Promise<RoomWake | undefined> {

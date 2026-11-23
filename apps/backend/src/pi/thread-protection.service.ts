@@ -3,7 +3,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ConflictException, ForbiddenException, Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import type { SetThreadProtection, ThreadProtection, ThreadProtectionState } from '@pi-kit/protocol';
-import type { SandboxClient, SandboxError } from '@pi-kit/sandbox/core';
+import type { SandboxClient, SandboxError, SandboxFilesystemGrants } from '@pi-kit/sandbox/core';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
 import { type ProtectionBinding, ThreadProtectionRepository } from '../db/thread-protection.repository';
@@ -70,7 +70,7 @@ export class ThreadProtectionService implements OnModuleDestroy {
   private readonly changing = new Set<string>();
   private readonly admittedBindings = new Map<string, ProtectionBinding>();
   private agentGuard: ((threadId: string) => boolean | Promise<boolean>) | undefined;
-  private roomRoots: ((threadId: string) => Promise<{ readOnlyRoots: string[]; immutablePaths: string[] }>) | undefined;
+  private roomRoots: ((threadId: string) => Promise<SandboxFilesystemGrants>) | undefined;
   setRoomRoots(resolve: NonNullable<ThreadProtectionService['roomRoots']>): void {
     this.roomRoots = resolve;
   }
@@ -125,7 +125,6 @@ export class ThreadProtectionService implements OnModuleDestroy {
   /** Before every sandboxed tool call. */
   async assertCurrent(threadId: string, generation: number): Promise<void> {
     await this.assertGeneration(threadId, generation);
-    await this.roomRoots?.(threadId);
     const owner = this.owners.get(`thread:${threadId}`);
     if (owner?.client?.state !== 'active')
       throw new ConflictException(owner?.error ?? owner?.client?.reason ?? 'The sandbox is unavailable.');
@@ -169,7 +168,10 @@ export class ThreadProtectionService implements OnModuleDestroy {
       const failed = this.failedCleanup.get(ownerId);
       if (failed) throw new ConflictException(failed);
     }
-    const grants = await this.roomRoots?.(ownerId.replace(/^thread:/, ''));
+    const roots = await this.roomRoots?.(ownerId.replace(/^thread:/, ''));
+    const grants = roots
+      ? { readOnlyRoots: [...roots.readOnlyRoots], immutablePaths: [...roots.immutablePaths] }
+      : undefined;
     const key = JSON.stringify([resolve(cwd), binding.generation, binding.experimentalWindowsAccepted, grants]);
     const existing = this.owners.get(ownerId);
     if (existing && (existing.error === undefined || this.failedCleanup.has(ownerId))) {
@@ -178,7 +180,7 @@ export class ThreadProtectionService implements OnModuleDestroy {
     }
     const held = this.failedCleanup.get(ownerId) ?? ((await this.store.ownerState(ownerId)) ? HELD : undefined);
     if (held) throw new Error(held);
-    const owner: Owner = { key, ready: this.start(ownerId, cwd, binding, (client) => (owner.client = client)) };
+    const owner: Owner = { key, ready: this.start(ownerId, cwd, binding, grants, (client) => (owner.client = client)) };
     owner.ready = owner.ready.catch((error: unknown) => {
       owner.setupRequired = (error as Partial<SandboxError>).code === 'LINUX_SETUP_REQUIRED';
       if (owner.setupRequired) this.logger.warn(ThreadProtectionService.messageOf(error));
@@ -282,6 +284,7 @@ export class ThreadProtectionService implements OnModuleDestroy {
     ownerId: string,
     cwd: string,
     binding: ProtectionBinding,
+    grants: SandboxFilesystemGrants | undefined,
     started: (client: SandboxClient) => void,
   ): Promise<SandboxClient> {
     const { Sandbox } = await SandboxPackage.load('core');
@@ -292,7 +295,7 @@ export class ThreadProtectionService implements OnModuleDestroy {
         cwd,
         experimentalWindowsAccepted: binding.experimentalWindowsAccepted,
         protectedPaths: [resolve(this.config.dataDir)],
-        ...(await this.roomRoots?.(ownerId.replace(/^thread:/, ''))),
+        ...grants,
       });
       started(client);
       if (client.state !== 'active') throw new Error(client.reason ?? 'The sandbox did not start.');

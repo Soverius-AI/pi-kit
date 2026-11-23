@@ -16,6 +16,7 @@ import type { RoomAgents } from './room-agents';
 import type { RoomA2aAgents } from './room-a2a-agents';
 import type { RoomA2aClient } from './room-a2a.client';
 import { RoomBus } from './room-bus';
+import { RoomMemory } from './room-memory';
 import type { PiSessionService } from '../pi/pi-session.service';
 import { RoomPlaybookTools } from './room-playbook-tools.service';
 import type { RoomConsultant } from './room-consultant.service';
@@ -213,6 +214,7 @@ beforeEach(async () => {
     { manager: async () => ({ self: { name: 'Here' }, peers: paired }) } as unknown as PeersService,
     editor,
     new RoomLive(bus),
+    new RoomMemory(store, bus),
     (runs = new RoomRuns(new RoomRunsRepository(db), bus)),
   );
   const room = await new RoomsService(
@@ -281,11 +283,63 @@ describe('room playbooks', () => {
     expect(action).toMatchObject({ kind: 'call', name: 'comment', state: 'pending' });
     const done = await service.decide(roomId, action!.id, { decision: 'approve' });
     expect(done).toMatchObject({ state: 'done', result: 'posted 7' });
-    expect(nudge).toHaveBeenCalledWith(roomId, expect.stringContaining('posted 7'), {
-      kind: 'approval',
-      title: 'You approved comment; it ran.',
-    });
+    expect(nudge).toHaveBeenCalledWith(
+      roomId,
+      expect.stringContaining('posted 7'),
+      {
+        kind: 'approval',
+        title: 'You approved comment; it ran.',
+      },
+      `action:${action!.id}`,
+    );
     await expect(service.decide(roomId, action!.id, { decision: 'discard' })).rejects.toThrow('decided already');
+  });
+
+  it('rolls back the decision and events when durable continuation fails, then queues one continuation', async () => {
+    await service.call('lead', { tool: 'comment', params: { pr: '7' }, reason: 'Post it.' });
+    const [action] = await store.actions(roomId);
+    const before = (await rooms.events(roomId)).length;
+    const fault = vi.spyOn(rooms, 'enqueueWake').mockRejectedValueOnce(new Error('disk fault'));
+    await expect(service.decide(roomId, action!.id, { decision: 'discard' })).rejects.toThrow('disk fault');
+    expect((await store.action(roomId, action!.id))?.state).toBe('pending');
+    expect((await rooms.events(roomId)).length).toBe(before);
+    fault.mockRestore();
+    await service.decide(roomId, action!.id, { decision: 'discard' });
+    expect(await rooms.wakeBySource(roomId, `action:${action!.id}`)).toMatchObject({ state: 'queued' });
+  });
+
+  it('settles a saved external outcome after an enqueue fault without executing the tool twice', async () => {
+    await service.call('lead', { tool: 'comment', params: { pr: '7' }, reason: 'Post it.' });
+    const [action] = await store.actions(roomId);
+    const fault = vi.spyOn(rooms, 'enqueueWake').mockRejectedValueOnce(new Error('disk fault'));
+    await expect(service.decide(roomId, action!.id, { decision: 'approve' })).rejects.toThrow('disk fault');
+    expect((await store.execution(roomId, action!.id))?.settlement).toMatchObject({
+      state: 'done',
+      result: 'posted 7',
+    });
+    // Make a second external invocation observable: the recorded payload would now fail.
+    await db.db.prepare('UPDATE room_actions SET payload_json=? WHERE id=?').run('{}', action!.id);
+    fault.mockRestore();
+    expect(await service.decide(roomId, action!.id, { decision: 'approve' })).toMatchObject({
+      state: 'done',
+      result: 'posted 7',
+    });
+    expect(await rooms.pendingWakes(roomId)).toBe(1);
+  });
+
+  it('recovers an ambiguous approved operation as failed without executing it after restart', async () => {
+    await service.call('lead', { tool: 'comment', params: { pr: '7' }, reason: 'Post it.' });
+    const [action] = await store.actions(roomId);
+    expect(await store.claimExecution(roomId, action!.id)).toBe(true);
+    await expect(service.decide(roomId, action!.id, { decision: 'discard' })).rejects.toThrow('already be executing');
+    await db.db.prepare('UPDATE room_actions SET payload_json=? WHERE id=?').run('{}', action!.id);
+    await service.onModuleInit();
+    expect(await store.action(roomId, action!.id)).toMatchObject({
+      state: 'failed',
+      result: expect.stringContaining('unknown'),
+    });
+    expect(await rooms.wakeBySource(roomId, `action:${action!.id}`)).toMatchObject({ state: 'queued' });
+    await expect(service.decide(roomId, action!.id, { decision: 'approve' })).rejects.toThrow('decided already');
   });
 
   it('hands a long output over a page at a time', async () => {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, statSync } from 'node:fs';
 import { access, stat } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   BadRequestException,
   ConflictException,
@@ -248,8 +248,13 @@ export class ThreadsService implements OnApplicationBootstrap, OnModuleDestroy {
       ...(facts ? { worktree: facts } : {}),
     });
     void this.outcomes.track(facts?.path ?? cwd);
-    await this.meta.touchWorkspace(cwd);
-    if (options.internal) await this.meta.forgetWorkspace(cwd);
+    const roomPath =
+      options.internal && this.config.dataDir
+        ? relative(resolve(this.config.dataDir, 'rooms'), resolve(cwd)).split(sep)
+        : [];
+    if (roomPath.length === 2 && roomPath[0] !== '..' && roomPath[1] === 'workspace')
+      await this.meta.registerInternalWorkspace(cwd);
+    else await this.meta.touchWorkspace(cwd, Date.now(), { passive: options.internal === true });
     this.status.listChanged();
     return await this.detail((await this.threads.get(session.id)) as ThreadRow);
   }

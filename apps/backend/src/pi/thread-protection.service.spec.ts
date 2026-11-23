@@ -53,6 +53,24 @@ describe('ThreadProtectionService', () => {
     expect(() => f.service.assertSessionCurrent('t', 1, true)).toThrow(/sandbox is unavailable/);
   });
 
+  it('uses one immutable grant snapshot for owner identity and sandbox startup', async () => {
+    const f = new Fixture();
+    const grants = { readOnlyRoots: ['/approved/first'], immutablePaths: ['/workspace/folders'] };
+    const resolver = vi.fn(async () => grants);
+    f.service.setRoomRoots(resolver);
+    f.rows.bindings.set('t', sandboxed);
+    const original = f.load.getMockImplementation()!;
+    f.load.mockImplementationOnce(async (...args) => {
+      grants.readOnlyRoots[0] = '/unapproved/second';
+      return original(...args);
+    });
+    await f.service.prepare('t', cwd);
+    expect(resolver).toHaveBeenCalledOnce();
+    expect(f.create).toHaveBeenCalledWith(expect.objectContaining({ readOnlyRoots: ['/approved/first'] }));
+    await expect(f.service.prepare('t', cwd)).rejects.toThrow(/owner changed/);
+    expect(f.create).toHaveBeenCalledOnce();
+  });
+
   it('keeps a thread nobody changed in Bypass without loading the sandbox', async () => {
     const f = new Fixture();
     expect(await f.service.status('t')).toMatchObject({ mode: 'bypass', state: 'bypass', reason: null });

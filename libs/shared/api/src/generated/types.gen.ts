@@ -2423,12 +2423,7 @@ export type RoomAssistantPolicy = {
 
 export type RoomAssistantStatus = {
     policy: RoomAssistantPolicy;
-    memory: Array<{
-        key: string;
-        text: string;
-        updatedBy: string;
-        updatedAt: number;
-    }>;
+    memory: Array<RoomFact>;
     commitments: Array<RoomCommitment>;
     folders: Array<RoomFolder>;
     workspace: string;
@@ -2537,6 +2532,13 @@ export type RoomEvent = {
     createdAt: number;
 };
 
+export type RoomFact = {
+    key: string;
+    text: string;
+    updatedBy: string;
+    updatedAt: number;
+};
+
 export type RoomFactInput = {
     key: string;
     text: string;
@@ -2586,11 +2588,11 @@ export type RoomLive = {
 };
 
 export type RoomMemoryEntry = {
-    scope: 'room' | 'playbook';
     key: string;
     text: string;
     updatedBy: string;
     updatedAt: number;
+    scope: 'room' | 'playbook';
 };
 
 export type RoomMode = 'supervised' | 'assisted';

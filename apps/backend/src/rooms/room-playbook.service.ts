@@ -20,7 +20,7 @@ import {
   type RoomMemoryEntry,
   type PlaybookAgentSettings,
 } from '@pi-kit/protocol';
-import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
+import { RoomPlaybooksRepository, type RoomActionSettlement } from '../db/room-playbooks.repository';
 import { type FoundRoom, RoomsRepository } from '../db/rooms.repository';
 import { PeersService } from '../peers/peers.service';
 import { RoomAgents } from './room-agents';
@@ -29,6 +29,7 @@ import { RoomA2aAgents } from './room-a2a-agents';
 import { RoomA2aClient } from './room-a2a.client';
 import { RoomBus } from './room-bus';
 import { type ToolCall, type ToolRun, RoomPlaybookTools } from './room-playbook-tools.service';
+import { RoomMemory } from './room-memory';
 import { RoomSchedule } from './room-schedule';
 import { RoomConsultant } from './room-consultant.service';
 import { NO_ROOM, RoomLeadService } from './room-lead.service';
@@ -70,11 +71,34 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     private readonly peers: PeersService,
     private readonly editor: RoomPlaybookEditor,
     private readonly live: RoomLive,
+    private readonly memory: RoomMemory,
     @Optional() private readonly runs?: RoomRuns,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     this.lead.setPlaybooks(this);
+    for (const pending of await this.store.unfinishedExecutions()) {
+      const found = await this.rooms.get(pending.roomId);
+      const action = await this.store.action(pending.roomId, pending.actionId);
+      if (!found || !action) continue;
+      const execution = await this.store.execution(pending.roomId, pending.actionId);
+      const settlement = execution?.settlement ?? {
+        state: 'failed' as const,
+        result:
+          'Execution interrupted; the external outcome is unknown. Review the destination before creating another action.',
+        note: `Action ${action.name} was interrupted. Its external outcome needs review.`,
+        nudge: `Action ${action.id} (${action.name}) may already have run before restart. Ask the owner to review the destination; never repeat it automatically.`,
+      };
+      await this.settleAction(
+        found,
+        action,
+        settlement.state,
+        settlement.result,
+        settlement.note,
+        settlement.nudge,
+        false,
+      );
+    }
     this.timer = setInterval(() => void this.tick(), RoomPlaybookService.TICK);
     this.timer.unref?.();
   }
@@ -117,15 +141,8 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
 
   async briefing(found: FoundRoom): Promise<string | undefined> {
     const playbook = await this.of(found);
-    if (!playbook) {
-      const memory = await this.store.memory(this.scopes(found));
-      return [
-        'Use room_note to remember or correct room facts. Empty text forgets a note.',
-        ...memory.map((entry) => `- ${entry.key}: ${entry.text}`),
-      ].join('\n');
-    }
+    if (!playbook) return 'Use room_note to remember or correct room facts. Empty text forgets a note.';
     const { config } = playbook;
-    const memory = await this.store.memory(this.scopes(found));
     const line = (name: string, what: string, description: string) => {
       const needs = this.tools.needs(playbook, name);
       return `- ${name} (${what})${needs.length ? `, params: ${needs.join(', ')}` : ''}: ${description}`;
@@ -161,9 +178,6 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         ? 'The room is rehearsing: safe outputs only pretend to run, even those that run at once, so nothing goes out. Go through the workflow as if they had worked.'
         : '',
       'Keep notes the room should not lose with room_note: decisions, the current spec, what was reviewed. Scope "playbook" notes carry over to later rooms of this playbook.',
-      memory.length
-        ? `Notes so far:\n${memory.map((entry) => `- [${entry.scope}] ${entry.key}: ${entry.text}`).join('\n')}`
-        : '',
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -262,16 +276,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     if (input.scope === 'playbook' && !found.playbook) throw new Error('Choose room scope: this room has no playbook.');
     const [room, playbook] = this.scopes(found);
     const scope = (input.scope === 'playbook' ? playbook : room) as string;
-    if (input.text.trim()) await this.store.remember(scope, input.key, input.text, 'lead');
-    else await this.store.forget(scope, input.key);
-    const entry: RoomMemoryEntry = {
-      scope: input.scope,
-      key: input.key,
-      text: input.text,
-      updatedBy: 'lead',
-      updatedAt: Date.now(),
-    };
-    this.bus.emit(found.room.id, { type: 'memory', entry });
+    await this.memory.change(found.room.id, input, 'lead', scope);
     return input.text.trim() ? `Noted “${input.key}”.` : `Forgot “${input.key}”.`;
   }
 
@@ -310,6 +315,15 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     const action = await this.store.action(roomId, actionId);
     if (!action) throw new NotFoundException('No action with this id in the room.');
     if (action.state !== 'pending') throw new ConflictException('This action was decided already.');
+    const previous = await this.store.execution(roomId, action.id);
+    if (previous) {
+      if (!previous.settlement)
+        throw new ConflictException(
+          'This action may already be executing. Review its outcome before creating another action.',
+        );
+      const saved = previous.settlement;
+      return this.settleAction(found, action, saved.state, saved.result, saved.note, saved.nudge);
+    }
     if (body.decision === 'discard')
       return await this.settleAction(
         found,
@@ -320,10 +334,30 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
         `The owner discarded action ${action.id} (${action.name}: ${action.summary}).`,
       );
     if (action.kind === 'advance') {
-      await this.store.decide(roomId, actionId, 'done', null);
+      const cause = { kind: 'stage' as const, title: action.name };
+      const nudge = `The owner moved the room to the stage “${action.name}”. Go on with it.`;
+      const sourceKey = `action:${action.id}`;
+      const event = await this.rooms.inTransaction(async () => {
+        if (!(await this.store.decide(roomId, actionId, 'done', null)))
+          throw new ConflictException('This action was decided already.');
+        await this.rooms.setStage(roomId, action.name);
+        const event = await this.rooms.append(roomId, {
+          kind: 'note',
+          actor: 'coordinator',
+          text: `You moved the room to “${action.name}”: ${action.summary}`,
+        });
+        await this.rooms.enqueueWake(roomId, nudge, cause, sourceKey);
+        return event;
+      });
+      this.bus.emit(roomId, { type: 'event', event });
+      this.bus.emit(roomId, { type: 'room', mode: found.mode, paused: found.paused, stage: action.name });
       await this.runs?.settleAction(roomId, actionId, 'done', null);
-      await this.enter(found, action.name, action.summary, 'coordinator');
-      return await this.publish(roomId, actionId);
+      await this.lead.nudge(roomId, nudge, cause, sourceKey);
+      return this.publish(roomId, actionId);
+    }
+    if ((action.kind === 'call' && !found.rehearsal) || action.kind === 'playbook') {
+      if (!(await this.store.claimExecution(roomId, action.id)))
+        throw new ConflictException('This action was already claimed for execution.');
     }
     if (action.kind === 'playbook') {
       const { ok, result } = await this.editor.apply(found, action);
@@ -369,12 +403,23 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     result: string | null,
     note: string,
     nudge: string,
+    drain = true,
   ): Promise<RoomAction> {
     const roomId = found.room.id;
-    await this.store.decide(roomId, action.id, state, result);
+    const settlement: RoomActionSettlement = { state, result, note, nudge };
+    if (await this.store.execution(roomId, action.id)) await this.store.saveExecution(action.id, settlement);
+    const cause = { kind: 'approval' as const, title: note };
+    const sourceKey = `action:${action.id}`;
+    const event = await this.rooms.inTransaction(async () => {
+      if (!(await this.store.decide(roomId, action.id, state, result)))
+        throw new ConflictException('This action was decided already.');
+      const event = await this.rooms.append(roomId, { kind: 'note', actor: 'coordinator', text: note });
+      await this.rooms.enqueueWake(roomId, nudge, cause, sourceKey);
+      return event;
+    });
+    this.bus.emit(roomId, { type: 'event', event });
     await this.runs?.settleAction(roomId, action.id, state, result);
-    await this.bus.record(roomId, { kind: 'note', actor: 'coordinator', text: note });
-    await this.lead.nudge(roomId, nudge, { kind: 'approval', title: note });
+    if (drain) await this.lead.nudge(roomId, nudge, cause, sourceKey);
     return await this.publish(roomId, action.id);
   }
 

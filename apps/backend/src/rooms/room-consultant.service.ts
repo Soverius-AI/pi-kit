@@ -75,8 +75,12 @@ export class RoomConsultant {
   }
 
   private async create(request: ConsultRequest): Promise<string> {
+    const policy = await this.workspace?.execution(request.roomId);
+    const cwd = policy?.workspace
+      ? (this.workspace?.ensure(request.roomId) ?? request.folder)
+      : (policy?.cwd ?? request.folder);
     const detail = await this.threads.create(
-      request.folder,
+      cwd,
       `Room ${request.role}: ${request.roomTitle}`.slice(0, 200),
       undefined,
       undefined,
@@ -85,7 +89,6 @@ export class RoomConsultant {
         onId: async (threadId) => await this.playbooks.addConsultThread(threadId, request.roomId, request.role),
       },
     );
-    await this.agents.sandbox(detail.id);
     return detail.id;
   }
 

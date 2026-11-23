@@ -5,6 +5,36 @@ import type { RoomAssistantStatus } from '@pi-kit/protocol';
 import { RoomAssistant } from './room-assistant';
 
 describe('personal room memory editor', () => {
+  it('preserves an unlimited legacy run policy when saving other settings', async () => {
+    const policy = vi.fn().mockResolvedValue(true);
+    const store = {
+      roomId: signal('legacy-room'),
+      visible: signal(false),
+      busy: signal(false),
+      error: signal(undefined),
+      policy,
+      status: signal<RoomAssistantStatus>({
+        policy: { enabled: true, timezone: 'Europe/Vienna', quietStart: null, quietEnd: null, dailyLimit: 10 },
+        memory: [],
+        commitments: [],
+        folders: [],
+        workspace: '/room/workspace',
+        work: [],
+        files: [],
+      }),
+    };
+    TestBed.overrideComponent(RoomAssistant, {
+      set: { providers: [{ provide: RoomAssistantStore, useValue: store }] },
+    });
+    const fixture = TestBed.createComponent(RoomAssistant);
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    const runLimit = root.querySelectorAll<HTMLInputElement>('input[type=number]')[1];
+    expect(runLimit.value).toBe('');
+    runLimit.closest('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
+    await fixture.whenStable();
+    expect(policy).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, dailyRunLimit: undefined }));
+  });
   it('corrects the original key and clears an unfinished edit when changing rooms', async () => {
     const roomId = signal('personal-a');
     const memory = vi.fn().mockResolvedValue(true);

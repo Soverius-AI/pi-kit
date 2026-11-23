@@ -16,6 +16,8 @@ import {
   type ChangeRoomCommitment,
   type RoomFactInput,
   type RoomFolderInput,
+  type RoomCommitment,
+  type RoomFile,
 } from '@pi-kit/protocol';
 import { RoomAssistantRepository } from '../db/room-assistant.repository';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
@@ -24,12 +26,15 @@ import { RoomLeadService } from './room-lead.service';
 import { RoomWorkspace } from './room-workspace.service';
 import { RoomTime } from './room-time';
 import { RoomBus } from './room-bus';
+import { RoomMemory } from './room-memory';
 
 @Injectable()
 export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
   private timer: ReturnType<typeof setInterval> | undefined;
   private ticking: Promise<void> | undefined;
   private stopping = false;
+  private readonly contexts = new Map<string, { fingerprint: string; keys: string[]; text: string }>();
+  private readonly pendingContexts = new Map<string, { fingerprint: string; keys: string[]; text: string }>();
   constructor(
     private readonly store: RoomAssistantRepository,
     private readonly notes: RoomPlaybooksRepository,
@@ -37,8 +42,10 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
     private readonly lead: RoomLeadService,
     private readonly workspace: RoomWorkspace,
     private readonly bus: RoomBus,
+    private readonly memory: RoomMemory,
   ) {}
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
+    await this.store.initializePolicies();
     this.lead.setAssistant(this);
     this.timer = setInterval(() => {
       void this.tick().catch(() => undefined);
@@ -52,7 +59,6 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
   }
   async status(roomId: string): Promise<RoomAssistantStatus> {
     await this.lead.found(roomId);
-    await this.workspace.ensureProject(roomId);
     return {
       policy: await this.store.policy(roomId),
       memory: (await this.notes.memory([`room:${roomId}`])).map(({ key, text, updatedBy, updatedAt }) => ({
@@ -68,7 +74,7 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
       files: await this.workspace.files(roomId),
     };
   }
-  async file(roomId: string, path: string) {
+  async file(roomId: string, path: string): Promise<RoomFile> {
     await this.lead.found(roomId);
     return this.workspace.file(roomId, path);
   }
@@ -78,27 +84,28 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
     return this.status(roomId);
   }
   async remember(roomId: string, input: RoomFactInput, by = 'owner'): Promise<RoomAssistantStatus> {
-    await this.lead.found(roomId);
-    if (input.text.trim()) await this.notes.remember(`room:${roomId}`, input.key, input.text, by);
-    else await this.notes.forget(`room:${roomId}`, input.key);
-    this.bus.emit(roomId, {
-      type: 'memory',
-      entry: { scope: 'room', key: input.key, text: input.text, updatedBy: by, updatedAt: Date.now() },
-    });
+    await this.rememberFact(roomId, input, by);
     return this.status(roomId);
   }
-  async create(roomId: string, input: RoomCommitmentInput) {
+  async rememberFact(roomId: string, input: RoomFactInput, by = 'owner'): Promise<void> {
+    await this.lead.found(roomId);
+    await this.memory.change(roomId, input, by);
+  }
+  async create(roomId: string, input: RoomCommitmentInput): Promise<RoomCommitment> {
     await this.lead.found(roomId);
     return this.store.create(roomId, input);
   }
   async change(roomId: string, id: string, body: ChangeRoomCommitment): Promise<RoomAssistantStatus> {
+    await this.changeCommitment(roomId, id, body);
+    return this.status(roomId);
+  }
+  async changeCommitment(roomId: string, id: string, body: ChangeRoomCommitment): Promise<void> {
     await this.lead.found(roomId);
     await this.rooms.inTransaction(async () => {
       if (!(await this.store.change(roomId, id, body)))
         throw new NotFoundException('No commitment with this id in this room.');
       await this.store.invalidateCommitment(roomId, id);
     });
-    return this.status(roomId);
   }
   async addFolder(roomId: string, input: RoomFolderInput): Promise<RoomAssistantStatus> {
     await this.lead.found(roomId);
@@ -125,6 +132,10 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
     } else await this.store.dismiss(roomId, id);
     return this.status(roomId);
   }
+  async initialCwd(found: FoundRoom): Promise<string> {
+    const policy = await this.workspace.execution(found.room.id);
+    return policy.workspace ? this.workspace.ensure(found.room.id) : policy.cwd;
+  }
   async prepare(found: FoundRoom, threadId: string): Promise<string> {
     return this.workspace.prepare(found.room.id, threadId);
   }
@@ -135,25 +146,51 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
     if (!(await this.enabled())) return false;
     const policy = await this.store.policy(found.room.id);
     if (!policy.enabled) return false;
+    if (policy.dailyRunLimit === undefined) return true;
     const today = RoomTime.day(Date.now(), policy.timezone);
     return (
       (await this.store.startedRuns(found.room.id, Date.now() - 48 * 3600000)).filter(
         (at) => RoomTime.day(at, policy.timezone) === today,
-      ).length < (policy.dailyRunLimit ?? 20)
+      ).length < policy.dailyRunLimit
     );
   }
-  async briefing(found: FoundRoom): Promise<string> {
+  async briefing(found: FoundRoom): Promise<string | undefined> {
     const status = await this.status(found.room.id);
-    return [
-      `Your stable room working directory is ${status.workspace}. Keep it as your base.`,
+    const execution = await this.workspace.execution(found.room.id, found.leadThreadId ?? undefined);
+    const memory = await this.notes.memory([
+      `room:${found.room.id}`,
+      ...(found.playbook ? [`playbook:${found.room.repository}/${found.playbook}`] : []),
+    ]);
+    const fingerprint = JSON.stringify({
+      policy: status.policy,
+      memory,
+      commitments: status.commitments,
+      folders: status.folders,
+      workspace: execution.cwd,
+    });
+    const previous = this.contexts.get(found.room.id);
+    if (previous?.fingerprint === fingerprint) return undefined;
+    const keys = memory.map((row) => `${row.scope}:${row.key}`);
+    const forgotten = previous?.keys.filter((key) => !keys.includes(key)) ?? [];
+    const text = [
+      'Current assistant state: this snapshot replaces ALL earlier assistant memory and commitment snapshots. Earlier references are historical. Do not use absent facts as remembered facts, or repeat cancelled, completed or superseded reminders. When a needed fact is absent, query room_assistant status instead of guessing from historical messages.',
+      forgotten.length
+        ? `Explicitly forgotten memory keys: ${forgotten.join(', ')}. Do not recall or reuse their previous values.`
+        : '',
+      execution.workspace
+        ? `Your stable room working directory is ${execution.cwd}. Keep it as your base.`
+        : `Your current project working directory is ${execution.cwd}. Keep it as your base; room-owned outputs are saved through room_assistant.`,
       'Use room_assistant for status, remember/forget, commitments, completion/snooze, searching linked folders, and writing generated files to outputs. You may write generated room outputs with that tool; other host files remain read-only. Never claim to remember, schedule or save unless the tool confirms it.',
       'Schedule only work the owner requested. Proactive execution is ' +
         (status.policy.enabled ? 'enabled' : 'disabled; explain that saved reminders wait until the owner enables it') +
-        `. Room timezone: ${status.policy.timezone}. Current time: ${new Date().toISOString()}.`,
-      status.memory.length
-        ? `Remembered facts (owner can correct or forget):\n${status.memory
+        `. Room timezone: ${status.policy.timezone}.`,
+      memory.length
+        ? `Remembered facts (owner can correct or forget):\n${memory
             .slice(-40)
-            .map((row) => `${row.key}: ${row.text} [${row.updatedBy}, ${new Date(row.updatedAt).toISOString()}]`)
+            .map(
+              (row) =>
+                `${row.scope}:${row.key}: ${row.text} [${row.updatedBy}, ${new Date(row.updatedAt).toISOString()}]`,
+            )
             .join('\n')
             .slice(0, 12000)}`
         : '',
@@ -171,6 +208,12 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
     ]
       .filter(Boolean)
       .join('\n\n');
+    this.pendingContexts.set(found.room.id, { fingerprint, keys, text });
+    return text;
+  }
+  acknowledgeBriefing(roomId: string, text: string): void {
+    const pending = this.pendingContexts.get(roomId);
+    if (pending?.text === text) this.contexts.set(roomId, pending);
   }
   async command(threadId: string, input: RoomAssistantCommand): Promise<string> {
     input = RoomAssistantCommandSchema.parse(input);
@@ -186,7 +229,7 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
     }
     if (input.action === 'remember' || input.action === 'forget') {
       if (!input.key) throw new BadRequestException('A memory key is required.');
-      await this.remember(
+      await this.rememberFact(
         roomId,
         { key: input.key, text: input.action === 'forget' ? '' : required(input.text, 'text') },
         'lead',
@@ -215,7 +258,7 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
       if (!input.id) throw new BadRequestException('Use the commitment id from status.');
       if (input.action === 'snooze' && input.dueAt === undefined)
         throw new BadRequestException('A snooze dueAt timestamp is required.');
-      await this.change(
+      await this.changeCommitment(
         roomId,
         input.id,
         input.action === 'snooze'

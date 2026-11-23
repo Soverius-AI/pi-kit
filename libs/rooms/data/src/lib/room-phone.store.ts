@@ -1,6 +1,5 @@
-import { DestroyRef, Injectable, effect, inject, signal } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import {
-  EntryApiClient,
   roomPhoneBegin,
   roomPhoneConfirm,
   roomPhoneConnect,
@@ -13,132 +12,79 @@ import {
   unwrap,
 } from '@pi-kit/api';
 import type { ReviewRoomPhone, RoomPhoneStatus } from '@pi-kit/protocol';
-import { OpenRoomStore } from './open-room.store';
+import { RoomPanelState } from './room-panel-state';
 
 @Injectable()
 export class RoomPhoneStore {
-  private readonly room = inject(OpenRoomStore);
-  private readonly api = inject(EntryApiClient);
-  private version = 0;
-  private destroyed = false;
   private commandExpiresAt: number | undefined;
-  readonly visible = signal(false);
-  readonly status = signal<RoomPhoneStatus | undefined>(undefined);
   readonly command = signal<string | undefined>(undefined);
   readonly commandExpired = signal(false);
-  readonly busy = signal(false);
-  readonly error = signal<string | undefined>(undefined);
-
-  constructor() {
-    inject(DestroyRef).onDestroy(() => {
-      this.destroyed = true;
-      this.version++;
-    });
-    effect((cleanup) => {
-      const room = this.room.room();
-      const visible = this.visible();
-      this.version++;
-      this.status.set(undefined);
-      this.command.set(undefined);
-      this.commandExpiresAt = undefined;
-      this.commandExpired.set(false);
-      this.error.set(undefined);
-      if (!room || !visible) return;
-      void this.refresh();
-      const timer = setInterval(() => {
-        this.expireCommand();
-        if (!this.busy()) void this.refresh();
-      }, 2500);
-      cleanup(() => clearInterval(timer));
-    });
-  }
+  private readonly panel = new RoomPanelState<RoomPhoneStatus>((options) => unwrap(roomPhoneStatus(options)), 2500, {
+    reset: () => this.clearCommand(),
+    tick: () => this.expireCommand(),
+  });
+  readonly visible = this.panel.visible;
+  readonly status = this.panel.status;
+  readonly busy = this.panel.busy;
+  readonly error = this.panel.error;
 
   async act(
     action: 'connect' | 'disconnect' | 'begin' | 'confirm' | 'unlink' | 'review' | 'test',
     item?: ReviewRoomPhone,
   ): Promise<void> {
-    const options = this.options();
-    if (!options || this.busy()) return;
-    const version = ++this.version;
-    this.busy.set(true);
-    this.error.set(undefined);
-    try {
-      if (item) {
-        const status = await unwrap(roomPhoneDismiss({ ...options, body: item }));
-        if (this.current(version)) this.status.set(status);
-      } else if (action === 'begin') {
-        const link = await unwrap(roomPhoneBegin(options));
-        if (this.current(version)) {
+    if (action === 'review') {
+      if (item)
+        await this.panel.mutate(
+          (options) => unwrap(roomPhoneDismiss({ ...options, body: item })),
+          (status) => this.status.set(status),
+        );
+      return;
+    }
+    if (action === 'begin') {
+      await this.panel.mutate(
+        (options) => unwrap(roomPhoneBegin(options)),
+        (link) => {
           this.command.set(`/room-link ${link.code}`);
           this.commandExpiresAt = link.expiresAt;
           this.commandExpired.set(false);
           this.expireCommand();
-        }
-      } else {
-        const candidate = this.status()?.candidate;
-        if (action === 'confirm' && !candidate) return;
-        const result =
-          action === 'connect'
-            ? roomPhoneConnect(options)
-            : action === 'disconnect'
-              ? roomPhoneDisconnect(options)
-              : action === 'unlink'
-                ? roomPhoneUnlink(options)
-                : action === 'test'
-                  ? roomPhoneTest(options)
-                  : candidate
-                    ? roomPhoneConfirm({ ...options, body: { group: candidate.group, sender: candidate.sender } })
-                    : undefined;
-        if (!result) return;
-        const status = await unwrap(result);
-        if (this.current(version)) {
-          this.status.set(status);
-          this.command.set(undefined);
-          this.commandExpiresAt = undefined;
-          this.commandExpired.set(false);
-        }
-      }
-    } catch (error) {
-      if (this.current(version)) this.error.set(error instanceof Error ? error.message : String(error));
-    } finally {
-      // Room changes invalidate results but must not leave the panel busy forever.
-      this.busy.set(false);
+        },
+      );
+      return;
     }
+    const apply = (status: RoomPhoneStatus) => {
+      this.status.set(status);
+      this.clearCommand();
+    };
+    if (action === 'confirm') {
+      const candidate = this.status()?.candidate;
+      if (candidate)
+        await this.panel.mutate(
+          (options) =>
+            unwrap(roomPhoneConfirm({ ...options, body: { group: candidate.group, sender: candidate.sender } })),
+          apply,
+        );
+      return;
+    }
+    const operation = {
+      connect: roomPhoneConnect,
+      disconnect: roomPhoneDisconnect,
+      unlink: roomPhoneUnlink,
+      test: roomPhoneTest,
+    }[action];
+    await this.panel.mutate((options) => unwrap(operation(options)), apply);
   }
 
   async saveUrl(appUrl: string): Promise<void> {
-    const options = this.options();
-    if (!options || this.busy()) return;
-    const version = ++this.version;
-    this.busy.set(true);
-    this.error.set(undefined);
-    try {
-      const status = await unwrap(roomPhoneConfig({ ...options, body: { appUrl } }));
-      if (this.current(version)) this.status.set(status);
-    } catch (error) {
-      if (this.current(version)) this.error.set(error instanceof Error ? error.message : String(error));
-    } finally {
-      this.busy.set(false);
-    }
+    await this.panel.mutate(
+      (options) => unwrap(roomPhoneConfig({ ...options, body: { appUrl } })),
+      (status) => this.status.set(status),
+    );
   }
-
-  private async refresh(): Promise<void> {
-    const options = this.options();
-    if (!options) return;
-    const version = ++this.version;
-    try {
-      const status = await unwrap(roomPhoneStatus(options));
-      if (this.current(version)) {
-        this.status.set(status);
-        this.error.set(undefined);
-      }
-    } catch (error) {
-      if (this.current(version)) this.error.set(error instanceof Error ? error.message : String(error));
-    }
-  }
-
-  private current(version: number): boolean {
-    return !this.destroyed && version === this.version;
+  private clearCommand(): void {
+    this.command.set(undefined);
+    this.commandExpiresAt = undefined;
+    this.commandExpired.set(false);
   }
   private expireCommand(): void {
     if (this.commandExpiresAt !== undefined && Date.now() >= this.commandExpiresAt) {
@@ -146,9 +92,5 @@ export class RoomPhoneStore {
       this.commandExpiresAt = undefined;
       this.commandExpired.set(true);
     }
-  }
-  private options() {
-    const room = this.room.room();
-    return room ? { client: this.api.forOwner(room.hostInstanceId), path: { roomId: room.id } } : undefined;
   }
 }

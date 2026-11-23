@@ -218,14 +218,17 @@ export const RoomActionDecisionSchema = z
   .meta({ id: 'RoomActionDecision' });
 export type RoomActionDecision = z.infer<typeof RoomActionDecisionSchema>;
 
-export const RoomMemoryEntrySchema = z
+export const RoomFactSchema = z
   .object({
-    scope: z.enum(['room', 'playbook']),
     key: z.string(),
     text: z.string(),
     updatedBy: z.string(),
     updatedAt: z.number().int().nonnegative(),
   })
+  .strict()
+  .meta({ id: 'RoomFact' });
+export type RoomFact = z.infer<typeof RoomFactSchema>;
+export const RoomMemoryEntrySchema = RoomFactSchema.extend({ scope: z.enum(['room', 'playbook']) })
   .strict()
   .meta({ id: 'RoomMemoryEntry' });
 export type RoomMemoryEntry = z.infer<typeof RoomMemoryEntrySchema>;

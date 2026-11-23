@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { redact, type RoomAction, type RoomMemoryEntry } from '@pi-kit/protocol';
+import { redact, redactValue, type RoomAction, type RoomMemoryEntry } from '@pi-kit/protocol';
 import { DatabaseService } from './database.service';
 
 interface ActionRow {
@@ -13,6 +13,13 @@ interface ActionRow {
   result: string | null;
   created_at: number;
   decided_at: number | null;
+}
+
+export interface RoomActionSettlement {
+  state: 'done' | 'failed' | 'discarded';
+  result: string | null;
+  note: string;
+  nudge: string;
 }
 
 @Injectable()
@@ -98,6 +105,40 @@ export class RoomPlaybooksRepository {
       )
       .run(state, result === null ? null : (redact(result) as string), now, id, roomId);
     return Number(changed.changes) > 0;
+  }
+
+  async claimExecution(roomId: string, actionId: string): Promise<boolean> {
+    const result = await this.db
+      .prepare(
+        `INSERT INTO room_action_executions(action_id,started_at)
+      SELECT id,? FROM room_actions WHERE room_id=? AND id=? AND state='pending' ON CONFLICT DO NOTHING`,
+      )
+      .run(Date.now(), roomId, actionId);
+    return Number(result.changes) === 1;
+  }
+  async execution(roomId: string, actionId: string): Promise<{ settlement: RoomActionSettlement | null } | undefined> {
+    const row = await this.db
+      .prepare(
+        `SELECT x.settlement_json FROM room_action_executions x
+      JOIN room_actions a ON a.id=x.action_id WHERE a.room_id=? AND a.id=?`,
+      )
+      .get<{ settlement_json: string | null }>(roomId, actionId);
+    return row
+      ? { settlement: row.settlement_json ? (JSON.parse(row.settlement_json) as RoomActionSettlement) : null }
+      : undefined;
+  }
+  async saveExecution(actionId: string, settlement: RoomActionSettlement): Promise<void> {
+    await this.db
+      .prepare('UPDATE room_action_executions SET settlement_json=? WHERE action_id=?')
+      .run(JSON.stringify(redactValue(settlement)), actionId);
+  }
+  async unfinishedExecutions(): Promise<{ roomId: string; actionId: string }[]> {
+    return this.db
+      .prepare(
+        `SELECT a.room_id AS roomId,a.id AS actionId FROM room_action_executions x
+      JOIN room_actions a ON a.id=x.action_id WHERE a.state='pending'`,
+      )
+      .all();
   }
 
   async unseen(roomId: string, triggerId: string, keys: readonly string[], now = Date.now()): Promise<string[]> {

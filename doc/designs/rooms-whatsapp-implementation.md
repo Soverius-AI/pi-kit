@@ -8,10 +8,10 @@ Choose **Rooms → New room** and enter its name and purpose. A room needs neith
 
 Open **Room panel → Assistant** to manage:
 
-- **Memory:** remember, correct or forget room facts. Facts persist across sessions and restarts and stay scoped to their room. The lead can use `room_note` or `room_assistant` without a playbook; every turn receives current facts.
+- **Memory:** remember, correct or forget room facts. Facts persist across sessions and restarts and stay scoped to their room. The lead can use `room_note` or `room_assistant` without a playbook; changed facts produce a fresh authoritative context snapshot; unchanged turns do not repeat the full briefing. Both tools delegate memory writes to one domain service.
 - **Commitments and routines:** create a due commitment or daily check, complete/cancel it, or snooze it. Revisions invalidate obsolete queued work and pending phone reminders.
-- **Proactive mode:** opt in, choose an IANA timezone, quiet hours, daily phone-update limit and daily autonomous-run limit. New personal rooms start with proactive work disabled. Existing selected playbooks retain their configured behavior. The host must be awake and running pi-kit.
-- **Linked folders:** attach approved host folders through named read-only links. Leads and local consultants keep a stable room cwd. Missing or retargeted references become unavailable without preventing independent assistant work; they never receive a replacement grant automatically. Removing a link preserves target files.
+- **Proactive mode:** opt in, choose an IANA timezone, quiet hours, daily phone-update limit and daily autonomous-run limit. New personal rooms start with proactive work disabled. Existing playbooks retain their configured behavior and have no new model-run cap imposed during migration. Leaving the run limit blank preserves unlimited runs. Selecting a playbook does not silently enable proactivity. The host must be awake and running pi-kit.
+- **Linked folders:** attach approved host folders through named read-only links. Personal rooms and rooms with explicit attachments use a stable sandboxed room cwd. Repository rooms without explicit attachments preserve their project cwd and the configured protection mode. Missing or retargeted references become unavailable without preventing independent assistant work; they never receive a replacement grant automatically. Removing a link preserves target files.
 - **Uploads and outputs:** download incoming attachments and generated reports. The lead can save generated files with `room_assistant` while reference folders remain read-only.
 - **Work:** see queued, running, completed, failed or interrupted turns. Interrupted effects require review before an explicit retry.
 
@@ -36,13 +36,17 @@ Pausing holds work and normal delivery; control acknowledgements remain availabl
 
 ## Durability and dependency choices
 
-Owner input, agent wake-ups and scheduler/poll events share persistent room work records. Source keys deduplicate acceptance. Poll acknowledgements commit with queued work, including items beyond the first five. Commitment due-time advancement commits with its wake-up.
+Owner input, agent wake-ups and scheduler/poll events share persistent room work records. Phone inbox entries reference those same records and derive their outcome from the specific work item, including across restarts. Source keys deduplicate acceptance. Poll acknowledgements commit with queued work, including items beyond the first five. Commitment due-time advancement commits with its wake-up. Approval decisions and task-result continuations commit with their event and deterministic wake-up key. External actions reserve an execution journal before starting; known results can finish settlement after restart, while unknown outcomes require review instead of replay.
+
+Media, transcription, delivery and long command completions run outside the short admission queue in per-room jobs. Binding identities fence late commits and replies after unlink. An already-dispatched external action or WhatsApp send may still complete; unlink revokes new admissions and queued sends. Prompt rendering lives in a presenter and delivery rows reference prompt tokens explicitly.
 
 Phone results use a separate persistent outbox, stable provider IDs, bounded retries and delivery/read receipts. Quiet hours and daily caps hold proactive updates while direct replies retain priority. Unchanged internal checks do not create phone messages. Restart recovery preserves pending input and flags uncertain agent effects for review; it does not promise exactly-once external actions.
 
-Pinned `chat@4.24.0`, `@chat-adapter/state-memory@4.24.0`, `chat-adapter-baileys@2.1.0`, and `baileys@7.0.0-rc14`. A checked-in adapter patch exposes connection callbacks, receipts, stable-ID text sends and bounded media streaming. The newest Chat SDK interface is incompatible with this adapter's reply method, so upgrades require compatibility checks.
+Pinned `chat@4.24.0`, `@chat-adapter/state-memory@4.24.0`, `chat-adapter-baileys@2.1.0`, and `baileys@7.0.0-rc14`. A checked-in adapter patch exposes connection callbacks, receipts, stable-ID text sends and bounded media streaming. The newest Chat SDK interface is incompatible with this adapter's reply method, so upgrades require compatibility checks. A contract harness exercises the actual installed patched adapter and Baileys parser with a fake socket, without connecting an account.
 
 SDK memory state is transient transport bookkeeping. Room identity, memory, pending work and deliveries live in SQLite. Baileys auth files live in the protected `<dataDir>/room-whatsapp-auth` directory with restricted permissions; this is local file storage rather than encrypted keychain storage. Protocol logging is suppressed.
+
+Personal-room support is negotiated on peer listings through an Accept capability header; older peers continue to receive repository-only entries. Local owners and current peers receive the full list.
 
 ## Validation and account setup
 

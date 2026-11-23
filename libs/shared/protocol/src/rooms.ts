@@ -5,6 +5,8 @@ import { PiDialogMethodSchema } from './interrupts';
 import { RoomActionSchema, RoomMemoryEntrySchema } from './playbooks';
 
 export const RoomIdSchema = z.uuid();
+/** Peer callers opt in to entries that older Room schemas cannot decode. Local owners always see all rooms. */
+export const ROOMS_PERSONAL_ACCEPT = 'application/vnd.pi-kit.rooms+json; personal=1';
 
 export const RoomSchema = z
   .object({

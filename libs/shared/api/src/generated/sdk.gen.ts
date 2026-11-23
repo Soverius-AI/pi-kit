@@ -3553,7 +3553,7 @@ export const projectFoldersList = <ThrowOnError extends boolean = false>(options
 /**
  * List hosted rooms
  *
- * Returns the rooms this environment hosts that are not archived, newest first.
+ * Returns hosted rooms, newest first. Peer callers must advertise Accept: application/vnd.pi-kit.rooms+json; personal=1 to include personal rooms. Older peers receive repository rooms only; local owners always receive all rooms.
  */
 export const roomsHosted = <ThrowOnError extends boolean = false>(options?: Options<RoomsHostedData, ThrowOnError>): RequestResult<RoomsHostedResponses, RoomsHostedErrors, ThrowOnError> => (options?.client ?? client).get<RoomsHostedResponses, RoomsHostedErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

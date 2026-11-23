@@ -27,6 +27,7 @@ import {
   RoomStreamLineSchema,
   RoomTaskSchema,
   RoomListSchema,
+  ROOMS_PERSONAL_ACCEPT,
   RoomSchema,
   RoomStartPreviewSchema,
   RoomStartQuerySchema,
@@ -125,12 +126,17 @@ export class RoomsController {
   @Get()
   @ApiOperation({
     summary: 'List hosted rooms',
-    description: 'Returns the rooms this environment hosts that are not archived, newest first.',
+    description:
+      'Returns hosted rooms, newest first. Peer callers must advertise Accept: application/vnd.pi-kit.rooms+json; personal=1 to include personal rooms. Older peers receive repository rooms only; local owners always receive all rooms.',
   })
   @Responds(RoomListSchema)
   @Fails({ 404: ROOMS_OFF })
-  hosted(): Promise<Room[]> {
-    return this.rooms.hosted();
+  async hosted(@Req() request?: Request): Promise<Room[]> {
+    const rooms = await this.rooms.hosted();
+    const peer = request?.headers[PeerProxy.CALLER_HEADER];
+    const accept = request?.headers.accept;
+    const personal = accept?.split(',').some((value) => value.trim() === ROOMS_PERSONAL_ACCEPT);
+    return peer && !personal ? rooms.filter((room) => room.repository && room.baseCommit) : rooms;
   }
 
   @Remote()

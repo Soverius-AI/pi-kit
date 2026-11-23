@@ -109,9 +109,12 @@ import type { RoomCommitment } from '@pi-kit/protocol';
                 >{{ 'rooms.assistant.dailyLimit' | transloco
                 }}<input type="number" [formField]="policy.dailyLimit" /></label
               ><label
-                >{{ 'rooms.assistant.runLimit' | transloco
-                }}<input type="number" [formField]="policy.dailyRunLimit" /></label
-              ><button type="submit" [disabled]="store.busy()">{{ 'rooms.assistant.save' | transloco }}</button>
+                >{{ 'rooms.assistant.runLimit' | transloco }}<input type="number" [formField]="policy.dailyRunLimit"
+              /></label>
+              <p>{{ 'rooms.assistant.runLimitHint' | transloco }}</p>
+              <button type="submit" [disabled]="store.busy() || policy().invalid()">
+                {{ 'rooms.assistant.save' | transloco }}
+              </button>
             </form>
           </details>
           <details>
@@ -289,7 +292,7 @@ export class RoomAssistant {
     quietStart: '22:00',
     quietEnd: '08:00',
     dailyLimit: 10,
-    dailyRunLimit: 20,
+    dailyRunLimit: 20 as number | null,
   });
   protected readonly policy = form(this.settings, (path) => {
     min(path.dailyLimit, 1);
@@ -318,7 +321,7 @@ export class RoomAssistant {
             ...value,
             quietStart: value.quietStart ?? '',
             quietEnd: value.quietEnd ?? '',
-            dailyRunLimit: value.dailyRunLimit ?? 20,
+            dailyRunLimit: value.dailyRunLimit ?? null,
           });
         }
       }
@@ -376,7 +379,13 @@ export class RoomAssistant {
   protected async savePolicy(event: Event): Promise<void> {
     event.preventDefault();
     const value = this.settings();
-    await this.store.policy({ ...value, quietStart: value.quietStart || null, quietEnd: value.quietEnd || null });
+    if (this.policy().invalid()) return;
+    await this.store.policy({
+      ...value,
+      dailyRunLimit: value.dailyRunLimit ?? undefined,
+      quietStart: value.quietStart || null,
+      quietEnd: value.quietEnd || null,
+    });
   }
   protected async addFolder(event: Event): Promise<void> {
     event.preventDefault();

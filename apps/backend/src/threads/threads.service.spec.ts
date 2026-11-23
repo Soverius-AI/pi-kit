@@ -69,6 +69,46 @@ afterEach(async () => {
   rmSync(base, { recursive: true, force: true });
 });
 
+describe('internal room thread workspace registration', () => {
+  beforeEach(() => {
+    service = new ThreadsService(
+      rows,
+      {} as never,
+      meta,
+      {
+        createSession: async (cwd: string, id: string) => ({ id, cwd, path: join(base, `${id}.jsonl`) }),
+      } as never,
+      { listChanged: vi.fn() } as never,
+      {} as never,
+      { headOf: async () => null, track: async () => undefined } as never,
+      { dataDir: join(base, 'data'), defaultCwd: project } as never,
+      ThreadProtectionTesting.bypass(),
+    );
+    vi.spyOn(service as unknown as { detail(row: unknown): Promise<unknown> }, 'detail').mockResolvedValue({});
+  });
+  it('retains a real project and its saved settings when creating a consultant there', async () => {
+    await meta.touchWorkspace(project);
+    await db.db.prepare('UPDATE workspaces SET collapsed = 1, agents_off = 1 WHERE cwd = ?').run(project);
+    await service.create(project, 'Room research', undefined, undefined, { internal: true });
+    expect(await meta.listWorkspaces()).toEqual([
+      expect.objectContaining({ cwd: project, collapsed: true, agentsOff: true }),
+    ]);
+    await meta.forgetWorkspace(project);
+    await service.create(project, 'Another internal chat', undefined, undefined, { internal: true });
+    expect(await meta.listWorkspaces()).toEqual([]);
+  });
+  it('keeps a generated room workspace hidden after passive session reconciliation without hiding an existing owner registration', async () => {
+    const cwd = join(base, 'data', 'rooms', 'personal', 'workspace');
+    mkdirSync(cwd, { recursive: true });
+    await service.create(cwd, 'Room lead', undefined, undefined, { internal: true });
+    await meta.touchWorkspace(cwd, Date.now(), { passive: true });
+    expect(await meta.listWorkspaces()).toEqual([]);
+    await meta.touchWorkspace(cwd);
+    await service.create(cwd, 'Room consultant', undefined, undefined, { internal: true });
+    expect(await meta.listWorkspaces()).toEqual([expect.objectContaining({ cwd })]);
+  });
+});
+
 describe('external imports', () => {
   const writeHistory = vi.fn();
   let snapshot: external.ExternalSnapshot;

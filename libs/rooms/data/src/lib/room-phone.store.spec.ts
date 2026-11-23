@@ -75,6 +75,44 @@ describe('room phone setup', () => {
 
   afterEach(() => vi.restoreAllMocks());
 
+  it('waits for a slow status request instead of repeatedly invalidating its response', async () => {
+    let resolve: ((value: RoomPhoneStatus) => void) | undefined;
+    status.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const interval = vi.spyOn(globalThis, 'setInterval');
+    const store = TestBed.inject(RoomPhoneStore);
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(status).toHaveBeenCalledTimes(1));
+    const poll = interval.mock.calls.find((call) => call[1] === 2500)?.[0];
+    if (typeof poll !== 'function') throw new Error('Missing status poll.');
+    poll();
+    poll();
+    poll();
+    expect(status).toHaveBeenCalledTimes(1);
+    resolve?.(value);
+    await vi.waitFor(() => expect(store.status()).toEqual(value));
+    poll();
+    await vi.waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+  });
+
+  it('retains a pending link command when only room metadata changes', async () => {
+    const store = TestBed.inject(RoomPhoneStore);
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()).toBeDefined());
+    await store.act('begin');
+    const current = room();
+    if (!current) throw new Error('Missing room.');
+    room.set({ ...current, title: 'Renamed room' });
+    TestBed.tick();
+    expect(store.command()).toBe('/room-link link-code');
+  });
+
   it('removes an expired command and tells the owner to request a new code', async () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1000);
     const interval = vi.spyOn(globalThis, 'setInterval');

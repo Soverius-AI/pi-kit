@@ -18,6 +18,7 @@ import { RoomFolders } from './room-folders';
 import { RoomPlaybookFiles } from './room-playbook-files.service';
 import { RoomWorkspace } from './room-workspace.service';
 import { RoomBus } from './room-bus';
+import { RoomMemory } from './room-memory';
 import { RoomTime } from './room-time';
 
 describe('personal room assistant persistence', () => {
@@ -56,11 +57,13 @@ describe('personal room assistant persistence', () => {
       } as unknown as RoomLeadService,
       {
         ensureProject: async () => undefined,
+        execution: async (id: string) => ({ cwd: folders.workspace(id), workspace: true, sandbox: true }),
         list: async () => [],
         path: (id: string) => folders.workspace(id),
         files: async () => [],
       } as unknown as RoomWorkspace,
       new RoomBus(rooms),
+      new RoomMemory(new RoomPlaybooksRepository(db), new RoomBus(rooms)),
     );
   }
   beforeEach(async () => {
@@ -219,6 +222,61 @@ describe('personal room assistant persistence', () => {
     expect(await rooms.pendingWakes(roomId)).toBe(0);
     await assistant.work(roomId, wake.id, true);
     expect(await rooms.pendingWakes(roomId)).toBe(1);
+  });
+
+  it('persists opt-in independently of playbook attachment and does not impose a legacy run cap', async () => {
+    expect((await store.policy(roomId)).enabled).toBe(false);
+    await rooms.setPlaybook(roomId, 'new-playbook', null);
+    expect((await store.policy(roomId)).enabled).toBe(false);
+    await db.db
+      .prepare('UPDATE room_assistant_policy SET policy=? WHERE room_id=?')
+      .run(
+        JSON.stringify({ enabled: true, timezone: null, quietStart: '22:00', quietEnd: '08:00', dailyLimit: 10 }),
+        roomId,
+      );
+    expect(await store.policy(roomId)).toMatchObject({
+      enabled: true,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
+    expect((await store.policy(roomId)).dailyRunLimit).toBeUndefined();
+    expect(await assistant.canWake((await rooms.get(roomId))!)).toBe(true);
+  });
+
+  it('does not let disabled rooms occupy the global due-reminder page', async () => {
+    for (let n = 0; n < 101; n++) await store.create(roomId, input(1));
+    const enabledRoom = await rooms.insert({
+      id: crypto.randomUUID(),
+      title: 'Enabled',
+      repository: '',
+      baseCommit: '',
+      summary: '',
+      sourceThreadId: null,
+      projectFolder: null,
+      createdAt: Date.now(),
+    });
+    await store.setPolicy(enabledRoom.id, policy);
+    const reminder = await store.create(enabledRoom.id, input(2));
+    await assistant.tick(100);
+    expect(await rooms.nextWake(enabledRoom.id)).toMatchObject({ cause: { trigger: reminder.id } });
+    expect(await rooms.nextWake(roomId)).toBeUndefined();
+  });
+
+  it('sends assistant snapshots only after changes and explicitly supersedes forgotten facts', async () => {
+    await assistant.remember(roomId, { key: 'drink', text: 'Tea' });
+    const found = (await rooms.get(roomId))!;
+    const first = (await assistant.briefing(found))!;
+    assistant.acknowledgeBriefing(roomId, first);
+    expect(await assistant.briefing(found)).toBeUndefined();
+    await assistant.remember(roomId, { key: 'drink', text: 'Coffee' });
+    const correction = (await assistant.briefing(found))!;
+    expect(correction).toContain('Coffee');
+    expect(correction).not.toContain('Tea');
+    assistant.acknowledgeBriefing(roomId, correction);
+    await assistant.remember(roomId, { key: 'drink', text: '' });
+    const forgotten = (await assistant.briefing(found))!;
+    expect(forgotten).toContain('Explicitly forgotten memory keys: room:drink');
+    expect(forgotten).toContain('replaces ALL earlier');
+    expect(forgotten).not.toContain('Coffee');
   });
 
   it('uses actual start time for per-day autonomous limits and respects the global Rooms switch', async () => {

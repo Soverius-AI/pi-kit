@@ -5095,7 +5095,8 @@
       "retry": "Nach Prüfung erneut versuchen",
       "dismiss": "Verwerfen",
       "loading": "Assistent wird geladen…",
-      "invalidDate": "Wähle ein gültiges Datum und eine Uhrzeit in der Zeitzone des Raums."
+      "invalidDate": "Wähle ein gültiges Datum und eine Uhrzeit in der Zeitzone des Raums.",
+      "runLimitHint": "Leer lassen, um kein tägliches Ausführungslimit zu setzen. Bestehende Playbooks behalten ihr bisheriges Limit, bis du es änderst."
     }
   },
   "common": {
