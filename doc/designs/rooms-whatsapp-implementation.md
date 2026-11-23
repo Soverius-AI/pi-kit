@@ -19,12 +19,12 @@ The sandbox grants canonical read-only reference roots, protects app metadata an
 
 ## WhatsApp onboarding and conversation
 
-1. Expand **WhatsApp** and connect a dedicated assistant account by scanning its QR from WhatsApp's **Linked devices** screen.
-2. Create a group containing the owner and assistant. Request a link code, send the displayed command from the owner account, then confirm the detected group and sender in pi-kit. Codes expire after ten minutes; display names alone do not verify identity.
+1. Expand **WhatsApp** and connect your own account or a dedicated assistant account by scanning its QR from WhatsApp's **Linked devices** screen.
+2. With your own linked account, use a private group for the room; the agent replies under your account. With a separate assistant account, create a group containing the owner and assistant. Request a link code, send the displayed command yourself, then confirm the detected group and sender in pi-kit. Codes expire after ten minutes; display names alone do not verify identity.
 3. Choose **Send connection test**. Reply with its exact command from the authorized owner account. The UI records a verified round trip separately from socket connection state.
 4. Optionally save the HTTPS address from private access settings. Phone messages can then open their room through a stable link.
 
-Each confirmed group belongs to one room. Other senders, direct messages, assistant-account echoes and a newly linked account cannot inherit that room's authority. Everyone in the group can read delivered content.
+Each confirmed group belongs to one room. Other senders, direct messages and a newly linked account cannot inherit that room's authority. Manual messages from the linked account can authorize and use its own room. Persisted outgoing provider IDs suppress pi-kit's own echoes, including after retries and restarts; same-account input bypasses the Chat SDK's self-message exclusion. Everyone in the group can read delivered content.
 
 Text, supported images, voice notes and documents enter a durable inbox. Attachments are bounded and stored under the room's inbox. Audio uses the existing local speech service; if it is unavailable, the audio remains saved and the lead is told explicitly. Plain text/JSON documents are included in context; other document formats remain downloadable files. Quoted replies retain their room/work reference.
 

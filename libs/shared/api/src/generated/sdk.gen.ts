@@ -3944,7 +3944,7 @@ export const roomPhoneUnlink = <ThrowOnError extends boolean = false>(options: O
 /**
  * Read the room WhatsApp connection
  *
- * Returns a QR for linking a dedicated assistant account, a group binding and queue health. Available only to authenticated paired clients.
+ * Returns a QR for linking your own WhatsApp account or a separate assistant account, a group binding and queue health. Available only to authenticated paired clients.
  */
 export const roomPhoneStatus = <ThrowOnError extends boolean = false>(options: Options<RoomPhoneStatusData, ThrowOnError>): RequestResult<RoomPhoneStatusResponses, RoomPhoneStatusErrors, ThrowOnError> => (options.client ?? client).get<RoomPhoneStatusResponses, RoomPhoneStatusErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],
@@ -3955,7 +3955,7 @@ export const roomPhoneStatus = <ThrowOnError extends boolean = false>(options: O
 /**
  * Connect the host WhatsApp account
  *
- * Starts or reconnects the one host-owned assistant account. Sessions are stored in the protected application data directory. A QR appears in status when required.
+ * Starts or reconnects one host-owned WhatsApp account, either your own account or a separate assistant account. Sessions are stored in the protected application data directory. A QR appears in status when required.
  */
 export const roomPhoneConnect = <ThrowOnError extends boolean = false>(options: Options<RoomPhoneConnectData, ThrowOnError>): RequestResult<RoomPhoneConnectResponses, RoomPhoneConnectErrors, ThrowOnError> => (options.client ?? client).post<RoomPhoneConnectResponses, RoomPhoneConnectErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

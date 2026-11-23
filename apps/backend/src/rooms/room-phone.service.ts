@@ -204,47 +204,55 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     return this.status(roomId);
   }
   private async receive(message: PhoneMessage): Promise<void> {
-    if (this.stopping || !(await this.enabled()) || this.transport.phase !== 'connected' || !this.transport.account)
-      return;
-    const link = /^\/room-link ([a-f0-9]{24})$/.exec(message.text);
-    if (link) {
-      await this.store.candidate(
-        link[1],
-        message.group,
-        message.sender,
-        message.senderName,
-        message.groupName,
-        Date.now(),
-      );
-      return;
-    }
-    const binding = await this.store.authorized(message.group, message.sender, this.transport.account);
-    if (!binding) return;
-    if (
-      /^\/(?:pause|resume|memory|remember|forget|done|snooze|pending|answer|approve|reject|room-test)\b/.test(
-        message.text,
+    const account = this.transport.account;
+    if (this.stopping || !(await this.enabled()) || this.transport.phase !== 'connected' || !account) return;
+    // Echoes can arrive while the serial outbox is awaiting its send. Reject them before entering that queue.
+    if (await this.store.isOutgoing(message.group, account, message.id)) return;
+    return this.serial(async () => {
+      if (
+        this.stopping ||
+        this.transport.account !== account ||
+        this.transport.phase !== 'connected' ||
+        !(await this.enabled())
       )
-    ) {
-      if (!(await this.store.claimCommand(binding.room_id, message.id))) return;
-      try {
-        await this.control(binding, message.text);
-      } catch (error) {
-        await this.store.notify(
-          binding.room_id,
-          `Could not apply that command: ${error instanceof Error ? error.message : 'open the room to review it.'}`,
+        return;
+      if (await this.store.isOutgoing(message.group, account, message.id)) return;
+      const link = /^\/room-link ([a-f0-9]{24})$/.exec(message.text);
+      if (link) {
+        await this.store.candidate(
+          link[1],
+          message.group,
+          message.sender,
+          message.senderName,
+          message.groupName,
+          Date.now(),
         );
+        return;
       }
-      return;
-    }
-    await this.store.receive(
-      message.group,
-      message.sender,
-      this.transport.account,
-      message.id,
-      message.text,
-      Date.now(),
-      { raw: message.raw, files: message.files, quoteId: message.quoteId },
-    );
+      const binding = await this.store.authorized(message.group, message.sender, account);
+      if (!binding) return;
+      if (
+        /^\/(?:pause|resume|memory|remember|forget|done|snooze|pending|answer|approve|reject|room-test)\b/.test(
+          message.text,
+        )
+      ) {
+        if (!(await this.store.claimCommand(binding.room_id, message.id))) return;
+        try {
+          await this.control(binding, message.text);
+        } catch (error) {
+          await this.store.notify(
+            binding.room_id,
+            `Could not apply that command: ${error instanceof Error ? error.message : 'open the room to review it.'}`,
+          );
+        }
+        return;
+      }
+      await this.store.receive(message.group, message.sender, account, message.id, message.text, Date.now(), {
+        raw: message.raw,
+        files: message.files,
+        quoteId: message.quoteId,
+      });
+    });
   }
   private async control(binding: PhoneLinkRow, text: string): Promise<void> {
     const room = binding.room_id;
@@ -478,6 +486,8 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
         }
         await this.store.deliveryState(binding.room_id, delivery.seq, 'sending');
         try {
+          if (!binding.account_id) continue;
+          await this.store.recordOutgoing(binding.group_id, binding.account_id, delivery.provider_id);
           const deepLink = binding.app_url
             ? `\n\n${binding.app_url.split('#')[0]}#room=${binding.room_id}${delivery.work_id ? `&work=${delivery.work_id}` : ''}`
             : '';

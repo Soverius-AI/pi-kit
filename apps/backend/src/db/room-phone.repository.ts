@@ -126,6 +126,18 @@ export class RoomPhoneRepository {
       )
       .get<PhoneLinkRow>(group, sender, account);
   }
+  async isOutgoing(group: string, account: string, id: string): Promise<boolean> {
+    return !!(await this.db
+      .prepare('SELECT 1 FROM room_phone_outgoing WHERE account_id=? AND group_id=? AND provider_id=?')
+      .get(account, group, id));
+  }
+  async recordOutgoing(group: string, account: string, id: string): Promise<void> {
+    await this.db
+      .prepare(
+        'INSERT INTO room_phone_outgoing(account_id,group_id,provider_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING',
+      )
+      .run(account, group, id, Date.now());
+  }
   async pending(roomId: string): Promise<PhoneInput | undefined> {
     return this.db
       .prepare("SELECT * FROM room_phone_inbox WHERE room_id=? AND state='pending' ORDER BY id LIMIT 1")

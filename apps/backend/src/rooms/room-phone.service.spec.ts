@@ -168,6 +168,114 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await expect(phone.confirm('b', { group: 'baileys:group-a@g.us', sender: 'owner@lid' })).rejects.toThrow();
   });
 
+  it('links the host account explicitly and handles its input and controls without admitting other senders', async () => {
+    const group = 'baileys:group-a@g.us';
+    const sender = transport.account;
+    const link = await phone.begin('a');
+    await transport.receive(message(`/room-link ${link.code}`, 'own-link', group, sender));
+    await transport.receive(message('before confirmation', 'before', group, sender));
+    await phone.flush();
+    expect(post).not.toHaveBeenCalled();
+    await phone.confirm('a', { group, sender });
+    await transport.receive(message('/remember timezone: Europe/Vienna', 'own-control', group, sender));
+    await transport.receive(message('Prepare my day', 'own-input', group, sender));
+    await transport.receive(message('/remember secret: rogue', 'rogue-control', group, 'someone@lid'));
+    await phone.flush();
+    expect(post).toHaveBeenCalledExactlyOnceWith(
+      'a',
+      { text: 'Prepare my day', route: 'lead', images: [] },
+      expect.any(String),
+    );
+    expect(await notes.memory(['room:a'])).toEqual([
+      expect.objectContaining({ key: 'timezone', text: 'Europe/Vienna' }),
+    ]);
+  });
+
+  it('rejects generated own-account echoes before queueing, including inline echoes during send', async () => {
+    const group = 'baileys:group-a@g.us';
+    const sender = transport.account;
+    const link = await phone.begin('a');
+    await transport.receive(message(`/room-link ${link.code}`, 'own-link', group, sender));
+    await phone.confirm('a', { group, sender });
+    await rooms.append('a', { kind: 'message', actor: 'lead', text: '/remember generated: must not execute' });
+    transport.send.mockImplementation(async (sentGroup: string, text: string, id: string) => {
+      await transport.receive(message(text, id, sentGroup, sender));
+      return id;
+    });
+    await phone.flush();
+    expect(transport.send).toHaveBeenCalledTimes(1);
+    expect(post).not.toHaveBeenCalled();
+    expect(await notes.memory(['room:a'])).toEqual([]);
+    expect((await phone.status('a')).queued).toBe(0);
+  });
+
+  it('retains outgoing identity after an ambiguous send, restart, unlink and binding the same group to another room', async () => {
+    const group = 'baileys:group-a@g.us';
+    const sender = transport.account;
+    const link = await phone.begin('a');
+    await transport.receive(message(`/room-link ${link.code}`, 'own-link', group, sender));
+    await phone.confirm('a', { group, sender });
+    await rooms.append('a', { kind: 'message', actor: 'lead', text: 'May have reached WhatsApp' });
+    transport.send.mockRejectedValueOnce(new Error('Socket closed after write'));
+    await phone.flush();
+    const id = transport.send.mock.calls[0][2] as string;
+    expect(await store.isOutgoing(group, sender, id)).toBe(true);
+    await phone.onApplicationShutdown();
+    await db.onApplicationShutdown();
+    db = await DatabaseService.create({ dataDir: dir });
+    rooms = new RoomsRepository(db);
+    store = new RoomPhoneRepository(db);
+    meta = new MetaRepository(db);
+    notes = new RoomPlaybooksRepository(db);
+    policy = new RoomAssistantRepository(db);
+    phone = makePhone();
+    await phone.onModuleInit();
+    await transport.receive(message('/remember replay: forbidden', id, group, sender));
+    await phone.unlink('a');
+    const second = await phone.begin('b');
+    await transport.receive(message(`/room-link ${second.code}`, id, group, sender));
+    expect((await phone.status('b')).candidate).toBeNull();
+    await transport.receive(message(`/room-link ${second.code}`, 'fresh-link', group, sender));
+    await phone.confirm('b', { group, sender });
+    await transport.receive(message('/remember replay: forbidden', id, group, sender));
+    expect(await notes.memory(['room:a', 'room:b'])).toEqual([]);
+    expect(post).not.toHaveBeenCalled();
+    expect(await store.isOutgoing('other-group', sender, id)).toBe(false);
+    expect(await store.isOutgoing(group, 'other-account', id)).toBe(false);
+  });
+
+  it('serializes control admission with unlink so commands cannot act after revocation', async () => {
+    await bind();
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const resume = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const authorized = store.authorized.bind(store);
+    vi.spyOn(store, 'authorized').mockImplementationOnce(async (...args) => {
+      const binding = await authorized(...args);
+      entered();
+      await resume;
+      return binding;
+    });
+    const input = transport.receive(message('/remember before: accepted', 'before-unlink'));
+    await started;
+    let unlinked = false;
+    const removal = phone.unlink('a').then(() => {
+      unlinked = true;
+    });
+    await Promise.resolve();
+    expect(unlinked).toBe(false);
+    release();
+    await input;
+    await removal;
+    await transport.receive(message('/remember after: forbidden', 'after-unlink'));
+    expect(await notes.memory(['room:a'])).toEqual([expect.objectContaining({ key: 'before' })]);
+  });
+
   it('does not admit an expired or replaced link code', async () => {
     const first = await phone.begin('a');
     const second = await phone.begin('a');

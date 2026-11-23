@@ -20,7 +20,7 @@ export interface PhoneMessage {
   files?: { name: string; mime: string; size: number; type: string }[];
 }
 
-/** One host-owned assistant account. Durable routing lives outside the SDK's transient state. */
+/** One host-owned WhatsApp account, either the owner or a separate assistant. Durable routing lives outside the SDK's transient state. */
 @Injectable()
 export class RoomWhatsAppTransport {
   phase: RoomPhoneStatus['connection'] = 'disconnected';
@@ -70,6 +70,7 @@ export class RoomWhatsAppTransport {
         await setKeys(data);
         await protectFiles();
       };
+      const ownMessage = (message: Message) => receive(undefined, message, true);
       this.adapter = createBaileysAdapter({
         auth: {
           state: auth.state,
@@ -80,6 +81,9 @@ export class RoomWhatsAppTransport {
           },
         },
         userName: 'pi-kit',
+        onOwnMessage: async (message) => {
+          if (generation === this.generation) await ownMessage(message);
+        },
         onConnectionUpdate: (update) => {
           if (generation !== this.generation) return;
           if (update.connection === 'open') {
@@ -113,10 +117,14 @@ export class RoomWhatsAppTransport {
         concurrency: 'concurrent',
         logger: this.lifecycleLogger(generation),
       });
-      const receive = async (_thread: unknown, message: Message) => {
+      const receive = async (_thread: unknown, message: Message, own = false) => {
         if (generation !== this.generation) return;
         const raw = message.raw as { key?: { fromMe?: boolean; remoteJid?: string } };
-        if (message.author.isMe || raw.key?.fromMe || !raw.key?.remoteJid?.endsWith('@g.us')) return;
+        if (!raw.key?.remoteJid?.endsWith('@g.us')) return;
+        // Only the adapter's live own-group callback may admit fromMe. Chat intentionally skips isMe messages.
+        if (own ? !raw.key.fromMe || !this.account : message.author.isMe || raw.key.fromMe) return;
+        const sender = own ? this.account : message.author.userId.replace(/:\d+@/, '@');
+        if (!sender) return;
         const text = message.text.trim();
         const files = (message.attachments ?? []).map((file) => ({
           name: file.name ?? `${file.type}-${message.id}`,
@@ -136,7 +144,7 @@ export class RoomWhatsAppTransport {
         await this.receive({
           id: message.id,
           group: message.threadId,
-          sender: message.author.userId.replace(/:\d+@/, '@'),
+          sender,
           senderName: message.author.fullName || message.author.userName,
           groupName,
           text,
@@ -144,9 +152,10 @@ export class RoomWhatsAppTransport {
           ...(files.length ? { files, raw: JSON.stringify(message.raw, baileys.BufferJSON.replacer) } : {}),
         });
       };
-      this.chat.onNewMessage(/[\s\S]*/, receive);
-      this.chat.onNewMention(receive);
-      this.chat.onSubscribedMessage(receive);
+      const handler = async (thread: unknown, message: Message) => receive(thread, message);
+      this.chat.onNewMessage(/[\s\S]*/, handler);
+      this.chat.onNewMention(handler);
+      this.chat.onSubscribedMessage(handler);
       await this.chat.initialize();
       await this.adapter.connect();
     } catch (error) {

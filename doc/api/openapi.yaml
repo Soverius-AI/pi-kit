@@ -11768,7 +11768,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/phone:
     get:
-      description: Returns a QR for linking a dedicated assistant account, a group binding and queue health. Available only to authenticated paired clients.
+      description: Returns a QR for linking your own WhatsApp account or a separate assistant account, a group binding and queue health. Available only to authenticated paired clients.
       operationId: RoomPhone_status
       parameters:
         - name: roomId
@@ -11835,7 +11835,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/phone/connect:
     post:
-      description: Starts or reconnects the one host-owned assistant account. Sessions are stored in the protected application data directory. A QR appears in status when required.
+      description: Starts or reconnects one host-owned WhatsApp account, either your own account or a separate assistant account. Sessions are stored in the protected application data directory. A QR appears in status when required.
       operationId: RoomPhone_connect
       parameters:
         - name: roomId

@@ -1,17 +1,19 @@
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 87a47564c96295e7e3d35860996b069121b0d1eb..1beb35c5326f02006e44ec041d9104d233cb6e41 100644
+index 87a47564c96295e7e3d35860996b069121b0d1eb..22312b88fa6cb0cd45aa8bfffeb1ca44f9958994 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -71,6 +71,8 @@ interface BaileysPollVote {
+@@ -71,6 +71,10 @@ interface BaileysPollVote {
  }
  /** Configuration for the Baileys adapter */
  interface BaileysAdapterConfig {
 +    onConnectionUpdate?: (update: {connection?: string; loggedOut: boolean}) => void;
 +    onDelivery?: (update: {id:string; threadId:string; status:number}) => Promise<void>;
++    /** Live own-account group messages only; caller must reject its generated message IDs durably. */
++    onOwnMessage?: (message: Message<WAMessage>) => Promise<void>;
      /**
       * Adapter identity used by Chat SDK serialization and thread ID prefixes.
       *
-@@ -230,6 +232,8 @@ declare class BaileysAdapter implements Adapter<BaileysThreadId, WAMessage> {
+@@ -230,6 +234,8 @@ declare class BaileysAdapter implements Adapter<BaileysThreadId, WAMessage> {
       * ```
       */
      connect(): Promise<void>;
@@ -21,7 +23,7 @@ index 87a47564c96295e7e3d35860996b069121b0d1eb..1beb35c5326f02006e44ec041d9104d2
      disconnect(): Promise<void>;
      private _createSocket;
 diff --git a/dist/index.js b/dist/index.js
-index aab399f0a50bff79e2781f91685308f7cfe26d39..dd67bece52293d1a5c917c545a015a6d0a6d3ba4 100644
+index aab399f0a50bff79e2781f91685308f7cfe26d39..94db43afacfec9c1121827bc616b98f64fcecbd0 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -187,6 +187,7 @@ var BaileysAdapter = class {
@@ -45,7 +47,20 @@ index aab399f0a50bff79e2781f91685308f7cfe26d39..dd67bece52293d1a5c917c545a015a6d
        if (events["messages.upsert"] && this._chat) {
          const { messages, type } = events["messages.upsert"];
          if (type !== "notify") return;
-@@ -333,6 +340,24 @@ var BaileysAdapter = class {
+@@ -241,6 +248,12 @@ var BaileysAdapter = class {
+             await this._handlePollUpdate(msg, pollUpdate, threadId);
+             continue;
+           }
++          // Own linked-device input must bypass Chat's isMe suppression. Generated echoes
++          // are distinguished by the caller's durable provider-ID ledger, not a transient cache.
++          if (msg.key.fromMe && isJidGroup(jid) && this._config.onOwnMessage) {
++            await this._config.onOwnMessage(this.parseMessage(msg));
++            continue;
++          }
+           this._chat.processMessage(
+             this,
+             threadId,
+@@ -333,6 +346,24 @@ var BaileysAdapter = class {
    // ---------------------------------------------------------------------------
    // Sending messages
    // ---------------------------------------------------------------------------

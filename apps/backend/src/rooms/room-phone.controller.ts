@@ -53,7 +53,7 @@ export class RoomPhoneController {
   @ApiOperation({
     summary: 'Read the room WhatsApp connection',
     description:
-      'Returns a QR for linking a dedicated assistant account, a group binding and queue health. Available only to authenticated paired clients.',
+      'Returns a QR for linking your own WhatsApp account or a separate assistant account, a group binding and queue health. Available only to authenticated paired clients.',
   })
   @Responds(RoomPhoneStatusSchema)
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
@@ -68,7 +68,7 @@ export class RoomPhoneController {
   @ApiOperation({
     summary: 'Connect the host WhatsApp account',
     description:
-      'Starts or reconnects the one host-owned assistant account. Sessions are stored in the protected application data directory. A QR appears in status when required.',
+      'Starts or reconnects one host-owned WhatsApp account, either your own account or a separate assistant account. Sessions are stored in the protected application data directory. A QR appears in status when required.',
   })
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}`, 503: 'WhatsApp could not connect.' })
   connect(@Param('roomId') roomId: string): Promise<RoomPhoneStatus> {

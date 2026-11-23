@@ -16,6 +16,7 @@ const sdk = vi.hoisted(() => ({
     | undefined
     | {
         onConnectionUpdate?: (value: { connection: string; loggedOut: boolean }) => void;
+        onOwnMessage?: (message: Message) => Promise<void>;
         onDelivery?: (value: { id: string; threadId: string; status: number }) => Promise<void>;
       },
 }));
@@ -109,6 +110,40 @@ describe('WhatsApp transport admission', () => {
     expect(transport.phase).toBe('disconnected');
     expect(transport.qr).toBeNull();
   });
+  it('admits own-account group input only through the live adapter callback and canonicalizes the account', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'pi-wa-own-'));
+    folders.push(folder);
+    const transport = new RoomWhatsAppTransport({ dataDir: folder });
+    transport.receive = vi.fn();
+    await transport.connect();
+    const own = {
+      id: 'manual-own-message',
+      threadId: 'baileys:group@g.us',
+      text: '/room-link abc',
+      author: { userId: 'unreliable-device@lid', userName: 'Me', fullName: 'Me', isMe: true },
+      raw: { key: { remoteJid: 'group@g.us', fromMe: true }, messageTimestamp: 1234 },
+    } as unknown as Message;
+    await sdk.handler?.({}, own);
+    expect(transport.receive).not.toHaveBeenCalled();
+    await sdk.config?.onOwnMessage?.(own);
+    expect(transport.receive).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        id: 'manual-own-message',
+        sender: 'assistant@s.whatsapp.net',
+        groupName: 'Personal',
+      }),
+    );
+    await sdk.config?.onOwnMessage?.({
+      ...own,
+      raw: { key: { remoteJid: 'direct@s.whatsapp.net', fromMe: true } },
+    } as unknown as Message);
+    await sdk.config?.onOwnMessage?.({
+      ...own,
+      raw: { key: { remoteJid: 'group@g.us', fromMe: false } },
+    } as unknown as Message);
+    expect(transport.receive).toHaveBeenCalledTimes(1);
+    await transport.disconnect();
+  });
   it('preserves attachment-only inputs and quote identity without downloading before admission', async () => {
     const folder = mkdtempSync(join(tmpdir(), 'pi-wa-media-'));
     folders.push(folder);
@@ -178,6 +213,7 @@ describe('WhatsApp transport admission', () => {
       author: { isMe: false },
       raw: { key: { remoteJid: 'old@g.us' } },
     } as unknown as Message);
+    await old?.onOwnMessage?.({ raw: { key: { remoteJid: 'old@g.us', fromMe: true } } } as unknown as Message);
     expect(transport.phase).toBe('connected');
     expect(transport.error).toBeNull();
     expect(transport.receive).not.toHaveBeenCalled();
