@@ -54,6 +54,7 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-telemetry@1.6.0'
   - '@earendil-works/pi-tui@1.6.0'
 patchedDependencies:
+  '@stibbons/chat-adapter-signal@0.1.0': patches/@stibbons__chat-adapter-signal@0.1.0.patch
   '@a2ui/web_core@0.15.0': patches/@a2ui__web_core@0.15.0.patch
   '@ag-ui/client@1.0.4': patches/@ag-ui__client@1.0.4.patch
   '@copilotkit/angular@0.6.0': patches/@copilotkit__angular@0.6.0.patch

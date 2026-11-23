@@ -4776,7 +4776,7 @@
   "rooms": {
     "phone": {
       "title": "WhatsApp",
-      "experimental": "Experimental WhatsApp Web connection. Use your own account or a separate assistant account. Protocol changes or account suspension are possible.",
+      "experimental": "Experimental WhatsApp Web connection. Use a dedicated assistant account. Protocol changes or account suspension are possible.",
       "state": {
         "disconnected": "Disconnected",
         "connecting": "Connecting…",
@@ -4785,20 +4785,20 @@
         "error": "Connection failed"
       },
       "qrAlt": "QR code for linking your WhatsApp account",
-      "scan": "On your phone, open WhatsApp → Linked devices → Link a device and scan this code.",
+      "scan": "On the assistant account’s phone, open WhatsApp → Linked devices → Link a device and scan this code.",
       "qrFailed": "The QR code could not be displayed. Reconnect to try again.",
-      "connect": "Connect / reconnect WhatsApp",
+      "connect": "Connect WhatsApp assistant",
       "owner": "Authorized sender",
-      "delivery": "New lead replies, including scheduled updates, go to this group. Everyone in the group can read them. Pausing the room holds messages and delivery.",
+      "delivery": "New lead replies, including scheduled updates, go to this conversation. Everyone in it can read them. Pausing the room holds messages and delivery.",
       "unlink": "Unlink this room",
-      "groupHint": "With your own linked account, use a private group just for this room. Your messages reach the lead and pi-kit replies appear under your account. With a separate assistant account, add both accounts to the group. Send text, voice notes or documents.",
-      "begin": "Get a group link code",
-      "commandHint": "Send this command from your own WhatsApp account in the intended group within ten minutes. Then confirm the group and sender here.",
-      "candidate": "Group requesting access",
-      "confirmHint": "Confirm only if you sent the command in this group. This grants that sender access to this room and its connected tools. Display names alone do not verify identity.",
-      "confirm": "Confirm group and sender",
+      "groupHint": "Create a group containing your personal account and the dedicated assistant account. Send the link command from your personal account. Messages sent by the assistant account are ignored.",
+      "begin": "Get a conversation link code",
+      "commandHint": "Send this command from your owner account in the intended conversation within ten minutes. Then confirm the conversation and sender here.",
+      "candidate": "Conversation requesting access",
+      "confirmHint": "Confirm only if you sent the command in this conversation. This grants that sender access to this room and its connected tools. Display names alone do not verify identity.",
+      "confirm": "Confirm conversation and sender",
       "queued": "Queued messages: {{count}}",
-      "review": "Items needing review: {{count}}. They may already have run or been sent. Check room and WhatsApp history, clear each warning, and resend manually if needed.",
+      "review": "Items needing review: {{count}}. They may already have run or been sent. Check room and conversation history, clear each warning, and resend manually if needed.",
       "reviewed": "Reviewed — clear warning",
       "disconnect": "Disconnect WhatsApp for all rooms",
       "loading": "Loading connection…",
@@ -4811,10 +4811,14 @@
       "pendingDelivery": "Messages waiting for delivery: {{count}}",
       "delivered": "Last delivered: {{time}}",
       "codeExpired": "This link code expired. Get a new group link code before sending it again.",
-      "ownInputSeen": "Last message received from your linked account in a group: {{time}}.",
-      "noOwnInput": "No group message received from your linked account since connecting.",
       "inputAccepted": "Last group input passed to room routing: {{time}}.",
-      "inputScope": "Receive status covers all groups on this linked WhatsApp account."
+      "inputScope": "Receive status covers all conversations on this connection.",
+      "groupInputSeen": "Last group or channel event received: {{time}}.",
+      "noGroupInput": "No group or channel event received since connecting.",
+      "setupSteps": "Messaging setup",
+      "step1": "Connect assistant identity",
+      "step2": "Link this room’s conversation",
+      "step3": "Verify a reply from your phone"
     },
     "task": {
       "label": "Task",
@@ -5097,6 +5101,50 @@
       "loading": "Loading assistant…",
       "invalidDate": "Choose a valid date and time in the room timezone.",
       "runLimitHint": "Leave empty for no daily run limit. Existing playbooks keep their previous limit until you change it."
+    },
+    "channels": {
+      "whatsapp": {
+        "title": "WhatsApp",
+        "intro": "Experimental WhatsApp Web connection. Use a dedicated assistant account. Protocol changes or account suspension are possible.",
+        "qrState": "Scan to link the assistant account",
+        "qrAlt": "QR code for the assistant WhatsApp account",
+        "scan": "On the assistant account’s phone, open WhatsApp → Linked devices → Link a device and scan this code.",
+        "connect": "Connect WhatsApp assistant",
+        "groupHint": "Create a group containing your personal account and the dedicated assistant account. Send the link command from your personal account. Messages sent by the assistant account are ignored.",
+        "disconnect": "Disconnect WhatsApp for all rooms"
+      },
+      "signal": {
+        "title": "Signal",
+        "intro": "Connect a dedicated Signal assistant through local signal-cli and the Chat SDK community adapter. Existing numberless Signal Login accounts are supported.",
+        "qrState": "Scan to link the Signal assistant account",
+        "qrAlt": "QR code for linking the Signal assistant account",
+        "scan": "In the assistant account’s Signal app, open Settings → Linked devices → Link new device and scan this code.",
+        "connect": "Link Signal assistant",
+        "groupHint": "Create a Signal group containing you and the dedicated assistant account. Send the link command from your personal account, then confirm the group and sender here.",
+        "disconnect": "Disconnect Signal for all rooms",
+        "setup": "Install signal-cli 0.14.10 or newer on this host. Create the assistant account in Signal first; for a numberless account use Signal Login in the supported Android beta. Linking here does not require your recovery keys.",
+        "settings": "Local signal-cli settings",
+        "binaryPath": "signal-cli executable path (optional)",
+        "binaryHint": "Leave empty to find signal-cli automatically. Use an absolute path for a custom installation.",
+        "save": "Save executable path",
+        "version": "signal-cli version: {{version}}"
+      },
+      "slack": {
+        "title": "Slack",
+        "intro": "Connect a Slack bot through Vercel Chat SDK Socket Mode. No public webhook is needed.",
+        "qrState": "Waiting for Slack setup",
+        "qrAlt": "Slack connection",
+        "scan": "Configure your Slack app below.",
+        "connect": "Connect Slack bot",
+        "groupHint": "Invite the bot to the intended Slack channel. Post the link command as a normal message, beginning with !room-link. Confirm the channel and your user here.",
+        "disconnect": "Disconnect Slack for all rooms",
+        "settings": "Slack app credentials",
+        "setup": "Create a Slack app, enable Socket Mode, subscribe to message.channels and message.groups, and install it with chat:write, channels:history, groups:history, channels:read, groups:read and files:read. Create an app token with connections:write. Credentials are saved in the host’s protected secret store.",
+        "apps": "Open Slack app settings",
+        "appToken": "App-level token (xapp-…)",
+        "botToken": "Bot token (xoxb-…)",
+        "save": "Save Slack credentials"
+      }
     }
   },
   "common": {

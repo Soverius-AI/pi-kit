@@ -30,11 +30,10 @@ import { TranscribeService } from '../transcribe/transcribe.service';
 import { RoomPhoneRepository } from '../db/room-phone.repository';
 import { RoomsRepository } from '../db/rooms.repository';
 import { LEAD_BUSY, LEAD_WAITS, RoomLeadService } from './room-lead.service';
-import { RoomWhatsAppTransport, type PhoneMessage } from './room-whatsapp.transport';
+import type { RoomMessagingTransport } from './room-messaging.transport';
+import type { PhoneMessage } from './room-phone.types';
 import { presentPhonePrompt } from './room-phone.presenter';
 import type { PhoneAttachment, PhonePromptKind } from './room-phone.types';
-
-const ENABLED = 'rooms-whatsapp-enabled';
 
 interface PhoneControlCompletion {
   binding: PhoneLinkRow;
@@ -53,7 +52,7 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     private readonly store: RoomPhoneRepository,
     private readonly rooms: RoomsRepository,
     private readonly lead: RoomLeadService,
-    private readonly transport: RoomWhatsAppTransport,
+    private readonly transport: RoomMessagingTransport,
     private readonly meta: MetaRepository,
     private readonly assistant: RoomAssistant,
     private readonly policyStore: RoomAssistantRepository,
@@ -64,12 +63,12 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.store.recover();
+    await this.store.recover(this.transport.retryStableSends === true);
     this.transport.receive = (message) => this.receive(message);
     this.transport.receipt = async (id, status, group) => {
       if (this.transport.account) await this.store.receipt(id, status, group, this.transport.account);
     };
-    if ((await this.enabled()) && (await this.meta.getSetting(ENABLED)))
+    if ((await this.enabled()) && (await this.meta.getSetting(this.enabledSetting)))
       await this.transport.connect().catch(() => undefined);
     this.timer = setInterval(() => {
       void this.flush().catch(() => undefined);
@@ -97,9 +96,11 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
       connection: this.transport.phase,
       qr: this.transport.qr,
       error:
-        row?.account_id && this.transport.account && row.account_id !== this.transport.account
-          ? 'This room is linked to another assistant account. Reconnect that account or unlink this room.'
-          : this.transport.error,
+        this.store.channel === 'whatsapp' && row?.sender_id && row.sender_id === this.transport.account
+          ? 'WhatsApp needs a dedicated assistant account and a separate owner account. Unlink this room and link it from the owner account.'
+          : row?.account_id && this.transport.account && row.account_id !== this.transport.account
+            ? 'This room is linked to another channel account. Reconnect that account or unlink this room.'
+            : this.transport.error,
       binding:
         row?.group_id && row.sender_id
           ? {
@@ -135,7 +136,7 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     return this.serial(async () => {
       await this.lead.found(roomId);
       this.abortJobs();
-      await this.meta.setSetting(ENABLED, false);
+      await this.meta.setSetting(this.enabledSetting, false);
       await this.transport.disconnect();
       return this.status(roomId);
     });
@@ -153,12 +154,12 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     return this.serial(async () => {
       await this.lead.found(roomId);
       this.abortJobs();
-      await this.meta.setSetting(ENABLED, true);
+      await this.meta.setSetting(this.enabledSetting, true);
       await this.transport.disconnect();
       try {
         await this.transport.connect();
       } catch {
-        throw new ServiceUnavailableException('WhatsApp could not connect. Try reconnecting.');
+        throw new ServiceUnavailableException('The messaging channel could not connect. Try reconnecting.');
       }
       return this.status(roomId);
     });
@@ -179,7 +180,9 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     return this.serial(async () => {
       await this.lead.found(roomId);
       if (this.transport.phase !== 'connected' || !this.transport.account)
-        throw new ConflictException('Connect WhatsApp before confirming the group.');
+        throw new ConflictException('Connect the messaging channel before confirming the conversation.');
+      if (body.sender === this.transport.account)
+        throw new ConflictException('The owner must use a different account from the connected assistant.');
       if (!(await this.store.confirm(roomId, body.group, body.sender, this.transport.account, Date.now())))
         throw new ConflictException('The link expired, changed, or this group already belongs to a room. Start again.');
       return this.status(roomId);
@@ -220,10 +223,20 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     return this.status(roomId);
   }
   private async receive(message: PhoneMessage): Promise<void> {
+    const prefix = this.transport.commandPrefix ?? '/';
+    if (
+      prefix !== '/' &&
+      message.text.startsWith(prefix) &&
+      /^(?:room-link|pause|resume|memory|remember|forget|done|snooze|pending|answer|approve|reject|room-test)\b/.test(
+        message.text.slice(prefix.length),
+      )
+    )
+      message = { ...message, text: '/' + message.text.slice(prefix.length) };
     const account = this.transport.account;
     if (this.stopping || !(await this.enabled()) || this.transport.phase !== 'connected' || !account) return;
     // Echoes can arrive while the serial outbox is awaiting its send. Reject them before entering that queue.
     if (await this.store.isOutgoing(message.group, account, message.id)) return;
+    if (message.sender === account) return;
     const completion = await this.serial(async () => {
       if (
         this.stopping ||
@@ -425,7 +438,12 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
         );
   }
   private prompt(room: string, target: string, kind: PhonePromptKind, text: string): Promise<string | undefined> {
-    return this.store.prompt(room, target, kind, presentPhonePrompt(kind, text));
+    return this.store.prompt(
+      room,
+      target,
+      kind,
+      presentPhonePrompt(kind, text, undefined, undefined, this.transport.commandPrefix ?? '/'),
+    );
   }
   private async prepareInput(
     roomId: string,
@@ -435,7 +453,7 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     let text = input.text;
     const images: RoomImage[] = [];
     const files = input.files.map((file) => ({ ...file }));
-    if (files.length > 1) throw new Error('Send one attachment per WhatsApp message.');
+    if (files.length > 1) throw new Error('Send one attachment per message.');
     for (const file of files) {
       if (file.size > 16 * 1024 * 1024) throw new Error('The attachment is larger than 16 MiB.');
       if (!file.path) {
@@ -496,7 +514,9 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
         job.promise = this.processBinding(binding, abort.signal)
           .catch(() => undefined)
           .finally(async () => {
-            await this.serial(() => this.store.releaseClaims(binding.room_id)).catch(() => undefined);
+            await this.serial(() =>
+              this.store.releaseClaims(binding.room_id, this.transport.retryStableSends === true),
+            ).catch(() => undefined);
             if (this.jobs.get(binding.room_id) === job) this.jobs.delete(binding.room_id);
           });
         return job.promise;
@@ -510,6 +530,7 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
       !this.stopping &&
       this.transport.phase === 'connected' &&
       binding.account_id === this.transport.account &&
+      (this.store.channel !== 'whatsapp' || binding.sender_id !== binding.account_id) &&
       (await this.enabled()) &&
       (await this.store.valid(binding))
     );
@@ -623,7 +644,7 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
             room,
             delivery.seq,
             Date.now() + [5000, 30000, 120000][Math.min(delivery.tries, 2)],
-            delivery.tries >= 2,
+            this.transport.retryStableSends !== true || delivery.tries >= 2,
           );
       });
     }
@@ -653,6 +674,21 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     });
   }
 
+  private get enabledSetting(): string {
+    return `rooms-${this.store.channel}-enabled`;
+  }
+  async configure(room: string, values: Record<string, string>): Promise<RoomPhoneStatus> {
+    const configure = this.transport.configure?.bind(this.transport);
+    if (!configure) throw new BadRequestException('This messaging channel has no configurable settings.');
+    return this.serial(async () => {
+      await this.lead.found(room);
+      this.abortJobs();
+      await this.bounded(this.transport.disconnect(), undefined, 2000);
+      await configure(values);
+      await this.meta.setSetting(this.enabledSetting, false);
+      return this.status(room);
+    });
+  }
   private async enabled(): Promise<boolean> {
     return (await this.meta.getSetting(ROOMS_SETTING_KEY)) === true;
   }

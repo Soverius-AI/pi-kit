@@ -1,6 +1,7 @@
-import { Component, effect, inject, signal } from '@angular/core';
-import { FormField, form } from '@angular/forms/signals';
+import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { FormField, form, required, maxLength } from '@angular/forms/signals';
 import { TranslocoPipe } from '@pi-kit/i18n';
+import type { RoomChannel } from '@pi-kit/protocol';
 import { RoomPhoneStore } from '@pi-kit/rooms/data';
 import { toDataURL } from 'qrcode';
 
@@ -9,25 +10,99 @@ import { toDataURL } from 'qrcode';
   imports: [TranslocoPipe, FormField],
   providers: [RoomPhoneStore],
   template: `
-    <details (toggle)="phone.visible.set($any($event.target).open)" data-testid="room-phone">
-      <summary>{{ 'rooms.phone.title' | transloco }}</summary>
+    <details
+      (toggle)="phone.visible.set($any($event.target).open)"
+      data-testid="room-phone"
+      [attr.data-channel]="channel()"
+    >
+      <summary>{{ profile() + '.title' | transloco }}</summary>
       <div class="body">
-        <p>{{ 'rooms.phone.experimental' | transloco }}</p>
+        <p>{{ profile() + '.intro' | transloco }}</p>
         @if (phone.error(); as error) {
           <p role="alert">{{ error }}</p>
         }
         @if (phone.status(); as status) {
-          <p role="status">{{ 'rooms.phone.state.' + status.connection | transloco }}</p>
+          <ol
+            class="setup-steps"
+            [attr.aria-label]="'rooms.phone.setupSteps' | transloco"
+            data-testid="room-channel-steps"
+          >
+            @for (step of [1, 2, 3]; track step) {
+              <li [attr.aria-current]="setupStep() === step ? 'step' : null">
+                {{ 'rooms.phone.step' + step | transloco }}
+              </li>
+            }
+          </ol>
+          <p role="status">
+            {{
+              (status.connection === 'qr' ? profile() + '.qrState' : 'rooms.phone.state.' + status.connection)
+                | transloco
+            }}
+          </p>
           @if (status.error) {
             <p role="alert">{{ status.error }}</p>
+          }
+          @if (channel() === 'slack') {
+            <details [open]="!status.configured">
+              <summary>{{ 'rooms.channels.slack.settings' | transloco }}</summary>
+              <p>{{ 'rooms.channels.slack.setup' | transloco }}</p>
+              <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer">{{
+                'rooms.channels.slack.apps' | transloco
+              }}</a>
+              <form (submit)="saveCredentials($event)">
+                <label
+                  >{{ 'rooms.channels.slack.appToken' | transloco
+                  }}<input
+                    type="password"
+                    autocomplete="off"
+                    [formField]="credentialFields.appToken"
+                    data-testid="room-slack-app-token"
+                /></label>
+                <label
+                  >{{ 'rooms.channels.slack.botToken' | transloco
+                  }}<input
+                    type="password"
+                    autocomplete="off"
+                    [formField]="credentialFields.botToken"
+                    data-testid="room-slack-bot-token"
+                /></label>
+                <button type="submit" class="btn btn-sm" [disabled]="phone.busy() || credentialFields().invalid()">
+                  {{ 'rooms.channels.slack.save' | transloco }}
+                </button>
+              </form>
+            </details>
+          }
+          @if (channel() === 'signal') {
+            <p>{{ 'rooms.channels.signal.setup' | transloco }}</p>
+            @if (status.dependency; as dependency) {
+              @if (dependency.version) {
+                <p>{{ 'rooms.channels.signal.version' | transloco: { version: dependency.version } }}</p>
+              }
+              @if (dependency.error) {
+                <p role="alert">{{ dependency.error }}</p>
+              }
+            }
+            <details>
+              <summary>{{ 'rooms.channels.signal.settings' | transloco }}</summary>
+              <form (submit)="saveSignalSettings($event)">
+                <label
+                  >{{ 'rooms.channels.signal.binaryPath' | transloco
+                  }}<input [formField]="signalFields.binaryPath" spellcheck="false"
+                /></label>
+                <p>{{ 'rooms.channels.signal.binaryHint' | transloco }}</p>
+                <button type="submit" class="btn btn-sm" [disabled]="phone.busy() || signalFields().invalid()">
+                  {{ 'rooms.channels.signal.save' | transloco }}
+                </button>
+              </form>
+            </details>
           }
           @if (status.input; as input) {
             <p>{{ 'rooms.phone.inputScope' | transloco }}</p>
             <p role="status" data-testid="room-phone-input">
-              @if (input.lastOwnGroupAt; as at) {
-                {{ 'rooms.phone.ownInputSeen' | transloco: { time: when(at) } }}
+              @if (input.lastGroupAt; as at) {
+                {{ 'rooms.phone.groupInputSeen' | transloco: { time: when(at) } }}
               } @else {
-                {{ 'rooms.phone.noOwnInput' | transloco }}
+                {{ 'rooms.phone.noGroupInput' | transloco }}
               }
             </p>
             @if (input.lastAcceptedAt; as at) {
@@ -35,15 +110,20 @@ import { toDataURL } from 'qrcode';
             }
           }
           @if (qr(); as image) {
-            <img [src]="image" [alt]="'rooms.phone.qrAlt' | transloco" width="240" height="240" />
-            <p>{{ 'rooms.phone.scan' | transloco }}</p>
+            <img [src]="image" [alt]="profile() + '.qrAlt' | transloco" width="240" height="240" />
+            <p>{{ profile() + '.scan' | transloco }}</p>
           }
           @if (qrFailed()) {
             <p role="alert">{{ 'rooms.phone.qrFailed' | transloco }}</p>
           }
           @if (status.connection !== 'connected') {
-            <button type="button" class="btn btn-sm" [disabled]="phone.busy()" (click)="phone.act('connect')">
-              {{ 'rooms.phone.connect' | transloco }}
+            <button
+              type="button"
+              class="btn btn-sm"
+              [disabled]="phone.busy() || (channel() === 'slack' && !status.configured)"
+              (click)="phone.act('connect')"
+            >
+              {{ profile() + '.connect' | transloco }}
             </button>
           }
           @if (status.binding; as binding) {
@@ -87,7 +167,7 @@ import { toDataURL } from 'qrcode';
               {{ 'rooms.phone.unlink' | transloco }}
             </button>
           } @else if (status.connection === 'connected') {
-            <p>{{ 'rooms.phone.groupHint' | transloco }}</p>
+            <p>{{ profile() + '.groupHint' | transloco }}</p>
             <button type="button" class="btn btn-sm" [disabled]="phone.busy()" (click)="phone.act('begin')">
               {{ 'rooms.phone.begin' | transloco }}
             </button>
@@ -131,7 +211,7 @@ import { toDataURL } from 'qrcode';
           }
           @if (status.connection !== 'disconnected') {
             <button type="button" class="btn btn-sm" [disabled]="phone.busy()" (click)="phone.act('disconnect')">
-              {{ 'rooms.phone.disconnect' | transloco }}
+              {{ profile() + '.disconnect' | transloco }}
             </button>
           }
         } @else {
@@ -167,6 +247,17 @@ import { toDataURL } from 'qrcode';
     .identity {
       display: block;
       color: var(--pk-muted);
+    }
+    .setup-steps {
+      margin: 0;
+      padding-inline-start: 20px;
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--pk-muted);
+    }
+    .setup-steps [aria-current='step'] {
+      color: var(--color-base-content);
+      font-weight: 600;
     }
     form,
     label {
@@ -207,7 +298,24 @@ import { toDataURL } from 'qrcode';
   `,
 })
 export class RoomPhone {
+  readonly channel = input<RoomChannel>('whatsapp');
+  protected readonly profile = computed(() => `rooms.channels.${this.channel()}`);
+  protected readonly credentials = signal({ appToken: '', botToken: '' });
+  protected readonly credentialFields = form(this.credentials, (path) => {
+    required(path.appToken);
+    required(path.botToken);
+    maxLength(path.appToken, 8192);
+    maxLength(path.botToken, 8192);
+  });
+  protected readonly signalSettings = signal({ binaryPath: '' });
+  protected readonly signalFields = form(this.signalSettings, (path) => maxLength(path.binaryPath, 4096));
   protected readonly phone = inject(RoomPhoneStore);
+  protected readonly setupStep = computed(() => {
+    const status = this.phone.status();
+    if (status?.connection !== 'connected') return 1;
+    if (!status.binding) return 2;
+    return status.verifiedAt ? 0 : 3;
+  });
   protected readonly qr = signal<string | undefined>(undefined);
   protected readonly qrFailed = signal(false);
   protected readonly linkModel = signal({ appUrl: '' });
@@ -220,7 +328,27 @@ export class RoomPhone {
     await this.phone.saveUrl(this.linkModel().appUrl.trim());
   }
 
+  protected async saveCredentials(event: Event): Promise<void> {
+    event.preventDefault();
+    if (this.credentialFields().invalid()) return;
+    const submitted = this.credentials();
+    if ((await this.phone.settings(submitted)) && this.credentials() === submitted)
+      this.credentials.set({ appToken: '', botToken: '' });
+  }
+  protected async saveSignalSettings(event: Event): Promise<void> {
+    event.preventDefault();
+    if (!this.signalFields().invalid())
+      await this.phone.settings({ binaryPath: this.signalSettings().binaryPath.trim() });
+  }
+
   constructor() {
+    effect(() => {
+      const channel = this.channel();
+      this.phone.context();
+      this.phone.channel.set(channel);
+      this.credentials.set({ appToken: '', botToken: '' });
+      this.signalSettings.set({ binaryPath: '' });
+    });
     let savedUrl: string | null | undefined;
     effect(() => {
       const value = this.phone.status()?.appUrl;

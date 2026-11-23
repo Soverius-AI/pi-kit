@@ -6,6 +6,7 @@ export function presentPhonePrompt(
   text: string,
   token = randomBytes(8).toString('hex'),
   now = Date.now(),
+  prefix = '/',
 ): PhonePromptDraft {
   if (text.length > 8000)
     return {
@@ -16,10 +17,10 @@ export function presentPhonePrompt(
     };
   const command =
     kind === 'test'
-      ? `Reply /room-test ${token}`
+      ? `Reply ${prefix}room-test ${token}`
       : kind === 'action'
-        ? `Reply /approve ${token} or /reject ${token}`
-        : `Reply /answer ${token} YOUR_ANSWER`;
+        ? `Reply ${prefix}approve ${token} or ${prefix}reject ${token}`
+        : `Reply ${prefix}answer ${token} YOUR_ANSWER`;
   return {
     token,
     expiresAt: now + 600000,

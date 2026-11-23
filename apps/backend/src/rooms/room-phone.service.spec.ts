@@ -51,6 +51,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
   };
   const transcribe = { transcribe: vi.fn(async () => ({ text: 'Prepare the meeting', language: 'en' })) };
   const transport = {
+    retryStableSends: true,
     phase: 'connected',
     account: 'assistant@s.whatsapp.net',
     qr: null,
@@ -117,9 +118,9 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  function makePhone() {
+  function makePhone(repository = store, wire = transport) {
     return new RoomPhoneService(
-      store,
+      repository,
       rooms,
       {
         found: (id: string) => rooms.get(id),
@@ -131,7 +132,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
           return rooms.get(id);
         },
       } as unknown as RoomLeadService,
-      transport as unknown as RoomWhatsAppTransport,
+      wire as unknown as RoomWhatsAppTransport,
       meta,
       {
         rememberFact: async (id: string, input: { key: string; text: string }) => {
@@ -155,6 +156,201 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await phone.confirm(room, { group, sender: 'owner@lid' });
   }
 
+  it('isolates bindings, commands, inbox identities, prompt tokens, receipts and unlink across providers in the same room', async () => {
+    const repositories = [
+      new RoomPhoneRepository(db, 'whatsapp', () => 'same-provider-id'),
+      new RoomPhoneRepository(db, 'signal', () => 'same-provider-id'),
+      new RoomPhoneRepository(db, 'slack', () => 'same-provider-id'),
+    ];
+    for (const repository of repositories) {
+      await repository.begin('a', 'same-code', Date.now() + 60000);
+      expect(
+        await repository.candidate('same-code', 'same-group', 'same-owner', 'Owner', 'Conversation', Date.now()),
+      ).toBe(true);
+      expect(await repository.confirm('a', 'same-group', 'same-owner', 'same-account', Date.now())).toBe(true);
+      await repository.receive('same-group', 'same-owner', 'same-account', 'same-input-id', repository.channel);
+      expect(await repository.claimCommand('a', 'same-command-id')).toBe(true);
+      expect(await repository.claimCommand('a', 'same-command-id')).toBe(false);
+      await repository.notify('a', repository.channel);
+      await repository.prompt('a', 'same-target', 'question', presentPhonePrompt('question', 'Question', 'same-token'));
+    }
+    const [wa, signal, slack] = repositories;
+    expect(
+      new Set(
+        (await Promise.all(repositories.map((repository) => repository.pending('a')))).map((row) => row?.source_key),
+      ).size,
+    ).toBe(3);
+    await wa.recordOutgoing('same-group', 'same-account', 'same-outgoing-id');
+    expect(await signal.isOutgoing('same-group', 'same-account', 'same-outgoing-id')).toBe(false);
+    await wa.takePrompt('a', 'same-token');
+    expect(await wa.peekPrompt('a', 'same-token')).toBeUndefined();
+    expect(await signal.peekPrompt('a', 'same-token')).toBeDefined();
+    await signal.receipt('same-provider-id', 4, 'same-group', 'same-account');
+    expect((await signal.health('a')).lastDelivery?.readAt).toEqual(expect.any(Number));
+    expect((await wa.health('a')).lastDelivery?.readAt).toBeNull();
+    expect((await slack.health('a')).lastDelivery?.readAt).toBeNull();
+    await wa.unlink('a');
+    expect(await wa.get('a')).toBeUndefined();
+    expect(await signal.get('a')).toMatchObject({ group_id: 'same-group' });
+    expect(await slack.pending('a')).toMatchObject({ text: 'slack' });
+    expect(await wa.isOutgoing('same-group', 'same-account', 'same-outgoing-id')).toBe(true);
+  });
+
+  it('uses the shared orchestrator for simultaneous providers and renders Slack commands with its native prefix', async () => {
+    const slackStore = new RoomPhoneRepository(db, 'slack', () => crypto.randomUUID());
+    const slackWire = {
+      ...transport,
+      commandPrefix: '!',
+      account: 'slack-bot',
+      send: vi.fn(async (_group: string, _text: string, id?: string) => id ?? 'slack-result'),
+    };
+    const slack = makePhone(slackStore, slackWire);
+    await slack.onModuleInit();
+    try {
+      await bind();
+      const link = await slack.begin('a');
+      await slackWire.receive(message(`!room-link ${link.code}`, 'same-id', 'slack-channel', 'slack-owner'));
+      await slack.confirm('a', { group: 'slack-channel', sender: 'slack-owner' });
+      await transport.receive(message('Via WhatsApp', 'same-id'));
+      await slackWire.receive(message('Via Slack', 'same-id', 'slack-channel', 'slack-owner'));
+      await Promise.all([phone.flush(), slack.flush()]);
+      expect(post).toHaveBeenCalledTimes(2);
+      expect(new Set(post.mock.calls.map((call) => call[2])).size).toBe(2);
+      await slackWire.receive(message('! keep this punctuation', 'literal-prefix', 'slack-channel', 'slack-owner'));
+      await slack.flush();
+      expect(post).toHaveBeenLastCalledWith(
+        'a',
+        expect.objectContaining({ text: '! keep this punctuation' }),
+        expect.any(String),
+      );
+      await slack.test('a');
+      await slack.flush();
+      expect(slackWire.send.mock.calls.map((call) => call[1]).join('\n')).toContain('!room-test ');
+      await phone.unlink('a');
+      expect((await slack.status('a')).binding).toMatchObject({ group: 'slack-channel' });
+    } finally {
+      await slack.onApplicationShutdown();
+    }
+  });
+
+  it('requeues a selected delivery when another provider pauses the room before the final handoff', async () => {
+    await bind();
+    const signalStore = new RoomPhoneRepository(db, 'signal');
+    const signalWire = { ...transport, account: 'signal-assistant', send: vi.fn(async () => 'signal-result') };
+    const signal = makePhone(signalStore, signalWire);
+    await signal.onModuleInit();
+    try {
+      const link = await signal.begin('a');
+      await signalWire.receive(message(`/room-link ${link.code}`, 'signal-link', 'signal-group', 'signal-owner'));
+      await signal.confirm('a', { group: 'signal-group', sender: 'signal-owner' });
+      await rooms.append('a', { kind: 'message', actor: 'lead', text: 'Wait until resume' });
+      let selected!: () => void;
+      let release!: () => void;
+      const selection = new Promise<void>((resolve) => {
+        selected = resolve;
+      });
+      const resumeCheck = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const canSend = store.canSend.bind(store);
+      vi.spyOn(store, 'canSend').mockImplementationOnce(async (room, seq) => {
+        selected();
+        await resumeCheck;
+        return canSend(room, seq);
+      });
+      const sending = phone.flush();
+      await selection;
+      await signalWire.receive(message('/pause', 'pause-on-signal', 'signal-group', 'signal-owner'));
+      release();
+      await sending;
+      expect(transport.send).not.toHaveBeenCalled();
+      expect(
+        await db.db
+          .prepare("SELECT state,tries FROM room_channel_deliveries WHERE channel='whatsapp' AND room_id='a'")
+          .get(),
+      ).toEqual({ state: 'pending', tries: 0 });
+      await signalWire.receive(message('/resume', 'resume-on-signal', 'signal-group', 'signal-owner'));
+      await phone.flush();
+      expect(transport.send).toHaveBeenCalledExactlyOnceWith(
+        'baileys:group-a@g.us',
+        'Wait until resume',
+        expect.any(String),
+        undefined,
+      );
+    } finally {
+      await signal.onApplicationShutdown();
+    }
+  });
+
+  it('never posts an ambiguous non-replayable delivery twice, including recovery of an interrupted send', async () => {
+    const slackStore = new RoomPhoneRepository(db, 'slack', () => crypto.randomUUID());
+    const slackWire = {
+      ...transport,
+      retryStableSends: false,
+      account: 'slack-bot',
+      send: vi.fn(async () => {
+        throw new Error('Unknown HTTP outcome');
+      }),
+    };
+    let slack = makePhone(slackStore, slackWire);
+    await slack.onModuleInit();
+    try {
+      const link = await slack.begin('a');
+      await slackWire.receive(message(`/room-link ${link.code}`, 'slack-link', 'slack-group', 'slack-owner'));
+      await slack.confirm('a', { group: 'slack-group', sender: 'slack-owner' });
+      await rooms.append('a', { kind: 'message', actor: 'lead', text: 'One external post' });
+      await slack.flush();
+      expect(await slackStore.counts('a')).toEqual({ queued: 0, needsReview: 1 });
+      await db.db.prepare("UPDATE room_channel_deliveries SET next_at=0 WHERE channel='slack'").run();
+      await slack.flush();
+      expect(slackWire.send).toHaveBeenCalledTimes(1);
+      // Model a process dying after the socket write, before delivery state was settled.
+      await db.db
+        .prepare("UPDATE room_channel_deliveries SET state='sending',tries=1,next_at=0 WHERE channel='slack'")
+        .run();
+      await slack.onApplicationShutdown();
+      slack = makePhone(new RoomPhoneRepository(db, 'slack'), slackWire);
+      await slack.onModuleInit();
+      await slack.flush();
+      expect(slackWire.send).toHaveBeenCalledTimes(1);
+      expect(await slackStore.counts('a')).toEqual({ queued: 0, needsReview: 1 });
+      // Cancellation of an unresolved send follows the same conservative policy.
+      await db.db.prepare("UPDATE room_channel_deliveries SET state='sending',tries=1 WHERE channel='slack'").run();
+      await slackStore.releaseClaims('a', false);
+      expect(await slackStore.counts('a')).toEqual({ queued: 0, needsReview: 1 });
+    } finally {
+      await slack.onApplicationShutdown();
+    }
+  });
+
+  it('recovers and expires only the selected provider claims and prompts', async () => {
+    const wa = new RoomPhoneRepository(db, 'whatsapp');
+    const signal = new RoomPhoneRepository(db, 'signal');
+    for (const repository of [wa, signal]) {
+      await repository.begin('a', 'code', Date.now() + 60000);
+      await repository.candidate('code', 'group', 'owner', '', '', Date.now());
+      await repository.confirm('a', 'group', 'owner', 'account', Date.now());
+      await repository.receive('group', 'owner', 'account', 'input', 'text');
+      await repository.prompt(
+        'a',
+        'target',
+        'question',
+        presentPhonePrompt('question', 'Localized text', 'same-token'),
+      );
+    }
+    await db.db.prepare("UPDATE room_channel_inbox SET state='dispatching'").run();
+    await wa.recover();
+    expect(await db.db.prepare('SELECT channel,state FROM room_channel_inbox ORDER BY channel').all()).toEqual([
+      { channel: 'signal', state: 'dispatching' },
+      { channel: 'whatsapp', state: 'pending' },
+    ]);
+    await db.db.prepare("UPDATE room_channel_prompts SET expires_at=1 WHERE channel='whatsapp'").run();
+    await wa.clearExpired('a');
+    expect(await wa.peekPrompt('a', 'same-token')).toBeUndefined();
+    expect(await signal.peekPrompt('a', 'same-token')).toBeDefined();
+    expect((await signal.health('a')).pendingDeliveries).toBe(1);
+  });
+
   it('requires an expiring challenge and paired-app confirmation before admitting commands', async () => {
     const link = await phone.begin('a');
     await transport.receive(message(`/room-link ${link.code}`));
@@ -171,32 +367,43 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await expect(phone.confirm('b', { group: 'baileys:group-a@g.us', sender: 'owner@lid' })).rejects.toThrow();
   });
 
-  it('links the host account explicitly and handles its input and controls without admitting other senders', async () => {
-    const group = 'baileys:group-a@g.us';
-    const sender = transport.account;
+  it('requires a separate owner account and refuses to link the connected assistant as owner', async () => {
     const link = await phone.begin('a');
-    await transport.receive(message(`/room-link ${link.code}`, 'own-link', group, sender));
-    await transport.receive(message('before confirmation', 'before', group, sender));
+    await transport.receive(message(`/room-link ${link.code}`, 'self-link', undefined, transport.account));
+    expect((await phone.status('a')).candidate).toBeNull();
+    await expect(phone.confirm('a', { group: 'baileys:group-a@g.us', sender: transport.account })).rejects.toThrow();
+  });
+
+  it('suspends retained legacy WhatsApp self-bindings without sending or dispatching their queued work', async () => {
+    await bind();
+    await transport.receive(message('Legacy queued input', 'legacy-input'));
+    await store.notify('a', 'Legacy queued output');
+    await rooms.append('a', { kind: 'message', actor: 'lead', text: 'New room update' });
+    await db.db
+      .prepare("UPDATE room_channel_links SET sender_id=account_id WHERE channel='whatsapp' AND room_id='a'")
+      .run();
     await phone.flush();
+    expect(transport.send).not.toHaveBeenCalled();
     expect(post).not.toHaveBeenCalled();
-    await phone.confirm('a', { group, sender });
-    await transport.receive(message('/remember timezone: Europe/Vienna', 'own-control', group, sender));
-    await transport.receive(message('Prepare my day', 'own-input', group, sender));
-    await transport.receive(message('/remember secret: rogue', 'rogue-control', group, 'someone@lid'));
+    expect((await phone.status('a')).error).toContain('dedicated assistant account');
+    expect((await store.pending('a'))?.provider_id).toBe('legacy-input');
+    expect((await store.get('a'))?.sender_id).toBe(transport.account);
+    await phone.unlink('a');
+    await bind();
+    await rooms.append('a', { kind: 'message', actor: 'lead', text: 'After dedicated relink' });
     await phone.flush();
-    expect(post).toHaveBeenCalledExactlyOnceWith(
-      'a',
-      { text: 'Prepare my day', route: 'lead', images: [] },
+    expect(transport.send).toHaveBeenCalledExactlyOnceWith(
+      'baileys:group-a@g.us',
+      'After dedicated relink',
       expect.any(String),
+      undefined,
     );
-    expect(await notes.memory(['room:a'])).toEqual([
-      expect.objectContaining({ key: 'timezone', text: 'Europe/Vienna' }),
-    ]);
+    expect(post).not.toHaveBeenCalled();
   });
 
   it('rejects generated own-account echoes before queueing, including inline echoes during send', async () => {
     const group = 'baileys:group-a@g.us';
-    const sender = transport.account;
+    const sender = 'owner@lid';
     const link = await phone.begin('a');
     await transport.receive(message(`/room-link ${link.code}`, 'own-link', group, sender));
     await phone.confirm('a', { group, sender });
@@ -214,7 +421,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
 
   it('retains outgoing identity after an ambiguous send, restart, unlink and binding the same group to another room', async () => {
     const group = 'baileys:group-a@g.us';
-    const sender = transport.account;
+    const sender = 'owner@lid';
     const link = await phone.begin('a');
     await transport.receive(message(`/room-link ${link.code}`, 'own-link', group, sender));
     await phone.confirm('a', { group, sender });
@@ -222,7 +429,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     transport.send.mockRejectedValueOnce(new Error('Socket closed after write'));
     await phone.flush();
     const id = transport.send.mock.calls[0][2] as string;
-    expect(await store.isOutgoing(group, sender, id)).toBe(true);
+    expect(await store.isOutgoing(group, transport.account, id)).toBe(true);
     await phone.onApplicationShutdown();
     await db.onApplicationShutdown();
     db = await DatabaseService.create({ dataDir: dir });
@@ -243,7 +450,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await transport.receive(message('/remember replay: forbidden', id, group, sender));
     expect(await notes.memory(['room:a', 'room:b'])).toEqual([]);
     expect(post).not.toHaveBeenCalled();
-    expect(await store.isOutgoing('other-group', sender, id)).toBe(false);
+    expect(await store.isOutgoing('other-group', transport.account, id)).toBe(false);
     expect(await store.isOutgoing(group, 'other-account', id)).toBe(false);
   });
 
@@ -284,7 +491,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     const second = await phone.begin('a');
     await transport.receive(message(`/room-link ${first.code}`));
     expect((await phone.status('a')).candidate).toBeNull();
-    await db.db.prepare('UPDATE room_phone_links SET expires_at = 1').run();
+    await db.db.prepare('UPDATE room_channel_links SET expires_at = 1').run();
     await transport.receive(message(`/room-link ${second.code}`));
     expect((await phone.status('a')).candidate).toBeNull();
     expect((await phone.status('a')).error).toContain('Generate a fresh code');
@@ -434,21 +641,21 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await transport.receive(message('Second operation', 'work-two'));
     await phone.flush();
     const work = await db.db
-      .prepare('SELECT id,provider_id,work_id FROM room_phone_inbox ORDER BY id')
+      .prepare('SELECT id,provider_id,work_id FROM room_channel_inbox ORDER BY id')
       .all<{ id: number; provider_id: string; work_id: string }>();
     expect(work.every((row) => !!row.work_id)).toBe(true);
     await db.db.prepare("UPDATE room_wakeups SET state='failed' WHERE id=?").run(work[0].work_id);
     await db.db.prepare("UPDATE room_wakeups SET state='queued' WHERE id=?").run(work[1].work_id);
     states.set('a', 'idle');
     await phone.flush();
-    expect(await db.db.prepare('SELECT provider_id,state FROM room_phone_inbox ORDER BY id').all()).toEqual([
+    expect(await db.db.prepare('SELECT provider_id,state FROM room_channel_inbox ORDER BY id').all()).toEqual([
       { provider_id: 'work-one', state: 'review' },
       { provider_id: 'work-two', state: 'accepted' },
     ]);
     await db.db.prepare("UPDATE room_wakeups SET state='queued' WHERE id=?").run(work[0].work_id);
     await db.db.prepare("UPDATE room_wakeups SET state='done' WHERE id=?").run(work[1].work_id);
     await phone.flush();
-    expect(await db.db.prepare('SELECT provider_id,state FROM room_phone_inbox ORDER BY id').all()).toEqual([
+    expect(await db.db.prepare('SELECT provider_id,state FROM room_channel_inbox ORDER BY id').all()).toEqual([
       { provider_id: 'work-one', state: 'accepted' },
       { provider_id: 'work-two', state: 'done' },
     ]);
@@ -474,7 +681,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await bind('b', 'baileys:group-b@g.us');
     await transport.receive(message('Bad stored metadata', 'bad-metadata'));
     await db.db
-      .prepare("UPDATE room_phone_inbox SET files_json=? WHERE room_id='a'")
+      .prepare("UPDATE room_channel_inbox SET files_json=? WHERE room_id='a'")
       .run(JSON.stringify([{ size: 'invalid' }]));
     await transport.receive(message('Unaffected', 'good-metadata', 'baileys:group-b@g.us'));
     await phone.flush();
@@ -489,11 +696,11 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
   it('expires prompt deliveries by their explicit relation even when rendered text contains no token', async () => {
     await bind();
     const token = await store.prompt('a', 'localized-question', 'question', presentPhonePrompt('question', 'Question'));
-    await db.db.prepare("UPDATE room_phone_deliveries SET text='Localized display' WHERE prompt_id=?").run(token);
-    await db.db.prepare('UPDATE room_phone_prompts SET expires_at=1 WHERE token=?').run(token);
+    await db.db.prepare("UPDATE room_channel_deliveries SET text='Localized display' WHERE prompt_id=?").run(token);
+    await db.db.prepare('UPDATE room_channel_prompts SET expires_at=1 WHERE token=?').run(token);
     await phone.flush();
     expect(transport.send).not.toHaveBeenCalled();
-    expect(await db.db.prepare('SELECT state FROM room_phone_deliveries WHERE prompt_id=?').get(token)).toEqual({
+    expect(await db.db.prepare('SELECT state FROM room_channel_deliveries WHERE prompt_id=?').get(token)).toEqual({
       state: 'dismissed',
     });
   });
@@ -542,7 +749,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     transport.send.mockRejectedValue(new Error('Connection lost after send'));
     for (let attempt = 0; attempt < 3; attempt++) {
       await phone.flush();
-      await db.db.prepare('UPDATE room_phone_deliveries SET next_at=0').run();
+      await db.db.prepare('UPDATE room_channel_deliveries SET next_at=0').run();
     }
     await phone.flush();
     expect(transport.send).toHaveBeenCalledTimes(3);
@@ -575,7 +782,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await bind();
     await transport.receive(message('one operation', 'once'));
     await phone.flush();
-    await db.db.prepare("UPDATE room_phone_inbox SET state='dispatching'").run();
+    await db.db.prepare("UPDATE room_channel_inbox SET state='dispatching'").run();
     await phone.onApplicationShutdown();
     await db.onApplicationShutdown();
     db = await DatabaseService.create({ dataDir: dir });
@@ -617,7 +824,9 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await bind();
     await phone.test('a');
     await phone.flush();
-    const row = await db.db.prepare("SELECT token FROM room_phone_prompts WHERE kind='test'").get<{ token: string }>();
+    const row = await db.db
+      .prepare("SELECT token FROM room_channel_prompts WHERE kind='test'")
+      .get<{ token: string }>();
     expect(row).toBeDefined();
     expect((await phone.status('a')).verifiedAt).toBeNull();
     await transport.receive(message(`/room-test ${row?.token}`, 'rogue-test', undefined, 'other@lid'));
@@ -634,7 +843,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     ]);
     await phone.flush();
     const prompt = await db.db
-      .prepare("SELECT token FROM room_phone_prompts WHERE target='question-1'")
+      .prepare("SELECT token FROM room_channel_prompts WHERE target='question-1'")
       .get<{ token: string }>();
     await transport.receive(message(`/answer ${prompt?.token} yes`, 'wrong-group', 'baileys:group-b@g.us'));
     expect(answerQuestions).not.toHaveBeenCalled();
@@ -645,9 +854,9 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await rooms.setLeadQuestions('a', [{ id: 'question-2', method: 'confirm', title: 'New approval' }]);
     await phone.flush();
     const expired = await db.db
-      .prepare("SELECT token FROM room_phone_prompts WHERE target='question-2'")
+      .prepare("SELECT token FROM room_channel_prompts WHERE target='question-2'")
       .get<{ token: string }>();
-    await db.db.prepare("UPDATE room_phone_prompts SET expires_at=1 WHERE target='question-2'").run();
+    await db.db.prepare("UPDATE room_channel_prompts SET expires_at=1 WHERE target='question-2'").run();
     await transport.receive(message(`/answer ${expired?.token} yes`, 'expired'));
     expect(answerQuestions).toHaveBeenCalledTimes(1);
   });
@@ -664,7 +873,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     });
     await phone.flush();
     const prompt = await db.db
-      .prepare('SELECT token,consumed_at FROM room_phone_prompts WHERE target=?')
+      .prepare('SELECT token,consumed_at FROM room_channel_prompts WHERE target=?')
       .get<{ token: string; consumed_at: number | null }>(action.id);
     expect(prompt?.consumed_at).toEqual(expect.any(Number));
     expect(transport.send.mock.calls.map((call) => call[1]).join('\n')).not.toContain('/approve');
@@ -685,7 +894,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     });
     await phone.flush();
     const prompt = await db.db
-      .prepare('SELECT token FROM room_phone_prompts WHERE target=?')
+      .prepare('SELECT token FROM room_channel_prompts WHERE target=?')
       .get<{ token: string }>(action.id);
     let entered!: () => void;
     let release!: () => void;
@@ -726,7 +935,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     });
     await phone.flush();
     const prompt = await db.db
-      .prepare('SELECT token FROM room_phone_prompts WHERE target=?')
+      .prepare('SELECT token FROM room_channel_prompts WHERE target=?')
       .get<{ token: string }>(action.id);
     let release!: () => void;
     let finished = false;
@@ -754,7 +963,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await rooms.setLeadQuestions('a', [{ id: 'slow-question', method: 'confirm', title: 'Continue?' }]);
     await phone.flush();
     const prompt = await db.db
-      .prepare("SELECT token FROM room_phone_prompts WHERE target='slow-question'")
+      .prepare("SELECT token FROM room_channel_prompts WHERE target='slow-question'")
       .get<{ token: string }>();
     let entered!: () => void;
     let release!: () => void;
@@ -792,7 +1001,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     });
     await phone.flush();
     const prompt = await db.db
-      .prepare('SELECT token FROM room_phone_prompts WHERE target=?')
+      .prepare('SELECT token FROM room_channel_prompts WHERE target=?')
       .get<{ token: string }>(action.id);
     await transport.receive(message(`/approve ${prompt?.token}`, 'approve-once'));
     await transport.receive(message(`/approve ${prompt?.token}`, 'approve-replay'));
@@ -837,7 +1046,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     expect(
       (
         await db.db
-          .prepare('SELECT raw_json,files_json FROM room_phone_inbox')
+          .prepare('SELECT raw_json,files_json FROM room_channel_inbox')
           .get<{ raw_json: string | null; files_json: string }>()
       )?.raw_json,
     ).toBeNull();
@@ -850,7 +1059,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await rooms.append('a', { kind: 'message', actor: 'lead', text: 'Meeting brief' });
     await phone.flush();
     const row = await db.db
-      .prepare('SELECT provider_id FROM room_phone_deliveries WHERE room_id=?')
+      .prepare('SELECT provider_id FROM room_channel_deliveries WHERE room_id=?')
       .get<{ provider_id: string }>('a');
     expect(transport.send.mock.calls[0][1]).toContain('#room=a');
     await transport.receive({ ...message('Change the second item', 'reply'), quoteId: row?.provider_id });
@@ -936,7 +1145,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     expect(transport.send).not.toHaveBeenCalled();
     await rooms.setLeadQuestions('a', [{ id: 'expired-question', method: 'confirm', title: 'Approve later?' }]);
     await store.prompt('a', 'expired-question', 'question', presentPhonePrompt('question', 'Approve later?'));
-    await db.db.prepare("UPDATE room_phone_prompts SET expires_at=1 WHERE target='expired-question'").run();
+    await db.db.prepare("UPDATE room_channel_prompts SET expires_at=1 WHERE target='expired-question'").run();
     await phone.flush();
     await phone.flush();
     expect(transport.send).not.toHaveBeenCalled();

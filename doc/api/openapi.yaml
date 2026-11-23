@@ -11768,7 +11768,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/phone:
     get:
-      description: Returns a QR for linking your own WhatsApp account or a separate assistant account, a group binding and queue health. Available only to authenticated paired clients.
+      description: Returns a QR for linking a dedicated WhatsApp assistant account, a group binding and queue health. Available only to authenticated paired clients.
       operationId: RoomPhone_status
       parameters:
         - name: roomId
@@ -11835,7 +11835,7 @@ paths:
       x-remote: true
   /api/rooms/{roomId}/phone/connect:
     post:
-      description: Starts or reconnects one host-owned WhatsApp account, either your own account or a separate assistant account. Sessions are stored in the protected application data directory. A QR appears in status when required.
+      description: Starts or reconnects one host-owned WhatsApp account, a dedicated assistant account. Sessions are stored in the protected application data directory. A QR appears in status when required.
       operationId: RoomPhone_connect
       parameters:
         - name: roomId
@@ -12042,6 +12042,419 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
       summary: Confirm the group and authorized owner
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/channels/{channel}:
+    get:
+      operationId: RoomChannel_status
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: channel
+          required: true
+          in: path
+          schema:
+            enum:
+              - whatsapp
+              - signal
+              - slack
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomChannelStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Read a room messaging channel
+      tags:
+        - rooms
+      x-remote: true
+    delete:
+      operationId: RoomChannel_unlink
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: channel
+          required: true
+          in: path
+          schema:
+            enum:
+              - whatsapp
+              - signal
+              - slack
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomChannelStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Unlink a room conversation
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/channels/{channel}/connect:
+    post:
+      operationId: RoomChannel_connect
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: channel
+          required: true
+          in: path
+          schema:
+            enum:
+              - whatsapp
+              - signal
+              - slack
+            type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomChannelStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Connect a messaging channel
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/channels/{channel}/disconnect:
+    post:
+      operationId: RoomChannel_disconnect
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: channel
+          required: true
+          in: path
+          schema:
+            enum:
+              - whatsapp
+              - signal
+              - slack
+            type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomChannelStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Disconnect a messaging channel
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/channels/{channel}/link:
+    post:
+      operationId: RoomChannel_begin
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: channel
+          required: true
+          in: path
+          schema:
+            enum:
+              - whatsapp
+              - signal
+              - slack
+            type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomPhoneLink'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Start linking a room conversation
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/channels/{channel}/confirm:
+    post:
+      operationId: RoomChannel_confirm
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: channel
+          required: true
+          in: path
+          schema:
+            enum:
+              - whatsapp
+              - signal
+              - slack
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmRoomPhone'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomChannelStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Confirm a conversation and its authorized owner
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/channels/{channel}/config:
+    put:
+      operationId: RoomChannel_config
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: channel
+          required: true
+          in: path
+          schema:
+            enum:
+              - whatsapp
+              - signal
+              - slack
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomPhoneConfig'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomChannelStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Set this channel binding application URL
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/channels/{channel}/settings:
+    put:
+      operationId: RoomChannel_settings
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: channel
+          required: true
+          in: path
+          schema:
+            enum:
+              - whatsapp
+              - signal
+              - slack
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomChannelSettings'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomChannelStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Configure provider credentials or local dependencies
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/channels/{channel}/test:
+    post:
+      operationId: RoomChannel_test
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: channel
+          required: true
+          in: path
+          schema:
+            enum:
+              - whatsapp
+              - signal
+              - slack
+            type: string
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomChannelStatus'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Verify an actual messaging round trip
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/channels/{channel}/review:
+    post:
+      operationId: RoomChannel_dismiss
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: channel
+          required: true
+          in: path
+          schema:
+            enum:
+              - whatsapp
+              - signal
+              - slack
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRoomPhone'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomChannelStatus'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Dismiss a reviewed uncertain channel item
       tags:
         - rooms
       x-remote: true
@@ -20314,6 +20727,195 @@ components:
         - workspace
         - work
       additionalProperties: false
+    RoomChannelBinding:
+      type: object
+      properties:
+        group:
+          type: string
+        groupName:
+          type: string
+        sender:
+          type: string
+        senderName:
+          type: string
+      required:
+        - group
+        - groupName
+        - sender
+        - senderName
+      additionalProperties: false
+    RoomChannelSettings:
+      type: object
+      properties:
+        values:
+          type: object
+          propertyNames:
+            type: string
+            maxLength: 100
+          additionalProperties:
+            type: string
+            maxLength: 8192
+      required:
+        - values
+      additionalProperties: false
+    RoomChannelStatus:
+      type: object
+      properties:
+        connection:
+          type: string
+          enum:
+            - disconnected
+            - connecting
+            - qr
+            - connected
+            - error
+        qr:
+          type:
+            - string
+            - 'null'
+        error:
+          type:
+            - string
+            - 'null'
+        binding:
+          anyOf:
+            - $ref: '#/components/schemas/RoomChannelBinding'
+            - type: 'null'
+        candidate:
+          anyOf:
+            - $ref: '#/components/schemas/RoomChannelBinding'
+            - type: 'null'
+        expiresAt:
+          type:
+            - number
+            - 'null'
+        input:
+          type: object
+          properties:
+            lastGroupAt:
+              type:
+                - number
+                - 'null'
+            lastOwnGroupAt:
+              type:
+                - number
+                - 'null'
+            lastAcceptedAt:
+              type:
+                - number
+                - 'null'
+            ignoredHistory:
+              type: integer
+              minimum: 0
+              maximum: 9007199254740991
+          required:
+            - lastGroupAt
+            - lastOwnGroupAt
+            - lastAcceptedAt
+            - ignoredHistory
+          additionalProperties: false
+        appUrl:
+          type:
+            - string
+            - 'null'
+        verifiedAt:
+          type:
+            - number
+            - 'null'
+        pendingDeliveries:
+          type: number
+        lastDelivery:
+          anyOf:
+            - type: object
+              properties:
+                sentAt:
+                  type:
+                    - number
+                    - 'null'
+                deliveredAt:
+                  type:
+                    - number
+                    - 'null'
+                readAt:
+                  type:
+                    - number
+                    - 'null'
+              required:
+                - sentAt
+                - deliveredAt
+                - readAt
+              additionalProperties: false
+            - type: 'null'
+        queued:
+          type: number
+        needsReview:
+          type: number
+        review:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+              direction:
+                type: string
+                enum:
+                  - input
+                  - delivery
+              text:
+                type: string
+            required:
+              - id
+              - direction
+              - text
+            additionalProperties: false
+        channel:
+          type: string
+          enum:
+            - whatsapp
+            - signal
+            - slack
+        configured:
+          type: boolean
+        dependency:
+          anyOf:
+            - type: object
+              properties:
+                available:
+                  type: boolean
+                version:
+                  type:
+                    - string
+                    - 'null'
+                path:
+                  type:
+                    - string
+                    - 'null'
+                error:
+                  type:
+                    - string
+                    - 'null'
+              required:
+                - available
+                - version
+                - path
+                - error
+              additionalProperties: false
+            - type: 'null'
+      required:
+        - connection
+        - qr
+        - error
+        - binding
+        - candidate
+        - expiresAt
+        - queued
+        - needsReview
+        - review
+        - channel
+      additionalProperties: false
     RoomClone:
       type: object
       properties:
@@ -20875,41 +21477,11 @@ components:
             - 'null'
         binding:
           anyOf:
-            - type: object
-              properties:
-                group:
-                  type: string
-                groupName:
-                  type: string
-                sender:
-                  type: string
-                senderName:
-                  type: string
-              required:
-                - group
-                - groupName
-                - sender
-                - senderName
-              additionalProperties: false
+            - $ref: '#/components/schemas/RoomChannelBinding'
             - type: 'null'
         candidate:
           anyOf:
-            - type: object
-              properties:
-                group:
-                  type: string
-                groupName:
-                  type: string
-                sender:
-                  type: string
-                senderName:
-                  type: string
-              required:
-                - group
-                - groupName
-                - sender
-                - senderName
-              additionalProperties: false
+            - $ref: '#/components/schemas/RoomChannelBinding'
             - type: 'null'
         expiresAt:
           type:

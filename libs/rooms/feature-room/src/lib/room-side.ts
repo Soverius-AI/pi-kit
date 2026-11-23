@@ -28,6 +28,8 @@ type TaskGroup = { key: 'needsYou' | 'running' | 'done'; tasks: RoomTask[] };
       </button>
     </header>
     <pk-room-phone />
+    <pk-room-phone channel="signal" />
+    <pk-room-phone channel="slack" />
     <pk-room-assistant />
     <details class="section" open data-testid="room-playbook">
       <summary><pk-icon name="skill" size="14" />{{ 'rooms.view.playbookPick' | transloco }}</summary>

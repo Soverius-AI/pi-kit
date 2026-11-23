@@ -21,3 +21,15 @@ export interface PhonePromptDraft {
   expiresAt: number;
   consumed: boolean;
 }
+
+export interface PhoneMessage {
+  id: string;
+  group: string;
+  sender: string;
+  senderName: string;
+  groupName: string;
+  text: string;
+  quoteId?: string;
+  raw?: string;
+  files?: PhoneAttachment[];
+}

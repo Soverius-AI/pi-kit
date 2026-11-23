@@ -1,0 +1,107 @@
+diff --git a/dist/adapter.js b/dist/adapter.js
+--- a/dist/adapter.js
++++ b/dist/adapter.js
+@@ -240,6 +240,20 @@
+      * attachments go as data URIs with the first part. Ends a typing indicator in the
+      * Conversation: the message clears it, or a STOP when sending fails.
+      */
++    /** pi-kit: one bounded, caller-identified send, for durable delivery replay. */
++    async postMessageWithTimestamp(threadId, text, timestamp, quote) {
++        if (!isMessageTimestamp(timestamp) || typeof text !== "string" || Buffer.byteLength(text, "utf8") > 12000)
++            throw new ValidationError(ADAPTER_NAME, "Invalid bounded Signal message");
++        const conversation = decodeThreadId(threadId);
++        const botAci = this.requireBotAci();
++        const quoted = quote ? decodeMessageId(quote.id) : undefined;
++        const result = await this.send(conversation, this.formatConverter.renderSignal({ raw: text }), {
++            timestamp,
++            ...(quoted ? { quoteTimestamp: quoted.timestamp, quoteAuthor: quoted.authorAci, quoteMessage: quote.text.slice(0, 1500) } : {}),
++        });
++        if (result.timestamp !== timestamp) throw new NetworkError(ADAPTER_NAME, "signal-cli did not preserve the reserved timestamp");
++        return { id: encodeMessageId(botAci, result.timestamp), threadId, raw: result };
++    }
+     async postMessage(threadId, message) {
+         const conversation = decodeThreadId(threadId);
+         const botAci = this.requireBotAci();
+@@ -435,7 +449,7 @@
+      * `attachments` are data URIs; callers reject them on edits, Signal edits change only the text. They extend the
+      * deadline: signal-cli answers only after it received them and uploaded them to Signal.
+      */
+-    async send(conversation, { text, styles }, { attachments = [], editTimestamp } = {}) {
++    async send(conversation, { text, styles }, { attachments = [], editTimestamp, timestamp, quoteTimestamp, quoteAuthor, quoteMessage } = {}) {
+         const result = await this.transport.request("send", {
+             account: this.account,
+             ...recipientParams(conversation),
+@@ -445,6 +459,8 @@
+             }),
+             ...(attachments.length > 0 && { attachments }),
+             ...(editTimestamp === undefined ? {} : { editTimestamp }),
++            ...(timestamp === undefined ? {} : { timestamp }),
++            ...(quoteTimestamp === undefined ? {} : { quoteTimestamp, quoteAuthor, quoteMessage }),
+         }, { transferBytes: attachments.reduce((total, uri) => total + uri.length, 0) });
+         if (!(result && isMessageTimestamp(result.timestamp))) {
+             throw new NetworkError(ADAPTER_NAME, "signal-cli send returned no message timestamp");
+diff --git a/dist/adapter.d.ts b/dist/adapter.d.ts
+--- a/dist/adapter.d.ts
++++ b/dist/adapter.d.ts
+@@ -96,6 +96,8 @@
+      * attachments go as data URIs with the first part. Ends a typing indicator in the
+      * Conversation: the message clears it, or a STOP when sending fails.
+      */
++    /** pi-kit: caller-reserved identity and native quote via signal-cli0.14.10. */
++    postMessageWithTimestamp(threadId: string, text: string, timestamp: number, quote?: {id:string;text:string}): Promise<RawMessage<SignalRawMessage>>;
+     postMessage(threadId: string, message: AdapterPostableMessage): Promise<RawMessage<SignalRawMessage>>;
+     /**
+      * Shows the typing indicator while the stream runs, then posts the whole text once (split
+diff --git a/dist/transport/line.js b/dist/transport/line.js
+--- a/dist/transport/line.js
++++ b/dist/transport/line.js
+@@ -1,7 +1,6 @@
+ import { spawn } from "node:child_process";
+ import { once } from "node:events";
+ import { createConnection } from "node:net";
+-import { createInterface } from "node:readline";
+ import { NetworkError, ValidationError } from "@chat-adapter/shared";
+ import { ADAPTER_NAME, fromJsonRpcError, malformedResponse, requestDeadlineMs, unreachable, withDeadline, } from "../errors.js";
+ /** How long `close()` waits for a spawned signal-cli to exit after SIGTERM before sending SIGKILL. */
+@@ -140,10 +139,29 @@
+         return this.connection;
+     }
+     read(connection, current) {
+-        const lines = createInterface({ input: connection.input, crlfDelay: Infinity });
+-        lines.on("line", (line) => this.handleLine(line, current));
+-        // readline re-emits input errors; the connection's own error handling reports them via `ended`.
+-        lines.on("error", () => { });
++        // pi-kit accepts at most 16MiB attachments. Bound the JSON/base64 wire
++        // before parsing it; readline alone buffers arbitrarily large lines.
++        const maxLine = 24 * 1024 * 1024;
++        let buffered = "";
++        let failed = false;
++        const onData = (chunk) => {
++            if (failed) return;
++            buffered += chunk.toString("utf8");
++            let end;
++            while ((end = buffered.indexOf("\n")) !== -1 && end <= maxLine) {
++                this.handleLine(buffered.slice(0,end),current);
++                buffered = buffered.slice(end+1);
++            }
++            if (buffered.length > maxLine) {
++                failed = true;
++                buffered = "";
++                this.rejectPending(current, () => new NetworkError(ADAPTER_NAME,"Signal response exceeds the Rooms size limit"));
++                void connection.close();
++            }
++        };
++        connection.input.setEncoding("utf8");
++        connection.input.on("data",onData);
++        const lines = { close: () => connection.input.off("data",onData) };
+         void connection.ended.then((reason) => {
+             lines.close();
+             const error = reason ?? new NetworkError(ADAPTER_NAME, `signal-cli connection (${this.endpoint}) was closed`);
+@@ -342,7 +360,6 @@
+         ended,
+         async close() {
+             closing = true;
+-            child.stdin.end();
+             child.kill("SIGTERM");
+             const killer = setTimeout(() => child.kill("SIGKILL"), KILL_AFTER_MS);
+             killer.unref();

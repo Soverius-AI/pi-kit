@@ -4,25 +4,28 @@ import {
   ApiClient,
   EntryApiClient,
   provideMockApi,
-  roomPhoneStatus,
-  roomPhoneConfirm,
-  roomPhoneBegin,
-  roomPhoneConfig,
-  roomPhoneTest,
+  roomChannelStatus,
+  roomChannelConfirm,
+  roomChannelBegin,
+  roomChannelConfig,
+  roomChannelTest,
+  roomChannelSettings,
 } from '@pi-kit/api';
-import type { Room, RoomPhoneStatus } from '@pi-kit/protocol';
+import type { Room, RoomChannelStatus } from '@pi-kit/protocol';
 import { OpenRoomStore } from './open-room.store';
 import { RoomPhoneStore } from './room-phone.store';
 
 describe('room phone setup', () => {
   const room = signal<Room | undefined>(undefined);
-  const status = vi.fn<() => Promise<RoomPhoneStatus>>();
+  const status = vi.fn<() => Promise<RoomChannelStatus>>();
   const confirm = vi.fn();
   const forOwner = vi.fn();
   const config = vi.fn();
   const test = vi.fn();
   const begin = vi.fn();
-  const value: RoomPhoneStatus = {
+  const settings = vi.fn();
+  const value: RoomChannelStatus = {
+    channel: 'whatsapp',
     connection: 'connected',
     qr: null,
     error: null,
@@ -49,17 +52,19 @@ describe('room phone setup', () => {
     confirm.mockResolvedValue(value);
     config.mockResolvedValue({ ...value, appUrl: 'https://phone.example.test/' });
     test.mockResolvedValue(value);
+    settings.mockResolvedValue(value);
     begin.mockImplementation(async () => ({ code: 'link-code', expiresAt: Date.now() + 600_000 }));
     TestBed.configureTestingModule({
       providers: [
         RoomPhoneStore,
         { provide: OpenRoomStore, useValue: { room } },
         ...provideMockApi([
-          [roomPhoneStatus, status, () => []],
-          [roomPhoneConfirm, confirm, (options) => [options.path, options.body]],
-          [roomPhoneBegin, begin, () => []],
-          [roomPhoneConfig, config, (options) => [options.path, options.body]],
-          [roomPhoneTest, test, (options) => [options.path]],
+          [roomChannelStatus, status, () => []],
+          [roomChannelConfirm, confirm, (options) => [options.path, options.body]],
+          [roomChannelBegin, begin, () => []],
+          [roomChannelConfig, config, (options) => [options.path, options.body]],
+          [roomChannelTest, test, (options) => [options.path]],
+          [roomChannelSettings, settings, (options) => [options.path, options.body]],
         ]),
         {
           provide: EntryApiClient,
@@ -76,7 +81,7 @@ describe('room phone setup', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('waits for a slow status request instead of repeatedly invalidating its response', async () => {
-    let resolve: ((value: RoomPhoneStatus) => void) | undefined;
+    let resolve: ((value: RoomChannelStatus) => void) | undefined;
     status.mockImplementationOnce(
       () =>
         new Promise((done) => {
@@ -143,11 +148,14 @@ describe('room phone setup', () => {
     expect(forOwner).toHaveBeenCalledWith('host-a');
     expect(confirm).not.toHaveBeenCalled();
     await store.act('confirm');
-    expect(confirm).toHaveBeenCalledWith({ roomId: 'room-a' }, { group: 'group-a', sender: 'owner@lid' });
+    expect(confirm).toHaveBeenCalledWith(
+      { roomId: 'room-a', channel: 'whatsapp' },
+      { group: 'group-a', sender: 'owner@lid' },
+    );
   });
 
   it('discards a stale QR/status response when the owner switches rooms', async () => {
-    let resolve: ((value: RoomPhoneStatus) => void) | undefined;
+    let resolve: ((value: RoomChannelStatus) => void) | undefined;
     status.mockImplementationOnce(
       () =>
         new Promise((done) => {
@@ -180,16 +188,77 @@ describe('room phone setup', () => {
     expect(store.command()).toBeUndefined();
     expect(store.status()).toBeUndefined();
   });
+  it('blocks an old credential form from targeting a new host before effects clear its draft', async () => {
+    let resolve: ((value: RoomChannelStatus) => void) | undefined;
+    status.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const store = TestBed.inject(RoomPhoneStore);
+    store.channel.set('slack');
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(resolve).toBeDefined());
+    const previous = room();
+    if (!previous) throw new Error('Missing room.');
+    room.set({ ...previous, id: 'room-b', hostInstanceId: 'host-b' });
+    expect(await store.settings({ appToken: 'old-host-app', botToken: 'old-host-bot' })).toBe(false);
+    expect(settings).not.toHaveBeenCalled();
+    resolve?.({ ...value, channel: 'slack', qr: 'old-host-qr' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.status()?.qr).not.toBe('old-host-qr');
+    TestBed.tick();
+    await vi.waitFor(() => expect(forOwner).toHaveBeenLastCalledWith('host-b'));
+  });
+  it('fences pending responses and clears link commands when changing messaging channel', async () => {
+    const store = TestBed.inject(RoomPhoneStore);
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()).toBeDefined());
+    await store.act('begin');
+    expect(store.command()).toBe('/room-link link-code');
+    let resolve: ((value: RoomChannelStatus) => void) | undefined;
+    config.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const saving = store.saveUrl('https://old.example.test/');
+    await vi.waitFor(() => expect(resolve).toBeDefined());
+    status.mockResolvedValue({ ...value, channel: 'slack' });
+    store.channel.set('slack');
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()?.channel).toBe('slack'));
+    expect(store.command()).toBeUndefined();
+    resolve?.({ ...value, appUrl: 'https://old.example.test/' });
+    await saving;
+    expect(store.status()?.channel).toBe('slack');
+    expect(store.status()?.appUrl).toBeUndefined();
+    await store.act('begin');
+    expect(store.command()).toBe('!room-link link-code');
+    await store.settings({ appToken: 'draft-app-token', botToken: 'draft-bot-token' });
+    expect(settings).toHaveBeenCalledExactlyOnceWith(
+      { roomId: 'room-a', channel: 'slack' },
+      { values: { appToken: 'draft-app-token', botToken: 'draft-bot-token' } },
+    );
+  });
   it('saves private room links and requests an explicit phone round trip on the room host', async () => {
     const store = TestBed.inject(RoomPhoneStore);
     store.visible.set(true);
     TestBed.tick();
     await vi.waitFor(() => expect(store.status()).toBeDefined());
     await store.saveUrl('https://phone.example.test/');
-    expect(config).toHaveBeenCalledExactlyOnceWith({ roomId: 'room-a' }, { appUrl: 'https://phone.example.test/' });
+    expect(config).toHaveBeenCalledExactlyOnceWith(
+      { roomId: 'room-a', channel: 'whatsapp' },
+      { appUrl: 'https://phone.example.test/' },
+    );
     expect(store.status()?.appUrl).toBe('https://phone.example.test/');
     await store.act('test');
-    expect(test).toHaveBeenCalledExactlyOnceWith({ roomId: 'room-a' });
+    expect(test).toHaveBeenCalledExactlyOnceWith({ roomId: 'room-a', channel: 'whatsapp' });
     expect(forOwner).toHaveBeenLastCalledWith('host-a');
   });
 });

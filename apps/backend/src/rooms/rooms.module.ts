@@ -34,7 +34,11 @@ import { RoomRuns } from './room-runs';
 import { RoomLive } from './room-live';
 import { RoomPlaybookEditor } from './room-playbook-editor.service';
 import { RoomPhoneController } from './room-phone.controller';
-import { RoomPhoneService } from './room-phone.service';
+import { RoomChannelRegistry } from './room-channel.registry';
+import { RoomChannelController } from './room-channel.controller';
+import { RoomSignalTransport } from './room-signal.transport';
+import { RoomSlackTransport } from './room-slack.transport';
+import { RoomSlackCredentials } from './room-slack-credentials';
 import { RoomWhatsAppTransport } from './room-whatsapp.transport';
 import { RoomWorkspace } from './room-workspace.service';
 import { RoomAssistant } from './room-assistant.service';
@@ -72,12 +76,22 @@ import { TranscribeModule } from '../transcribe/transcribe.module';
     RoomConsultant,
     RoomPlaybookService,
     RoomPlaybookEditor,
-    RoomPhoneService,
+    RoomChannelRegistry,
+    RoomSignalTransport,
+    RoomSlackTransport,
+    RoomSlackCredentials,
     RoomWhatsAppTransport,
     RoomWorkspace,
     RoomAssistant,
     RoomMemory,
   ],
-  controllers: [RoomsController, RoomPhoneController, RoomAssistantController, A2aController, A2aWellKnownController],
+  controllers: [
+    RoomsController,
+    RoomPhoneController,
+    RoomChannelController,
+    RoomAssistantController,
+    A2aController,
+    A2aWellKnownController,
+  ],
 })
 export class RoomsModule {}

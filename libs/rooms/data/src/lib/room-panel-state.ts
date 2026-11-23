@@ -12,19 +12,20 @@ export interface RoomPanelOptions {
 export class RoomPanelState<T> {
   private readonly room = inject(OpenRoomStore);
   private readonly api = inject(EntryApiClient);
-  private readonly scope = computed(
+  readonly context = computed(
     () => {
       const room = this.room.room();
-      return room ? { id: room.id, host: room.hostInstanceId } : undefined;
+      return room ? { id: room.id, host: room.hostInstanceId, key: this.scopeKey?.() } : undefined;
     },
-    { equal: (a, b) => a?.id === b?.id && a?.host === b?.host },
+    { equal: (a, b) => a?.id === b?.id && a?.host === b?.host && a?.key === b?.key },
   );
   private generation = 0;
+  private activeContext: ReturnType<typeof this.context>;
   private destroyed = false;
   private reading: { abort: AbortController; promise: Promise<void> } | undefined;
   private mutation: AbortController | undefined;
   readonly visible = signal(false);
-  readonly roomId = computed(() => this.scope()?.id);
+  readonly roomId = computed(() => this.context()?.id);
   readonly status = signal<T | undefined>(undefined);
   readonly busy = signal(false);
   readonly error = signal<string | undefined>(undefined);
@@ -33,15 +34,17 @@ export class RoomPanelState<T> {
     private readonly fetch: (options: RoomPanelOptions) => Promise<T>,
     interval: number,
     hooks: { reset?: () => void; tick?: () => void } = {},
+    private readonly scopeKey?: () => string,
   ) {
     inject(DestroyRef).onDestroy(() => {
       this.destroyed = true;
       this.invalidate();
     });
     effect((cleanup) => {
-      const scope = this.scope();
+      const scope = this.context();
       const visible = this.visible();
       this.invalidate();
+      this.activeContext = visible ? scope : undefined;
       this.status.set(undefined);
       this.error.set(undefined);
       untracked(() => hooks.reset?.());
@@ -118,11 +121,11 @@ export class RoomPanelState<T> {
     this.busy.set(false);
   }
   private current(generation: number): boolean {
-    return !this.destroyed && generation === this.generation;
+    return !this.destroyed && generation === this.generation && this.visible() && this.context() === this.activeContext;
   }
   private options(signal: AbortSignal): RoomPanelOptions | undefined {
-    const scope = this.scope();
-    return !this.destroyed && this.visible() && scope
+    const scope = this.context();
+    return !this.destroyed && this.visible() && scope && scope === this.activeContext
       ? { client: this.api.forOwner(scope.host), path: { roomId: scope.id }, signal }
       : undefined;
   }

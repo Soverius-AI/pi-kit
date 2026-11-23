@@ -7,23 +7,15 @@ import type { WAMessage } from 'baileys';
 import type { RoomPhoneStatus } from '@pi-kit/protocol';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
-import type { PhoneAttachment } from './room-phone.types';
+import type { PhoneMessage } from './room-phone.types';
+import type { RoomMessagingTransport } from './room-messaging.transport';
+import { randomBytes } from 'node:crypto';
+export type { PhoneMessage } from './room-phone.types';
 
-export interface PhoneMessage {
-  id: string;
-  group: string;
-  sender: string;
-  senderName: string;
-  groupName: string;
-  text: string;
-  quoteId?: string;
-  raw?: string;
-  files?: PhoneAttachment[];
-}
-
-/** One host-owned WhatsApp account, either the owner or a separate assistant. Durable routing lives outside the SDK's transient state. */
+/** One dedicated WhatsApp assistant account; owner messages arrive from a separate account. Durable routing lives outside the SDK's transient state. */
 @Injectable()
-export class RoomWhatsAppTransport {
+export class RoomWhatsAppTransport implements RoomMessagingTransport {
+  readonly retryStableSends = true;
   phase: RoomPhoneStatus['connection'] = 'disconnected';
   qr: string | null = null;
   error: string | null = null;
@@ -77,7 +69,6 @@ export class RoomWhatsAppTransport {
         await setKeys(data);
         await protectFiles();
       };
-      const ownMessage = (message: Message) => receive(undefined, message, true);
       this.adapter = createBaileysAdapter({
         auth: {
           state: auth.state,
@@ -94,14 +85,6 @@ export class RoomWhatsAppTransport {
           if (batch.groups) this.input.lastGroupAt = now;
           if (batch.ownGroups) this.input.lastOwnGroupAt = now;
           if (batch.type !== 'notify') this.input.ignoredHistory += batch.groups;
-        },
-        onOwnMessage: async (message) => {
-          if (generation !== this.generation) return;
-          try {
-            await ownMessage(message);
-          } catch {
-            this.error = 'WhatsApp could not process a group message. Try again or reconnect.';
-          }
         },
         onConnectionUpdate: (update) => {
           if (generation !== this.generation) return;
@@ -138,13 +121,12 @@ export class RoomWhatsAppTransport {
         concurrency: 'concurrent',
         logger: this.lifecycleLogger(generation),
       });
-      const receive = async (_thread: unknown, message: Message, own = false) => {
+      const receive = async (_thread: unknown, message: Message) => {
         if (generation !== this.generation) return;
         const raw = message.raw as { key?: { fromMe?: boolean; remoteJid?: string } };
         if (!raw.key?.remoteJid?.endsWith('@g.us')) return;
-        // Only the adapter's live own-group callback may admit fromMe. Chat intentionally skips isMe messages.
-        if (own ? !raw.key.fromMe || !this.account : message.author.isMe || raw.key.fromMe) return;
-        const sender = own ? this.account : message.author.userId.replace(/:\d+@/, '@');
+        if (message.author.isMe || raw.key.fromMe) return;
+        const sender = message.author.userId.replace(/:\d+@/, '@');
         if (!sender) return;
         const text = message.text.trim();
         const files = (message.attachments ?? []).map((file) => ({
@@ -172,7 +154,14 @@ export class RoomWhatsAppTransport {
           ...(files.length ? { files, raw: JSON.stringify(message.raw, baileys.BufferJSON.replacer) } : {}),
         });
       };
-      const handler = async (thread: unknown, message: Message) => receive(thread, message);
+      const handler = async (thread: unknown, message: Message) => {
+        try {
+          await receive(thread, message);
+        } catch {
+          if (generation === this.generation)
+            this.error = 'WhatsApp could not process a group message. Try again or reconnect.';
+        }
+      };
       this.chat.onNewMessage(/[\s\S]*/, handler);
       this.chat.onNewMention(handler);
       this.chat.onSubscribedMessage(handler);
@@ -185,6 +174,13 @@ export class RoomWhatsAppTransport {
       this.error = 'WhatsApp could not connect. Try reconnecting.';
       throw error;
     }
+  }
+
+  createMessageId(): string {
+    return '3EB0' + randomBytes(9).toString('hex').toUpperCase();
+  }
+  details() {
+    return { configured: true };
   }
 
   async send(

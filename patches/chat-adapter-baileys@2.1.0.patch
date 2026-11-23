@@ -1,20 +1,17 @@
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index 87a47564c96295e7e3d35860996b069121b0d1eb..8db9cbf26aa0b1a5bb83eb8a44a650a72bf01563 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
-@@ -71,6 +71,11 @@ interface BaileysPollVote {
+@@ -71,6 +71,9 @@
  }
  /** Configuration for the Baileys adapter */
  interface BaileysAdapterConfig {
 +    onConnectionUpdate?: (update: {connection?: string; loggedOut: boolean}) => void;
 +    onDelivery?: (update: {id:string; threadId:string; status:number}) => Promise<void>;
-+    /** Live own-account group messages only; caller must reject its generated message IDs durably. */
 +    onMessageBatch?: (batch: {type:string; groups:number; ownGroups:number}) => void;
-+    onOwnMessage?: (message: Message<WAMessage>) => Promise<void>;
      /**
       * Adapter identity used by Chat SDK serialization and thread ID prefixes.
       *
-@@ -230,6 +235,8 @@ declare class BaileysAdapter implements Adapter<BaileysThreadId, WAMessage> {
+@@ -230,6 +233,8 @@
       * ```
       */
      connect(): Promise<void>;
@@ -23,11 +20,18 @@ index 87a47564c96295e7e3d35860996b069121b0d1eb..8db9cbf26aa0b1a5bb83eb8a44a650a7
      /** Disconnect from WhatsApp and clean up the socket. */
      disconnect(): Promise<void>;
      private _createSocket;
+@@ -310,6 +315,7 @@
+      * });
+      * ```
+      */
++    reply(threadId:string,messageId:string,content:AdapterPostableMessage):Promise<RawMessage<WAMessage>>;
+     reply(message: Message<WAMessage>, content: AdapterPostableMessage): Promise<RawMessage<WAMessage>>;
+     /**
+      * Mark one or more messages as read, sending read receipts to the sender.
 diff --git a/dist/index.js b/dist/index.js
-index aab399f0a50bff79e2781f91685308f7cfe26d39..6a755ea3a9f931b9e323b0bc352553bf6b74b477 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -187,6 +187,7 @@ var BaileysAdapter = class {
+@@ -187,6 +187,7 @@
        }
        if (events["connection.update"]) {
          const { connection, lastDisconnect, qr } = events["connection.update"];
@@ -35,7 +39,7 @@ index aab399f0a50bff79e2781f91685308f7cfe26d39..6a755ea3a9f931b9e323b0bc352553bf
          if (qr && this._config.onQR) {
            await this._config.onQR(qr);
          }
-@@ -213,8 +214,16 @@ var BaileysAdapter = class {
+@@ -213,8 +214,16 @@
            }
          }
        }
@@ -52,20 +56,7 @@ index aab399f0a50bff79e2781f91685308f7cfe26d39..6a755ea3a9f931b9e323b0bc352553bf
          if (type !== "notify") return;
          for (const msg of messages) {
            if (!msg.message) continue;
-@@ -241,6 +250,12 @@ var BaileysAdapter = class {
-             await this._handlePollUpdate(msg, pollUpdate, threadId);
-             continue;
-           }
-+          // Own linked-device input must bypass Chat's isMe suppression. Generated echoes
-+          // are distinguished by the caller's durable provider-ID ledger, not a transient cache.
-+          if (msg.key.fromMe && isJidGroup(jid) && this._config.onOwnMessage) {
-+            await this._config.onOwnMessage(this.parseMessage(msg));
-+            continue;
-+          }
-           this._chat.processMessage(
-             this,
-             threadId,
-@@ -333,6 +348,24 @@ var BaileysAdapter = class {
+@@ -333,6 +342,24 @@
    // ---------------------------------------------------------------------------
    // Sending messages
    // ---------------------------------------------------------------------------
@@ -90,3 +81,18 @@ index aab399f0a50bff79e2781f91685308f7cfe26d39..6a755ea3a9f931b9e323b0bc352553bf
    async postMessage(threadId, message) {
      const { jid } = this.decodeThreadId(threadId);
      return this._sendPostable(jid, message, threadId);
+@@ -564,7 +591,13 @@
+    * });
+    * ```
+    */
+-  async reply(message, content) {
++  async reply(message, content, sdkContent) {
++    if (typeof message === "string") {
++      const threadId = message;
++      const {jid} = this.decodeThreadId(threadId);
++      const quoted = {key:{remoteJid:jid,id:content,fromMe:false},message:{conversation:""}};
++      return this._sendPostable(jid,sdkContent,threadId,{quoted});
++    }
+     const prefix = `${this.name}:`;
+     if (!message.threadId.startsWith(prefix)) {
+       throw new ValidationError(

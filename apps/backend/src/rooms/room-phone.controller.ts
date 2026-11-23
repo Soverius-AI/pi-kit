@@ -15,14 +15,17 @@ import {
 import { Fails, Remote, Responds } from '../contract';
 import { ROOMS_OFF, RoomsEnabledGuard } from './rooms-enabled.guard';
 import { NO_ROOM } from './room-lead.service';
-import { RoomPhoneService } from './room-phone.service';
+import { RoomChannelRegistry } from './room-channel.registry';
 
 @ApiTags('rooms')
 @Controller('rooms/:roomId/phone')
 @ApiParam({ name: 'roomId', description: 'The hosted room id.' })
 @UseGuards(RoomsEnabledGuard)
 export class RoomPhoneController {
-  constructor(private readonly phone: RoomPhoneService) {}
+  constructor(private readonly channels: RoomChannelRegistry) {}
+  private get phone() {
+    return this.channels.get('whatsapp');
+  }
   @Remote()
   @Put('config')
   @Responds(RoomPhoneStatusSchema)
@@ -53,7 +56,7 @@ export class RoomPhoneController {
   @ApiOperation({
     summary: 'Read the room WhatsApp connection',
     description:
-      'Returns a QR for linking your own WhatsApp account or a separate assistant account, a group binding and queue health. Available only to authenticated paired clients.',
+      'Returns a QR for linking a dedicated WhatsApp assistant account, a group binding and queue health. Available only to authenticated paired clients.',
   })
   @Responds(RoomPhoneStatusSchema)
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
@@ -68,7 +71,7 @@ export class RoomPhoneController {
   @ApiOperation({
     summary: 'Connect the host WhatsApp account',
     description:
-      'Starts or reconnects one host-owned WhatsApp account, either your own account or a separate assistant account. Sessions are stored in the protected application data directory. A QR appears in status when required.',
+      'Starts or reconnects one host-owned WhatsApp account, a dedicated assistant account. Sessions are stored in the protected application data directory. A QR appears in status when required.',
   })
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}`, 503: 'WhatsApp could not connect.' })
   connect(@Param('roomId') roomId: string): Promise<RoomPhoneStatus> {

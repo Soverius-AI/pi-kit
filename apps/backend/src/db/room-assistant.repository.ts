@@ -103,7 +103,7 @@ export class RoomAssistantRepository {
       .run(Date.now(), roomId, id);
     await this.db
       .prepare(
-        "UPDATE room_phone_deliveries SET state='dismissed' WHERE room_id=? AND state IN ('pending','sending') AND work_id IN (SELECT id FROM room_wakeups WHERE room_id=? AND json_extract(cause_json,'$.trigger')=?)",
+        "UPDATE room_channel_deliveries SET state='dismissed' WHERE room_id=? AND state IN ('pending','sending') AND work_id IN (SELECT id FROM room_wakeups WHERE room_id=? AND json_extract(cause_json,'$.trigger')=?)",
       )
       .run(roomId, roomId, id);
   }

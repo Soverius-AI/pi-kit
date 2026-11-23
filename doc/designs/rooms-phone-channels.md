@@ -2,7 +2,7 @@
 
 Research date: 2026-11-23. Local application baseline: `c60a2aa`, based on main `29e7fa0` (0.93.0).
 
-Status: original product and implementation proposal. At the research stage, no messaging account was connected, SDK installed, or live send performed. Implementation has since started on `feature/rooms-whatsapp`; see [the implementation status](rooms-whatsapp-implementation.md) for the pinned dependencies, available first slice and remaining live acceptance test. The owner checked their phone and **does not have WhatsApp Settings → Agents**. That rules out making the personal Agent Platform the first delivery path for this owner today.
+Status: original product and implementation proposal. The current [messaging implementation](rooms-messaging-channels.md) includes WhatsApp, Signal and Slack and records newer BotFather findings. At the research stage, no messaging account was connected, SDK installed, or live send performed. Implementation has since started on `feature/rooms-whatsapp`; see [the implementation status](rooms-whatsapp-implementation.md) for the pinned dependencies, available first slice and remaining live acceptance test. The owner checked their phone and **does not have WhatsApp Settings → Agents**. That rules out making the personal Agent Platform the first delivery path for this owner today.
 
 This document updates the messaging recommendation in [the initial Rooms review](rooms-personal-assistant-review.md). The earlier WhatsApp discussion concentrated on Business Cloud API and linked-device bridges; a separate personal Agent Platform also exists and must be evaluated independently.
 
@@ -62,14 +62,14 @@ Baileys operates through WhatsApp Web rather than Meta's official APIs. The adap
 
 Proposed room setup:
 
-1. Choose **Room → Phone conversations → WhatsApp → Linked device**. Explain whether the connection uses the assistant's account or the owner's personal account.
+1. Choose **Room → Phone conversations → WhatsApp → Linked device**. Use a dedicated assistant account; the owner’s personal account remains the authorized sender.
 2. If using a dedicated assistant, first register that WhatsApp account through WhatsApp itself. SDK setup does not create a usable phone account from nothing.
 3. Render the adapter's QR inside pi-kit and link it from that account's **Linked devices** screen. Save the resulting session through protected host storage and show connection/reconnect state.
 4. Create a small group with the owner and assistant, or select an existing group that the owner controls. Confirm the room/group binding on the paired pi-kit UI and with a short challenge in that group. Initial implementation can use manually created groups rather than assuming group creation is exposed by the chosen adapter.
 5. Deliver a test update there; require a reply from the authorized owner. Only then mark the binding ready.
 6. Enable routines and notifications separately. Linking WhatsApp does not itself enable proactive messages or connect Gmail/Calendar.
 
-Start with the dedicated-account pattern. OpenClaw demonstrates both that pattern and a personal-number/self-chat mode, with separate sender admission and loop prevention. Supporting the latter in pi-kit requires deliberate handling of own-device messages; skipping all self-authored messages would make it unusable. Source: [OpenClaw WhatsApp deployment and routing](https://docs.openclaw.ai/channels/whatsapp).
+The implementation requires the dedicated-account pattern. The earlier experimental personal-account bypass was removed at the owner’s request. Self-authored messages cannot link or operate a room.
 
 For the group experience, process owner messages in bound assistant-only groups without an obligatory @mention. In a broader group, default to explicit mentions or quote-replies. Merely joining a group never grants access to a room, and adding another human does not grant the owner's tool permissions.
 

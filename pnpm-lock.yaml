@@ -19,7 +19,8 @@ patchedDependencies:
   '@ag-ui/client@1.0.4': a4dd90fe597c9cf24e496bc57840ded54b7c51136e304038476dc82141b90019
   '@copilotkit/angular@0.6.0': 226f72acf646d5c0e341b2f4998fd9b43f4a781c0ee4922df3b40e2c00cb2fbe
   '@copilotkit/core@1.88.0': 0671957073ce81f313b5f6474b904d1d74b3efbd4d649fc83dc856cd109d6de4
-  chat-adapter-baileys@2.1.0: 5b96675a6805cc40d4e49d4e24c9f968c7e66702d4efea5c09d00320bcd1f571
+  '@stibbons/chat-adapter-signal@0.1.0': 7a9d96de000c8c5440e9d30598b08926d82871b295891ee66b4db4bae8dd4862
+  chat-adapter-baileys@2.1.0: e526ab7b444072cbcadf3dc077a432baf566cc8831df746f9c84208485a6b037
   zod-to-json-schema@3.25.2: cd2ce6230b359650273558f02a8d8421fa374506bca463b3c3056a5010264a25
 
 importers:
@@ -65,9 +66,15 @@ importers:
       '@appthreat/sqlite3':
         specifier: 9.1.0
         version: 9.1.0
+      '@chat-adapter/shared':
+        specifier: 4.44.0
+        version: 4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
+      '@chat-adapter/slack':
+        specifier: 4.44.0
+        version: 4.44.0(ai@6.0.308(zod@4.6.7))(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)(zod@4.6.7)
       '@chat-adapter/state-memory':
-        specifier: 4.24.0
-        version: 4.24.0(supports-color@10.2.2)
+        specifier: 4.44.0
+        version: 4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
       '@copilotkit/angular':
         specifier: 0.6.0
         version: 0.6.0(patch_hash=226f72acf646d5c0e341b2f4998fd9b43f4a781c0ee4922df3b40e2c00cb2fbe)(9a21d114eb24efcd0b5db08e3ef0a1a5)
@@ -119,6 +126,12 @@ importers:
       '@ngrx/signals':
         specifier: 22.0.1
         version: 22.0.1(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.1)(zone.js@0.16.3))(rxjs@7.8.1)
+      '@slack/socket-mode':
+        specifier: 2.0.7
+        version: 2.0.7(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)
+      '@stibbons/chat-adapter-signal':
+        specifier: 0.1.0
+        version: 0.1.0(patch_hash=7a9d96de000c8c5440e9d30598b08926d82871b295891ee66b4db4bae8dd4862)(ai@6.0.308(zod@4.6.7))(chat@4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
       '@tailwindcss/postcss':
         specifier: 4.3.3
         version: 4.3.3
@@ -141,11 +154,11 @@ importers:
         specifier: 0.3.0
         version: 0.3.0(ai@6.0.308(zod@4.6.7))
       chat:
-        specifier: 4.24.0
-        version: 4.24.0(supports-color@10.2.2)
+        specifier: 4.44.0
+        version: 4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
       chat-adapter-baileys:
         specifier: 2.1.0
-        version: 2.1.0(patch_hash=5b96675a6805cc40d4e49d4e24c9f968c7e66702d4efea5c09d00320bcd1f571)(ai@6.0.308(zod@4.6.7))(chat@4.24.0(supports-color@10.2.2))(sharp@0.35.5(@types/node@24.19.2))(supports-color@10.2.2)(zod@4.6.7)
+        version: 2.1.0(patch_hash=e526ab7b444072cbcadf3dc077a432baf566cc8831df746f9c84208485a6b037)(ai@6.0.308(zod@4.6.7))(chat@4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7))(sharp@0.35.5(@types/node@24.19.2))(supports-color@10.2.2)(zod@4.6.7)
       daisyui:
         specifier: 5.7.50
         version: 5.7.50
@@ -2081,16 +2094,21 @@ packages:
   '@cfworker/json-schema@4.1.1':
     resolution: {integrity: sha512-gAmrUZSGtKc3AiBL71iNWxDsyUC5uMaKKGdvzYsBoTW/xi42JQHl7eKV2OYzCUqvc+D2RCcf7EXY2iCyFIk6og==}
 
-  '@chat-adapter/catalog@4.45.0':
-    resolution: {integrity: sha512-oP8ySvXTYRVRIusTehLTvpwynMLkEcaFZBASZRDDfNFZzSO02xQX1kVgMAz4VbtiMTMU6k01tjZE4KEDbrmonA==}
+  '@chat-adapter/catalog@4.44.0':
+    resolution: {integrity: sha512-UtpW5mMgIjYBRDIgxJKh+tfnlFe0GjLsFG5MPPUDA5b/PggSOAt00TFr0xF6UIXXh1SaK3V1u3FiXyM2sdnaJQ==}
     engines: {node: '>=20'}
 
-  '@chat-adapter/shared@4.45.0':
-    resolution: {integrity: sha512-q2V7uNMqIcT1OE6E0ckz9QLtHj2rCyn/XA9apNz0u0XP5Iex7KQBqnXytUyCLEncHD4R9tNTES6AWfjpRESrKQ==}
+  '@chat-adapter/shared@4.44.0':
+    resolution: {integrity: sha512-g6MmtkFLVE3Fn19Ly8e+3bZTAw5Kzh/2oP3qKRaVW0IPwVLDa2GRq/Q5fpGS+Xmzn2oqzpaHJrRuQRdWjLboqg==}
     engines: {node: '>=20'}
 
-  '@chat-adapter/state-memory@4.24.0':
-    resolution: {integrity: sha512-K/o1KfZ7DH0Y7wcn8aCxD+QmfGaZ4yj5Qyk4VdvLGcUZTUkgS1how8DkcYBDcX3NoKv9DsqM+joQnWc3Pe8dbA==}
+  '@chat-adapter/slack@4.44.0':
+    resolution: {integrity: sha512-pY8QKy/cKjBX/m+h/j7zSSNfXYEiDTqu0wyjDMPyTg0T7WsDRZZZzdZD9I49cP9rZsr3k+5mb4zbyQMBmGRn+A==}
+    engines: {node: '>=20'}
+
+  '@chat-adapter/state-memory@4.44.0':
+    resolution: {integrity: sha512-Z1grqxdp+jYQffWZQJaJ2e2N9zxuX3GbX67D9Xrl7c3xZCi/9Ltvcb0ufvv0UnmgMnGWYFCC8kGATpwcWtmKvg==}
+    engines: {node: '>=20'}
 
   '@chevrotain/types@11.1.2':
     resolution: {integrity: sha512-U+HFai5+zmJCkK86QsaJtoITlboZHBqrVketcO2ROv865xfCMSFpELQoz1GkX5GzME8pTa+3kbKrZHQtI0gdbw==}
@@ -4788,6 +4806,12 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
+  '@stibbons/chat-adapter-signal@0.1.0':
+    resolution: {integrity: sha512-ImrNvKnhlCq4zUdso6Mg9BQRtHtN00o8fB6Wzx7vu7h7fMfmSeCpYUmkJR5hedeZ/aQi3mCNsTc0c+pe1kIWDA==}
+    engines: {node: '>=24'}
+    peerDependencies:
+      chat: ^4.43.0
+
   '@swc/helpers@0.5.23':
     resolution: {integrity: sha512-5lSsMOTXURePglDfvuAQUqkGek9Hg2kksOYay2m0+XR++b2NWYL/4sWyuvVBIs8oKnJaxkdi9whaL/sqN13afw==}
 
@@ -6214,11 +6238,8 @@ packages:
     peerDependencies:
       chat: ^4.24.0
 
-  chat@4.24.0:
-    resolution: {integrity: sha512-0TxglwtGRMGlqERuHVZZ27Z4YBeZH3oRXCqHZYuI41L7xcSHF5C3wEHTMdVqHp3p8ZKQcKYQPOwYWvaeFVa4+g==}
-
-  chat@4.45.0:
-    resolution: {integrity: sha512-7p1fkEupHEqYhXmSxLnHcK4hWEg93182/F2YxHSwqc7xtF4mekmG9EuJjRYX3aNEJJa2Rvu48A1f3ulOxxHIrA==}
+  chat@4.44.0:
+    resolution: {integrity: sha512-DGVc9yV1ifOJFpe8Pz6BAoOBVT7/iI/7kkMuB+ZUrpyQ1iw1ElibxyvYBx7tEo1qPl6w510+Acvt1XSVPSgKjA==}
     engines: {node: '>=20'}
     peerDependencies:
       ai: ^6.0.182 || ^7.0.0
@@ -14340,22 +14361,40 @@ snapshots:
 
   '@cfworker/json-schema@4.1.1': {}
 
-  '@chat-adapter/catalog@4.45.0': {}
+  '@chat-adapter/catalog@4.44.0': {}
 
-  '@chat-adapter/shared@4.45.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)':
+  '@chat-adapter/shared@4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)':
     dependencies:
-      chat: 4.45.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
+      chat: 4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
     transitivePeerDependencies:
       - ai
       - supports-color
       - workflow
       - zod
 
-  '@chat-adapter/state-memory@4.24.0(supports-color@10.2.2)':
+  '@chat-adapter/slack@4.44.0(ai@6.0.308(zod@4.6.7))(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)(zod@4.6.7)':
     dependencies:
-      chat: 4.24.0(supports-color@10.2.2)
+      '@chat-adapter/shared': 4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
+      '@slack/socket-mode': 2.0.7(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)
+      '@slack/web-api': 7.19.0(debug@4.4.3(supports-color@10.2.2))(supports-color@10.2.2)
+      chat: 4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
     transitivePeerDependencies:
+      - ai
+      - bufferutil
+      - debug
       - supports-color
+      - utf-8-validate
+      - workflow
+      - zod
+
+  '@chat-adapter/state-memory@4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)':
+    dependencies:
+      chat: 4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
+    transitivePeerDependencies:
+      - ai
+      - supports-color
+      - workflow
+      - zod
 
   '@chevrotain/types@11.1.2': {}
 
@@ -17239,6 +17278,16 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
+  '@stibbons/chat-adapter-signal@0.1.0(patch_hash=7a9d96de000c8c5440e9d30598b08926d82871b295891ee66b4db4bae8dd4862)(ai@6.0.308(zod@4.6.7))(chat@4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)':
+    dependencies:
+      '@chat-adapter/shared': 4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
+      chat: 4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
+    transitivePeerDependencies:
+      - ai
+      - supports-color
+      - workflow
+      - zod
+
   '@swc/helpers@0.5.23':
     dependencies:
       tslib: 2.8.1
@@ -18778,11 +18827,11 @@ snapshots:
 
   chardet@2.2.0: {}
 
-  chat-adapter-baileys@2.1.0(patch_hash=5b96675a6805cc40d4e49d4e24c9f968c7e66702d4efea5c09d00320bcd1f571)(ai@6.0.308(zod@4.6.7))(chat@4.24.0(supports-color@10.2.2))(sharp@0.35.5(@types/node@24.19.2))(supports-color@10.2.2)(zod@4.6.7):
+  chat-adapter-baileys@2.1.0(patch_hash=e526ab7b444072cbcadf3dc077a432baf566cc8831df746f9c84208485a6b037)(ai@6.0.308(zod@4.6.7))(chat@4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7))(sharp@0.35.5(@types/node@24.19.2))(supports-color@10.2.2)(zod@4.6.7):
     dependencies:
-      '@chat-adapter/shared': 4.45.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
+      '@chat-adapter/shared': 4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
       baileys: 7.0.0-rc14(sharp@0.35.5(@types/node@24.19.2))(supports-color@10.2.2)
-      chat: 4.24.0(supports-color@10.2.2)
+      chat: 4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
     transitivePeerDependencies:
       - ai
       - audio-decode
@@ -18795,21 +18844,9 @@ snapshots:
       - workflow
       - zod
 
-  chat@4.24.0(supports-color@10.2.2):
+  chat@4.44.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7):
     dependencies:
-      '@workflow/serde': 4.1.0-beta.2
-      mdast-util-to-string: 4.0.0
-      remark-gfm: 4.0.1(supports-color@10.2.2)
-      remark-parse: 11.0.0(supports-color@10.2.2)
-      remark-stringify: 11.0.0
-      remend: 1.5.0
-      unified: 11.0.5
-    transitivePeerDependencies:
-      - supports-color
-
-  chat@4.45.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7):
-    dependencies:
-      '@chat-adapter/catalog': 4.45.0
+      '@chat-adapter/catalog': 4.44.0
       '@workflow/serde': 4.1.0-beta.2
       mdast-util-to-string: 4.0.0
       remark-gfm: 4.0.1(supports-color@10.2.2)

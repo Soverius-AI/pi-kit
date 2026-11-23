@@ -1,18 +1,25 @@
 import { z } from 'zod';
 
+export const RoomChannelSchema = z.enum(['whatsapp', 'signal', 'slack']);
+export type RoomChannel = z.infer<typeof RoomChannelSchema>;
+export const RoomChannelBindingSchema = z
+  .object({
+    group: z.string(),
+    groupName: z.string(),
+    sender: z.string(),
+    senderName: z.string(),
+  })
+  .strict()
+  .meta({ id: 'RoomChannelBinding' });
+export type RoomChannelBinding = z.infer<typeof RoomChannelBindingSchema>;
+
 export const RoomPhoneStatusSchema = z
   .object({
     connection: z.enum(['disconnected', 'connecting', 'qr', 'connected', 'error']),
     qr: z.string().nullable(),
     error: z.string().nullable(),
-    binding: z
-      .object({ group: z.string(), groupName: z.string(), sender: z.string(), senderName: z.string() })
-      .strict()
-      .nullable(),
-    candidate: z
-      .object({ group: z.string(), groupName: z.string(), sender: z.string(), senderName: z.string() })
-      .strict()
-      .nullable(),
+    binding: RoomChannelBindingSchema.nullable(),
+    candidate: RoomChannelBindingSchema.nullable(),
     expiresAt: z.number().nullable(),
     input: z
       .object({
@@ -77,3 +84,27 @@ export const RoomPhoneConfigSchema = z
   .strict()
   .meta({ id: 'RoomPhoneConfig' });
 export type RoomPhoneConfig = z.infer<typeof RoomPhoneConfigSchema>;
+
+export const RoomChannelStatusSchema = RoomPhoneStatusSchema.extend({
+  channel: RoomChannelSchema,
+  configured: z.boolean().optional(),
+  dependency: z
+    .object({
+      available: z.boolean(),
+      version: z.string().nullable(),
+      path: z.string().nullable(),
+      error: z.string().nullable(),
+    })
+    .strict()
+    .nullable()
+    .optional(),
+}).meta({ id: 'RoomChannelStatus' });
+export type RoomChannelStatus = z.infer<typeof RoomChannelStatusSchema>;
+
+export const RoomChannelSettingsSchema = z
+  .object({
+    values: z.record(z.string().max(100), z.string().max(8192)),
+  })
+  .strict()
+  .meta({ id: 'RoomChannelSettings' });
+export type RoomChannelSettings = z.infer<typeof RoomChannelSettingsSchema>;

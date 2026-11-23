@@ -2440,6 +2440,57 @@ export type RoomAssistantStatus = {
     }>;
 };
 
+export type RoomChannelBinding = {
+    group: string;
+    groupName: string;
+    sender: string;
+    senderName: string;
+};
+
+export type RoomChannelSettings = {
+    values: {
+        [key: string]: string;
+    };
+};
+
+export type RoomChannelStatus = {
+    connection: 'disconnected' | 'connecting' | 'qr' | 'connected' | 'error';
+    qr: string | null;
+    error: string | null;
+    binding: RoomChannelBinding | null;
+    candidate: RoomChannelBinding | null;
+    expiresAt: number | null;
+    input?: {
+        lastGroupAt: number | null;
+        lastOwnGroupAt: number | null;
+        lastAcceptedAt: number | null;
+        ignoredHistory: number;
+    };
+    appUrl?: string | null;
+    verifiedAt?: number | null;
+    pendingDeliveries?: number;
+    lastDelivery?: {
+        sentAt: number | null;
+        deliveredAt: number | null;
+        readAt: number | null;
+    } | null;
+    queued: number;
+    needsReview: number;
+    review: Array<{
+        id: number;
+        direction: 'input' | 'delivery';
+        text: string;
+    }>;
+    channel: 'whatsapp' | 'signal' | 'slack';
+    configured?: boolean;
+    dependency?: {
+        available: boolean;
+        version: string | null;
+        path: string | null;
+        error: string | null;
+    } | null;
+};
+
 export type RoomClone = {
     folder: string;
     clean: boolean;
@@ -2610,18 +2661,8 @@ export type RoomPhoneStatus = {
     connection: 'disconnected' | 'connecting' | 'qr' | 'connected' | 'error';
     qr: string | null;
     error: string | null;
-    binding: {
-        group: string;
-        groupName: string;
-        sender: string;
-        senderName: string;
-    } | null;
-    candidate: {
-        group: string;
-        groupName: string;
-        sender: string;
-        senderName: string;
-    } | null;
+    binding: RoomChannelBinding | null;
+    candidate: RoomChannelBinding | null;
     expiresAt: number | null;
     input?: {
         lastGroupAt: number | null;
@@ -14625,6 +14666,336 @@ export type RoomPhoneConfirmResponses = {
 };
 
 export type RoomPhoneConfirmResponse = RoomPhoneConfirmResponses[keyof RoomPhoneConfirmResponses];
+
+export type RoomChannelUnlinkData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        channel: 'whatsapp' | 'signal' | 'slack';
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/channels/{channel}';
+};
+
+export type RoomChannelUnlinkErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomChannelUnlinkError = RoomChannelUnlinkErrors[keyof RoomChannelUnlinkErrors];
+
+export type RoomChannelUnlinkResponses = {
+    /**
+     * OK
+     */
+    200: RoomChannelStatus;
+};
+
+export type RoomChannelUnlinkResponse = RoomChannelUnlinkResponses[keyof RoomChannelUnlinkResponses];
+
+export type RoomChannelStatusData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        channel: 'whatsapp' | 'signal' | 'slack';
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/channels/{channel}';
+};
+
+export type RoomChannelStatusErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomChannelStatusError = RoomChannelStatusErrors[keyof RoomChannelStatusErrors];
+
+export type RoomChannelStatusResponses = {
+    /**
+     * OK
+     */
+    200: RoomChannelStatus;
+};
+
+export type RoomChannelStatusResponse = RoomChannelStatusResponses[keyof RoomChannelStatusResponses];
+
+export type RoomChannelConnectData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        channel: 'whatsapp' | 'signal' | 'slack';
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/channels/{channel}/connect';
+};
+
+export type RoomChannelConnectErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomChannelConnectError = RoomChannelConnectErrors[keyof RoomChannelConnectErrors];
+
+export type RoomChannelConnectResponses = {
+    /**
+     * Created
+     */
+    201: RoomChannelStatus;
+};
+
+export type RoomChannelConnectResponse = RoomChannelConnectResponses[keyof RoomChannelConnectResponses];
+
+export type RoomChannelDisconnectData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        channel: 'whatsapp' | 'signal' | 'slack';
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/channels/{channel}/disconnect';
+};
+
+export type RoomChannelDisconnectErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomChannelDisconnectError = RoomChannelDisconnectErrors[keyof RoomChannelDisconnectErrors];
+
+export type RoomChannelDisconnectResponses = {
+    /**
+     * Created
+     */
+    201: RoomChannelStatus;
+};
+
+export type RoomChannelDisconnectResponse = RoomChannelDisconnectResponses[keyof RoomChannelDisconnectResponses];
+
+export type RoomChannelBeginData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        channel: 'whatsapp' | 'signal' | 'slack';
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/channels/{channel}/link';
+};
+
+export type RoomChannelBeginErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomChannelBeginError = RoomChannelBeginErrors[keyof RoomChannelBeginErrors];
+
+export type RoomChannelBeginResponses = {
+    /**
+     * Created
+     */
+    201: RoomPhoneLink;
+};
+
+export type RoomChannelBeginResponse = RoomChannelBeginResponses[keyof RoomChannelBeginResponses];
+
+export type RoomChannelConfirmData = {
+    body: ConfirmRoomPhone;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        channel: 'whatsapp' | 'signal' | 'slack';
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/channels/{channel}/confirm';
+};
+
+export type RoomChannelConfirmErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomChannelConfirmError = RoomChannelConfirmErrors[keyof RoomChannelConfirmErrors];
+
+export type RoomChannelConfirmResponses = {
+    /**
+     * Created
+     */
+    201: RoomChannelStatus;
+};
+
+export type RoomChannelConfirmResponse = RoomChannelConfirmResponses[keyof RoomChannelConfirmResponses];
+
+export type RoomChannelConfigData = {
+    body: RoomPhoneConfig;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        channel: 'whatsapp' | 'signal' | 'slack';
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/channels/{channel}/config';
+};
+
+export type RoomChannelConfigErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomChannelConfigError = RoomChannelConfigErrors[keyof RoomChannelConfigErrors];
+
+export type RoomChannelConfigResponses = {
+    /**
+     * OK
+     */
+    200: RoomChannelStatus;
+};
+
+export type RoomChannelConfigResponse = RoomChannelConfigResponses[keyof RoomChannelConfigResponses];
+
+export type RoomChannelSettingsData = {
+    body: RoomChannelSettings;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        channel: 'whatsapp' | 'signal' | 'slack';
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/channels/{channel}/settings';
+};
+
+export type RoomChannelSettingsErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomChannelSettingsError = RoomChannelSettingsErrors[keyof RoomChannelSettingsErrors];
+
+export type RoomChannelSettingsResponses = {
+    /**
+     * OK
+     */
+    200: RoomChannelStatus;
+};
+
+export type RoomChannelSettingsResponse = RoomChannelSettingsResponses[keyof RoomChannelSettingsResponses];
+
+export type RoomChannelTestData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        channel: 'whatsapp' | 'signal' | 'slack';
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/channels/{channel}/test';
+};
+
+export type RoomChannelTestErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomChannelTestError = RoomChannelTestErrors[keyof RoomChannelTestErrors];
+
+export type RoomChannelTestResponses = {
+    /**
+     * Created
+     */
+    201: RoomChannelStatus;
+};
+
+export type RoomChannelTestResponse = RoomChannelTestResponses[keyof RoomChannelTestResponses];
+
+export type RoomChannelDismissData = {
+    body: ReviewRoomPhone;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        channel: 'whatsapp' | 'signal' | 'slack';
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/channels/{channel}/review';
+};
+
+export type RoomChannelDismissErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomChannelDismissError = RoomChannelDismissErrors[keyof RoomChannelDismissErrors];
+
+export type RoomChannelDismissResponses = {
+    /**
+     * Created
+     */
+    201: RoomChannelStatus;
+};
+
+export type RoomChannelDismissResponse = RoomChannelDismissResponses[keyof RoomChannelDismissResponses];
 
 export type RoomAssistantStatusData = {
     body?: never;

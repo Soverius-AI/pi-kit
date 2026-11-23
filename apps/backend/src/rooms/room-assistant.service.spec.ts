@@ -163,14 +163,16 @@ describe('personal room assistant persistence', () => {
     const item = await assistant.create(roomId, input(now - 1000));
     await assistant.tick(now);
     const wake = (await rooms.nextWake(roomId))!;
-    await db.db.prepare('INSERT INTO room_phone_links(room_id) VALUES (?)').run(roomId);
+    await db.db.prepare("INSERT INTO room_channel_links(channel,room_id) VALUES ('whatsapp',?)").run(roomId);
     await db.db
-      .prepare("INSERT INTO room_phone_deliveries(room_id,seq,text,work_id) VALUES (?,1,'Old reminder',?)")
+      .prepare(
+        "INSERT INTO room_channel_deliveries(channel,room_id,seq,text,work_id,provider_id) VALUES ('whatsapp',?,1,'Old reminder',?,'fixture-id')",
+      )
       .run(roomId, wake.id);
     await assistant.change(roomId, item.id, { dueAt: now + 3600000, state: 'open' });
     expect(await rooms.pendingWakes(roomId)).toBe(0);
     expect(
-      (await db.db.prepare('SELECT state FROM room_phone_deliveries WHERE room_id=?').get<{ state: string }>(roomId))
+      (await db.db.prepare('SELECT state FROM room_channel_deliveries WHERE room_id=?').get<{ state: string }>(roomId))
         ?.state,
     ).toBe('dismissed');
     await assistant.tick(now + 3600000);

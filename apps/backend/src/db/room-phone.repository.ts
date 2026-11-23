@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
-import { redact, type ReviewRoomPhone } from '@pi-kit/protocol';
+import { redact, type ReviewRoomPhone, type RoomChannel } from '@pi-kit/protocol';
 import { DatabaseService } from './database.service';
 import {
   PhoneAttachmentsSchema,
@@ -32,33 +32,33 @@ export interface PhoneLinkRow {
 
 @Injectable()
 export class RoomPhoneRepository {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    @Optional() @Inject('ROOM_MESSAGING_CHANNEL') readonly channel: RoomChannel = 'whatsapp',
+    @Optional()
+    @Inject('ROOM_MESSAGING_MESSAGE_ID')
+    private readonly messageId: () => string = () => '3EB0' + randomBytes(9).toString('hex').toUpperCase(),
+  ) {}
   private get db() {
     return this.database.db;
   }
-
-  get(roomId: string): Promise<PhoneLinkRow | undefined> {
-    return this.db.prepare('SELECT * FROM room_phone_links WHERE room_id = ?').get<PhoneLinkRow>(roomId);
+  async get(room: string): Promise<PhoneLinkRow | undefined> {
+    return this.db.prepare('SELECT * FROM room_channel_links WHERE channel=? AND room_id=?').get(this.channel, room);
   }
-
   async active(): Promise<PhoneLinkRow[]> {
     return this.db
       .prepare(
-        'SELECT p.* FROM room_phone_links p JOIN rooms r ON r.id = p.room_id WHERE p.group_id IS NOT NULL AND r.archived_at IS NULL',
+        'SELECT p.* FROM room_channel_links p JOIN rooms r ON r.id=p.room_id WHERE p.channel=? AND p.group_id IS NOT NULL AND r.archived_at IS NULL',
       )
-      .all<PhoneLinkRow>();
+      .all(this.channel);
   }
-
-  async begin(roomId: string, code: string, expiresAt: number): Promise<void> {
+  async begin(room: string, code: string, expires: number): Promise<void> {
     await this.db
       .prepare(
-        `INSERT INTO room_phone_links(room_id, code_hash, expires_at) VALUES (?, ?, ?)
-      ON CONFLICT(room_id) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at,
-      candidate_group = NULL, candidate_sender = NULL, candidate_name = NULL`,
+        `INSERT INTO room_channel_links(channel,room_id,code_hash,expires_at) VALUES (?,?,?,?) ON CONFLICT(channel,room_id) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,candidate_group=NULL,candidate_sender=NULL,candidate_name=NULL,candidate_group_name=NULL`,
       )
-      .run(roomId, hash(code), expiresAt);
+      .run(this.channel, room, hash(code), expires);
   }
-
   async candidate(
     code: string,
     group: string,
@@ -69,37 +69,31 @@ export class RoomPhoneRepository {
   ): Promise<boolean> {
     const result = await this.db
       .prepare(
-        `UPDATE room_phone_links SET candidate_group = ?, candidate_sender = ?, candidate_name = ?, candidate_group_name = ?
-      WHERE code_hash = ? AND expires_at > ? AND group_id IS NULL AND candidate_group IS NULL`,
+        'UPDATE room_channel_links SET candidate_group=?,candidate_sender=?,candidate_name=?,candidate_group_name=? WHERE channel=? AND code_hash=? AND expires_at>? AND group_id IS NULL AND candidate_group IS NULL',
       )
-      .run(group, sender, name.slice(0, 200), groupName.slice(0, 200), hash(code), now);
+      .run(group, sender, name.slice(0, 200), groupName.slice(0, 200), this.channel, hash(code), now);
     return Number(result.changes) === 1;
   }
-
-  async confirm(roomId: string, group: string, sender: string, account: string, now: number): Promise<boolean> {
+  async confirm(room: string, group: string, sender: string, account: string, now: number): Promise<boolean> {
     const result = await this.db
       .prepare(
-        `UPDATE room_phone_links SET group_id = candidate_group, sender_id = candidate_sender,
-      sender_name = candidate_name, group_name = candidate_group_name, account_id = ?, binding_id=lower(hex(randomblob(16))), code_hash = NULL, expires_at = NULL, candidate_group = NULL, candidate_sender = NULL,
-      candidate_name = NULL, after_seq = (SELECT COALESCE(MAX(seq), 0) FROM room_events WHERE room_id = ?)
-      WHERE room_id = ? AND group_id IS NULL AND candidate_group = ? AND candidate_sender = ? AND expires_at > ?
-      AND NOT EXISTS (SELECT 1 FROM room_phone_links WHERE group_id = ?)`,
+        `UPDATE room_channel_links SET group_id=candidate_group,sender_id=candidate_sender,sender_name=candidate_name,group_name=candidate_group_name,account_id=?,binding_id=lower(hex(randomblob(16))),code_hash=NULL,expires_at=NULL,candidate_group=NULL,candidate_sender=NULL,candidate_name=NULL,after_seq=(SELECT COALESCE(MAX(seq),0) FROM room_events WHERE room_id=?) WHERE channel=? AND room_id=? AND group_id IS NULL AND candidate_group=? AND candidate_sender=? AND expires_at>? AND NOT EXISTS(SELECT 1 FROM room_channel_links p WHERE p.channel=? AND p.group_id=?)`,
       )
-      .run(account, roomId, roomId, group, sender, now, group);
+      .run(account, room, this.channel, room, group, sender, now, this.channel, group);
     return Number(result.changes) === 1;
   }
-
-  async unlink(roomId: string): Promise<void> {
-    // Foreign key enforcement is not assumed on legacy connections.
+  async unlink(room: string): Promise<void> {
     await this.db.transaction(async () => {
-      await this.db.prepare('DELETE FROM room_phone_inbox WHERE room_id = ?').run(roomId);
-      await this.db.prepare('DELETE FROM room_phone_deliveries WHERE room_id = ?').run(roomId);
-      await this.db.prepare('DELETE FROM room_phone_prompts WHERE room_id = ?').run(roomId);
-      await this.db.prepare('DELETE FROM room_phone_commands WHERE room_id = ?').run(roomId);
-      await this.db.prepare('DELETE FROM room_phone_links WHERE room_id = ?').run(roomId);
+      for (const table of [
+        'room_channel_inbox',
+        'room_channel_deliveries',
+        'room_channel_prompts',
+        'room_channel_commands',
+        'room_channel_links',
+      ])
+        await this.db.prepare(`DELETE FROM ${table} WHERE channel=? AND room_id=?`).run(this.channel, room);
     })();
   }
-
   async receive(
     group: string,
     sender: string,
@@ -110,12 +104,13 @@ export class RoomPhoneRepository {
     extra?: { raw?: string; files?: PhoneAttachment[]; quoteId?: string },
   ): Promise<void> {
     const files = PhoneAttachmentsSchema.parse(extra?.files ?? []);
+    const source =
+      this.channel === 'whatsapp'
+        ? `phone:${account}:${group}:${id}`
+        : `channel:${this.channel}:${account}:${group}:${id}`;
     await this.db
       .prepare(
-        `INSERT INTO room_phone_inbox(room_id, provider_id, text, created_at, raw_json, files_json, quote_id, source_key)
-      SELECT p.room_id, ?, ?, ?, ?, ?, ?, 'phone:'||p.account_id||':'||p.group_id||':'||? FROM room_phone_links p JOIN rooms r ON r.id = p.room_id
-      WHERE p.group_id = ? AND p.sender_id = ? AND p.account_id = ? AND r.archived_at IS NULL
-      ON CONFLICT(room_id, provider_id) DO NOTHING`,
+        `INSERT INTO room_channel_inbox(channel,room_id,provider_id,text,created_at,raw_json,files_json,quote_id,source_key) SELECT p.channel,p.room_id,?,?,?,?,?,?,? FROM room_channel_links p JOIN rooms r ON r.id=p.room_id WHERE p.channel=? AND p.group_id=? AND p.sender_id=? AND p.account_id=? AND r.archived_at IS NULL ON CONFLICT(channel,room_id,provider_id) DO NOTHING`,
       )
       .run(
         id,
@@ -124,43 +119,43 @@ export class RoomPhoneRepository {
         extra?.raw ?? null,
         JSON.stringify(files),
         extra?.quoteId ?? null,
-        id,
+        source,
+        this.channel,
         group,
         sender,
         account,
       );
   }
-
   async authorized(group: string, sender: string, account: string): Promise<PhoneLinkRow | undefined> {
     return this.db
       .prepare(
-        'SELECT p.* FROM room_phone_links p JOIN rooms r ON r.id=p.room_id WHERE p.group_id=? AND p.sender_id=? AND p.account_id=? AND r.archived_at IS NULL',
+        'SELECT p.* FROM room_channel_links p JOIN rooms r ON r.id=p.room_id WHERE p.channel=? AND p.group_id=? AND p.sender_id=? AND p.account_id=? AND r.archived_at IS NULL',
       )
-      .get<PhoneLinkRow>(group, sender, account);
+      .get(this.channel, group, sender, account);
   }
   async isOutgoing(group: string, account: string, id: string): Promise<boolean> {
     return !!(await this.db
-      .prepare('SELECT 1 FROM room_phone_outgoing WHERE account_id=? AND group_id=? AND provider_id=?')
-      .get(account, group, id));
+      .prepare('SELECT 1 FROM room_channel_outgoing WHERE channel=? AND account_id=? AND group_id=? AND provider_id=?')
+      .get(this.channel, account, group, id));
   }
   async recordOutgoing(group: string, account: string, id: string): Promise<void> {
     await this.db
       .prepare(
-        'INSERT INTO room_phone_outgoing(account_id,group_id,provider_id,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING',
+        'INSERT INTO room_channel_outgoing(channel,account_id,group_id,provider_id,created_at) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING',
       )
-      .run(account, group, id, Date.now());
+      .run(this.channel, account, group, id, Date.now());
   }
   async valid(binding: PhoneLinkRow): Promise<boolean> {
     return !!(await this.db
       .prepare(
-        'SELECT 1 FROM room_phone_links p JOIN rooms r ON r.id=p.room_id WHERE p.room_id=? AND p.binding_id=? AND r.archived_at IS NULL',
+        'SELECT 1 FROM room_channel_links p JOIN rooms r ON r.id=p.room_id WHERE p.channel=? AND p.room_id=? AND p.binding_id=? AND r.archived_at IS NULL',
       )
-      .get(binding.room_id, binding.binding_id));
+      .get(this.channel, binding.room_id, binding.binding_id));
   }
-  async pending(roomId: string): Promise<PhoneInput | undefined> {
+  async pending(room: string): Promise<PhoneInput | undefined> {
     const row = await this.db
-      .prepare("SELECT * FROM room_phone_inbox WHERE room_id=? AND state='pending' ORDER BY id LIMIT 1")
-      .get<PhoneInput & { files_json: string }>(roomId);
+      .prepare("SELECT * FROM room_channel_inbox WHERE channel=? AND room_id=? AND state='pending' ORDER BY id LIMIT 1")
+      .get<PhoneInput & { files_json: string }>(this.channel, room);
     if (!row) return;
     try {
       return { ...row, files: PhoneAttachmentsSchema.parse(JSON.parse(row.files_json)) };
@@ -171,174 +166,202 @@ export class RoomPhoneRepository {
   }
   async prepared(id: number, text: string, files: PhoneAttachment[]): Promise<void> {
     await this.db
-      .prepare('UPDATE room_phone_inbox SET text=?,files_json=?,raw_json=NULL,prepared_at=? WHERE id=?')
-      .run(redact(text) as string, JSON.stringify(PhoneAttachmentsSchema.parse(files)), Date.now(), id);
+      .prepare('UPDATE room_channel_inbox SET text=?,files_json=?,raw_json=NULL,prepared_at=? WHERE channel=? AND id=?')
+      .run(redact(text) as string, JSON.stringify(PhoneAttachmentsSchema.parse(files)), Date.now(), this.channel, id);
   }
   async inputState(id: number, state: 'pending' | 'dispatching' | 'accepted' | 'review'): Promise<void> {
-    await this.db.prepare('UPDATE room_phone_inbox SET state=? WHERE id=?').run(state, id);
+    await this.db
+      .prepare('UPDATE room_channel_inbox SET state=? WHERE channel=? AND id=?')
+      .run(state, this.channel, id);
   }
-  async syncInputs(roomId?: string): Promise<void> {
+  async syncInputs(room?: string): Promise<void> {
     await this.db
       .prepare(
-        `UPDATE room_phone_inbox SET work_id=COALESCE(work_id,(SELECT w.id FROM room_wakeups w WHERE w.room_id=room_phone_inbox.room_id AND w.source_key=room_phone_inbox.source_key)) WHERE (? IS NULL OR room_id=?)`,
+        `UPDATE room_channel_inbox SET work_id=COALESCE(work_id,(SELECT w.id FROM room_wakeups w WHERE w.room_id=room_channel_inbox.room_id AND w.source_key=room_channel_inbox.source_key)) WHERE channel=? AND (? IS NULL OR room_id=?)`,
       )
-      .run(roomId ?? null, roomId ?? null);
+      .run(this.channel, room ?? null, room ?? null);
     await this.db
       .prepare(
-        `UPDATE room_phone_inbox SET state=CASE (SELECT state FROM room_wakeups WHERE id=work_id) WHEN 'done' THEN 'done' WHEN 'failed' THEN 'review' WHEN 'review' THEN 'review' ELSE 'accepted' END WHERE work_id IS NOT NULL AND state IN ('pending','dispatching','accepted','review') AND (? IS NULL OR room_id=?)`,
+        `UPDATE room_channel_inbox SET state=CASE (SELECT state FROM room_wakeups WHERE id=work_id) WHEN 'done' THEN 'done' WHEN 'failed' THEN 'review' WHEN 'review' THEN 'review' ELSE 'accepted' END WHERE channel=? AND work_id IS NOT NULL AND state IN ('pending','dispatching','accepted','review') AND (? IS NULL OR room_id=?)`,
       )
-      .run(roomId ?? null, roomId ?? null);
+      .run(this.channel, room ?? null, room ?? null);
   }
-
-  async releaseClaims(roomId?: string): Promise<void> {
-    await this.syncInputs(roomId);
-    await this.db
-      .prepare("UPDATE room_phone_inbox SET state='pending' WHERE state='dispatching' AND (? IS NULL OR room_id=?)")
-      .run(roomId ?? null, roomId ?? null);
+  async releaseClaims(room?: string, retryStableSends = false): Promise<void> {
+    await this.syncInputs(room);
     await this.db
       .prepare(
-        "UPDATE room_phone_deliveries SET state=CASE WHEN tries<3 THEN 'pending' ELSE 'review' END,next_at=? WHERE state='sending' AND (? IS NULL OR room_id=?)",
+        "UPDATE room_channel_inbox SET state='pending' WHERE channel=? AND state='dispatching' AND (? IS NULL OR room_id=?)",
       )
-      .run(Date.now() + 5000, roomId ?? null, roomId ?? null);
+      .run(this.channel, room ?? null, room ?? null);
+    await this.db
+      .prepare(
+        "UPDATE room_channel_deliveries SET state=CASE WHEN ?=1 AND tries<3 THEN 'pending' ELSE 'review' END,next_at=? WHERE channel=? AND state='sending' AND (? IS NULL OR room_id=?)",
+      )
+      .run(retryStableSends ? 1 : 0, Date.now() + 5000, this.channel, room ?? null, room ?? null);
   }
-  async capture(roomId: string): Promise<void> {
+  async capture(room: string): Promise<void> {
     await this.db.transaction(async () => {
+      const rows = await this.db
+        .prepare(
+          `SELECT e.seq,e.text,e.work_id,i.provider_id AS quote_id,i.text AS quote_text,CASE WHEN json_extract(w.cause_json,'$.kind') IN ('schedule','poll') THEN 'proactive' ELSE 'reply' END AS kind FROM room_events e JOIN room_channel_links p ON p.room_id=e.room_id LEFT JOIN room_wakeups w ON w.id=e.work_id LEFT JOIN room_commitments c ON c.id=json_extract(w.cause_json,'$.trigger') AND c.room_id=e.room_id LEFT JOIN room_channel_inbox i ON i.channel=p.channel AND i.room_id=e.room_id AND i.event_seq=w.owner_seq WHERE p.channel=? AND e.room_id=? AND e.seq>p.after_seq AND e.actor='lead' AND e.kind='message' AND NOT(trim(e.text)='[NO_UPDATE]' AND COALESCE(json_extract(w.cause_json,'$.kind'),'owner') IN ('schedule','poll')) AND(c.id IS NULL OR(c.state='open' AND c.revision=w.commitment_revision))`,
+        )
+        .all<{
+          seq: number;
+          text: string;
+          work_id: string | null;
+          quote_id: string | null;
+          quote_text: string | null;
+          kind: PhoneDeliveryKind;
+        }>(this.channel, room);
+      for (const row of rows)
+        await this.db
+          .prepare(
+            'INSERT INTO room_channel_deliveries(channel,room_id,seq,text,provider_id,kind,work_id,quote_id,quote_text) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING',
+          )
+          .run(
+            this.channel,
+            room,
+            row.seq,
+            row.text,
+            this.messageId(),
+            row.kind,
+            row.work_id,
+            row.quote_id,
+            row.quote_text,
+          );
       await this.db
         .prepare(
-          `INSERT INTO room_phone_deliveries(room_id,seq,text,provider_id,kind,work_id,quote_id,quote_text)
-        SELECT e.room_id,e.seq,e.text,'3EB0'||upper(hex(randomblob(9))),
-          CASE WHEN json_extract(w.cause_json,'$.kind') IN ('schedule','poll') THEN 'proactive' ELSE 'reply' END,
-          e.work_id,i.provider_id,i.text
-        FROM room_events e JOIN room_phone_links p ON p.room_id=e.room_id
-        LEFT JOIN room_wakeups w ON w.id=e.work_id
-        LEFT JOIN room_commitments c ON c.id=json_extract(w.cause_json,'$.trigger') AND c.room_id=e.room_id
-        LEFT JOIN room_phone_inbox i ON i.room_id=e.room_id AND i.event_seq=w.owner_seq
-        WHERE e.room_id=? AND e.seq>p.after_seq AND e.actor='lead' AND e.kind='message'
-          AND NOT (trim(e.text)='[NO_UPDATE]' AND COALESCE(json_extract(w.cause_json,'$.kind'),'owner') IN ('schedule','poll'))
-          AND (c.id IS NULL OR (c.state='open' AND c.revision=w.commitment_revision))
-        ON CONFLICT(room_id,seq) DO NOTHING`,
+          'UPDATE room_channel_links SET after_seq=(SELECT COALESCE(MAX(seq),0) FROM room_events WHERE room_id=?) WHERE channel=? AND room_id=?',
         )
-        .run(roomId);
-      await this.db
-        .prepare(
-          'UPDATE room_phone_links SET after_seq=(SELECT COALESCE(MAX(seq),0) FROM room_events WHERE room_id=?) WHERE room_id=?',
-        )
-        .run(roomId, roomId);
+        .run(room, this.channel, room);
     })();
   }
-  async delivery(
-    roomId: string,
-    proactive = true,
-    now = Date.now(),
-    paused = false,
-  ): Promise<PhoneDelivery | undefined> {
+  async delivery(room: string, proactive = true, now = Date.now(), paused = false): Promise<PhoneDelivery | undefined> {
     const row = await this.db
       .prepare(
-        "SELECT * FROM room_phone_deliveries WHERE room_id=? AND state='pending' AND next_at<=? AND (kind<>'proactive' OR ?) AND (?=0 OR kind IN ('status','test')) ORDER BY CASE WHEN kind='proactive' THEN 1 ELSE 0 END,seq LIMIT 1",
+        "SELECT * FROM room_channel_deliveries WHERE channel=? AND room_id=? AND state='pending' AND next_at<=? AND(kind<>'proactive' OR ?) AND(?=0 OR kind IN ('status','test')) ORDER BY CASE WHEN kind='proactive' THEN 1 ELSE 0 END,seq LIMIT 1",
       )
-      .get<PhoneDelivery>(roomId, now, proactive ? 1 : 0, paused ? 1 : 0);
+      .get<PhoneDelivery>(this.channel, room, now, proactive ? 1 : 0, paused ? 1 : 0);
     return row ? { ...row, kind: PhoneDeliveryKindSchema.parse(row.kind) } : undefined;
   }
-  async canSend(roomId: string, seq: number): Promise<boolean> {
-    const valid = !!(await this.db
+  async canSend(room: string, seq: number): Promise<boolean> {
+    const row = await this.db
       .prepare(
-        `SELECT 1 FROM room_phone_deliveries d
-      LEFT JOIN room_phone_prompts p ON p.token=d.prompt_id
-      LEFT JOIN room_wakeups w ON w.id=d.work_id
-      LEFT JOIN room_commitments c ON c.room_id=d.room_id AND c.id=json_extract(w.cause_json,'$.trigger')
-      WHERE d.room_id=? AND d.seq=? AND d.state='sending'
-      AND (d.prompt_id IS NULL OR (p.expires_at>? AND p.consumed_at IS NULL))
-      AND (c.id IS NULL OR (c.state='open' AND c.revision=w.commitment_revision))`,
+        `SELECT r.paused,d.kind FROM room_channel_deliveries d JOIN rooms r ON r.id=d.room_id LEFT JOIN room_channel_prompts p ON p.channel=d.channel AND p.token=d.prompt_id LEFT JOIN room_wakeups w ON w.id=d.work_id LEFT JOIN room_commitments c ON c.room_id=d.room_id AND c.id=json_extract(w.cause_json,'$.trigger') WHERE d.channel=? AND d.room_id=? AND d.seq=? AND d.state='sending' AND r.archived_at IS NULL AND(d.prompt_id IS NULL OR(p.expires_at>? AND p.consumed_at IS NULL)) AND(c.id IS NULL OR(c.state='open' AND c.revision=w.commitment_revision))`,
       )
-      .get(roomId, seq, Date.now()));
-    if (!valid)
+      .get<{ paused: number; kind: PhoneDeliveryKind }>(this.channel, room, seq, Date.now());
+    if (row?.paused && !['status', 'test'].includes(row.kind)) {
       await this.db
-        .prepare("UPDATE room_phone_deliveries SET state='dismissed' WHERE room_id=? AND seq=? AND state='sending'")
-        .run(roomId, seq);
-    return valid;
+        .prepare(
+          "UPDATE room_channel_deliveries SET state='pending',tries=MAX(tries-1,0) WHERE channel=? AND room_id=? AND seq=? AND state='sending'",
+        )
+        .run(this.channel, room, seq);
+      return false;
+    }
+    if (!row)
+      await this.db
+        .prepare(
+          "UPDATE room_channel_deliveries SET state='dismissed' WHERE channel=? AND room_id=? AND seq=? AND state='sending'",
+        )
+        .run(this.channel, room, seq);
+    return !!row;
   }
   async deliveryState(
-    roomId: string,
+    room: string,
     seq: number,
     state: 'sending' | 'sent' | 'review',
     providerId: string | null = null,
   ): Promise<void> {
     await this.db
       .prepare(
-        `UPDATE room_phone_deliveries SET state=?,provider_id=COALESCE(?,provider_id),
-      tries=tries+CASE WHEN ?='sending' THEN 1 ELSE 0 END,sent_at=CASE WHEN ?='sent' THEN COALESCE(sent_at,?) ELSE sent_at END
-      WHERE room_id=? AND seq=? AND state NOT IN ('dismissed','sent')`,
+        `UPDATE room_channel_deliveries SET state=?,provider_id=COALESCE(?,provider_id),tries=tries+CASE WHEN ?='sending' THEN 1 ELSE 0 END,sent_at=CASE WHEN ?='sent' THEN COALESCE(sent_at,?) ELSE sent_at END WHERE channel=? AND room_id=? AND seq=? AND state NOT IN ('dismissed','sent')`,
       )
-      .run(state, providerId, state, state, Date.now(), roomId, seq);
+      .run(state, providerId, state, state, Date.now(), this.channel, room, seq);
   }
-  async later(roomId: string, seq: number, nextAt: number, review: boolean): Promise<void> {
+  async later(room: string, seq: number, nextAt: number, review: boolean): Promise<void> {
     await this.db
       .prepare(
-        "UPDATE room_phone_deliveries SET state=?,next_at=? WHERE room_id=? AND seq=? AND state NOT IN ('sent','dismissed')",
+        "UPDATE room_channel_deliveries SET state=?,next_at=? WHERE channel=? AND room_id=? AND seq=? AND state NOT IN ('sent','dismissed')",
       )
-      .run(review ? 'review' : 'pending', nextAt, roomId, seq);
+      .run(review ? 'review' : 'pending', nextAt, this.channel, room, seq);
   }
-  async recover(): Promise<void> {
-    // Canonical room wakeups deduplicate replay of a dispatch interrupted around acceptance.
-    await this.db.prepare("UPDATE room_phone_inbox SET state='pending' WHERE state='dispatching'").run();
+  async recover(retryStableSends = false): Promise<void> {
+    await this.db
+      .prepare("UPDATE room_channel_inbox SET state='pending' WHERE channel=? AND state='dispatching'")
+      .run(this.channel);
     await this.syncInputs();
     await this.db
       .prepare(
-        "UPDATE room_phone_deliveries SET state=CASE WHEN tries<3 THEN 'pending' ELSE 'review' END WHERE state='sending'",
+        "UPDATE room_channel_deliveries SET state=CASE WHEN ?=1 AND tries<3 THEN 'pending' ELSE 'review' END WHERE channel=? AND state='sending'",
       )
-      .run();
+      .run(retryStableSends ? 1 : 0, this.channel);
   }
-  async accepted(id: number, workId: string, seq: number | null): Promise<void> {
+  async accepted(id: number, work: string, seq: number | null): Promise<void> {
     await this.db
-      .prepare("UPDATE room_phone_inbox SET work_id=?,event_seq=?,state='accepted' WHERE id=?")
-      .run(workId, seq, id);
+      .prepare("UPDATE room_channel_inbox SET work_id=?,event_seq=?,state='accepted' WHERE channel=? AND id=?")
+      .run(work, seq, this.channel, id);
   }
   async receipt(id: string, status: number, group: string, account?: string): Promise<void> {
     if (status < 2) return;
     await this.db
       .prepare(
-        `UPDATE room_phone_deliveries SET state='sent',sent_at=COALESCE(sent_at,?),
-      delivered_at=CASE WHEN ?>=3 THEN COALESCE(delivered_at,?) ELSE delivered_at END,
-      read_at=CASE WHEN ?>=4 THEN COALESCE(read_at,?) ELSE read_at END
-      WHERE provider_id=? AND state<>'dismissed' AND room_id IN (SELECT room_id FROM room_phone_links WHERE group_id=? AND (? IS NULL OR account_id=?))`,
+        `UPDATE room_channel_deliveries SET state='sent',sent_at=COALESCE(sent_at,?),delivered_at=CASE WHEN ?>=3 THEN COALESCE(delivered_at,?) ELSE delivered_at END,read_at=CASE WHEN ?>=4 THEN COALESCE(read_at,?) ELSE read_at END WHERE channel=? AND provider_id=? AND state<>'dismissed' AND room_id IN(SELECT room_id FROM room_channel_links WHERE channel=? AND group_id=? AND(? IS NULL OR account_id=?))`,
       )
-      .run(Date.now(), status, Date.now(), status, Date.now(), id, group, account ?? null, account ?? null);
+      .run(
+        Date.now(),
+        status,
+        Date.now(),
+        status,
+        Date.now(),
+        this.channel,
+        id,
+        this.channel,
+        group,
+        account ?? null,
+        account ?? null,
+      );
   }
-  async health(roomId: string) {
+  async health(room: string) {
     const pending = await this.db
-      .prepare("SELECT COUNT(*) AS n FROM room_phone_deliveries WHERE room_id=? AND state IN ('pending','sending')")
-      .get<{ n: number }>(roomId);
+      .prepare(
+        "SELECT COUNT(*) AS n FROM room_channel_deliveries WHERE channel=? AND room_id=? AND state IN ('pending','sending')",
+      )
+      .get<{ n: number }>(this.channel, room);
     const last = await this.db
       .prepare(
-        'SELECT sent_at AS sentAt,delivered_at AS deliveredAt,read_at AS readAt FROM room_phone_deliveries WHERE room_id=? ORDER BY seq DESC LIMIT 1',
+        'SELECT sent_at AS sentAt,delivered_at AS deliveredAt,read_at AS readAt FROM room_channel_deliveries WHERE channel=? AND room_id=? ORDER BY seq DESC LIMIT 1',
       )
-      .get<{ sentAt: number | null; deliveredAt: number | null; readAt: number | null }>(roomId);
+      .get<{ sentAt: number | null; deliveredAt: number | null; readAt: number | null }>(this.channel, room);
     return { pendingDeliveries: pending?.n ?? 0, lastDelivery: last ?? null };
   }
-  async sent(roomId: string, since: number): Promise<number[]> {
+  async sent(room: string, since: number): Promise<number[]> {
     return (
       await this.db
-        .prepare("SELECT sent_at FROM room_phone_deliveries WHERE room_id=? AND kind='proactive' AND sent_at>=?")
-        .all<{ sent_at: number }>(roomId, since)
+        .prepare(
+          "SELECT sent_at FROM room_channel_deliveries WHERE channel=? AND room_id=? AND kind='proactive' AND sent_at>=?",
+        )
+        .all<{ sent_at: number }>(this.channel, room, since)
     ).map((row) => row.sent_at);
   }
-  async duplicate(roomId: string, text: string): Promise<boolean> {
+  async duplicate(room: string, text: string): Promise<boolean> {
     return !!(await this.db
       .prepare(
-        "SELECT 1 FROM room_phone_deliveries WHERE room_id=? AND text=? AND state='sent' AND kind='proactive' AND sent_at>? LIMIT 1",
+        "SELECT 1 FROM room_channel_deliveries WHERE channel=? AND room_id=? AND text=? AND state='sent' AND kind='proactive' AND sent_at>? LIMIT 1",
       )
-      .get(roomId, text, Date.now() - 86400000));
+      .get(this.channel, room, text, Date.now() - 86400000));
   }
-  async quoted(roomId: string, id: string): Promise<{ text: string; work_id: string | null } | undefined> {
+  async quoted(room: string, id: string): Promise<{ text: string; work_id: string | null } | undefined> {
     return this.db
-      .prepare('SELECT text,work_id FROM room_phone_deliveries WHERE room_id=? AND provider_id=?')
-      .get<{ text: string; work_id: string | null }>(roomId, id);
+      .prepare('SELECT text,work_id FROM room_channel_deliveries WHERE channel=? AND room_id=? AND provider_id=?')
+      .get(this.channel, room, id);
   }
-  async config(roomId: string, url: string): Promise<void> {
-    await this.db.prepare('UPDATE room_phone_links SET app_url=? WHERE room_id=?').run(url || null, roomId);
+  async config(room: string, url: string): Promise<void> {
+    await this.db
+      .prepare('UPDATE room_channel_links SET app_url=? WHERE channel=? AND room_id=?')
+      .run(url || null, this.channel, room);
   }
   async notify(
-    roomId: string,
+    room: string,
     text: string,
     kind: PhoneDeliveryKind = 'status',
     promptId: string | null = null,
@@ -346,27 +369,22 @@ export class RoomPhoneRepository {
     await this.db.transaction(async () => {
       const row = await this.db
         .prepare('SELECT COALESCE(MAX(seq),0)+1 AS seq FROM room_events WHERE room_id=?')
-        .get<{ seq: number }>(roomId);
+        .get<{ seq: number }>(room);
       if (!row) throw new Error('No room.');
       await this.db
         .prepare(
           "INSERT INTO room_events(room_id,seq,kind,actor,text,created_at) VALUES (?,?,'note','coordinator',?,?)",
         )
-        .run(roomId, row.seq, redact(text) as string, Date.now());
+        .run(room, row.seq, redact(text) as string, Date.now());
       await this.db
-        .prepare('INSERT INTO room_phone_deliveries(room_id,seq,text,kind,provider_id,prompt_id) VALUES (?,?,?,?,?,?)')
-        .run(
-          roomId,
-          row.seq,
-          redact(text) as string,
-          kind,
-          '3EB0' + randomBytes(9).toString('hex').toUpperCase(),
-          promptId,
-        );
+        .prepare(
+          'INSERT INTO room_channel_deliveries(channel,room_id,seq,text,kind,provider_id,prompt_id) VALUES (?,?,?,?,?,?,?)',
+        )
+        .run(this.channel, room, row.seq, redact(text) as string, kind, this.messageId(), promptId);
     })();
   }
   async prompt(
-    roomId: string,
+    room: string,
     target: string,
     kind: PhonePromptKind,
     draft: PhonePromptDraft,
@@ -374,126 +392,130 @@ export class RoomPhoneRepository {
     return this.db.transaction(async () => {
       const inserted = await this.db
         .prepare(
-          'INSERT INTO room_phone_prompts(token,room_id,target,kind,expires_at,consumed_at) VALUES (?,?,?,?,?,?) ON CONFLICT(room_id,target,kind) DO NOTHING',
+          'INSERT INTO room_channel_prompts(channel,token,room_id,target,kind,expires_at,consumed_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(channel,room_id,target,kind) DO NOTHING',
         )
-        .run(draft.token, roomId, target, kind, draft.expiresAt, draft.consumed ? Date.now() : null);
+        .run(this.channel, draft.token, room, target, kind, draft.expiresAt, draft.consumed ? Date.now() : null);
       if (!Number(inserted.changes)) return;
-      await this.notify(roomId, draft.text, kind, draft.consumed ? null : draft.token);
+      await this.notify(room, draft.text, kind, draft.consumed ? null : draft.token);
       return draft.consumed ? undefined : draft.token;
     })();
   }
-
-  async takePrompt(roomId: string, token: string): Promise<{ target: string; kind: PhonePromptKind } | undefined> {
+  async peekPrompt(room: string, token: string): Promise<{ target: string; kind: PhonePromptKind } | undefined> {
+    return this.db
+      .prepare(
+        'SELECT target,kind FROM room_channel_prompts WHERE channel=? AND room_id=? AND token=? AND consumed_at IS NULL AND expires_at>?',
+      )
+      .get(this.channel, room, token, Date.now());
+  }
+  async takePrompt(room: string, token: string): Promise<{ target: string; kind: PhonePromptKind } | undefined> {
     return this.db.transaction(async () => {
-      const row = await this.db
-        .prepare(
-          'SELECT target,kind FROM room_phone_prompts WHERE room_id=? AND token=? AND consumed_at IS NULL AND expires_at>?',
-        )
-        .get<{ target: string; kind: PhonePromptKind }>(roomId, token, Date.now());
+      const row = await this.peekPrompt(room, token);
       if (!row) return;
-      await this.db.prepare('UPDATE room_phone_prompts SET consumed_at=? WHERE token=?').run(Date.now(), token);
+      await this.db
+        .prepare('UPDATE room_channel_prompts SET consumed_at=? WHERE channel=? AND token=?')
+        .run(Date.now(), this.channel, token);
       return row;
     })();
   }
-  async peekPrompt(roomId: string, token: string): Promise<{ target: string; kind: PhonePromptKind } | undefined> {
-    return this.db
-      .prepare(
-        'SELECT target,kind FROM room_phone_prompts WHERE room_id=? AND token=? AND consumed_at IS NULL AND expires_at>?',
-      )
-      .get<{ target: string; kind: PhonePromptKind }>(roomId, token, Date.now());
-  }
-  async clearExpired(roomId: string): Promise<void> {
-    await this.expirePrompts(roomId);
-    await this.db.prepare('DELETE FROM room_phone_prompts WHERE room_id=? AND expires_at<=?').run(roomId, Date.now());
-  }
-  private async expirePrompts(roomId: string): Promise<void> {
+  async clearExpired(room: string): Promise<void> {
+    await this.expirePrompts(room);
     await this.db
       .prepare(
-        "UPDATE room_phone_deliveries SET state='dismissed' WHERE room_id=? AND state='pending' AND EXISTS(SELECT 1 FROM room_phone_prompts p WHERE p.room_id=? AND p.expires_at<=? AND room_phone_deliveries.prompt_id=p.token)",
+        'UPDATE room_channel_deliveries SET prompt_id=NULL WHERE channel=? AND room_id=? AND prompt_id IN(SELECT token FROM room_channel_prompts WHERE channel=? AND room_id=? AND expires_at<=?)',
       )
-      .run(roomId, roomId, Date.now());
+      .run(this.channel, room, this.channel, room, Date.now());
     await this.db
-      .prepare('UPDATE room_phone_prompts SET consumed_at=COALESCE(consumed_at,?) WHERE room_id=? AND expires_at<=?')
-      .run(Date.now(), roomId, Date.now());
+      .prepare('DELETE FROM room_channel_prompts WHERE channel=? AND room_id=? AND expires_at<=?')
+      .run(this.channel, room, Date.now());
   }
-  async reconcilePrompts(roomId: string, questions: readonly string[], actions: readonly string[]): Promise<void> {
-    await this.expirePrompts(roomId);
-    const prompts = await this.db
+  private async expirePrompts(room: string): Promise<void> {
+    await this.db
       .prepare(
-        "SELECT token,target,kind FROM room_phone_prompts WHERE room_id=? AND consumed_at IS NULL AND kind<>'test'",
+        "UPDATE room_channel_deliveries SET state='dismissed' WHERE channel=? AND room_id=? AND state='pending' AND prompt_id IN(SELECT token FROM room_channel_prompts WHERE channel=? AND room_id=? AND expires_at<=?)",
       )
-      .all<{ token: string; target: string; kind: string }>(roomId);
-    for (const prompt of prompts)
-      if (!(prompt.kind === 'question' ? questions : actions).includes(prompt.target)) {
+      .run(this.channel, room, this.channel, room, Date.now());
+    await this.db
+      .prepare(
+        'UPDATE room_channel_prompts SET consumed_at=COALESCE(consumed_at,?) WHERE channel=? AND room_id=? AND expires_at<=?',
+      )
+      .run(Date.now(), this.channel, room, Date.now());
+  }
+  async reconcilePrompts(room: string, questions: readonly string[], actions: readonly string[]): Promise<void> {
+    await this.expirePrompts(room);
+    const rows = await this.db
+      .prepare(
+        "SELECT token,target,kind FROM room_channel_prompts WHERE channel=? AND room_id=? AND consumed_at IS NULL AND kind<>'test'",
+      )
+      .all<{ token: string; target: string; kind: PhonePromptKind }>(this.channel, room);
+    for (const row of rows)
+      if (!(row.kind === 'question' ? questions : actions).includes(row.target)) {
         await this.db
-          .prepare('UPDATE room_phone_prompts SET consumed_at=? WHERE token=?')
-          .run(Date.now(), prompt.token);
+          .prepare('UPDATE room_channel_prompts SET consumed_at=? WHERE channel=? AND token=?')
+          .run(Date.now(), this.channel, row.token);
         await this.db
           .prepare(
-            "UPDATE room_phone_deliveries SET state='dismissed' WHERE room_id=? AND state='pending' AND prompt_id=?",
+            "UPDATE room_channel_deliveries SET state='dismissed' WHERE channel=? AND room_id=? AND state='pending' AND prompt_id=?",
           )
-          .run(roomId, prompt.token);
+          .run(this.channel, room, row.token);
       }
   }
-  async discardStale(roomId: string): Promise<void> {
+  async discardStale(room: string): Promise<void> {
     await this.db
       .prepare(
-        `UPDATE room_phone_deliveries SET state='dismissed' WHERE room_id=? AND state='pending'
-      AND work_id IN (SELECT w.id FROM room_wakeups w JOIN room_commitments c ON c.id=json_extract(w.cause_json,'$.trigger') AND c.room_id=w.room_id
-      WHERE c.state<>'open' OR c.revision<>w.commitment_revision)`,
+        `UPDATE room_channel_deliveries SET state='dismissed' WHERE channel=? AND room_id=? AND state='pending' AND work_id IN(SELECT w.id FROM room_wakeups w JOIN room_commitments c ON c.id=json_extract(w.cause_json,'$.trigger') AND c.room_id=w.room_id WHERE c.state<>'open' OR c.revision<>w.commitment_revision)`,
       )
-      .run(roomId);
+      .run(this.channel, room);
   }
-  async verified(roomId: string): Promise<void> {
-    await this.db.prepare('UPDATE room_phone_links SET verified_at=? WHERE room_id=?').run(Date.now(), roomId);
+  async verified(room: string): Promise<void> {
+    await this.db
+      .prepare('UPDATE room_channel_links SET verified_at=? WHERE channel=? AND room_id=?')
+      .run(Date.now(), this.channel, room);
   }
-  async claimCommand(roomId: string, providerId: string): Promise<boolean> {
+  async claimCommand(room: string, id: string): Promise<boolean> {
     return (
       Number(
         (
           await this.db
-            .prepare('INSERT INTO room_phone_commands(room_id,provider_id) VALUES (?,?) ON CONFLICT DO NOTHING')
-            .run(roomId, providerId)
+            .prepare(
+              'INSERT INTO room_channel_commands(channel,room_id,provider_id) VALUES (?,?,?) ON CONFLICT DO NOTHING',
+            )
+            .run(this.channel, room, id)
         ).changes,
       ) === 1
     );
   }
-
-  async counts(roomId: string): Promise<{ queued: number; needsReview: number }> {
-    const row = await this.db
-      .prepare(
-        `SELECT
-      (SELECT COUNT(*) FROM room_phone_inbox WHERE room_id = ? AND state = 'pending') AS queued,
-      (SELECT COUNT(*) FROM room_phone_inbox WHERE room_id = ? AND state = 'review') +
-      (SELECT COUNT(*) FROM room_phone_deliveries WHERE room_id = ? AND state = 'review') AS needsReview`,
-      )
-      .get<{ queued: number; needsReview: number }>(roomId, roomId, roomId);
-    return row ?? { queued: 0, needsReview: 0 };
+  async counts(room: string): Promise<{ queued: number; needsReview: number }> {
+    return (
+      (await this.db
+        .prepare(
+          `SELECT(SELECT COUNT(*) FROM room_channel_inbox WHERE channel=? AND room_id=? AND state='pending') AS queued,(SELECT COUNT(*) FROM room_channel_inbox WHERE channel=? AND room_id=? AND state='review')+(SELECT COUNT(*) FROM room_channel_deliveries WHERE channel=? AND room_id=? AND state='review') AS needsReview`,
+        )
+        .get<{ queued: number; needsReview: number }>(this.channel, room, this.channel, room, this.channel, room)) ?? {
+        queued: 0,
+        needsReview: 0,
+      }
+    );
   }
-
-  async review(roomId: string): Promise<(ReviewRoomPhone & { text: string })[]> {
+  async review(room: string): Promise<(ReviewRoomPhone & { text: string })[]> {
     return this.db
       .prepare(
-        `SELECT id, 'input' AS direction, text FROM room_phone_inbox WHERE room_id = ? AND state = 'review'
-      UNION ALL SELECT seq AS id, 'delivery' AS direction, text FROM room_phone_deliveries WHERE room_id = ? AND state = 'review' LIMIT 20`,
+        "SELECT id,'input' AS direction,text FROM room_channel_inbox WHERE channel=? AND room_id=? AND state='review' UNION ALL SELECT seq AS id,'delivery' AS direction,text FROM room_channel_deliveries WHERE channel=? AND room_id=? AND state='review' LIMIT 20",
       )
-      .all<ReviewRoomPhone & { text: string }>(roomId, roomId);
+      .all(this.channel, room, this.channel, room);
   }
-
-  async dismiss(roomId: string, item: ReviewRoomPhone): Promise<void> {
+  async dismiss(room: string, item: ReviewRoomPhone): Promise<void> {
     if (item.direction === 'input')
       await this.db
-        .prepare("UPDATE room_phone_inbox SET state = 'done' WHERE room_id = ? AND id = ? AND state = 'review'")
-        .run(roomId, item.id);
+        .prepare("UPDATE room_channel_inbox SET state='done' WHERE channel=? AND room_id=? AND id=? AND state='review'")
+        .run(this.channel, room, item.id);
     else
       await this.db
         .prepare(
-          "UPDATE room_phone_deliveries SET state = 'dismissed' WHERE room_id = ? AND seq = ? AND state = 'review'",
+          "UPDATE room_channel_deliveries SET state='dismissed' WHERE channel=? AND room_id=? AND seq=? AND state='review'",
         )
-        .run(roomId, item.id);
+        .run(this.channel, room, item.id);
   }
 }
-
 function hash(code: string): string {
   return createHash('sha256').update(code).digest('hex');
 }
