@@ -126,6 +126,7 @@
     "@chat-adapter/shared": "4.44.0",
     "@chat-adapter/slack": "4.44.0",
     "@chat-adapter/state-memory": "4.44.0",
+    "@chat-adapter/telegram": "4.44.0",
     "@copilotkit/angular": "0.6.0",
     "@copilotkit/core": "1.88.0",
     "@copilotkit/runtime": "1.88.0",

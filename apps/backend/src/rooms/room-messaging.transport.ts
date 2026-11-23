@@ -9,6 +9,10 @@ export interface RoomMessagingTransport {
   readonly input: NonNullable<RoomPhoneStatus['input']>;
   readonly account: string | undefined;
   readonly commandPrefix?: string;
+  readonly commandSeparator?: '_' | '-';
+  readonly commandSuffix?: string;
+  readonly entryCommand?: string;
+  readonly maxMessageLength?: number;
   /** True only when a reserved provider ID makes an uncertain send safe to replay. */
   readonly retryStableSends?: boolean;
   receive: (message: PhoneMessage) => Promise<void>;
@@ -19,5 +23,5 @@ export interface RoomMessagingTransport {
   send(group: string, text: string, id?: string, quote?: { id: string; sender: string; text: string }): Promise<string>;
   media(raw: string): Promise<Uint8Array>;
   configure?(values: Record<string, string>): Promise<void>;
-  details?(): Pick<RoomChannelStatus, 'configured' | 'dependency'>;
+  details?(): Pick<RoomChannelStatus, 'configured' | 'dependency' | 'identity'>;
 }

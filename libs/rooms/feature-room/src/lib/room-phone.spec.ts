@@ -25,7 +25,8 @@ describe('room messaging setup', () => {
       busy: signal(false),
       error: signal(undefined),
       status: signal<RoomChannelStatus>(initial),
-      command: signal(undefined),
+      command: signal<string | undefined>(undefined),
+      groupLink: signal<string | undefined>(undefined),
       commandExpired: signal(false),
       settings: vi.fn().mockResolvedValue(true),
       act: vi.fn(),
@@ -140,5 +141,41 @@ describe('room messaging setup', () => {
     await fixture.whenStable();
     expect(app.value).toBe('replacement-app');
     expect(bot.value).toBe('submitted-bot');
+  });
+  it('saves a Telegram bot token without requiring or submitting Slack credentials', async () => {
+    const { fixture, store, root } = setup();
+    fixture.componentRef.setInput('channel', 'telegram');
+    store.status.set({ ...initial, channel: 'telegram', configured: false });
+    await fixture.whenStable();
+    expect(root.querySelector('[data-testid=room-slack-app-token]')).toBeNull();
+    const token = root.querySelector<HTMLInputElement>('[data-testid=room-telegram-bot-token]');
+    if (!token) throw new Error('Missing Telegram token input.');
+    expect(root.querySelector<HTMLAnchorElement>('a')?.href).toBe('https://t.me/BotFather');
+    token.value = '123456:bot-token-draft';
+    token.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    const save = token.closest('form')?.querySelector<HTMLButtonElement>('button[type=submit]');
+    expect(save?.disabled).toBe(false);
+    save?.click();
+    await fixture.whenStable();
+    expect(store.settings).toHaveBeenCalledExactlyOnceWith({ botToken: '123456:bot-token-draft' });
+    expect(token.value).toBe('');
+    store.status.set({
+      ...initial,
+      channel: 'telegram',
+      connection: 'connected',
+      configured: true,
+      identity: { id: '123456', username: 'MyRoomBot', name: 'My assistant' },
+    });
+    store.groupLink.set('https://t.me/MyRoomBot?startgroup=one-time-code');
+    store.command.set('/room_link one-time-code');
+    await fixture.whenStable();
+    expect(root.querySelector('[data-testid=room-channel-identity]')?.textContent).toContain('@MyRoomBot');
+    expect(root.querySelector('[data-testid=room-telegram-talk]')?.textContent).toContain(
+      '/room@MyRoomBot YOUR_QUESTION',
+    );
+    expect(root.querySelector<HTMLAnchorElement>('[data-testid=room-telegram-add-group]')?.href).toBe(
+      'https://t.me/MyRoomBot?startgroup=one-time-code',
+    );
   });
 });

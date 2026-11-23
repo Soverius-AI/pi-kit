@@ -23,7 +23,7 @@ import { RoomChannelRegistry } from './room-channel.registry';
 @ApiTags('rooms')
 @Controller('rooms/:roomId/channels/:channel')
 @ApiParam({ name: 'roomId', description: 'The hosted room id.' })
-@ApiParam({ name: 'channel', enum: ['whatsapp', 'signal', 'slack'] })
+@ApiParam({ name: 'channel', enum: ['whatsapp', 'signal', 'slack', 'telegram'] })
 @UseGuards(RoomsEnabledGuard)
 export class RoomChannelController {
   constructor(private readonly channels: RoomChannelRegistry) {}

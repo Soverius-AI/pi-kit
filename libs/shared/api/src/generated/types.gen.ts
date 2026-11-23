@@ -2481,8 +2481,13 @@ export type RoomChannelStatus = {
         direction: 'input' | 'delivery';
         text: string;
     }>;
-    channel: 'whatsapp' | 'signal' | 'slack';
+    channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     configured?: boolean;
+    identity?: {
+        id: string;
+        username: string;
+        name: string;
+    };
     dependency?: {
         available: boolean;
         version: string | null;
@@ -14674,7 +14679,7 @@ export type RoomChannelUnlinkData = {
          * The hosted room id.
          */
         roomId: string;
-        channel: 'whatsapp' | 'signal' | 'slack';
+        channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     };
     query?: never;
     url: '/api/rooms/{roomId}/channels/{channel}';
@@ -14705,7 +14710,7 @@ export type RoomChannelStatusData = {
          * The hosted room id.
          */
         roomId: string;
-        channel: 'whatsapp' | 'signal' | 'slack';
+        channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     };
     query?: never;
     url: '/api/rooms/{roomId}/channels/{channel}';
@@ -14740,7 +14745,7 @@ export type RoomChannelConnectData = {
          * The hosted room id.
          */
         roomId: string;
-        channel: 'whatsapp' | 'signal' | 'slack';
+        channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     };
     query?: never;
     url: '/api/rooms/{roomId}/channels/{channel}/connect';
@@ -14771,7 +14776,7 @@ export type RoomChannelDisconnectData = {
          * The hosted room id.
          */
         roomId: string;
-        channel: 'whatsapp' | 'signal' | 'slack';
+        channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     };
     query?: never;
     url: '/api/rooms/{roomId}/channels/{channel}/disconnect';
@@ -14802,7 +14807,7 @@ export type RoomChannelBeginData = {
          * The hosted room id.
          */
         roomId: string;
-        channel: 'whatsapp' | 'signal' | 'slack';
+        channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     };
     query?: never;
     url: '/api/rooms/{roomId}/channels/{channel}/link';
@@ -14833,7 +14838,7 @@ export type RoomChannelConfirmData = {
          * The hosted room id.
          */
         roomId: string;
-        channel: 'whatsapp' | 'signal' | 'slack';
+        channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     };
     query?: never;
     url: '/api/rooms/{roomId}/channels/{channel}/confirm';
@@ -14868,7 +14873,7 @@ export type RoomChannelConfigData = {
          * The hosted room id.
          */
         roomId: string;
-        channel: 'whatsapp' | 'signal' | 'slack';
+        channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     };
     query?: never;
     url: '/api/rooms/{roomId}/channels/{channel}/config';
@@ -14903,7 +14908,7 @@ export type RoomChannelSettingsData = {
          * The hosted room id.
          */
         roomId: string;
-        channel: 'whatsapp' | 'signal' | 'slack';
+        channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     };
     query?: never;
     url: '/api/rooms/{roomId}/channels/{channel}/settings';
@@ -14938,7 +14943,7 @@ export type RoomChannelTestData = {
          * The hosted room id.
          */
         roomId: string;
-        channel: 'whatsapp' | 'signal' | 'slack';
+        channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     };
     query?: never;
     url: '/api/rooms/{roomId}/channels/{channel}/test';
@@ -14969,7 +14974,7 @@ export type RoomChannelDismissData = {
          * The hosted room id.
          */
         roomId: string;
-        channel: 'whatsapp' | 'signal' | 'slack';
+        channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     };
     query?: never;
     url: '/api/rooms/{roomId}/channels/{channel}/review';

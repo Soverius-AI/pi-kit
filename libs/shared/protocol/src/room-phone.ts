@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const RoomChannelSchema = z.enum(['whatsapp', 'signal', 'slack']);
+export const RoomChannelSchema = z.enum(['whatsapp', 'signal', 'slack', 'telegram']);
 export type RoomChannel = z.infer<typeof RoomChannelSchema>;
 export const RoomChannelBindingSchema = z
   .object({
@@ -88,6 +88,7 @@ export type RoomPhoneConfig = z.infer<typeof RoomPhoneConfigSchema>;
 export const RoomChannelStatusSchema = RoomPhoneStatusSchema.extend({
   channel: RoomChannelSchema,
   configured: z.boolean().optional(),
+  identity: z.object({ id: z.string(), username: z.string(), name: z.string() }).strict().optional(),
   dependency: z
     .object({
       available: z.boolean(),

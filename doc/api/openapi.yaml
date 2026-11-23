@@ -12063,6 +12063,7 @@ paths:
               - whatsapp
               - signal
               - slack
+              - telegram
             type: string
       responses:
         '200':
@@ -12104,6 +12105,7 @@ paths:
               - whatsapp
               - signal
               - slack
+              - telegram
             type: string
       responses:
         '200':
@@ -12140,6 +12142,7 @@ paths:
               - whatsapp
               - signal
               - slack
+              - telegram
             type: string
       responses:
         '201':
@@ -12176,6 +12179,7 @@ paths:
               - whatsapp
               - signal
               - slack
+              - telegram
             type: string
       responses:
         '201':
@@ -12212,6 +12216,7 @@ paths:
               - whatsapp
               - signal
               - slack
+              - telegram
             type: string
       responses:
         '201':
@@ -12248,6 +12253,7 @@ paths:
               - whatsapp
               - signal
               - slack
+              - telegram
             type: string
       requestBody:
         required: true
@@ -12296,6 +12302,7 @@ paths:
               - whatsapp
               - signal
               - slack
+              - telegram
             type: string
       requestBody:
         required: true
@@ -12344,6 +12351,7 @@ paths:
               - whatsapp
               - signal
               - slack
+              - telegram
             type: string
       requestBody:
         required: true
@@ -12392,6 +12400,7 @@ paths:
               - whatsapp
               - signal
               - slack
+              - telegram
             type: string
       responses:
         '201':
@@ -12428,6 +12437,7 @@ paths:
               - whatsapp
               - signal
               - slack
+              - telegram
             type: string
       requestBody:
         required: true
@@ -20877,8 +20887,23 @@ components:
             - whatsapp
             - signal
             - slack
+            - telegram
         configured:
           type: boolean
+        identity:
+          type: object
+          properties:
+            id:
+              type: string
+            username:
+              type: string
+            name:
+              type: string
+          required:
+            - id
+            - username
+            - name
+          additionalProperties: false
         dependency:
           anyOf:
             - type: object

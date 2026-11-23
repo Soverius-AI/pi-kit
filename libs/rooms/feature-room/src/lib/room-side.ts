@@ -27,6 +27,7 @@ type TaskGroup = { key: 'needsYou' | 'running' | 'done'; tasks: RoomTask[] };
         <pk-icon name="close" size="16" />
       </button>
     </header>
+    <pk-room-phone channel="telegram" />
     <pk-room-phone />
     <pk-room-phone channel="signal" />
     <pk-room-phone channel="slack" />

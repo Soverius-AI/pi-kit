@@ -540,4 +540,5 @@ export interface PhoneDelivery {
   work_id: string | null;
   quote_id: string | null;
   quote_text: string | null;
+  prompt_id: string | null;
 }

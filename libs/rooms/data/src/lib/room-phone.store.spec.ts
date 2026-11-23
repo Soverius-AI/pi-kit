@@ -261,4 +261,30 @@ describe('room phone setup', () => {
     expect(test).toHaveBeenCalledExactlyOnceWith({ roomId: 'room-a', channel: 'whatsapp' });
     expect(forOwner).toHaveBeenLastCalledWith('host-a');
   });
+  it('builds a Telegram group-selection link for the verified bot and removes it when the challenge expires', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const interval = vi.spyOn(globalThis, 'setInterval');
+    const telegram: RoomChannelStatus = {
+      ...value,
+      channel: 'telegram',
+      identity: { id: '123', username: 'MyRoomBot', name: 'Room assistant' },
+    };
+    status.mockResolvedValue(telegram);
+    begin.mockResolvedValue({ code: 'abcdef0123456789', expiresAt: 2000 });
+    const store = TestBed.inject(RoomPhoneStore);
+    store.channel.set('telegram');
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()).toEqual(telegram));
+    await store.act('begin');
+    expect(store.command()).toBe('/room_link@MyRoomBot abcdef0123456789');
+    expect(store.groupLink()).toBe('https://t.me/MyRoomBot?startgroup=abcdef0123456789');
+    now.mockReturnValue(2000);
+    const poll = interval.mock.calls.find((call) => call[1] === 2500)?.[0];
+    if (typeof poll !== 'function') throw new Error('Missing status poll.');
+    poll();
+    expect(store.command()).toBeUndefined();
+    expect(store.groupLink()).toBeUndefined();
+    expect(store.commandExpired()).toBe(true);
+  });
 });

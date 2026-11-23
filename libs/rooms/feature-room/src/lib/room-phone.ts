@@ -42,32 +42,45 @@ import { toDataURL } from 'qrcode';
           @if (status.error) {
             <p role="alert">{{ status.error }}</p>
           }
-          @if (channel() === 'slack') {
+          @if (status.identity; as identity) {
+            <p data-testid="room-channel-identity">
+              <strong>{{ identity.name }}</strong
+              ><span class="identity">@{{ identity.username }}</span>
+            </p>
+            @if (channel() === 'telegram') {
+              <p data-testid="room-telegram-talk">
+                {{ 'rooms.channels.telegram.talk' | transloco: { username: identity.username } }}
+              </p>
+            }
+          }
+          @if (channel() === 'slack' || channel() === 'telegram') {
             <details [open]="!status.configured">
-              <summary>{{ 'rooms.channels.slack.settings' | transloco }}</summary>
-              <p>{{ 'rooms.channels.slack.setup' | transloco }}</p>
-              <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer">{{
-                'rooms.channels.slack.apps' | transloco
+              <summary>{{ profile() + '.settings' | transloco }}</summary>
+              <p>{{ profile() + '.setup' | transloco }}</p>
+              <a [href]="credentialSetupUrl()" target="_blank" rel="noopener noreferrer">{{
+                profile() + '.apps' | transloco
               }}</a>
               <form (submit)="saveCredentials($event)">
+                @if (channel() === 'slack') {
+                  <label
+                    >{{ 'rooms.channels.slack.appToken' | transloco
+                    }}<input
+                      type="password"
+                      autocomplete="off"
+                      [formField]="credentialFields.appToken"
+                      data-testid="room-slack-app-token"
+                  /></label>
+                }
                 <label
-                  >{{ 'rooms.channels.slack.appToken' | transloco
-                  }}<input
-                    type="password"
-                    autocomplete="off"
-                    [formField]="credentialFields.appToken"
-                    data-testid="room-slack-app-token"
-                /></label>
-                <label
-                  >{{ 'rooms.channels.slack.botToken' | transloco
+                  >{{ profile() + '.botToken' | transloco
                   }}<input
                     type="password"
                     autocomplete="off"
                     [formField]="credentialFields.botToken"
-                    data-testid="room-slack-bot-token"
+                    [attr.data-testid]="'room-' + channel() + '-bot-token'"
                 /></label>
                 <button type="submit" class="btn btn-sm" [disabled]="phone.busy() || credentialFields().invalid()">
-                  {{ 'rooms.channels.slack.save' | transloco }}
+                  {{ profile() + '.save' | transloco }}
                 </button>
               </form>
             </details>
@@ -120,7 +133,7 @@ import { toDataURL } from 'qrcode';
             <button
               type="button"
               class="btn btn-sm"
-              [disabled]="phone.busy() || (channel() === 'slack' && !status.configured)"
+              [disabled]="phone.busy() || ((channel() === 'slack' || channel() === 'telegram') && !status.configured)"
               (click)="phone.act('connect')"
             >
               {{ profile() + '.connect' | transloco }}
@@ -172,6 +185,16 @@ import { toDataURL } from 'qrcode';
               {{ 'rooms.phone.begin' | transloco }}
             </button>
             @if (phone.command(); as command) {
+              @if (phone.groupLink(); as link) {
+                <a
+                  [href]="link"
+                  class="btn btn-sm"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="room-telegram-add-group"
+                  >{{ 'rooms.channels.telegram.addGroup' | transloco }}</a
+                >
+              }
               <code data-testid="room-phone-command">{{ command }}</code>
               <p>{{ 'rooms.phone.commandHint' | transloco }}</p>
             }
@@ -300,9 +323,12 @@ import { toDataURL } from 'qrcode';
 export class RoomPhone {
   readonly channel = input<RoomChannel>('whatsapp');
   protected readonly profile = computed(() => `rooms.channels.${this.channel()}`);
+  protected readonly credentialSetupUrl = computed(() =>
+    this.channel() === 'telegram' ? 'https://t.me/BotFather' : 'https://api.slack.com/apps',
+  );
   protected readonly credentials = signal({ appToken: '', botToken: '' });
   protected readonly credentialFields = form(this.credentials, (path) => {
-    required(path.appToken);
+    required(path.appToken, { when: () => this.channel() === 'slack' });
     required(path.botToken);
     maxLength(path.appToken, 8192);
     maxLength(path.botToken, 8192);
@@ -332,7 +358,8 @@ export class RoomPhone {
     event.preventDefault();
     if (this.credentialFields().invalid()) return;
     const submitted = this.credentials();
-    if ((await this.phone.settings(submitted)) && this.credentials() === submitted)
+    const values = this.channel() === 'telegram' ? { botToken: submitted.botToken } : submitted;
+    if ((await this.phone.settings(values)) && this.credentials() === submitted)
       this.credentials.set({ appToken: '', botToken: '' });
   }
   protected async saveSignalSettings(event: Event): Promise<void> {

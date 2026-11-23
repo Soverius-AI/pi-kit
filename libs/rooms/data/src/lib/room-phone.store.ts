@@ -1,4 +1,4 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, computed, signal } from '@angular/core';
 import {
   roomChannelBegin,
   roomChannelConfirm,
@@ -12,14 +12,25 @@ import {
   roomChannelSettings,
   unwrap,
 } from '@pi-kit/api';
-import type { ReviewRoomPhone, RoomChannelStatus, RoomChannel } from '@pi-kit/protocol';
+import type { ReviewRoomPhone, RoomChannelStatus, RoomChannel, RoomPhoneLink } from '@pi-kit/protocol';
 import { RoomPanelState, type RoomPanelOptions } from './room-panel-state';
 
 @Injectable()
 export class RoomPhoneStore {
   readonly channel = signal<RoomChannel>('whatsapp');
-  private commandExpiresAt: number | undefined;
-  readonly command = signal<string | undefined>(undefined);
+  private readonly pendingLink = signal<RoomPhoneLink | undefined>(undefined);
+  readonly command = computed(() => {
+    const link = this.pendingLink();
+    if (!link) return;
+    const username = this.telegramUsername();
+    const command =
+      this.channel() === 'telegram'
+        ? `/room_link${username ? '@' + username : ''}`
+        : this.channel() === 'slack'
+          ? '!room-link'
+          : '/room-link';
+    return `${command} ${link.code}`;
+  });
   readonly commandExpired = signal(false);
   private readonly panel = new RoomPanelState<RoomChannelStatus>(
     (options) => unwrap(roomChannelStatus(this.options(options))),
@@ -35,6 +46,12 @@ export class RoomPhoneStore {
   readonly status = this.panel.status;
   readonly busy = this.panel.busy;
   readonly error = this.panel.error;
+  readonly groupLink = computed(() => {
+    const username = this.telegramUsername();
+    const link = this.pendingLink();
+    if (!link || !username) return;
+    return `https://t.me/${username}?startgroup=${encodeURIComponent(link.code)}`;
+  });
 
   async act(
     action: 'connect' | 'disconnect' | 'begin' | 'confirm' | 'unlink' | 'review' | 'test',
@@ -52,8 +69,7 @@ export class RoomPhoneStore {
       await this.panel.mutate(
         (options) => unwrap(roomChannelBegin(this.options(options))),
         (link) => {
-          this.command.set(`${this.channel() === 'slack' ? '!' : '/'}room-link ${link.code}`);
-          this.commandExpiresAt = link.expiresAt;
+          this.pendingLink.set(link);
           this.commandExpired.set(false);
           this.expireCommand();
         },
@@ -103,15 +119,18 @@ export class RoomPhoneStore {
   private options(options: RoomPanelOptions) {
     return { ...options, path: { ...options.path, channel: this.channel() } };
   }
+  private telegramUsername(): string | undefined {
+    const username = this.status()?.identity?.username;
+    return this.channel() === 'telegram' && username && /^[A-Za-z0-9_]{1,64}$/.test(username) ? username : undefined;
+  }
   private clearCommand(): void {
-    this.command.set(undefined);
-    this.commandExpiresAt = undefined;
+    this.pendingLink.set(undefined);
     this.commandExpired.set(false);
   }
   private expireCommand(): void {
-    if (this.commandExpiresAt !== undefined && Date.now() >= this.commandExpiresAt) {
-      this.command.set(undefined);
-      this.commandExpiresAt = undefined;
+    const link = this.pendingLink();
+    if (link && Date.now() >= link.expiresAt) {
+      this.pendingLink.set(undefined);
       this.commandExpired.set(true);
     }
   }

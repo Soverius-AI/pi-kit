@@ -323,6 +323,131 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     }
   });
 
+  it('runs Telegram native controls with whole addressed prompts and never makes an oversized preview approvable', async () => {
+    const telegramStore = new RoomPhoneRepository(db, 'telegram', () => crypto.randomUUID());
+    const telegramWire = {
+      ...transport,
+      retryStableSends: false,
+      commandPrefix: '/',
+      commandSeparator: '_' as const,
+      commandSuffix: '@RoomsAssistantBot',
+      maxMessageLength: 4096,
+      account: 'telegram-bot',
+      send: vi.fn(async (_group: string, _text: string, id?: string) => id ?? 'telegram-result'),
+    };
+    const telegram = makePhone(telegramStore, telegramWire);
+    await telegram.onModuleInit();
+    try {
+      const link = await telegram.begin('a');
+      await telegramWire.receive(
+        message(`/room-link ${link.code}`, 'telegram-link', 'telegram-group', 'telegram-owner'),
+      );
+      await telegram.confirm('a', { group: 'telegram-group', sender: 'telegram-owner' });
+      await telegram.config('a', { appUrl: 'https://room.example/' });
+      const short = await notes.insertAction({
+        id: 'a22cadcb-f53e-48d4-b975-0758f74a70ee',
+        roomId: 'a',
+        kind: 'call',
+        name: 'draft',
+        summary: 'Full visible draft',
+        payload: { body: 'X'.repeat(1400) },
+      });
+      const large = await notes.insertAction({
+        id: 'e7ab9890-26ad-44b9-a704-7aee1e99b097',
+        roomId: 'a',
+        kind: 'call',
+        name: 'large-draft',
+        summary: 'Needs app preview',
+        payload: { body: 'Z'.repeat(5000) },
+      });
+      await telegram.flush();
+      await telegram.flush();
+      const prompts = telegramWire.send.mock.calls.map((call) => call[1]);
+      expect(prompts[0]).toContain('X'.repeat(1400));
+      expect(prompts[0]).toContain('/approve@RoomsAssistantBot ');
+      expect(prompts[0].split('https://room.example/')).toHaveLength(2);
+      expect(prompts[1]).not.toContain('/approve');
+      expect(prompts.every((text) => text.length <= 4096)).toBe(true);
+      expect(
+        await db.db
+          .prepare("SELECT consumed_at FROM room_channel_prompts WHERE channel='telegram' AND target=?")
+          .get<{ consumed_at: number | null }>(large.id),
+      ).toMatchObject({ consumed_at: expect.any(Number) });
+      expect(
+        await db.db
+          .prepare("SELECT consumed_at FROM room_channel_prompts WHERE channel='telegram' AND target=?")
+          .get<{ consumed_at: number | null }>(short.id),
+      ).toEqual({ consumed_at: null });
+      await telegram.test('a');
+      await telegram.flush();
+      expect(telegramWire.send.mock.calls.at(-1)?.[1]).toContain('/room_test@RoomsAssistantBot ');
+      const test = await db.db
+        .prepare("SELECT token FROM room_channel_prompts WHERE channel='telegram' AND kind='test'")
+        .get<{ token: string }>();
+      await telegramWire.receive(
+        message(`/room-test ${test?.token}`, 'telegram-test', 'telegram-group', 'telegram-owner'),
+      );
+      expect((await telegram.status('a')).verifiedAt).toEqual(expect.any(Number));
+      await telegram.flush();
+      await rooms.append('a', { kind: 'message', actor: 'lead', text: 'Y'.repeat(4080) });
+      await telegram.flush();
+      expect(telegramWire.send.mock.calls.at(-1)?.[1]).toBe('Y'.repeat(4080));
+    } finally {
+      await telegram.onApplicationShutdown();
+    }
+  });
+
+  it('answers authenticated deduplicated help without a model and formats provider-native entry commands', async () => {
+    const telegramStore = new RoomPhoneRepository(db, 'telegram', () => crypto.randomUUID());
+    const telegramWire = {
+      ...transport,
+      retryStableSends: false,
+      commandPrefix: '/',
+      commandSeparator: '_' as const,
+      commandSuffix: '@RoomsAssistantBot',
+      entryCommand: 'room',
+      account: 'telegram-bot',
+      send: vi.fn(async (_group: string, _text: string) => 'telegram-result'),
+    };
+    const telegram = makePhone(telegramStore, telegramWire);
+    await telegram.onModuleInit();
+    try {
+      const link = await telegram.begin('a');
+      await telegramWire.receive(message(`/room-link ${link.code}`, 'help-link', 'telegram-group', 'telegram-owner'));
+      await telegram.confirm('a', { group: 'telegram-group', sender: 'telegram-owner' });
+      await telegramWire.receive(message('/help', 'rogue-help', 'telegram-group', 'somebody-else'));
+      expect((await telegramStore.health('a')).pendingDeliveries).toBe(0);
+      await telegramWire.receive(message('/help', 'owner-help', 'telegram-group', 'telegram-owner'));
+      await telegramWire.receive(message('/help', 'owner-help', 'telegram-group', 'telegram-owner'));
+      expect((await telegramStore.health('a')).pendingDeliveries).toBe(1);
+      await telegram.flush();
+      const help = telegramWire.send.mock.calls[0]?.[1];
+      expect(help).toContain('/room@RoomsAssistantBot QUESTION');
+      expect(help).toContain('/memory@RoomsAssistantBot');
+      expect(help).toContain('/pending@RoomsAssistantBot');
+      expect(help).toContain('/pause@RoomsAssistantBot / /resume@RoomsAssistantBot');
+      expect(post).not.toHaveBeenCalled();
+      expect(await db.db.prepare('SELECT COUNT(*) AS n FROM room_wakeups').get()).toEqual({ n: 0 });
+    } finally {
+      await telegram.onApplicationShutdown();
+    }
+    const slackStore = new RoomPhoneRepository(db, 'slack', () => crypto.randomUUID());
+    const slackWire = { ...transport, commandPrefix: '!', account: 'slack-bot' };
+    const slack = makePhone(slackStore, slackWire);
+    await slack.onModuleInit();
+    try {
+      const link = await slack.begin('a');
+      await slackWire.receive(message(`!room-link ${link.code}`, 'slack-help-link', 'slack-group', 'slack-owner'));
+      await slack.confirm('a', { group: 'slack-group', sender: 'slack-owner' });
+      await slackWire.receive(message('!help', 'slack-help', 'slack-group', 'slack-owner'));
+      const delivery = await slackStore.delivery('a');
+      expect(delivery?.text).toContain('!memory');
+      expect(post).not.toHaveBeenCalled();
+    } finally {
+      await slack.onApplicationShutdown();
+    }
+  });
+
   it('recovers and expires only the selected provider claims and prompts', async () => {
     const wa = new RoomPhoneRepository(db, 'whatsapp');
     const signal = new RoomPhoneRepository(db, 'signal');

@@ -5144,6 +5144,23 @@
         "appToken": "App-Token (xapp-…)",
         "botToken": "Bot-Token (xoxb-…)",
         "save": "Slack-Zugangsdaten speichern"
+      },
+      "telegram": {
+        "title": "Telegram",
+        "intro": "Verbinde einen mit BotFather erstellten Telegram-Bot. Dein Assistent benötigt keine eigene Telefonnummer.",
+        "qrState": "Warten auf Telegram-Einrichtung",
+        "qrAlt": "Telegram-Verbindung",
+        "scan": "Erstelle und verbinde deinen Bot unten.",
+        "connect": "Telegram-Bot verbinden",
+        "groupHint": "Wähle über „Bot zu Gruppe hinzufügen“ eine Gruppe für diesen Raum oder erstelle eine neue. Du kannst den Bot auch manuell hinzufügen und den angezeigten Befehl senden. Bestätige hier die Gruppe und dein persönliches Konto. Antworte nach dem Verknüpfen auf eine Bot-Nachricht oder verwende den an den Bot gerichteten /room-Befehl.",
+        "disconnect": "Telegram für alle Räume trennen",
+        "settings": "Bot-Token von BotFather",
+        "setup": "Öffne BotFather, sende /newbot und wähle Namen und Benutzernamen. Füge den Bot-Token hier ein. Er wird geprüft und im Anmeldedatenspeicher des Betriebssystems dieses Hosts gespeichert.",
+        "apps": "BotFather öffnen",
+        "botToken": "Bot-Token von BotFather",
+        "save": "Telegram-Bot-Token speichern",
+        "addGroup": "Bot zu Gruppe hinzufügen",
+        "talk": "Antworte nach dem Verknüpfen auf den Bot oder sende /room@{{username}} DEINE_FRAGE. Eine einfache Erwähnung erreicht den Bot in Telegrams Datenschutzmodus möglicherweise nicht."
       }
     }
   },

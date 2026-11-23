@@ -32,7 +32,7 @@ import { RoomsRepository } from '../db/rooms.repository';
 import { LEAD_BUSY, LEAD_WAITS, RoomLeadService } from './room-lead.service';
 import type { RoomMessagingTransport } from './room-messaging.transport';
 import type { PhoneMessage } from './room-phone.types';
-import { presentPhonePrompt } from './room-phone.presenter';
+import { presentPhoneHelp, presentPhonePrompt } from './room-phone.presenter';
 import type { PhoneAttachment, PhonePromptKind } from './room-phone.types';
 
 interface PhoneControlCompletion {
@@ -227,7 +227,7 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     if (
       prefix !== '/' &&
       message.text.startsWith(prefix) &&
-      /^(?:room-link|pause|resume|memory|remember|forget|done|snooze|pending|answer|approve|reject|room-test)\b/.test(
+      /^(?:room-link|help|pause|resume|memory|remember|forget|done|snooze|pending|answer|approve|reject|room-test)\b/.test(
         message.text.slice(prefix.length),
       )
     )
@@ -264,7 +264,7 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
       const binding = await this.store.authorized(message.group, message.sender, account);
       if (!binding) return;
       if (
-        /^\/(?:pause|resume|memory|remember|forget|done|snooze|pending|answer|approve|reject|room-test)\b/.test(
+        /^\/(?:help|pause|resume|memory|remember|forget|done|snooze|pending|answer|approve|reject|room-test)\b/.test(
           message.text,
         )
       ) {
@@ -308,6 +308,18 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     if (command === '/pause' || command === '/resume') {
       await this.lead.update(room, { paused: command === '/pause' });
       await this.store.notify(room, command === '/pause' ? 'Room paused.' : 'Room resumed.');
+      return;
+    }
+    if (command === '/help') {
+      await this.store.notify(
+        room,
+        presentPhoneHelp({
+          prefix: this.transport.commandPrefix,
+          separator: this.transport.commandSeparator,
+          suffix: this.transport.commandSuffix,
+          entryCommand: this.transport.entryCommand,
+        }),
+      );
       return;
     }
     if (command === '/pending') {
@@ -442,7 +454,16 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
       room,
       target,
       kind,
-      presentPhonePrompt(kind, text, undefined, undefined, this.transport.commandPrefix ?? '/'),
+      presentPhonePrompt(
+        kind,
+        text,
+        undefined,
+        undefined,
+        this.transport.commandPrefix ?? '/',
+        this.transport.commandSeparator ?? '-',
+        this.transport.commandSuffix ?? '',
+        this.transport.maxMessageLength ?? 12000,
+      ),
     );
   }
   private async prepareInput(
@@ -617,14 +638,17 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
     try {
       const sending = await this.serial(async () => {
         if (!(await this.current(binding, signal)) || !(await this.store.canSend(room, delivery.seq))) return;
-        const deepLink = binding.app_url
-          ? `\n\n${binding.app_url.split('#')[0]}#room=${room}${delivery.work_id ? `&work=${delivery.work_id}` : ''}`
-          : '';
+        const deepLink =
+          binding.app_url && !delivery.prompt_id
+            ? `\n\n${binding.app_url.split('#')[0]}#room=${room}${delivery.work_id ? `&work=${delivery.work_id}` : ''}`
+            : '';
         // Only the synchronous handoff is serialized. Network completion never holds admission.
         return {
           operation: this.transport.send(
             group,
-            delivery.text + deepLink,
+            delivery.text.length + deepLink.length <= (this.transport.maxMessageLength ?? 12000)
+              ? delivery.text + deepLink
+              : delivery.text,
             delivery.provider_id,
             delivery.quote_id
               ? { id: delivery.quote_id, sender: binding.sender_id ?? '', text: delivery.quote_text ?? '' }

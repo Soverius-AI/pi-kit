@@ -5144,6 +5144,23 @@
         "appToken": "App-level token (xapp-…)",
         "botToken": "Bot token (xoxb-…)",
         "save": "Save Slack credentials"
+      },
+      "telegram": {
+        "title": "Telegram",
+        "intro": "Connect a Telegram bot created with BotFather. Your assistant needs no separate phone number.",
+        "qrState": "Waiting for Telegram setup",
+        "qrAlt": "Telegram connection",
+        "scan": "Create and connect your bot below.",
+        "connect": "Connect Telegram bot",
+        "groupHint": "Use Add bot to group to choose or create one group for this room. You can also add the bot manually and send the displayed command. Confirm the group and your personal account here. After linking, reply to a bot message or use its addressed /room command.",
+        "disconnect": "Disconnect Telegram for all rooms",
+        "settings": "BotFather bot token",
+        "setup": "Open BotFather, send /newbot, and choose a name and username. Paste the bot token here. It is verified and saved in this host’s operating system credential store.",
+        "apps": "Open BotFather",
+        "botToken": "Bot token from BotFather",
+        "save": "Save Telegram bot token",
+        "addGroup": "Add bot to group",
+        "talk": "Once linked, reply to the bot or send /room@{{username}} YOUR_QUESTION. A plain mention may not reach the bot in Telegram’s privacy mode."
       }
     }
   },

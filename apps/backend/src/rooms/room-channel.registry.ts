@@ -15,6 +15,7 @@ import { RoomPlaybookService } from './room-playbook.service';
 import { RoomWhatsAppTransport } from './room-whatsapp.transport';
 import { RoomSignalTransport } from './room-signal.transport';
 import { RoomSlackTransport } from './room-slack.transport';
+import { RoomTelegramTransport } from './room-telegram.transport';
 import type { RoomMessagingTransport } from './room-messaging.transport';
 
 @Injectable()
@@ -34,11 +35,13 @@ export class RoomChannelRegistry implements OnModuleInit, OnApplicationShutdown 
     whatsapp: RoomWhatsAppTransport,
     signal: RoomSignalTransport,
     slack: RoomSlackTransport,
+    telegram: RoomTelegramTransport,
   ) {
     for (const [channel, transport] of [
       ['whatsapp', whatsapp],
       ['signal', signal],
       ['slack', slack],
+      ['telegram', telegram],
     ] as const) {
       const store = new RoomPhoneRepository(db, channel, () => transport.createMessageId());
       this.channels.set(channel, {

@@ -39,6 +39,8 @@ import { RoomChannelController } from './room-channel.controller';
 import { RoomSignalTransport } from './room-signal.transport';
 import { RoomSlackTransport } from './room-slack.transport';
 import { RoomSlackCredentials } from './room-slack-credentials';
+import { RoomTelegramCredentials } from './room-telegram-credentials';
+import { RoomTelegramTransport } from './room-telegram.transport';
 import { RoomWhatsAppTransport } from './room-whatsapp.transport';
 import { RoomWorkspace } from './room-workspace.service';
 import { RoomAssistant } from './room-assistant.service';
@@ -80,6 +82,8 @@ import { TranscribeModule } from '../transcribe/transcribe.module';
     RoomSignalTransport,
     RoomSlackTransport,
     RoomSlackCredentials,
+    RoomTelegramCredentials,
+    RoomTelegramTransport,
     RoomWhatsAppTransport,
     RoomWorkspace,
     RoomAssistant,
