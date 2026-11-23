@@ -21,6 +21,19 @@ import { toDataURL } from 'qrcode';
           @if (status.error) {
             <p role="alert">{{ status.error }}</p>
           }
+          @if (status.input; as input) {
+            <p>{{ 'rooms.phone.inputScope' | transloco }}</p>
+            <p role="status" data-testid="room-phone-input">
+              @if (input.lastOwnGroupAt; as at) {
+                {{ 'rooms.phone.ownInputSeen' | transloco: { time: when(at) } }}
+              } @else {
+                {{ 'rooms.phone.noOwnInput' | transloco }}
+              }
+            </p>
+            @if (input.lastAcceptedAt; as at) {
+              <p>{{ 'rooms.phone.inputAccepted' | transloco: { time: when(at) } }}</p>
+            }
+          }
           @if (qr(); as image) {
             <img [src]="image" [alt]="'rooms.phone.qrAlt' | transloco" width="240" height="240" />
             <p>{{ 'rooms.phone.scan' | transloco }}</p>
@@ -81,6 +94,9 @@ import { toDataURL } from 'qrcode';
             @if (phone.command(); as command) {
               <code data-testid="room-phone-command">{{ command }}</code>
               <p>{{ 'rooms.phone.commandHint' | transloco }}</p>
+            }
+            @if (phone.commandExpired()) {
+              <p role="alert" data-testid="room-phone-expired">{{ 'rooms.phone.codeExpired' | transloco }}</p>
             }
             @if (status.candidate; as candidate) {
               <p>

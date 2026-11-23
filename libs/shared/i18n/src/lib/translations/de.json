@@ -4809,7 +4809,12 @@
       "appUrlHint": "Verwende die HTTPS-Adresse aus den Einstellungen für privaten Zugriff. Raumlinks öffnen diese Adresse.",
       "saveUrl": "Raumlinks speichern",
       "pendingDelivery": "Nachrichten warten auf Zustellung: {{count}}",
-      "delivered": "Zuletzt zugestellt: {{time}}"
+      "delivered": "Zuletzt zugestellt: {{time}}",
+      "codeExpired": "Dieser Code ist abgelaufen. Fordere einen neuen Gruppencode an, bevor du ihn erneut sendest.",
+      "ownInputSeen": "Letzte empfangene Gruppennachricht deines verknüpften Kontos: {{time}}.",
+      "noOwnInput": "Seit dem Verbinden wurde keine Gruppennachricht deines verknüpften Kontos empfangen.",
+      "inputAccepted": "Letzte an die Raumzuordnung übergebene Gruppennachricht: {{time}}.",
+      "inputScope": "Der Empfangsstatus gilt für alle Gruppen dieses verknüpften WhatsApp-Kontos."
     },
     "task": {
       "label": "Aufgabe",

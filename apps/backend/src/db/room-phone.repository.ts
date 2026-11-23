@@ -57,13 +57,14 @@ export class RoomPhoneRepository {
     name: string,
     groupName: string,
     now: number,
-  ): Promise<void> {
-    await this.db
+  ): Promise<boolean> {
+    const result = await this.db
       .prepare(
         `UPDATE room_phone_links SET candidate_group = ?, candidate_sender = ?, candidate_name = ?, candidate_group_name = ?
       WHERE code_hash = ? AND expires_at > ? AND group_id IS NULL AND candidate_group IS NULL`,
       )
       .run(group, sender, name.slice(0, 200), groupName.slice(0, 200), hash(code), now);
+    return Number(result.changes) === 1;
   }
 
   async confirm(roomId: string, group: string, sender: string, account: string, now: number): Promise<boolean> {

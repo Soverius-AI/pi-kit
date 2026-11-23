@@ -24,6 +24,8 @@ The sandbox grants canonical read-only reference roots, protects app metadata an
 3. Choose **Send connection test**. Reply with its exact command from the authorized owner account. The UI records a verified round trip separately from socket connection state.
 4. Optionally save the HTTPS address from private access settings. Phone messages can then open their room through a stable link.
 
+The panel expires stale link codes and shows aggregate receive timestamps for all groups on the linked account, without storing message content in diagnostic logs. Group-name lookup is bounded so missing metadata cannot block a link request. History synchronization is disabled because Rooms admits live input only.
+
 Each confirmed group belongs to one room. Other senders, direct messages and a newly linked account cannot inherit that room's authority. Manual messages from the linked account can authorize and use its own room. Persisted outgoing provider IDs suppress pi-kit's own echoes, including after retries and restarts; same-account input bypasses the Chat SDK's self-message exclusion. Everyone in the group can read delivered content.
 
 Text, supported images, voice notes and documents enter a durable inbox. Attachments are bounded and stored under the room's inbox. Audio uses the existing local speech service; if it is unavailable, the audio remains saved and the lead is told explicitly. Plain text/JSON documents are included in context; other document formats remain downloadable files. Quoted replies retain their room/work reference.
@@ -46,4 +48,4 @@ SDK memory state is transient transport bookkeeping. Room identity, memory, pend
 
 Backend room/assistant/phone/protection tests, Angular sidebar/data/component tests, production builds, generated API checks and actual macOS sandbox tests pass. Browser checks exercise standalone room creation, independent memory editing/reload, and responsive panels.
 
-A live WhatsApp account was not connected during development. The user still needs to link the assistant account and perform the built-in connection test on their phone. Voice transcription likewise requires a configured local speech model. Signal remains an alternative transport from the research, not part of the selected WhatsApp implementation.
+Live QR pairing has established a connected account during acceptance testing. Own-account group ingestion and the phone round trip are still being verified; socket connection alone does not prove delivery. The user must confirm the group and complete the built-in connection test. Voice transcription likewise requires a configured local speech model. Signal remains an alternative transport from the research, not part of the selected WhatsApp implementation.

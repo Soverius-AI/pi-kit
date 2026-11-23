@@ -21,6 +21,7 @@ describe('room phone setup', () => {
   const forOwner = vi.fn();
   const config = vi.fn();
   const test = vi.fn();
+  const begin = vi.fn();
   const value: RoomPhoneStatus = {
     connection: 'connected',
     qr: null,
@@ -48,6 +49,7 @@ describe('room phone setup', () => {
     confirm.mockResolvedValue(value);
     config.mockResolvedValue({ ...value, appUrl: 'https://phone.example.test/' });
     test.mockResolvedValue(value);
+    begin.mockImplementation(async () => ({ code: 'link-code', expiresAt: Date.now() + 600_000 }));
     TestBed.configureTestingModule({
       providers: [
         RoomPhoneStore,
@@ -55,7 +57,7 @@ describe('room phone setup', () => {
         ...provideMockApi([
           [roomPhoneStatus, status, () => []],
           [roomPhoneConfirm, confirm, (options) => [options.path, options.body]],
-          [roomPhoneBegin, async () => ({ code: 'link-code', expiresAt: 100 }), () => []],
+          [roomPhoneBegin, begin, () => []],
           [roomPhoneConfig, config, (options) => [options.path, options.body]],
           [roomPhoneTest, test, (options) => [options.path]],
         ]),
@@ -69,6 +71,26 @@ describe('room phone setup', () => {
         },
       ],
     });
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('removes an expired command and tells the owner to request a new code', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const interval = vi.spyOn(globalThis, 'setInterval');
+    begin.mockResolvedValueOnce({ code: 'expires', expiresAt: 2000 });
+    const store = TestBed.inject(RoomPhoneStore);
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()).toBeDefined());
+    await store.act('begin');
+    expect(store.command()).toBe('/room-link expires');
+    now.mockReturnValue(2000);
+    const poll = interval.mock.calls.find((call) => call[1] === 2500)?.[0];
+    if (typeof poll !== 'function') throw new Error('Missing phone status poll.');
+    poll();
+    expect(store.command()).toBeUndefined();
+    expect(store.commandExpired()).toBe(true);
   });
 
   it('fetches setup only when opened, from the room host, and requires explicit confirmation', async () => {

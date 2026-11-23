@@ -14,6 +14,15 @@ export const RoomPhoneStatusSchema = z
       .strict()
       .nullable(),
     expiresAt: z.number().nullable(),
+    input: z
+      .object({
+        lastGroupAt: z.number().nullable(),
+        lastOwnGroupAt: z.number().nullable(),
+        lastAcceptedAt: z.number().nullable(),
+        ignoredHistory: z.number().int().nonnegative(),
+      })
+      .strict()
+      .optional(),
     appUrl: z.string().nullable().optional(),
     verifiedAt: z.number().nullable().optional(),
     pendingDeliveries: z.number().optional(),

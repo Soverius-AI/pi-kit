@@ -53,7 +53,8 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     phase: 'connected',
     account: 'assistant@s.whatsapp.net',
     qr: null,
-    error: null,
+    error: null as string | null,
+    input: { lastGroupAt: null, lastOwnGroupAt: null, lastAcceptedAt: null, ignoredHistory: 0 },
     receive: async (_message: PhoneMessage) => undefined,
     connect: vi.fn(),
     disconnect: vi.fn(),
@@ -101,6 +102,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
       if (fresh) states.set(id, 'working');
       return event;
     });
+    transport.error = null;
     transport.phase = 'connected';
     transport.account = 'assistant@s.whatsapp.net';
     transport.send.mockImplementation(async (_group: string, _text: string, id?: string) => id ?? 'outgoing-id');
@@ -284,6 +286,7 @@ describe('WhatsApp rooms with persistent SQLite routing', () => {
     await db.db.prepare('UPDATE room_phone_links SET expires_at = 1').run();
     await transport.receive(message(`/room-link ${second.code}`));
     expect((await phone.status('a')).candidate).toBeNull();
+    expect((await phone.status('a')).error).toContain('Generate a fresh code');
   });
 
   it('deduplicates input, queues while busy, and isolates rooms and sender identities', async () => {

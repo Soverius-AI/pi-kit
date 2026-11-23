@@ -26,6 +26,12 @@ export class RoomWhatsAppTransport {
   phase: RoomPhoneStatus['connection'] = 'disconnected';
   qr: string | null = null;
   error: string | null = null;
+  readonly input = {
+    lastGroupAt: null as number | null,
+    lastOwnGroupAt: null as number | null,
+    lastAcceptedAt: null as number | null,
+    ignoredHistory: 0,
+  };
   receive: (message: PhoneMessage) => Promise<void> = async () => undefined;
   receipt: (id: string, status: number, group: string) => Promise<void> = async () => undefined;
   private revive: ((key: string, value: unknown) => unknown) | undefined;
@@ -81,8 +87,20 @@ export class RoomWhatsAppTransport {
           },
         },
         userName: 'pi-kit',
+        onMessageBatch: (batch) => {
+          if (generation !== this.generation) return;
+          const now = Date.now();
+          if (batch.groups) this.input.lastGroupAt = now;
+          if (batch.ownGroups) this.input.lastOwnGroupAt = now;
+          if (batch.type !== 'notify') this.input.ignoredHistory += batch.groups;
+        },
         onOwnMessage: async (message) => {
-          if (generation === this.generation) await ownMessage(message);
+          if (generation !== this.generation) return;
+          try {
+            await ownMessage(message);
+          } catch {
+            this.error = 'WhatsApp could not process a group message. Try again or reconnect.';
+          }
         },
         onConnectionUpdate: (update) => {
           if (generation !== this.generation) return;
@@ -106,6 +124,8 @@ export class RoomWhatsAppTransport {
         },
         // Suppress protocol logs, which may contain account details or message content.
         socketOptions: {
+          syncFullHistory: false,
+          shouldSyncHistoryMessage: () => false,
           logger: Object.assign(baileys.DEFAULT_CONNECTION_CONFIG.logger.child({}), { level: 'silent' }),
         },
       });
@@ -137,10 +157,9 @@ export class RoomWhatsAppTransport {
         const context = Object.values(content ?? {}).find(
           (value) => value && typeof value === 'object' && 'contextInfo' in value,
         ) as { contextInfo?: { stanzaId?: string } } | undefined;
-        const groupName = text.startsWith('/room-link ')
-          ? ((await this.adapter?.fetchThread(message.threadId))?.channelName ?? '')
-          : '';
+        const groupName = text.startsWith('/room-link ') ? await this.groupName(message.threadId) : '';
         if (generation !== this.generation) return;
+        this.input.lastAcceptedAt = Date.now();
         await this.receive({
           id: message.id,
           group: message.threadId,
@@ -185,6 +204,24 @@ export class RoomWhatsAppTransport {
   async media(raw: string): Promise<Uint8Array> {
     if (!this.adapter || !this.revive) throw new Error('Reconnect WhatsApp to download this attachment.');
     return this.deadline(this.adapter.fetchMedia(JSON.parse(raw, this.revive), 16 * 1024 * 1024));
+  }
+
+  private async groupName(thread: string): Promise<string> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        this.adapter
+          ?.fetchThread(thread)
+          .then((value) => value.channelName ?? '')
+          .catch(() => '') ?? Promise.resolve(''),
+        new Promise<string>((resolve) => {
+          timer = setTimeout(() => resolve(''), 2000);
+          timer.unref();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private deadline<T>(operation: Promise<T>): Promise<T> {

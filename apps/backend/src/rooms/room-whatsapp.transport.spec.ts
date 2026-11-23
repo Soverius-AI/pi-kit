@@ -12,10 +12,12 @@ const sdk = vi.hoisted(() => ({
   send: vi.fn(),
   sendText: vi.fn(),
   media: vi.fn(),
+  thread: vi.fn(async () => ({ channelName: 'Personal' })),
   config: undefined as
     | undefined
     | {
         onConnectionUpdate?: (value: { connection: string; loggedOut: boolean }) => void;
+        onMessageBatch?: (batch: { type: string; groups: number; ownGroups: number }) => void;
         onOwnMessage?: (message: Message) => Promise<void>;
         onDelivery?: (value: { id: string; threadId: string; status: number }) => Promise<void>;
       },
@@ -56,7 +58,7 @@ vi.mock('chat-adapter-baileys', () => ({
       postMessage: sdk.send,
       sendText: sdk.sendText,
       fetchMedia: sdk.media,
-      fetchThread: async () => ({ channelName: 'Personal' }),
+      fetchThread: sdk.thread,
     };
   },
 }));
@@ -142,6 +144,40 @@ describe('WhatsApp transport admission', () => {
       raw: { key: { remoteJid: 'group@g.us', fromMe: false } },
     } as unknown as Message);
     expect(transport.receive).toHaveBeenCalledTimes(1);
+    await transport.disconnect();
+  });
+  it('reports aggregate input diagnostics, admits linking despite stalled metadata and surfaces callback errors', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'pi-wa-diagnostics-'));
+    folders.push(folder);
+    const transport = new RoomWhatsAppTransport({ dataDir: folder });
+    transport.receive = vi.fn();
+    await transport.connect();
+    sdk.config?.onMessageBatch?.({ type: 'append', groups: 2, ownGroups: 1 });
+    expect(transport.input).toMatchObject({
+      lastGroupAt: expect.any(Number),
+      lastOwnGroupAt: expect.any(Number),
+      ignoredHistory: 2,
+      lastAcceptedAt: null,
+    });
+    sdk.thread.mockImplementationOnce(() => new Promise(() => undefined));
+    const own = {
+      id: 'manual-link',
+      threadId: 'baileys:group@g.us',
+      text: '/room-link abc',
+      author: { userId: 'device@lid', userName: 'Me', fullName: 'Me', isMe: true },
+      raw: { key: { remoteJid: 'group@g.us', fromMe: true } },
+    } as unknown as Message;
+    await sdk.config?.onOwnMessage?.(own);
+    expect(transport.receive).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ groupName: '', text: '/room-link abc' }),
+    );
+    expect(transport.input.lastAcceptedAt).toEqual(expect.any(Number));
+    expect(transport.input.ignoredHistory).toBe(2);
+    transport.receive = vi.fn(async () => {
+      throw new Error('private content must not leak');
+    });
+    await sdk.config?.onOwnMessage?.({ ...own, text: 'hello' } as Message);
+    expect(transport.error).toBe('WhatsApp could not process a group message. Try again or reconnect.');
     await transport.disconnect();
   });
   it('preserves attachment-only inputs and quote identity without downloading before admission', async () => {

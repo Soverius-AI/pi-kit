@@ -21,9 +21,11 @@ export class RoomPhoneStore {
   private readonly api = inject(EntryApiClient);
   private version = 0;
   private destroyed = false;
+  private commandExpiresAt: number | undefined;
   readonly visible = signal(false);
   readonly status = signal<RoomPhoneStatus | undefined>(undefined);
   readonly command = signal<string | undefined>(undefined);
+  readonly commandExpired = signal(false);
   readonly busy = signal(false);
   readonly error = signal<string | undefined>(undefined);
 
@@ -38,10 +40,13 @@ export class RoomPhoneStore {
       this.version++;
       this.status.set(undefined);
       this.command.set(undefined);
+      this.commandExpiresAt = undefined;
+      this.commandExpired.set(false);
       this.error.set(undefined);
       if (!room || !visible) return;
       void this.refresh();
       const timer = setInterval(() => {
+        this.expireCommand();
         if (!this.busy()) void this.refresh();
       }, 2500);
       cleanup(() => clearInterval(timer));
@@ -63,7 +68,12 @@ export class RoomPhoneStore {
         if (this.current(version)) this.status.set(status);
       } else if (action === 'begin') {
         const link = await unwrap(roomPhoneBegin(options));
-        if (this.current(version)) this.command.set(`/room-link ${link.code}`);
+        if (this.current(version)) {
+          this.command.set(`/room-link ${link.code}`);
+          this.commandExpiresAt = link.expiresAt;
+          this.commandExpired.set(false);
+          this.expireCommand();
+        }
       } else {
         const candidate = this.status()?.candidate;
         if (action === 'confirm' && !candidate) return;
@@ -84,6 +94,8 @@ export class RoomPhoneStore {
         if (this.current(version)) {
           this.status.set(status);
           this.command.set(undefined);
+          this.commandExpiresAt = undefined;
+          this.commandExpired.set(false);
         }
       }
     } catch (error) {
@@ -127,6 +139,13 @@ export class RoomPhoneStore {
 
   private current(version: number): boolean {
     return !this.destroyed && version === this.version;
+  }
+  private expireCommand(): void {
+    if (this.commandExpiresAt !== undefined && Date.now() >= this.commandExpiresAt) {
+      this.command.set(undefined);
+      this.commandExpiresAt = undefined;
+      this.commandExpired.set(true);
+    }
   }
   private options() {
     const room = this.room.room();

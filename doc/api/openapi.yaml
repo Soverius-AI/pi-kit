@@ -20911,6 +20911,31 @@ components:
           type:
             - number
             - 'null'
+        input:
+          type: object
+          properties:
+            lastGroupAt:
+              type:
+                - number
+                - 'null'
+            lastOwnGroupAt:
+              type:
+                - number
+                - 'null'
+            lastAcceptedAt:
+              type:
+                - number
+                - 'null'
+            ignoredHistory:
+              type: integer
+              minimum: 0
+              maximum: 9007199254740991
+          required:
+            - lastGroupAt
+            - lastOwnGroupAt
+            - lastAcceptedAt
+            - ignoredHistory
+          additionalProperties: false
         appUrl:
           type:
             - string

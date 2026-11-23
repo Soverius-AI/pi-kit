@@ -115,6 +115,7 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
           ? null
           : (row?.verified_at ?? null),
       ...(await this.store.health(roomId)),
+      input: { ...this.transport.input },
     };
   }
 
@@ -219,7 +220,7 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
       if (await this.store.isOutgoing(message.group, account, message.id)) return;
       const link = /^\/room-link ([a-f0-9]{24})$/.exec(message.text);
       if (link) {
-        await this.store.candidate(
+        const accepted = await this.store.candidate(
           link[1],
           message.group,
           message.sender,
@@ -227,6 +228,9 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
           message.groupName,
           Date.now(),
         );
+        this.transport.error = accepted
+          ? null
+          : 'Room linking code was not accepted. Generate a fresh code in the room and try again.';
         return;
       }
       const binding = await this.store.authorized(message.group, message.sender, account);

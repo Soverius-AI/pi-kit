@@ -2621,6 +2621,12 @@ export type RoomPhoneStatus = {
         senderName: string;
     } | null;
     expiresAt: number | null;
+    input?: {
+        lastGroupAt: number | null;
+        lastOwnGroupAt: number | null;
+        lastAcceptedAt: number | null;
+        ignoredHistory: number;
+    };
     appUrl?: string | null;
     verifiedAt?: number | null;
     pendingDeliveries?: number;

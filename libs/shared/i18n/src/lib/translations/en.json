@@ -4809,7 +4809,12 @@
       "appUrlHint": "Use the HTTPS address from Private access settings. Room links will open this address.",
       "saveUrl": "Save room links",
       "pendingDelivery": "Messages waiting for delivery: {{count}}",
-      "delivered": "Last delivered: {{time}}"
+      "delivered": "Last delivered: {{time}}",
+      "codeExpired": "This link code expired. Get a new group link code before sending it again.",
+      "ownInputSeen": "Last message received from your linked account in a group: {{time}}.",
+      "noOwnInput": "No group message received from your linked account since connecting.",
+      "inputAccepted": "Last group input passed to room routing: {{time}}.",
+      "inputScope": "Receive status covers all groups on this linked WhatsApp account."
     },
     "task": {
       "label": "Task",

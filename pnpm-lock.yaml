@@ -19,7 +19,7 @@ patchedDependencies:
   '@ag-ui/client@1.0.4': a4dd90fe597c9cf24e496bc57840ded54b7c51136e304038476dc82141b90019
   '@copilotkit/angular@0.6.0': 226f72acf646d5c0e341b2f4998fd9b43f4a781c0ee4922df3b40e2c00cb2fbe
   '@copilotkit/core@1.88.0': 0671957073ce81f313b5f6474b904d1d74b3efbd4d649fc83dc856cd109d6de4
-  chat-adapter-baileys@2.1.0: f3fda663889d9058a9dc0000c479451042a824e16a7b92512aa12aa619962a0a
+  chat-adapter-baileys@2.1.0: 5b96675a6805cc40d4e49d4e24c9f968c7e66702d4efea5c09d00320bcd1f571
   zod-to-json-schema@3.25.2: cd2ce6230b359650273558f02a8d8421fa374506bca463b3c3056a5010264a25
 
 importers:
@@ -145,7 +145,7 @@ importers:
         version: 4.24.0(supports-color@10.2.2)
       chat-adapter-baileys:
         specifier: 2.1.0
-        version: 2.1.0(patch_hash=f3fda663889d9058a9dc0000c479451042a824e16a7b92512aa12aa619962a0a)(ai@6.0.308(zod@4.6.7))(chat@4.24.0(supports-color@10.2.2))(sharp@0.35.5(@types/node@24.19.2))(supports-color@10.2.2)(zod@4.6.7)
+        version: 2.1.0(patch_hash=5b96675a6805cc40d4e49d4e24c9f968c7e66702d4efea5c09d00320bcd1f571)(ai@6.0.308(zod@4.6.7))(chat@4.24.0(supports-color@10.2.2))(sharp@0.35.5(@types/node@24.19.2))(supports-color@10.2.2)(zod@4.6.7)
       daisyui:
         specifier: 5.7.50
         version: 5.7.50
@@ -18778,7 +18778,7 @@ snapshots:
 
   chardet@2.2.0: {}
 
-  chat-adapter-baileys@2.1.0(patch_hash=f3fda663889d9058a9dc0000c479451042a824e16a7b92512aa12aa619962a0a)(ai@6.0.308(zod@4.6.7))(chat@4.24.0(supports-color@10.2.2))(sharp@0.35.5(@types/node@24.19.2))(supports-color@10.2.2)(zod@4.6.7):
+  chat-adapter-baileys@2.1.0(patch_hash=5b96675a6805cc40d4e49d4e24c9f968c7e66702d4efea5c09d00320bcd1f571)(ai@6.0.308(zod@4.6.7))(chat@4.24.0(supports-color@10.2.2))(sharp@0.35.5(@types/node@24.19.2))(supports-color@10.2.2)(zod@4.6.7):
     dependencies:
       '@chat-adapter/shared': 4.45.0(ai@6.0.308(zod@4.6.7))(supports-color@10.2.2)(zod@4.6.7)
       baileys: 7.0.0-rc14(sharp@0.35.5(@types/node@24.19.2))(supports-color@10.2.2)
