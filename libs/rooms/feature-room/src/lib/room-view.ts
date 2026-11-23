@@ -1,3 +1,4 @@
+import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import {
   Component,
@@ -30,6 +31,7 @@ import { RoomSide } from './room-side';
 @Component({
   selector: 'pk-room-view',
   imports: [
+    CdkTrapFocus,
     NgComponentOutlet,
     NgTemplateOutlet,
     PkAvatar,
@@ -46,10 +48,14 @@ import { RoomSide } from './room-side';
     RoomSide,
     TranslocoPipe,
   ],
-  host: { class: 'pk-room-view row-start-3 row-span-2 min-h-0', 'data-testid': 'room-view' },
+  host: {
+    class: 'pk-room-view row-start-3 row-span-2 min-h-0',
+    'data-testid': 'room-view',
+    '(window:resize)': 'resizeSide()',
+  },
   template: `
     @if (store.room(); as room) {
-      <div class="pk-room-main">
+      <div class="pk-room-main" [attr.inert]="narrowSide() && side() ? '' : null">
         <header class="pk-room-bar" data-testid="room-bar">
           <span class="pk-room-tag"><pk-icon name="room" size="14" />{{ 'rooms.view.tag' | transloco }}</span>
           @if (renaming()) {
@@ -131,6 +137,8 @@ import { RoomSide } from './room-side';
             type="button"
             class="btn btn-ghost btn-sm btn-square"
             data-testid="room-side-toggle"
+            aria-controls="room-side-panel"
+            [attr.aria-expanded]="side()"
             [attr.aria-pressed]="side()"
             [pkTip]="'rooms.view.sideToggle' | transloco"
             [attr.aria-label]="'rooms.view.sideToggle' | transloco"
@@ -711,15 +719,38 @@ import { RoomSide } from './room-side';
         </div>
       </div>
       @if (side()) {
+        <button
+          type="button"
+          class="pk-room-side-backdrop"
+          data-testid="room-side-backdrop"
+          tabindex="-1"
+          [attr.aria-label]="'rooms.side.close' | transloco"
+          (click)="closeSide()"
+        ></button>
         <pk-room-side
+          id="room-side-panel"
+          [attr.role]="narrowSide() ? 'dialog' : 'complementary'"
+          [attr.aria-modal]="narrowSide() ? 'true' : null"
+          [attr.aria-label]="'rooms.view.sideToggle' | transloco"
+          [cdkTrapFocus]="narrowSide()"
+          [cdkTrapFocusAutoCapture]="narrowSide()"
+          (keydown.escape)="closeSide(); $event.stopPropagation()"
+          (closed)="closeSide()"
           (openPlaybook)="openPanel('overview')"
           (openRun)="openPanel('runs', $event)"
           (focusTask)="showTask($event)"
         />
       }
       @if (panel()) {
-        <dialog class="modal modal-open" data-testid="room-playbook-dialog">
-          <div class="modal-box pk-room-playbook-box">
+        <dialog
+          class="modal modal-open pk-room-playbook-dialog"
+          data-testid="room-playbook-dialog"
+          tabindex="-1"
+          aria-modal="true"
+          [attr.aria-label]="'rooms.view.playbookPick' | transloco"
+          (keydown.escape)="panel.set(false); $event.stopPropagation()"
+        >
+          <div class="modal-box pk-room-playbook-box" cdkTrapFocus [cdkTrapFocusAutoCapture]="true">
             @if (store.playbook()) {
               <pk-room-playbook
                 [(tab)]="panelTab"
@@ -847,6 +878,7 @@ export class RoomView {
   protected readonly panelTab = signal('overview');
   protected readonly panelRun = signal<string | undefined>(undefined);
   protected openPanel(tab: string, run?: string): void {
+    if (this.narrowSide()) this.closeSide();
     this.panelTab.set(tab);
     this.panelRun.set(run);
     this.panel.set(true);
@@ -867,7 +899,10 @@ export class RoomView {
   }
   protected readonly modes = ['supervised', 'assisted'] as const;
   private static readonly SIDE_KEY = 'pi-kit.roomSide';
-  protected readonly side = signal(RoomView.storedSide());
+  protected readonly narrowSide = signal(window.matchMedia('(max-width: 900px)').matches);
+  private readonly desktopSide = signal(RoomView.storedSide());
+  private readonly mobileSide = signal(false);
+  protected readonly side = computed(() => (this.narrowSide() ? this.mobileSide() : this.desktopSide()));
   protected readonly renaming = signal(false);
   protected readonly archiving = signal(false);
   protected readonly archiveBusy = signal(false);
@@ -886,9 +921,24 @@ export class RoomView {
     }
   }
   protected toggleSide(): void {
-    this.side.update((open) => !open);
+    this.setSide(!this.side());
+  }
+  protected closeSide(): void {
+    this.setSide(false);
+  }
+  protected resizeSide(): void {
+    const narrow = window.matchMedia('(max-width: 900px)').matches;
+    if (narrow !== this.narrowSide()) this.mobileSide.set(false);
+    this.narrowSide.set(narrow);
+  }
+  private setSide(open: boolean): void {
+    if (this.narrowSide()) {
+      this.mobileSide.set(open);
+      return;
+    }
+    this.desktopSide.set(open);
     try {
-      localStorage.setItem(RoomView.SIDE_KEY, this.side() ? 'open' : 'closed');
+      localStorage.setItem(RoomView.SIDE_KEY, open ? 'open' : 'closed');
     } catch {
       return;
     }
@@ -920,6 +970,7 @@ export class RoomView {
     if (archived) this.archiving.set(false);
   }
   protected showTask(taskId: string): void {
+    if (this.narrowSide()) this.closeSide();
     const card = this.host.nativeElement.querySelector<HTMLElement>(`[data-task="${CSS.escape(taskId)}"]`);
     card?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     card?.classList.add('flash');

@@ -4953,7 +4953,8 @@
       "noRoomPlaybooks": "Noch keine eigenen Playbooks",
       "project": "Projekt",
       "notebook": "Notizbuch",
-      "noRuns": "Noch keine Läufe."
+      "noRuns": "Noch keine Läufe.",
+      "close": "Raumpanel schließen"
     },
     "runs": {
       "title": "Läufe",

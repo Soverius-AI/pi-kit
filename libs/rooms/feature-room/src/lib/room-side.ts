@@ -13,6 +13,18 @@ type TaskGroup = { key: 'needsYou' | 'running' | 'done'; tasks: RoomTask[] };
   styleUrl: './room-side.css',
   host: { class: 'pk-room-side', 'data-testid': 'room-side' },
   template: `
+    <header class="panel-head">
+      <h2>{{ 'rooms.view.sideToggle' | transloco }}</h2>
+      <button
+        type="button"
+        class="btn btn-ghost btn-sm btn-square"
+        data-testid="room-side-close"
+        [attr.aria-label]="'rooms.side.close' | transloco"
+        (click)="closed.emit()"
+      >
+        <pk-icon name="close" size="16" />
+      </button>
+    </header>
     <details class="section" open data-testid="room-playbook">
       <summary><pk-icon name="skill" size="14" />{{ 'rooms.view.playbookPick' | transloco }}</summary>
       <div class="body">
@@ -253,6 +265,7 @@ type TaskGroup = { key: 'needsYou' | 'running' | 'done'; tasks: RoomTask[] };
   `,
 })
 export class RoomSide {
+  readonly closed = output<void>();
   readonly openPlaybook = output<void>();
   readonly focusTask = output<string>();
   readonly openRun = output<string | undefined>();

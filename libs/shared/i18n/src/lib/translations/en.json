@@ -4953,7 +4953,8 @@
       "noRoomPlaybooks": "No playbooks of its own yet",
       "project": "Project",
       "notebook": "Notebook",
-      "noRuns": "No runs yet."
+      "noRuns": "No runs yet.",
+      "close": "Close room panel"
     },
     "runs": {
       "title": "Runs",

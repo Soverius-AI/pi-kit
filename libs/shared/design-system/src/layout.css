@@ -1558,7 +1558,9 @@ html[data-sidebar-drag] {
     --pk-gutter: 16px;
   }
   .pk-threads {
-    width: min(320px, 88vw);
+    width: 100vw;
+    padding-right: var(--pk-safe-right);
+    border-right: 0;
     bottom: 0;
   }
   .pk-panel {
@@ -1620,8 +1622,15 @@ html[data-sidebar-drag] {
 }
 
 .pk-room-view {
+  position: relative;
   display: flex;
   min-height: 0;
+}
+.pk-room-side-backdrop {
+  display: none;
+}
+.pk-room-view > .pk-room-main {
+  container: room-main / inline-size;
 }
 .pk-room-main {
   display: flex;
@@ -1703,6 +1712,14 @@ html[data-sidebar-drag] {
   white-space: normal;
 }
 @media (max-width: 900px) {
+  .pk-room-side-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    border: 0;
+    background: rgb(0 0 0 / 20%);
+  }
   .pk-room-view > pk-room-side {
     position: absolute;
     inset: 0 0 0 auto;
@@ -1712,6 +1729,53 @@ html[data-sidebar-drag] {
   }
   .pk-room-bar .pk-room-paused {
     display: none;
+  }
+}
+@media (max-width: 767px) {
+  .pk-room-view > pk-room-side {
+    width: 100%;
+    max-width: none;
+    border-left: 0;
+  }
+  .pk-room-playbook-dialog {
+    padding: var(--pk-safe-top) var(--pk-safe-right) var(--pk-safe-bottom) var(--pk-safe-left);
+  }
+  .pk-room-playbook-box {
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - var(--pk-safe-top) - var(--pk-safe-bottom));
+    border-radius: 0;
+  }
+}
+@container room-main (max-width: 600px) {
+  .pk-room-bar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+  .pk-room-bar .pk-room-autonomy {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: space-between;
+  }
+  .pk-room-bar > details {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .pk-room-bar > button {
+    grid-column: 4;
+    grid-row: 1;
+  }
+  .pk-room-bar > button,
+  .pk-room-bar > details > summary {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .pk-room-well > .row:first-child {
+    flex-wrap: wrap;
+  }
+  .pk-room-lock {
+    white-space: normal;
+    text-align: left;
   }
 }
 .pk-room-scroll {

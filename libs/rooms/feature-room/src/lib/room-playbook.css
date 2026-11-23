@@ -393,3 +393,21 @@ h4 {
   font-size: 12px;
   cursor: pointer;
 }
+@media (max-width: 600px) {
+  :host {
+    padding: 14px;
+  }
+  .top {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+  .actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+  .actions > button:last-child {
+    margin-left: auto;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

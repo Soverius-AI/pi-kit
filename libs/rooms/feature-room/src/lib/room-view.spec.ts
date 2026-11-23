@@ -919,4 +919,53 @@ describe('RoomView', () => {
     store.tasks.set([]);
     store.playbookChoices.set(undefined);
   });
+
+  it('keeps the mobile panel closed initially and dismisses it without changing the desktop preference', async () => {
+    let narrow = true;
+    const media = window.matchMedia('(max-width: 900px)');
+    const matchMedia = vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      ...media,
+      media: query,
+      matches: query === '(max-width: 900px)' && narrow,
+    }));
+    const saved = localStorage.getItem('pi-kit.roomSide');
+    localStorage.setItem('pi-kit.roomSide', 'open');
+    try {
+      const fixture = TestBed.createComponent(RoomView);
+      await fixture.whenStable();
+      const el = fixture.nativeElement as HTMLElement;
+      const toggle = () => el.querySelector<HTMLButtonElement>('[data-testid=room-side-toggle]')!;
+      const panel = () => el.querySelector<HTMLElement>('[data-testid=room-side]');
+      expect(panel()).toBeNull();
+
+      for (const dismiss of ['close', 'backdrop', 'escape']) {
+        toggle().click();
+        await fixture.whenStable();
+        expect(panel()?.getAttribute('role')).toBe('dialog');
+        expect(panel()?.getAttribute('aria-modal')).toBe('true');
+        expect(el.querySelector('.pk-room-main')?.hasAttribute('inert')).toBe(true);
+        if (dismiss === 'escape')
+          panel()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        else el.querySelector<HTMLButtonElement>(`[data-testid=room-side-${dismiss}]`)?.click();
+        await fixture.whenStable();
+        expect(panel()).toBeNull();
+        expect(el.querySelector('.pk-room-main')?.hasAttribute('inert')).toBe(false);
+        expect(toggle().getAttribute('aria-expanded')).toBe('false');
+        expect(localStorage.getItem('pi-kit.roomSide')).toBe('open');
+      }
+
+      narrow = false;
+      window.dispatchEvent(new Event('resize'));
+      await fixture.whenStable();
+      expect(panel()?.getAttribute('role')).toBe('complementary');
+      narrow = true;
+      window.dispatchEvent(new Event('resize'));
+      await fixture.whenStable();
+      expect(panel()).toBeNull();
+    } finally {
+      matchMedia.mockRestore();
+      if (saved === null) localStorage.removeItem('pi-kit.roomSide');
+      else localStorage.setItem('pi-kit.roomSide', saved);
+    }
+  });
 });
