@@ -637,18 +637,25 @@ import { RoomSide } from './room-side';
                   type="button"
                   class="pk-room-lock"
                   data-testid="room-lead-lock"
-                  [pkTip]="
-                    ('rooms.view.readOnlyTip' | transloco) +
-                    ' ' +
-                    ((sandboxed() ? 'rooms.view.sandboxOffTip' : 'rooms.view.sandboxOnTip') | transloco)
-                  "
-                  [attr.data-mode]="sandboxed() ? 'sandboxed' : 'bypass'"
-                  [attr.aria-pressed]="sandboxed()"
-                  [disabled]="!store.leadThreadId() || store.lead() === 'working'"
+                  [pkTip]="protectionTip()"
+                  [attr.data-mode]="store.protection()?.mode ?? 'unknown'"
+                  [attr.data-protection-state]="store.protection()?.state ?? 'unknown'"
+                  [attr.aria-pressed]="store.protection() ? sandboxed() : null"
+                  [attr.aria-busy]="store.protectionBusy()"
+                  [disabled]="protectionDisabled()"
                   (click)="store.setSandboxed(!sandboxed())"
                 >
-                  <pk-protection-badge [mode]="sandboxed() ? 'sandboxed' : 'bypass'" [active]="sandboxed()" />
-                  {{ (sandboxed() ? 'rooms.view.readOnlySandboxed' : 'rooms.view.readOnlyHost') | transloco }}
+                  @if (store.protection(); as protection) {
+                    <pk-protection-badge
+                      [mode]="protection.mode"
+                      [active]="sandboxActive()"
+                      [attention]="protectionAttention()"
+                      [busy]="store.protectionBusy()"
+                    />
+                  } @else {
+                    <pk-icon name="lock" size="14" />
+                  }
+                  {{ protectionLabel() }}
                 </button>
               </div>
               @if (images().length) {
@@ -1001,11 +1008,49 @@ export class RoomView {
   protected readonly mcpApp = signal<Type<unknown> | null>(null);
   protected readonly sendToLead = (text: string): void => void this.store.post(text, 'lead');
   protected readonly controls = signal<Type<unknown> | null>(null);
-  protected readonly sandboxed = computed(() => {
+  protected readonly sandboxed = computed(() => this.store.protection()?.mode === 'sandboxed');
+  protected readonly sandboxActive = computed(
+    () => this.sandboxed() && ['active', 'experimental'].includes(this.store.protection()?.state ?? ''),
+  );
+  protected readonly protectionAttention = computed(() =>
+    ['unavailable', 'setup-required', 'recovery-required', 'experimental'].includes(
+      this.store.protection()?.state ?? '',
+    ),
+  );
+  protected readonly protectionDisabled = computed(
+    () =>
+      !this.store.leadThreadId() ||
+      !this.store.protection() ||
+      this.store.protectionBusy() ||
+      this.store.lead() === 'working' ||
+      ['starting', 'recovery-required'].includes(this.store.protection()?.state ?? ''),
+  );
+  protected readonly protectionLabel = computed(() => {
     const protection = this.store.protection();
-    return (
-      protection?.mode === 'sandboxed' && protection.state !== 'unavailable' && protection.state !== 'setup-required'
+    if (!protection) return this.translate('rooms.view.readOnly');
+    if (protection.state === 'recovery-required') return this.translate('rooms.view.readOnlyRecovery');
+    if (protection.mode === 'bypass') return this.translate('rooms.view.readOnlyHost');
+    const key =
+      protection.state === 'unavailable'
+        ? 'readOnlyUnavailable'
+        : protection.state === 'setup-required'
+          ? 'readOnlySetup'
+          : protection.state === 'starting'
+            ? 'readOnlyStarting'
+            : protection.state === 'idle'
+              ? 'readOnlySandboxSelected'
+              : 'readOnlySandboxed';
+    return this.translate('rooms.view.' + key);
+  });
+  protected readonly protectionTip = computed(() => {
+    const protection = this.store.protection();
+    const status = this.translate(
+      protection ? 'chat.threadProtection.status.' + protection.state : 'chat.threadProtection.unknown',
     );
+    const action = this.protectionDisabled()
+      ? ''
+      : this.translate(this.sandboxed() ? 'rooms.view.sandboxOffTip' : 'rooms.view.sandboxOnTip');
+    return [this.translate('rooms.view.readOnlyTip'), status, protection?.reason, action].filter(Boolean).join(' ');
   });
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
 

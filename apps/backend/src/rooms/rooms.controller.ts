@@ -20,6 +20,7 @@ import {
   ApproveRoomTaskSchema,
   CreateRoomSchema,
   RoomWorkerCandidateListSchema,
+  ThreadProtectionSchema,
   PostRoomMessageSchema,
   RoomDetailSchema,
   RoomEventSchema,
@@ -65,6 +66,7 @@ import type {
   ApproveRoomTask,
   CreateRoom,
   RoomWorkerCandidate,
+  ThreadProtection,
   PostRoomMessage,
   Room,
   RoomDetail,
@@ -91,6 +93,7 @@ import { Fails, Remote, Responds, Streams } from '../contract';
 import { RoomBus } from './room-bus';
 import { RoomRuns } from './room-runs';
 import { RoomLive } from './room-live';
+import { RoomWorkspace } from './room-workspace.service';
 import { RoomPlaybookService } from './room-playbook.service';
 import { RoomPlaybookEditor } from './room-playbook-editor.service';
 import { RoomDirectoryService } from './room-directory.service';
@@ -120,6 +123,7 @@ export class RoomsController {
     private readonly editor: RoomPlaybookEditor,
     private readonly runs: RoomRuns,
     private readonly live: RoomLive,
+    private readonly workspace: RoomWorkspace,
   ) {}
 
   @Remote()
@@ -258,6 +262,20 @@ export class RoomsController {
   @Fails({ 404: `${ROOMS_OFF} Or: ${NO_AGENT}` })
   async removeAgent(@Param('agentId') agentId: string): Promise<void> {
     await this.outside.remove(agentId);
+  }
+
+  @Remote()
+  @Get(':roomId/protection')
+  @ApiParam({ name: 'roomId', description: 'The hosted room id.' })
+  @ApiOperation({
+    summary: 'Read effective room protection',
+    description:
+      'Returns the room’s effective sandbox or host policy and any existing protection errors without creating a lead thread, session, or sandbox.',
+  })
+  @Responds(ThreadProtectionSchema)
+  @Fails({ 404: `${ROOMS_OFF} Or: ${NO_ROOM}` })
+  protection(@Param('roomId') roomId: string): Promise<ThreadProtection> {
+    return this.workspace.protectionOf(roomId);
   }
 
   @Remote()

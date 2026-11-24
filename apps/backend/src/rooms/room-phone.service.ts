@@ -153,6 +153,7 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
   connect(roomId: string): Promise<RoomPhoneStatus> {
     return this.serial(async () => {
       await this.lead.found(roomId);
+      await this.store.restore(roomId);
       this.abortJobs();
       await this.meta.setSetting(this.enabledSetting, true);
       await this.transport.disconnect();
@@ -708,6 +709,7 @@ export class RoomPhoneService implements OnModuleInit, OnApplicationShutdown {
       await this.bounded(this.transport.disconnect(), undefined, 2000);
       await configure(values);
       await this.meta.setSetting(this.enabledSetting, false);
+      await this.store.restore(room);
       return this.status(room);
     });
   }

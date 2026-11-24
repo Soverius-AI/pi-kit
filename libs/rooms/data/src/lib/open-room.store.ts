@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import {
   ApiClient,
   EntryApiClient,
@@ -14,13 +14,13 @@ import {
   roomsPlaybookDetail,
   roomsPlaybooks,
   roomsPost,
+  roomsProtection,
   roomsAnswer,
   roomsAnswerLead,
   roomsStop,
   roomsTryTool,
   roomsUpdate,
   roomsWorkers,
-  threadsGetProtection,
   threadsSetProtection,
   unwrap,
   WORKBENCH,
@@ -59,6 +59,11 @@ export class OpenRoomStore {
   private readonly workbench = inject(WORKBENCH);
   private generation = 0;
   private abort: AbortController | undefined;
+  private protectionVersion = 0;
+  private protectionTimer: ReturnType<typeof setInterval> | undefined;
+  private protectionRead: AbortController | undefined;
+  private protectionMutation: AbortController | undefined;
+  private protectionDiscovery: AbortController | undefined;
 
   readonly room = signal<Room | undefined>(undefined);
   readonly summary = signal('');
@@ -90,6 +95,7 @@ export class OpenRoomStore {
   readonly playbookChoices = signal<PlaybookSummary[] | undefined>(undefined);
   readonly pendingActions = computed(() => this.actions().filter((action) => action.state === 'pending'));
   readonly protection = signal<ThreadProtection | undefined>(undefined);
+  readonly protectionBusy = signal(false);
   /** The lead's thread when the room runs on the backend this window works on, where its pi session lives. */
   readonly localLeadThreadId = computed(() => {
     const room = this.room();
@@ -102,17 +108,35 @@ export class OpenRoomStore {
   readonly sending = signal(false);
   readonly roomId = computed(() => this.room()?.id);
 
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.close());
+  }
+
   open(room: Room): void {
-    if (this.room()?.id === room.id) return;
+    if (this.room()?.id === room.id && this.room()?.hostInstanceId === room.hostInstanceId) return;
     this.close();
     const generation = this.generation;
     this.room.set(room);
     this.loading.set(true);
+    this.protectionTimer = setInterval(() => {
+      if (!this.protectionBusy()) void this.loadProtection(room, generation);
+      if (!this.leadThreadId() && this.lead() === 'working') void this.discoverLead(room, generation);
+    }, 5000);
     void this.load(room, generation);
   }
 
   close(): void {
     this.generation++;
+    this.protectionVersion++;
+    if (this.protectionTimer) clearInterval(this.protectionTimer);
+    this.protectionTimer = undefined;
+    this.protectionRead?.abort();
+    this.protectionRead = undefined;
+    this.protectionMutation?.abort();
+    this.protectionMutation = undefined;
+    this.protectionDiscovery?.abort();
+    this.protectionDiscovery = undefined;
+    this.protectionBusy.set(false);
     this.abort?.abort();
     this.abort = undefined;
     this.room.set(undefined);
@@ -350,19 +374,43 @@ export class OpenRoomStore {
   async setSandboxed(sandboxed: boolean): Promise<void> {
     const room = this.room();
     const leadThreadId = this.leadThreadId();
-    if (!room || !leadThreadId) return;
+    const existing = this.protection();
+    if (
+      !room ||
+      !leadThreadId ||
+      !existing ||
+      this.protectionBusy() ||
+      this.lead() === 'working' ||
+      ['starting', 'recovery-required'].includes(existing.state)
+    )
+      return;
+    const generation = this.generation;
+    const version = ++this.protectionVersion;
+    this.protectionRead?.abort();
+    this.protectionRead = undefined;
+    const abort = new AbortController();
+    this.protectionMutation = abort;
+    this.protectionBusy.set(true);
     this.error.set(undefined);
     try {
       const protection = await unwrap(
         threadsSetProtection({
           client: this.client(room),
           path: { id: leadThreadId },
+          signal: abort.signal,
           body: sandboxed ? { mode: 'sandboxed' } : { mode: 'bypass', confirmBypass: true },
         }),
       );
-      if (this.room()?.id === room.id) this.protection.set(protection);
+      if (this.currentProtection(room, generation, version) && this.leadThreadId() === leadThreadId)
+        this.protection.set(protection);
     } catch (error) {
-      if (this.room()?.id === room.id) this.error.set(error instanceof Error ? error.message : String(error));
+      if (this.currentProtection(room, generation, version) && this.leadThreadId() === leadThreadId)
+        this.error.set(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (this.protectionMutation === abort) {
+        this.protectionMutation = undefined;
+        if (this.currentProtection(room, generation, version)) this.protectionBusy.set(false);
+      }
     }
   }
 
@@ -486,7 +534,7 @@ export class OpenRoomStore {
       this.actions.set(detail.actions);
       this.memory.set(detail.memory);
       this.error.set(undefined);
-      if (detail.leadThreadId) void this.loadProtection(room, detail.leadThreadId, generation);
+      void this.loadProtection(room, generation);
       void this.loadWorkers();
       void this.loadPlaybooks();
       void this.loadRuns(room, generation);
@@ -498,12 +546,54 @@ export class OpenRoomStore {
     if (generation === this.generation) void this.follow(room, generation);
   }
 
-  private async loadProtection(room: Room, leadThreadId: string, generation: number): Promise<void> {
+  private currentProtection(room: Room, generation: number, version: number): boolean {
+    const current = this.room();
+    return (
+      generation === this.generation &&
+      version === this.protectionVersion &&
+      current?.id === room.id &&
+      current.hostInstanceId === room.hostInstanceId
+    );
+  }
+  private async discoverLead(room: Room, generation: number): Promise<void> {
+    if (this.leadThreadId() || this.protectionDiscovery) return;
+    const abort = new AbortController();
+    this.protectionDiscovery = abort;
     try {
-      const protection = await unwrap(threadsGetProtection({ client: this.client(room), path: { id: leadThreadId } }));
-      if (generation === this.generation) this.protection.set(protection);
+      const detail = await unwrap(
+        roomsDetail({ client: this.client(room), path: { roomId: room.id }, signal: abort.signal }),
+      );
+      if (
+        generation === this.generation &&
+        this.room()?.id === room.id &&
+        this.room()?.hostInstanceId === room.hostInstanceId &&
+        !this.leadThreadId()
+      )
+        this.leadThreadId.set(detail.leadThreadId);
     } catch {
-      if (generation === this.generation) this.protection.set(undefined);
+      // The normal room stream and protection poll continue to show the actual state.
+    } finally {
+      if (this.protectionDiscovery === abort) this.protectionDiscovery = undefined;
+    }
+  }
+  private async loadProtection(room: Room, generation: number): Promise<void> {
+    if (this.protectionRead || this.protectionBusy()) return;
+    const version = this.protectionVersion;
+    if (!this.currentProtection(room, generation, version)) return;
+    const abort = new AbortController();
+    this.protectionRead = abort;
+    try {
+      const protection = await unwrap(
+        roomsProtection({ client: this.client(room), path: { roomId: room.id }, signal: abort.signal }),
+      );
+      if (this.currentProtection(room, generation, version)) {
+        const current = this.protection();
+        if (!current || protection.generation >= current.generation) this.protection.set(protection);
+      }
+    } catch {
+      if (this.currentProtection(room, generation, version)) this.protection.set(undefined);
+    } finally {
+      if (this.protectionRead === abort) this.protectionRead = undefined;
     }
   }
 
@@ -545,6 +635,8 @@ export class OpenRoomStore {
               if (line.playbook !== undefined) this.setPlaybook(line.playbook);
             } else {
               this.lead.set(line.state);
+              void this.loadProtection(room, generation);
+              if (!this.leadThreadId()) void this.discoverLead(room, generation);
               if (line.questions) this.leadQuestions.set(line.questions);
               else if (line.state !== 'working') this.leadQuestions.set([]);
             }

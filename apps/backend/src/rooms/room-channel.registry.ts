@@ -20,7 +20,10 @@ import type { RoomMessagingTransport } from './room-messaging.transport';
 
 @Injectable()
 export class RoomChannelRegistry implements OnModuleInit, OnApplicationShutdown {
-  private readonly channels = new Map<RoomChannel, { service: RoomPhoneService; transport: RoomMessagingTransport }>();
+  private readonly channels = new Map<
+    RoomChannel,
+    { service: RoomPhoneService; transport: RoomMessagingTransport; store: RoomPhoneRepository }
+  >();
   constructor(
     db: DatabaseService,
     rooms: RoomsRepository,
@@ -46,6 +49,7 @@ export class RoomChannelRegistry implements OnModuleInit, OnApplicationShutdown 
       const store = new RoomPhoneRepository(db, channel, () => transport.createMessageId());
       this.channels.set(channel, {
         transport,
+        store,
         service: new RoomPhoneService(
           store,
           rooms,
@@ -72,7 +76,12 @@ export class RoomChannelRegistry implements OnModuleInit, OnApplicationShutdown 
   }
   async status(channel: RoomChannel, room: string): Promise<RoomChannelStatus> {
     const item = this.entry(channel);
-    return { ...(await item.service.status(room)), channel, ...item.transport.details?.() };
+    return {
+      ...(await item.service.status(room)),
+      channel,
+      ...item.transport.details?.(),
+      removedFromRoom: await item.store.removedFromRoom(room),
+    };
   }
   async onModuleInit(): Promise<void> {
     await Promise.all([...this.channels.values()].map((item) => item.service.onModuleInit()));

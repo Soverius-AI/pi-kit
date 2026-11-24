@@ -158,6 +158,18 @@ afterEach(async () => {
 });
 
 describe('the room lead', () => {
+  it('reads room detail without creating a lead, session, or run', async () => {
+    const before = await rows.list({ includeArchived: true });
+    expect((await rooms.get(roomId))?.leadThreadId).toBeNull();
+    for (let refresh = 0; refresh < 2; refresh++) {
+      expect(await lead.detail(roomId)).toMatchObject({ leadThreadId: null, lead: 'idle', events: [], tasks: [] });
+    }
+    expect((await rooms.get(roomId))?.leadThreadId).toBeNull();
+    expect(await rows.list({ includeArchived: true })).toEqual(before);
+    expect(threads.create).not.toHaveBeenCalled();
+    expect(runHeadless).not.toHaveBeenCalled();
+  });
+
   it('continues an owner-approved worker result ahead of a disabled proactive wake', async () => {
     lead.setAssistant({
       enabled: async () => true,

@@ -34,7 +34,7 @@ export class RoomPanelState<T> {
   constructor(
     private readonly fetch: (options: RoomPanelOptions) => Promise<T>,
     interval: number,
-    hooks: { reset?: () => void; tick?: () => void } = {},
+    private readonly hooks: { reset?: () => void; tick?: () => void; read?: (value: T) => void } = {},
     private readonly scopeKey?: () => string,
   ) {
     inject(DestroyRef).onDestroy(() => {
@@ -72,6 +72,7 @@ export class RoomPanelState<T> {
         const value = await this.fetch(options);
         if (this.current(generation)) {
           this.status.set(value);
+          this.hooks.read?.(value);
           if (!this.mutationFailed) this.error.set(undefined);
         }
       } catch (error) {

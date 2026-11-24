@@ -11,9 +11,10 @@ import {
   roomsAnswerLead,
   roomsPost,
   roomsWorkers,
-  threadsGetProtection,
+  roomsProtection,
+  threadsSetProtection,
 } from '@pi-kit/api';
-import type { Room, RoomDetail, RoomEvent, RoomRun, RoomStreamLine } from '@pi-kit/protocol';
+import type { Room, RoomDetail, RoomEvent, RoomRun, RoomStreamLine, ThreadProtection } from '@pi-kit/protocol';
 import { Subject } from 'rxjs';
 import { OpenRoomStore } from './open-room.store';
 
@@ -59,7 +60,17 @@ describe('OpenRoomStore', () => {
     tasks: [],
   }));
   const post = vi.fn(async (body: { text: string }) => event(2, 'owner', body.text));
-  const protection = vi.fn(async () => ({ mode: 'sandboxed', state: 'active' }));
+  const protectedState: ThreadProtection = {
+    mode: 'sandboxed',
+    state: 'active',
+    generation: 1,
+    platform: 'linux',
+    reason: null,
+    experimentalWindowsAccepted: false,
+  };
+  const bypassState: ThreadProtection = { ...protectedState, mode: 'bypass', state: 'bypass', generation: 2 };
+  const protection = vi.fn<() => Promise<ThreadProtection>>();
+  const setProtection = vi.fn();
   const stream = vi.fn(() => lines.asObservable());
   const update = vi.fn(async (body: { title?: string }): Promise<RoomDetail> => ({
     ...(await detail()),
@@ -73,6 +84,8 @@ describe('OpenRoomStore', () => {
     lines = new Subject<RoomStreamLine>();
     detail.mockClear();
     post.mockClear();
+    protection.mockReset().mockResolvedValue(protectedState);
+    setProtection.mockReset().mockResolvedValue(bypassState);
     stream.mockClear();
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
@@ -85,7 +98,8 @@ describe('OpenRoomStore', () => {
             [roomsArchive, archive, (o) => [o.body]],
             [roomsListRuns, listRuns, () => []],
             [roomsAnswerLead, answerLead, (o) => [o.body]],
-            [threadsGetProtection, protection, () => []],
+            [roomsProtection, protection, () => []],
+            [threadsSetProtection, setProtection, (o) => [o.path, o.body]],
             [
               roomsWorkers,
               async () => [{ environmentId: 'desk', name: 'Desktop', local: false, ready: true, reason: null }],
@@ -256,6 +270,103 @@ describe('OpenRoomStore', () => {
     lines.next({ type: 'lead', state: 'idle' });
     await vi.waitFor(() => expect(store.lead()).toBe('idle'));
     expect(store.leadQuestions()).toEqual([]);
+    store.close();
+  });
+  it('uses read-only effective room protection metadata even before a lead exists, then discovers the real lead from activity', async () => {
+    const initial = await detail();
+    detail.mockResolvedValueOnce({ ...initial, leadThreadId: null });
+    const store = TestBed.inject(OpenRoomStore);
+    store.open(room);
+    await vi.waitFor(() => expect(store.protection()).toEqual(protectedState));
+    expect(store.leadThreadId()).toBeNull();
+    await store.setSandboxed(false);
+    expect(setProtection).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(lines.observed).toBe(true));
+    lines.next({ type: 'lead', state: 'working' });
+    await vi.waitFor(() => expect(store.leadThreadId()).toBe('lead-1'));
+    expect(detail).toHaveBeenCalledTimes(3);
+    store.close();
+  });
+  it('keeps a manual bypass response stable against an older in-flight read and later stale generations', async () => {
+    const intervals = vi.spyOn(globalThis, 'setInterval');
+    try {
+      const store = TestBed.inject(OpenRoomStore);
+      store.open(room);
+      await vi.waitFor(() => expect(store.protection()).toEqual(protectedState));
+      let finish: (value: ThreadProtection) => void = () => undefined;
+      protection.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const poll = intervals.mock.calls.find((call) => call[1] === 5000)?.[0];
+      if (typeof poll !== 'function') throw new Error('Missing protection poll.');
+      poll();
+      await vi.waitFor(() => expect(protection).toHaveBeenCalledTimes(2));
+      await store.setSandboxed(false);
+      expect(setProtection).toHaveBeenCalledExactlyOnceWith({ id: 'lead-1' }, { mode: 'bypass', confirmBypass: true });
+      expect(store.protection()).toEqual(bypassState);
+      finish(protectedState);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(store.protection()).toEqual(bypassState);
+      poll();
+      await vi.waitFor(() => expect(protection).toHaveBeenCalledTimes(3));
+      expect(store.protection()).toEqual(bypassState);
+      store.close();
+    } finally {
+      intervals.mockRestore();
+    }
+  });
+  it('fences protection mutation responses across host switches with the same room id and preserves new busy state', async () => {
+    const store = TestBed.inject(OpenRoomStore);
+    store.open(room);
+    await vi.waitFor(() => expect(store.protection()).toEqual(protectedState));
+    let oldFinish: (value: ThreadProtection) => void = () => undefined;
+    setProtection.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          oldFinish = resolve;
+        }),
+    );
+    const old = store.setSandboxed(false);
+    await vi.waitFor(() => expect(store.protectionBusy()).toBe(true));
+    const remote = { ...room, hostInstanceId: 'remote-host' };
+    const initial = await detail();
+    detail.mockResolvedValueOnce({ ...initial, room: remote, leadThreadId: 'remote-lead' });
+    store.open(remote);
+    await vi.waitFor(() => expect(store.leadThreadId()).toBe('remote-lead'));
+    await vi.waitFor(() => expect(store.protection()).toEqual(protectedState));
+    let nextFinish: (value: ThreadProtection) => void = () => undefined;
+    setProtection.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          nextFinish = resolve;
+        }),
+    );
+    const next = store.setSandboxed(false);
+    oldFinish(bypassState);
+    await old;
+    expect(store.protection()).toEqual(protectedState);
+    expect(store.protectionBusy()).toBe(true);
+    nextFinish(bypassState);
+    await next;
+    expect(store.protection()).toEqual(bypassState);
+    expect(store.protectionBusy()).toBe(false);
+    store.close();
+  });
+  it('does not issue protection mutations while status is unknown, starting or awaiting recovery', async () => {
+    const store = TestBed.inject(OpenRoomStore);
+    store.open(room);
+    await vi.waitFor(() => expect(store.protection()).toEqual(protectedState));
+    store.protection.set(undefined);
+    await store.setSandboxed(false);
+    store.protection.set({ ...protectedState, state: 'recovery-required' });
+    await store.setSandboxed(false);
+    store.protection.set({ ...protectedState, state: 'starting' });
+    await store.setSandboxed(false);
+    expect(setProtection).not.toHaveBeenCalled();
     store.close();
   });
 });

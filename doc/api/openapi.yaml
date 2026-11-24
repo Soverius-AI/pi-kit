@@ -10834,6 +10834,40 @@ paths:
       summary: Remove an outside A2A agent
       tags:
         - rooms
+  /api/rooms/{roomId}/protection:
+    get:
+      description: Returns the room’s effective sandbox or host policy and any existing protection errors without creating a lead thread, session, or sandbox.
+      operationId: Rooms_protection
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadProtection'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: 'Rooms are off on this environment. Or: No room with this id.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Read effective room protection
+      tags:
+        - rooms
+      x-remote: true
   /api/rooms/{roomId}:
     get:
       description: Returns the room, its shared summary, whether its lead is answering, and its conversation so far.
@@ -12273,7 +12307,7 @@ paths:
         - rooms
       x-remote: true
     delete:
-      description: Revokes this room’s conversation binding and clears pending channel messages and deliveries without disconnecting the host account.
+      description: Removes the provider from this room and revokes its conversation binding, linking challenge, and pending channel messages and deliveries. Retains the host connection, credentials, other rooms, and room conversation and memory.
       operationId: RoomChannel_unlink
       parameters:
         - name: roomId
@@ -12305,7 +12339,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Problem'
-      summary: Unlink a room conversation
+      summary: Delete a channel from this room
       tags:
         - rooms
       x-remote: true
@@ -21105,6 +21139,8 @@ components:
             - slack
             - telegram
         configured:
+          type: boolean
+        removedFromRoom:
           type: boolean
         identity:
           type: object

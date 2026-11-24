@@ -24,45 +24,60 @@ import { RoomPhone } from './room-phone';
       </header>
       <div class="channel-list">
         @for (provider of channels.existing(); track provider.channel) {
-          <button
-            type="button"
-            class="channel-row"
-            [attr.data-provider]="provider.channel"
-            [attr.data-testid]="'room-channel-manage-' + provider.channel"
-            (click)="open(provider.channel)"
-          >
-            <span class="channel-brand" aria-hidden="true"
-              ><ng-container
-                [ngTemplateOutlet]="providerLogo"
-                [ngTemplateOutletContext]="{ $implicit: provider.channel }"
-            /></span>
-            <span class="channel-main">
-              <strong>{{ 'rooms.channels.' + provider.channel + '.title' | transloco }}</strong>
-              @if (provider.store.status(); as status) {
-                <span class="channel-meta">{{
-                  status.binding?.groupName || ('rooms.phone.state.' + status.connection | transloco)
+          <div class="channel-entry">
+            <button
+              type="button"
+              class="channel-row"
+              [attr.data-provider]="provider.channel"
+              [attr.data-testid]="'room-channel-manage-' + provider.channel"
+              (click)="open(provider.channel)"
+            >
+              <span class="channel-brand" aria-hidden="true"
+                ><ng-container
+                  [ngTemplateOutlet]="providerLogo"
+                  [ngTemplateOutletContext]="{ $implicit: provider.channel }"
+              /></span>
+              <span class="channel-main">
+                <strong>{{ 'rooms.channels.' + provider.channel + '.title' | transloco }}</strong>
+                @if (provider.store.status(); as status) {
+                  <span class="channel-meta">{{
+                    status.binding?.groupName || ('rooms.phone.state.' + status.connection | transloco)
+                  }}</span>
+                }
+              </span>
+              <pk-icon name="chevron-right" size="14" />
+              <span class="channel-meta row-detail">
+                @if (provider.store.status()?.binding) {
+                  {{
+                    (provider.store.status()?.verifiedAt
+                      ? 'rooms.channels.wizard.manage'
+                      : 'rooms.channels.wizard.needsTest'
+                    ) | transloco
+                  }}
+                } @else {
+                  {{ 'rooms.channels.wizard.continue' | transloco }}
+                }
+              </span>
+              @if (provider.store.error() || provider.store.status()?.error) {
+                <span class="text-error row-detail" role="alert">{{
+                  provider.store.error() ?? provider.store.status()?.error
                 }}</span>
               }
-            </span>
-            <pk-icon name="chevron-right" size="14" />
-            <span class="channel-meta row-detail">
-              @if (provider.store.status()?.binding) {
-                {{
-                  (provider.store.status()?.verifiedAt
-                    ? 'rooms.channels.wizard.manage'
-                    : 'rooms.channels.wizard.needsTest'
-                  ) | transloco
-                }}
-              } @else {
-                {{ 'rooms.channels.wizard.continue' | transloco }}
-              }
-            </span>
-            @if (provider.store.error() || provider.store.status()?.error) {
-              <span class="text-error row-detail" role="alert">{{
-                provider.store.error() ?? provider.store.status()?.error
-              }}</span>
-            }
-          </button>
+            </button>
+            <button
+              type="button"
+              class="channel-delete"
+              [attr.data-testid]="'room-channel-delete-' + provider.channel"
+              [attr.aria-label]="
+                'rooms.channels.wizard.deleteLabel'
+                  | transloco: { provider: ('rooms.channels.' + provider.channel + '.title' | transloco) }
+              "
+              [disabled]="provider.store.busy()"
+              (click)="openDelete(provider.channel)"
+            >
+              <pk-icon name="trash" size="16" />
+            </button>
+          </div>
         } @empty {
           <p class="empty" role="status">
             {{ (channels.loading() ? 'rooms.phone.loading' : 'rooms.channels.wizard.empty') | transloco }}
@@ -73,7 +88,15 @@ import { RoomPhone } from './room-phone';
     @if (dialogOpen()) {
       <pk-room-dialog
         data-testid="room-channel-dialog"
-        [title]="dialogTitle() | transloco"
+        [title]="
+          dialogTitle()
+            | transloco
+              : {
+                  provider: channels.selected()
+                    ? ('rooms.channels.' + channels.selected()!.channel + '.title' | transloco)
+                    : '',
+                }
+        "
         [closeLabel]="'rooms.channels.wizard.done' | transloco"
         [busy]="channels.selected()?.store?.busy() ?? false"
         [error]="pendingAction() ? channels.selected()?.store?.error() : undefined"
@@ -84,14 +107,14 @@ import { RoomPhone } from './room-phone';
             <p class="action-hint" data-testid="room-channel-action-hint">
               {{ 'rooms.channels.wizard.' + (action === 'unlink' ? 'removeHint' : 'disconnectHint') | transloco }}
             </p>
-          } @else {
-            <pk-room-phone
-              [channel]="selected.channel"
-              [externalStore]="selected.store"
-              [embedded]="true"
-              [hideDestructiveActions]="true"
-            />
           }
+          <pk-room-phone
+            [style.display]="pendingAction() ? 'none' : null"
+            [channel]="selected.channel"
+            [externalStore]="selected.store"
+            [embedded]="true"
+            [hideDestructiveActions]="true"
+          />
         } @else {
           <p class="choose-hint">{{ 'rooms.channels.wizard.choose' | transloco }}</p>
           <div class="providers" data-testid="room-channel-picker">
@@ -147,17 +170,15 @@ import { RoomPhone } from './room-phone';
               >
                 <pk-icon name="chevron-left" size="14" />{{ 'rooms.channels.wizard.back' | transloco }}
               </button>
-              @if (selected.store.status()?.binding || selected.store.status()?.candidate || selected.store.command()) {
-                <button
-                  type="button"
-                  class="btn btn-ghost btn-sm"
-                  data-testid="room-channel-remove"
-                  [disabled]="selected.store.busy()"
-                  (click)="pendingAction.set('unlink')"
-                >
-                  {{ 'rooms.channels.wizard.remove' | transloco }}
-                </button>
-              }
+              <button
+                type="button"
+                class="btn btn-ghost btn-sm"
+                data-testid="room-channel-remove"
+                [disabled]="selected.store.busy()"
+                (click)="pendingAction.set('unlink')"
+              >
+                {{ 'rooms.channels.wizard.remove' | transloco }}
+              </button>
               @if (selected.store.status(); as status) {
                 @if (status.connection !== 'disconnected') {
                   <button
@@ -221,6 +242,33 @@ import { RoomPhone } from './room-phone';
     }
     .channel-list {
       padding: 0 8px 6px;
+    }
+    .channel-entry {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 44px;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+    .channel-delete {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      min-height: 44px;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--pk-muted);
+      cursor: pointer;
+    }
+    .channel-delete:hover:not(:disabled) {
+      color: var(--color-error);
+      background: var(--color-base-200);
+    }
+    .channel-delete:disabled {
+      opacity: 0.5;
+      cursor: default;
     }
     .channel-row {
       display: grid;
@@ -374,6 +422,7 @@ import { RoomPhone } from './room-phone';
       display: grid;
       gap: 3px;
     }
+    .channel-delete:focus-visible,
     .channel-row:focus-visible,
     .provider:focus-visible {
       outline: 2px solid var(--color-primary);
@@ -404,17 +453,25 @@ export class RoomChannels {
     const action = this.pendingAction();
     const context = this.context();
     if (!provider || !action || provider.store.busy()) return;
-    await provider.store.act(action);
-    if (this.context() === context && this.channels.selected() === provider && !provider.store.error()) {
+    const success = await provider.store.act(action);
+    if (success && this.context() === context && this.channels.selected() === provider) {
+      if (action === 'unlink') {
+        this.dialogOpen.set(false);
+        this.channels.show('list');
+      }
       this.pendingAction.set(undefined);
     }
   }
   protected readonly dialogTitle = computed(() => {
     const selected = this.channels.selected();
     const action = this.pendingAction();
-    if (action) return `rooms.channels.wizard.${action === 'unlink' ? 'remove' : 'disconnect'}`;
+    if (action) return `rooms.channels.wizard.${action === 'unlink' ? 'deleteLabel' : 'disconnect'}`;
     return selected ? `rooms.channels.${selected.channel}.title` : 'rooms.channels.wizard.add';
   });
+  protected openDelete(channel: RoomChannel): void {
+    this.open(channel);
+    this.pendingAction.set('unlink');
+  }
   protected open(screen: 'choose' | RoomChannel): void {
     if (!this.context()) return;
     this.channels.show(screen);

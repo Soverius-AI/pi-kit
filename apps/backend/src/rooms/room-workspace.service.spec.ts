@@ -20,6 +20,7 @@ import { DatabaseService } from '../db/database.service';
 import { RoomAssistantRepository } from '../db/room-assistant.repository';
 import { RoomsRepository } from '../db/rooms.repository';
 import { ThreadsRepository } from '../db/threads.repository';
+import { ThreadProtectionRepository } from '../db/thread-protection.repository';
 import { RoomPlaybooksRepository } from '../db/room-playbooks.repository';
 import { ROOMS_SANDBOX_SETTING_KEY } from '@pi-kit/protocol';
 import type { BackendConfig } from '../app/config';
@@ -44,6 +45,7 @@ describe('room workspaces and read-only folder attachments', () => {
       resolver = value;
     },
     binding: vi.fn(),
+    status: vi.fn(),
     prepare: vi.fn(),
     release,
     set: vi.fn(),
@@ -53,6 +55,16 @@ describe('room workspaces and read-only folder attachments', () => {
     const { SandboxPolicy } = await import(pathToFileURL(join(SandboxPackage.dir(), 'dist/core.js')).href);
     vi.spyOn(SandboxPackage, 'load').mockResolvedValue({ SandboxPolicy } as never);
     protection.binding.mockResolvedValue({ mode: 'sandboxed', generation: 1 });
+    protection.status.mockImplementation(async (id: string) => {
+      const binding = await protection.binding(id);
+      return {
+        ...binding,
+        state: binding.mode === 'sandboxed' ? 'idle' : 'bypass',
+        experimentalWindowsAccepted: false,
+        platform: process.platform,
+        reason: null,
+      };
+    });
     root = await realpath(await mkdtemp(join(tmpdir(), 'pi-room-workspace-')));
     dataDir = join(root, 'Library', 'data');
     project = join(root, 'project');
@@ -113,6 +125,88 @@ describe('room workspaces and read-only folder attachments', () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  it('reads effective defaults without creating a lead, workspace, links, or sandbox', async () => {
+    await db.db.prepare('UPDATE rooms SET lead_thread_id=NULL').run();
+    const before = await rows.list({ includeArchived: true });
+    expect(await service.protectionOf('a')).toMatchObject({
+      mode: 'sandboxed',
+      state: 'idle',
+      generation: 0,
+      reason: null,
+    });
+    expect(await service.protectionOf('b')).toMatchObject({
+      mode: 'bypass',
+      state: 'bypass',
+      generation: 0,
+      reason: null,
+    });
+    await new MetaRepository(db).setSetting(ROOMS_SANDBOX_SETTING_KEY, true);
+    expect(await service.protectionOf('b')).toMatchObject({ mode: 'sandboxed', state: 'idle', generation: 0 });
+    expect((await rooms.get('a'))?.leadThreadId).toBeNull();
+    expect(await rows.list({ includeArchived: true })).toEqual(before);
+    expect(await store.workspaceVersion('a')).toBe(0);
+    expect(await store.folders('a')).toEqual([]);
+    await expect(realpath(service.path('a'))).rejects.toThrow();
+    expect(protection.status).not.toHaveBeenCalled();
+    expect(protection.prepare).not.toHaveBeenCalled();
+    expect(protection.set).not.toHaveBeenCalled();
+    expect(dispose).not.toHaveBeenCalled();
+    await expect(service.protectionOf('missing')).rejects.toThrow('No room with this id.');
+  });
+
+  it('reports a generation-zero lead’s effective workspace default instead of its raw default bypass', async () => {
+    protection.binding.mockResolvedValue({ mode: 'bypass', generation: 0 });
+    expect(await service.protectionOf('a')).toMatchObject({ mode: 'sandboxed', state: 'idle', generation: 0 });
+    expect(await service.protectionOf('b')).toMatchObject({ mode: 'bypass', state: 'bypass', generation: 0 });
+    expect(protection.prepare).not.toHaveBeenCalled();
+    expect(protection.set).not.toHaveBeenCalled();
+    await expect(realpath(service.path('a'))).rejects.toThrow();
+  });
+
+  it.each(['unavailable', 'setup-required', 'recovery-required'] as const)(
+    'preserves explicit %s status and technical reason without preparing protection',
+    async (state) => {
+      const actual = {
+        mode: 'sandboxed',
+        state,
+        generation: 2,
+        experimentalWindowsAccepted: false,
+        platform: process.platform,
+        reason: 'Original protection reason',
+      };
+      protection.status.mockResolvedValue(actual);
+      expect(await service.protectionOf('a')).toEqual(actual);
+      expect(protection.prepare).not.toHaveBeenCalled();
+      expect(protection.set).not.toHaveBeenCalled();
+    },
+  );
+
+  it('preserves explicit host mode and recovery state when resolving a workspace default', async () => {
+    const actual = {
+      mode: 'bypass',
+      state: 'bypass',
+      generation: 2,
+      experimentalWindowsAccepted: false,
+      platform: process.platform,
+      reason: null,
+    };
+    protection.status.mockResolvedValue(actual);
+    expect(await service.protectionOf('a')).toEqual(actual);
+    protection.binding.mockResolvedValue({ mode: 'bypass', generation: 0 });
+    protection.status.mockResolvedValue({
+      ...actual,
+      state: 'recovery-required',
+      generation: 0,
+      reason: 'Confirm previous sandbox cleanup',
+    });
+    expect(await service.protectionOf('a')).toMatchObject({
+      mode: 'sandboxed',
+      state: 'recovery-required',
+      generation: 0,
+      reason: 'Confirm previous sandbox cleanup',
+    });
+  });
+
   it('keeps path, folder inspection, grants and empty file listing read-only, and recreates owned directories on prepare', async () => {
     const cwd = service.path('a');
     await expect(realpath(cwd)).rejects.toThrow();
@@ -149,7 +243,7 @@ describe('room workspaces and read-only folder attachments', () => {
     );
   });
 
-  it('keeps repository cwd and explicit protection while personal and explicitly linked rooms require a sandbox', async () => {
+  it('keeps workspace and protection choices separate while defaulting owned workspaces to a sandbox', async () => {
     const meta = new MetaRepository(db);
     protection.binding.mockResolvedValue({ mode: 'bypass', generation: 0 });
     await service.ensureProject('b');
@@ -163,7 +257,12 @@ describe('room workspaces and read-only folder attachments', () => {
     protection.binding.mockResolvedValue({ mode: 'bypass', generation: 2 });
     expect((await service.execution('b', 'lead-b')).sandbox).toBe(false);
     await service.add('b', { alias: 'notes', target: notes });
-    expect(await service.execution('b', 'lead-b')).toEqual({ cwd: service.path('b'), workspace: true, sandbox: true });
+    expect(await service.execution('b', 'lead-b')).toEqual({ cwd: service.path('b'), workspace: true, sandbox: false });
+    await service.prepare('b', 'lead-b');
+    expect(protection.set).not.toHaveBeenCalled();
+    expect(protection.prepare).not.toHaveBeenCalled();
+    protection.binding.mockResolvedValue({ mode: 'bypass', generation: 0 });
+    expect((await service.execution('b', 'lead-b')).sandbox).toBe(true);
     await service.prepare('b', 'lead-b');
     expect(protection.set).toHaveBeenCalledWith(
       'lead-b',
@@ -174,6 +273,58 @@ describe('room workspaces and read-only folder attachments', () => {
     await service.remove('b', (await store.folders('b')).find((folder) => folder.alias === 'notes')!.id);
     expect((await service.execution('b', 'lead-b')).workspace).toBe(true);
     expect((await service.execution('a', 'lead-a')).sandbox).toBe(true);
+  });
+
+  it('preserves persisted explicit host mode for personal and linked rooms across preparation and workspace service reopening', async () => {
+    const bindings = new ThreadProtectionRepository(db);
+    await new MetaRepository(db).setSetting(ROOMS_SANDBOX_SETTING_KEY, true);
+    await service.add('b', { alias: 'notes', target: notes });
+    for (const id of ['lead-a', 'lead-b'])
+      await bindings.setBinding(id, { version: 1, mode: 'bypass', generation: 2, experimentalWindowsAccepted: false });
+    protection.binding.mockImplementation((id: string) => bindings.binding(id));
+    for (const roomId of ['a', 'b']) {
+      const threadId = `lead-${roomId}`;
+      expect(await service.execution(roomId, threadId)).toEqual({
+        cwd: service.path(roomId),
+        workspace: true,
+        sandbox: false,
+      });
+      expect(await service.prepare(roomId, threadId)).toBe(service.path(roomId));
+    }
+    service = new RoomWorkspace(
+      store,
+      rooms,
+      new RoomFolders({ dataDir } as BackendConfig),
+      { cwdOf, dispose } as unknown as PiSessionService,
+      protection as unknown as ThreadProtectionService,
+      { snapshot: () => [] } as unknown as RoomLive,
+      { dataDir },
+      new MetaRepository(db),
+    );
+    service.onModuleInit();
+    for (const roomId of ['a', 'b']) {
+      const threadId = `lead-${roomId}`;
+      await service.prepare(roomId, threadId);
+      expect(await bindings.binding(threadId)).toMatchObject({ mode: 'bypass', generation: 2 });
+      expect((await rows.get(threadId))?.cwd).toBe(service.path(roomId));
+      expect((await service.execution(roomId, threadId)).sandbox).toBe(false);
+    }
+    expect(protection.set).not.toHaveBeenCalled();
+    expect(protection.prepare).not.toHaveBeenCalled();
+    expect(await readlink(join(service.path('b'), 'folders', 'notes'))).toBe(notes);
+  });
+
+  it('continues to require a working sandbox for an explicitly sandboxed owned workspace', async () => {
+    protection.binding.mockResolvedValue({ mode: 'sandboxed', generation: 3 });
+    expect((await service.execution('a', 'lead-a')).sandbox).toBe(true);
+    protection.prepare.mockResolvedValue({ state: 'unavailable' });
+    await expect(service.prepare('a', 'lead-a')).rejects.toThrow('requires an active sandbox');
+    expect(protection.set).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ mode: 'bypass' }),
+      expect.anything(),
+    );
   });
 
   it('inspects folders and resolves grants without creating or removing managed symlinks', async () => {

@@ -88,6 +88,7 @@ export type RoomPhoneConfig = z.infer<typeof RoomPhoneConfigSchema>;
 export const RoomChannelStatusSchema = RoomPhoneStatusSchema.extend({
   channel: RoomChannelSchema,
   configured: z.boolean().optional(),
+  removedFromRoom: z.boolean().optional(),
   identity: z.object({ id: z.string(), username: z.string(), name: z.string() }).strict().optional(),
   dependency: z
     .object({

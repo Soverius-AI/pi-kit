@@ -52,12 +52,28 @@ export class RoomPhoneRepository {
       )
       .all(this.channel);
   }
+  /** Room-local visibility; provider credentials and connection remain host-wide. */
+  async removedFromRoom(room: string): Promise<boolean> {
+    const row = await this.db
+      .prepare('SELECT value_json FROM settings WHERE key=?')
+      .get<{ value_json: string }>(this.removalKey(room));
+    return row?.value_json === 'true';
+  }
+  async restore(room: string): Promise<void> {
+    await this.db.prepare('DELETE FROM settings WHERE key=?').run(this.removalKey(room));
+  }
+  private removalKey(room: string): string {
+    return `rooms.channel.removed:${this.channel}:${room}`;
+  }
   async begin(room: string, code: string, expires: number): Promise<void> {
-    await this.db
-      .prepare(
-        `INSERT INTO room_channel_links(channel,room_id,code_hash,expires_at) VALUES (?,?,?,?) ON CONFLICT(channel,room_id) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,candidate_group=NULL,candidate_sender=NULL,candidate_name=NULL,candidate_group_name=NULL`,
-      )
-      .run(this.channel, room, hash(code), expires);
+    await this.db.transaction(async () => {
+      await this.db
+        .prepare(
+          `INSERT INTO room_channel_links(channel,room_id,code_hash,expires_at) VALUES (?,?,?,?) ON CONFLICT(channel,room_id) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,candidate_group=NULL,candidate_sender=NULL,candidate_name=NULL,candidate_group_name=NULL`,
+        )
+        .run(this.channel, room, hash(code), expires);
+      await this.restore(room);
+    })();
   }
   async candidate(
     code: string,
@@ -75,12 +91,16 @@ export class RoomPhoneRepository {
     return Number(result.changes) === 1;
   }
   async confirm(room: string, group: string, sender: string, account: string, now: number): Promise<boolean> {
-    const result = await this.db
-      .prepare(
-        `UPDATE room_channel_links SET group_id=candidate_group,sender_id=candidate_sender,sender_name=candidate_name,group_name=candidate_group_name,account_id=?,binding_id=lower(hex(randomblob(16))),code_hash=NULL,expires_at=NULL,candidate_group=NULL,candidate_sender=NULL,candidate_name=NULL,after_seq=(SELECT COALESCE(MAX(seq),0) FROM room_events WHERE room_id=?) WHERE channel=? AND room_id=? AND group_id IS NULL AND candidate_group=? AND candidate_sender=? AND expires_at>? AND NOT EXISTS(SELECT 1 FROM room_channel_links p WHERE p.channel=? AND p.group_id=?)`,
-      )
-      .run(account, room, this.channel, room, group, sender, now, this.channel, group);
-    return Number(result.changes) === 1;
+    return this.db.transaction(async () => {
+      const result = await this.db
+        .prepare(
+          `UPDATE room_channel_links SET group_id=candidate_group,sender_id=candidate_sender,sender_name=candidate_name,group_name=candidate_group_name,account_id=?,binding_id=lower(hex(randomblob(16))),code_hash=NULL,expires_at=NULL,candidate_group=NULL,candidate_sender=NULL,candidate_name=NULL,after_seq=(SELECT COALESCE(MAX(seq),0) FROM room_events WHERE room_id=?) WHERE channel=? AND room_id=? AND group_id IS NULL AND candidate_group=? AND candidate_sender=? AND expires_at>? AND NOT EXISTS(SELECT 1 FROM room_channel_links p WHERE p.channel=? AND p.group_id=?)`,
+        )
+        .run(account, room, this.channel, room, group, sender, now, this.channel, group);
+      const confirmed = Number(result.changes) === 1;
+      if (confirmed) await this.restore(room);
+      return confirmed;
+    })();
   }
   async unlink(room: string): Promise<void> {
     await this.db.transaction(async () => {
@@ -92,6 +112,11 @@ export class RoomPhoneRepository {
         'room_channel_links',
       ])
         await this.db.prepare(`DELETE FROM ${table} WHERE channel=? AND room_id=?`).run(this.channel, room);
+      await this.db
+        .prepare(
+          'INSERT INTO settings(key,value_json) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json',
+        )
+        .run(this.removalKey(room), 'true');
     })();
   }
   async receive(

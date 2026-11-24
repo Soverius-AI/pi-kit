@@ -178,4 +178,45 @@ describe('room messaging setup', () => {
       'https://t.me/MyRoomBot?startgroup=one-time-code',
     );
   });
+  it('explains the optional phone app URL on info click without submitting or discarding its draft', async () => {
+    const { fixture, store, root } = setup();
+    fixture.componentRef.setInput('channel', 'telegram');
+    store.status.set({
+      ...initial,
+      channel: 'telegram',
+      connection: 'connected',
+      binding: { group: 'g', groupName: 'Room', sender: 'owner', senderName: 'Owner' },
+    });
+    await fixture.whenStable();
+    const help = root.querySelector<HTMLButtonElement>('[data-testid=room-phone-app-url-help]')!;
+    const url = root.querySelector<HTMLInputElement>('[data-testid=room-phone-app-url]')!;
+    expect(help.type).toBe('button');
+    expect(root.querySelector('[data-testid=room-phone-app-url-explanation]')).toBeNull();
+    expect(root.querySelector(`label[for="${url.id}"]`)?.textContent).toContain('optional');
+    url.value = 'https://phone.example.test';
+    url.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    store.busy.set(true);
+    await fixture.whenStable();
+    help.focus();
+    help.click();
+    await fixture.whenStable();
+    expect(help.getAttribute('aria-expanded')).toBe('true');
+    const explanation = root.querySelector('[data-testid=room-phone-app-url-explanation]');
+    expect(explanation?.id).toBe(help.getAttribute('aria-controls'));
+    expect(explanation?.textContent).toContain('Connect your device → Connection');
+    expect(explanation?.textContent).toContain('Chat and commands work without it');
+    expect(store.saveUrl).not.toHaveBeenCalled();
+    expect(url.value).toBe('https://phone.example.test');
+    help.click();
+    await fixture.whenStable();
+    expect(help.getAttribute('aria-expanded')).toBe('false');
+    expect(root.querySelector('[data-testid=room-phone-app-url-explanation]')).toBeNull();
+    expect(url.value).toBe('https://phone.example.test');
+    help.click();
+    await fixture.whenStable();
+    store.context.set({ id: 'room-b', host: 'host-b' });
+    await fixture.whenStable();
+    expect(root.querySelector('[data-testid=room-phone-app-url-explanation]')).toBeNull();
+  });
 });

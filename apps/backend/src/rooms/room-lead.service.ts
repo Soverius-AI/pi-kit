@@ -113,7 +113,7 @@ export class RoomLeadService implements OnModuleInit, OnApplicationShutdown {
       room: found.room,
       summary: found.summary,
       lead: this.state(roomId),
-      leadThreadId: found.leadThreadId ?? (await this.prepare(roomId).catch(() => null)),
+      leadThreadId: found.leadThreadId,
       projectFolder: found.projectFolder,
       folder: this.files.roomFolder(roomId) ?? null,
       mode: found.mode,

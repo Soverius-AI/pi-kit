@@ -4805,8 +4805,8 @@
       "test": "Send connection test",
       "verified": "Phone round trip verified",
       "unverified": "Reply to the test message to verify delivery.",
-      "appUrl": "Private phone app URL",
-      "appUrlHint": "Use the HTTPS address from Private access settings. Room links will open this address.",
+      "appUrl": "Phone app URL (optional)",
+      "appUrlHint": "Optional: the HTTPS address of your pi-kit phone app from Settings → Connect your device → Connection. It adds “Open room” links to this channel’s messages. Chat and commands work without it.",
       "saveUrl": "Save room links",
       "pendingDelivery": "Messages waiting for delivery: {{count}}",
       "delivered": "Last delivered: {{time}}",
@@ -4818,7 +4818,8 @@
       "setupSteps": "Messaging setup",
       "step1": "Connect assistant identity",
       "step2": "Link this room’s conversation",
-      "step3": "Verify a reply from your phone"
+      "step3": "Verify a reply from your phone",
+      "appUrlHelp": "Help about the phone app URL"
     },
     "task": {
       "label": "Task",
@@ -4905,7 +4906,13 @@
       "archiveLeave": "Leave them running",
       "archiveConfirm": "Archive",
       "cancel": "Cancel",
-      "usingTool": "using {{value1}}"
+      "usingTool": "using {{value1}}",
+      "readOnly": "Read-only",
+      "readOnlyRecovery": "Read-only · recovery needed",
+      "readOnlyUnavailable": "Read-only · sandbox unavailable",
+      "readOnlySetup": "Read-only · setup needed",
+      "readOnlyStarting": "Read-only · sandbox starting",
+      "readOnlySandboxSelected": "Read-only · sandbox selected"
     },
     "action": {
       "call": "Draft",
@@ -5223,8 +5230,9 @@
           "signal": "Link an assistant account with signal-cli.",
           "slack": "Connect an app to your workspace."
         },
-        "remove": "Remove from room",
-        "removeHint": "Remove this room’s channel link and pending setup. Other rooms stay connected. Saved credentials are kept.",
+        "remove": "Delete from room",
+        "deleteLabel": "Delete {{provider}} channel",
+        "removeHint": "Delete this channel from this room, including its link, queued messages and pending setup. Other rooms stay connected. Saved credentials are kept.",
         "disconnect": "Disconnect for all rooms",
         "disconnectHint": "Stop this provider on this host for every room. Room links and saved credentials are kept; you can reconnect later."
       }

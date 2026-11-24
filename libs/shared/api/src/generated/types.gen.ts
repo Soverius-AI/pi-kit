@@ -2483,6 +2483,7 @@ export type RoomChannelStatus = {
     }>;
     channel: 'whatsapp' | 'signal' | 'slack' | 'telegram';
     configured?: boolean;
+    removedFromRoom?: boolean;
     identity?: {
         id: string;
         username: string;
@@ -13654,6 +13655,40 @@ export type RoomsRemoveAgentResponses = {
 };
 
 export type RoomsRemoveAgentResponse = RoomsRemoveAgentResponses[keyof RoomsRemoveAgentResponses];
+
+export type RoomsProtectionData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/protection';
+};
+
+export type RoomsProtectionErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * Rooms are off on this environment. Or: No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomsProtectionError = RoomsProtectionErrors[keyof RoomsProtectionErrors];
+
+export type RoomsProtectionResponses = {
+    /**
+     * OK
+     */
+    200: ThreadProtection;
+};
+
+export type RoomsProtectionResponse = RoomsProtectionResponses[keyof RoomsProtectionResponses];
 
 export type RoomsDetailData = {
     body?: never;

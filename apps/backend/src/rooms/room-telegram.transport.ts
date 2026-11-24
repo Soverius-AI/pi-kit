@@ -8,7 +8,13 @@ import {
 import { randomUUID } from 'node:crypto';
 import { Chat, type Logger as ChatLogger } from 'chat';
 import { MemoryStateAdapter } from '@chat-adapter/state-memory';
-import { AdapterRateLimitError, AuthenticationError, ResourceNotFoundError } from '@chat-adapter/shared';
+import {
+  AdapterRateLimitError,
+  AuthenticationError,
+  PermissionError,
+  ResourceNotFoundError,
+  ValidationError,
+} from '@chat-adapter/shared';
 import {
   TelegramAdapter,
   type TelegramAdapterConfig,
@@ -34,6 +40,21 @@ function rateLimitMessage(error: AdapterRateLimitError): string {
   return `Telegram is rate limiting requests. ${delay ? `Try again in ${delay} seconds.` : 'Wait a moment and try again.'}`;
 }
 type Identity = NonNullable<RoomChannelStatus['identity']>;
+type TelegramHealth =
+  | { kind: 'poll'; error?: unknown }
+  | { kind: 'update'; id: number; failed: boolean }
+  | { kind: 'checkpoint'; operation: 'read' | 'write'; failed: boolean; pending?: readonly number[] };
+type ReportHealth = (health: TelegramHealth) => void;
+
+function checkpointIds(value: unknown): number[] | undefined {
+  const pending = value && typeof value === 'object' && 'pending' in value ? value.pending : undefined;
+  if (!Array.isArray(pending) || !pending.length) return undefined;
+  const ids = pending.map((entry: unknown) => {
+    const update = entry && typeof entry === 'object' && 'update' in entry ? entry.update : undefined;
+    return update && typeof update === 'object' && 'update_id' in update ? update.update_id : undefined;
+  });
+  return ids.every((id): id is number => typeof id === 'number' && Number.isSafeInteger(id)) ? ids : undefined;
+}
 type Incoming = TelegramMessage & {
   sender_chat?: unknown;
   forward_origin?: unknown;
@@ -66,6 +87,7 @@ export class RoomTelegramPollingState extends MemoryStateAdapter {
   constructor(
     private readonly meta: MetaRepository,
     private readonly account: string,
+    private readonly health: ReportHealth = () => undefined,
   ) {
     super();
   }
@@ -74,19 +96,40 @@ export class RoomTelegramPollingState extends MemoryStateAdapter {
   }
   override async get<T = unknown>(key: string): Promise<T | null> {
     const stored = this.key(key);
-    return stored ? (((await this.meta.getSetting(stored)) as T | undefined) ?? null) : super.get<T>(key);
+    if (!stored) return super.get<T>(key);
+    return this.checkpoint('read', async () => ((await this.meta.getSetting(stored)) as T | undefined) ?? null);
   }
   override async set<T = unknown>(key: string, value: T, ttlMs?: number): Promise<void> {
     const stored = this.key(key);
     if (!stored) return super.set(key, value, ttlMs);
-    if (JSON.stringify(value).length > MAX_CHECKPOINT)
-      throw new Error('Telegram pending input reached the local queue limit.');
-    await this.meta.setSetting(stored, maskCheckpoint(value));
+    await this.checkpoint(
+      'write',
+      async () => {
+        if (JSON.stringify(value).length > MAX_CHECKPOINT)
+          throw new Error('Telegram pending input reached the local queue limit.');
+        await this.meta.setSetting(stored, maskCheckpoint(value));
+      },
+      checkpointIds(value),
+    );
   }
   override async delete(key: string): Promise<void> {
     const stored = this.key(key);
-    if (stored) await this.meta.deleteSetting(stored);
+    if (stored) await this.checkpoint('write', () => this.meta.deleteSetting(stored));
     else await super.delete(key);
+  }
+  private async checkpoint<T>(
+    operation: 'read' | 'write',
+    action: () => Promise<T>,
+    pending?: readonly number[],
+  ): Promise<T> {
+    try {
+      const result = await action();
+      this.health({ kind: 'checkpoint', operation, failed: false });
+      return result;
+    } catch (error) {
+      this.health({ kind: 'checkpoint', operation, failed: true, pending });
+      throw error;
+    }
   }
 }
 
@@ -97,6 +140,7 @@ export class RoomTelegramAdapter extends TelegramAdapter {
     private readonly lifecycle: AbortSignal,
     private readonly admit: (update: TelegramUpdate) => Promise<void>,
     private readonly ready: Promise<void> = Promise.resolve(),
+    private readonly health: ReportHealth = () => undefined,
   ) {
     super(config);
   }
@@ -150,7 +194,15 @@ export class RoomTelegramAdapter extends TelegramAdapter {
   protected override processUpdate(update: TelegramUpdate): Promise<void>[] {
     // Chat catches handler exceptions. Admit directly so the polling checkpoint
     // sees failures, and persistThreadHistory=false avoids a second transcript.
-    return [this.cancelled(this.ready.then(() => this.admit(update)))];
+    return [
+      this.cancelled(this.ready.then(() => this.admit(update))).then(
+        () => this.health({ kind: 'update', id: update.update_id, failed: false }),
+        (error: unknown) => {
+          if (!this.lifecycle.aborted) this.health({ kind: 'update', id: update.update_id, failed: true });
+          throw error;
+        },
+      ),
+    ];
   }
   private async cancelled<T>(promise: Promise<T>): Promise<T> {
     if (this.lifecycle.aborted) {
@@ -180,19 +232,31 @@ export class RoomTelegramAdapter extends TelegramAdapter {
     ];
     const signal = AbortSignal.any(signals);
     try {
-      return await super.telegramFetch<TResult>(method, payload, { signal });
+      const result = await super.telegramFetch<TResult>(method, payload, { signal });
+      if (method === 'getUpdates') this.health({ kind: 'poll' });
+      return result;
     } catch (error) {
       if (this.lifecycle.aborted || request?.signal?.aborted)
         throw new DOMException('Telegram connection cancelled.', 'AbortError');
-      if (error instanceof AdapterRateLimitError) throw new AdapterRateLimitError('telegram', error.retryAfter);
-      if (error instanceof AuthenticationError || (method === 'getMe' && error instanceof ResourceNotFoundError))
-        throw new BadRequestException(
-          'Telegram rejected this bot token. Copy the current token from BotFather and try again.',
-        );
-      // SDK causes can contain token-bearing URLs; expose only this safe message.
-      throw new ServiceUnavailableException(
-        'Telegram could not be reached. Check the internet connection or proxy, then try again.',
-      );
+      // SDK causes can contain token-bearing URLs; report only sanitized failures.
+      const failure =
+        error instanceof AdapterRateLimitError
+          ? new AdapterRateLimitError('telegram', error.retryAfter)
+          : error instanceof AuthenticationError ||
+              (['getMe', 'getUpdates'].includes(method) && error instanceof ResourceNotFoundError) ||
+              (method === 'getUpdates' && error instanceof PermissionError)
+            ? new BadRequestException(
+                'Telegram rejected this bot token. Copy the current token from BotFather and try again.',
+              )
+            : method === 'getUpdates' && error instanceof ValidationError
+              ? new ConflictException(
+                  'Telegram rejected polling. Check that only one app is using this bot, then reconnect.',
+                )
+              : new ServiceUnavailableException(
+                  'Telegram could not be reached. Check the internet connection or proxy, then try again.',
+                );
+      if (method === 'getUpdates' || method === 'getMe') this.health({ kind: 'poll', error: failure });
+      throw failure;
     }
   }
   async sendPlain(group: string, text: string, quoteId?: string): Promise<string> {
@@ -253,7 +317,23 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
   readonly maxMessageLength = 4096;
   phase: RoomPhoneStatus['connection'] = 'disconnected';
   qr: string | null = null;
-  error: string | null = null;
+  private connectionError: string | null = null;
+  private commandMenuError: string | null = null;
+  private pollError: string | null = null;
+  private pollConfigurationError: string | null = null;
+  private consecutivePollFailures = 0;
+  private readonly failedUpdates = new Set<number>();
+  private readonly failedCheckpoints = new Map<'read' | 'write', Set<number> | undefined>();
+  get error(): string | null {
+    return (
+      this.connectionError ??
+      this.pollConfigurationError ??
+      (this.failedCheckpoints.size ? 'Telegram’s local queue is unavailable. Check local storage and retry.' : null) ??
+      (this.failedUpdates.size ? 'Telegram could not process a pending update. It will retry automatically.' : null) ??
+      this.pollError ??
+      this.commandMenuError
+    );
+  }
   readonly input: NonNullable<RoomPhoneStatus['input']> = {
     lastGroupAt: null,
     lastOwnGroupAt: null,
@@ -285,21 +365,54 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
   createMessageId(): string {
     return randomUUID();
   }
-  private logger(generation = this.generation): ChatLogger {
+  private logger(): ChatLogger {
+    // SDK warnings are diagnostics, not connection state. Typed hooks below
+    // distinguish retried requests, failed admission and durable queue failures.
     const logger: ChatLogger = {
       child: () => logger,
       debug: () => undefined,
       info: () => undefined,
-      warn: () => {
-        if (generation !== this.generation) return;
-        this.error = 'Telegram polling is temporarily unavailable. Check the connection and local queue.';
-      },
-      error: () => {
-        if (generation !== this.generation) return;
-        this.error = 'Telegram could not process an update. Reconnect if the problem continues.';
-      },
+      warn: () => undefined,
+      error: () => undefined,
     };
     return logger;
+  }
+  private reportHealth(generation: number, health: TelegramHealth): void {
+    if (generation !== this.generation || this.abort?.signal.aborted) return;
+    if (health.kind === 'poll') {
+      if (!health.error) {
+        this.consecutivePollFailures = 0;
+        this.pollError = null;
+        this.pollConfigurationError = null;
+      } else {
+        this.consecutivePollFailures++;
+        if (health.error instanceof BadRequestException || health.error instanceof ConflictException)
+          this.pollConfigurationError = health.error.message;
+        else if (health.error instanceof AdapterRateLimitError) this.pollError = rateLimitMessage(health.error);
+        else if (this.consecutivePollFailures >= 2)
+          this.pollError = 'Telegram polling is temporarily unavailable. It will retry automatically.';
+      }
+    } else if (health.kind === 'checkpoint') {
+      if (health.failed)
+        this.failedCheckpoints.set(health.operation, health.pending ? new Set(health.pending) : undefined);
+      else this.failedCheckpoints.delete(health.operation);
+    } else if (health.failed) this.failedUpdates.add(health.id);
+    else {
+      this.failedUpdates.delete(health.id);
+      // An unpersisted failed-input checkpoint is no longer needed once all
+      // its updates have reached durable admission successfully.
+      const pending = this.failedCheckpoints.get('write');
+      if (pending?.delete(health.id) && !pending.size) this.failedCheckpoints.delete('write');
+    }
+  }
+  private resetHealth(): void {
+    this.connectionError = null;
+    this.commandMenuError = null;
+    this.pollError = null;
+    this.pollConfigurationError = null;
+    this.consecutivePollFailures = 0;
+    this.failedUpdates.clear();
+    this.failedCheckpoints.clear();
   }
   private config(token: string, userName?: string): TelegramAdapterConfig {
     return {
@@ -343,7 +456,7 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
       await this.credentials.save(input);
       if (generation === this.generation) {
         this.verified = identity;
-        this.error = null;
+        this.connectionError = null;
       }
     } catch (error) {
       if (error instanceof HttpException) throw error;
@@ -369,7 +482,7 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
     const abort = new AbortController();
     this.abort = abort;
     this.phase = 'connecting';
-    this.error = null;
+    this.resetHealth();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
@@ -380,7 +493,8 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
           const chat = this.chat;
           this.chat = undefined;
           this.phase = 'error';
-          this.error = 'Telegram connection timed out. Check the credential store and network, then reconnect.';
+          this.connectionError =
+            'Telegram connection timed out. Check the credential store and network, then reconnect.';
           void chat?.shutdown().catch(() => undefined);
         }
         reject(new Error('Telegram connection timed out. Reconnect and try again.'));
@@ -408,6 +522,7 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
         abort.signal,
         (update): Promise<void> => this.admit(adapter, update, generation),
         gate,
+        (health) => this.reportHealth(generation, health),
       );
       this.adapter = adapter;
       const identity = await adapter.identity();
@@ -417,7 +532,7 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
       const chat = new Chat({
         userName: identity.username,
         adapters: { telegram: adapter },
-        state: new RoomTelegramPollingState(this.meta, identity.id),
+        state: new RoomTelegramPollingState(this.meta, identity.id, (health) => this.reportHealth(generation, health)),
         concurrency: 'concurrent',
         logger: this.logger(),
       });
@@ -428,11 +543,11 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
         return;
       }
       this.phase = 'connected';
-      this.error = null;
+      this.connectionError = null;
       ready();
       void adapter.installCommands().catch(() => {
         if (generation === this.generation)
-          this.error = 'Telegram command menu could not be installed. Typed commands still work.';
+          this.commandMenuError = 'Telegram command menu could not be installed. Typed commands still work.';
       });
     } catch (error) {
       if (generation !== this.generation) return;
@@ -450,7 +565,7 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
           : error instanceof AdapterRateLimitError
             ? new HttpException(rateLimitMessage(error), 429)
             : new BadRequestException('Telegram could not connect. Check its saved bot token and network connection.');
-      this.error = failure.message;
+      this.connectionError = failure.message;
       throw failure;
     }
   }
@@ -464,6 +579,7 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
     this.chat = undefined;
     this.adapter = undefined;
     this.phase = 'disconnected';
+    this.resetHealth();
     if (chat) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {

@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   Optional,
+  NotFoundException,
   type OnModuleInit,
 } from '@nestjs/common';
 import { lstat, realpath, stat, symlink, unlink, readdir, writeFile, rename, open } from 'node:fs/promises';
@@ -11,7 +12,12 @@ import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { ROOMS_SANDBOX_SETTING_KEY, type RoomFolder, type RoomFolderInput } from '@pi-kit/protocol';
+import {
+  ROOMS_SANDBOX_SETTING_KEY,
+  type RoomFolder,
+  type RoomFolderInput,
+  type ThreadProtection,
+} from '@pi-kit/protocol';
 import { MetaRepository } from '../db/meta.repository';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
@@ -65,17 +71,43 @@ export class RoomWorkspace implements OnModuleInit {
       (await this.store.workspaceMode(roomId)) ||
       !(await stat(found.projectFolder).catch(() => undefined))?.isDirectory();
     const binding = threadId ? await this.protection.binding(threadId) : undefined;
+    // An owned workspace chooses the cwd and default isolation, never overrides the owner's explicit mode.
     const sandbox =
-      workspace ||
-      (binding && binding.generation > 0
+      binding && binding.generation > 0
         ? binding.mode === 'sandboxed'
-        : binding?.mode === 'sandboxed' || (await this.meta?.getSetting(ROOMS_SANDBOX_SETTING_KEY)) === true);
+        : workspace ||
+          binding?.mode === 'sandboxed' ||
+          (await this.meta?.getSetting(ROOMS_SANDBOX_SETTING_KEY)) === true;
     return {
       cwd: workspace ? this.location(roomId) : (found.projectFolder ?? this.location(roomId)),
       workspace,
       sandbox,
     };
   }
+  /** Effective room policy without preparing a lead, session, workspace directory, or sandbox. */
+  async protectionOf(roomId: string): Promise<ThreadProtection> {
+    const found = await this.rooms.get(roomId);
+    if (!found) throw new NotFoundException('No room with this id.');
+    const actual = found.leadThreadId ? await this.protection.status(found.leadThreadId) : undefined;
+    if (actual && actual.generation > 0) return actual;
+    const policy = await this.execution(roomId, found.leadThreadId ?? undefined);
+    const mode = policy.sandbox ? 'sandboxed' : 'bypass';
+    if (actual)
+      return {
+        ...actual,
+        mode,
+        state: mode !== actual.mode && actual.state === 'bypass' ? 'idle' : actual.state,
+      };
+    return {
+      mode,
+      state: policy.sandbox ? 'idle' : 'bypass',
+      generation: 0,
+      experimentalWindowsAccepted: false,
+      platform: process.platform,
+      reason: null,
+    };
+  }
+
   async ensureProject(roomId: string): Promise<void> {
     const existing = this.initializing.get(roomId);
     if (existing) return existing;

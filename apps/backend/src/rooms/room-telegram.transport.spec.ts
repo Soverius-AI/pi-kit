@@ -137,6 +137,128 @@ afterEach(async () => {
 });
 
 describe('Telegram Rooms with the real official SDK', () => {
+  it('keeps a single self-recovering poll failure quiet and ignores expected shutdown aborts', async () => {
+    const api = fetch;
+    let attempts = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
+        if (String(input).endsWith('/getUpdates') && ++attempts === 1) throw new Error(`temporary failure ${TOKEN}`);
+        return api(input, options);
+      }),
+    );
+    await transport.connect();
+    await vi.waitFor(() => expect(attempts).toBe(1));
+    expect(transport.error).toBeNull();
+    await vi.waitFor(() => expect(polls.length).toBeGreaterThan(0), { timeout: 3000 });
+    expect(transport.error).toBeNull();
+    await transport.disconnect();
+    expect(transport.error).toBeNull();
+    expect(transport.phase).toBe('disconnected');
+  });
+
+  it('clears repeated polling errors after healthy receive while a successful send alone does not hide the outage', async () => {
+    const api = fetch;
+    let unavailable = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
+        if (String(input).endsWith('/getUpdates') && unavailable) throw new Error(`network failure ${TOKEN}`);
+        return api(input, options);
+      }),
+    );
+    const receive = vi.fn(async (_message: PhoneMessage) => undefined);
+    transport.receive = receive;
+    await transport.connect();
+    await vi.waitFor(() => expect(transport.error).toContain('polling is temporarily unavailable'), { timeout: 3000 });
+    expect(transport.phase).toBe('connected');
+    await transport.send('telegram:-1001', 'outbound still works');
+    expect(transport.error).toContain('polling is temporarily unavailable');
+    expect(transport.error).not.toContain(TOKEN);
+    unavailable = false;
+    updates = [update('/memory')];
+    await vi.waitFor(() => expect(receive).toHaveBeenCalledTimes(1), { timeout: 4000 });
+    expect(transport.error).toBeNull();
+  });
+
+  it.each([401, 403, 404, 409])(
+    'keeps a current HTTP %i polling configuration failure actionable even while other API requests succeed',
+    async (status) => {
+      const api = fetch;
+      let rejected = 0;
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
+          if (String(input).endsWith('/getUpdates')) {
+            rejected++;
+            return new Response(
+              JSON.stringify({ ok: false, error_code: status, description: `Unauthorized ${TOKEN}` }),
+              {
+                status,
+              },
+            );
+          }
+          return api(input, options);
+        }),
+      );
+      await transport.connect();
+      await vi.waitFor(() => expect(transport.error).toContain(status === 409 ? 'only one app' : 'BotFather'));
+      await transport.send('telegram:-1001', 'outbound succeeds independently');
+      await vi.waitFor(() => expect(rejected).toBeGreaterThan(1), { timeout: 3000 });
+      expect(transport.error).toContain(status === 409 ? 'only one app' : 'rejected this bot token');
+      expect(transport.error).not.toContain(TOKEN);
+    },
+  );
+
+  it('does not hide failed local admission behind healthy empty polls and clears it after durable retry succeeds', async () => {
+    updates = [update('/memory')];
+    let unavailable = true;
+    const receive = vi.fn(async (_message: PhoneMessage) => {
+      if (unavailable) throw new Error('local admission unavailable');
+    });
+    transport.receive = receive;
+    await transport.connect();
+    await vi.waitFor(() => expect(transport.error).toContain('pending update'));
+    await vi.waitFor(() => expect(polls.length).toBeGreaterThan(2));
+    expect(transport.error).toContain('pending update');
+    unavailable = false;
+    await vi.waitFor(() => expect(receive.mock.calls.length).toBeGreaterThan(1), { timeout: 4000 });
+    await vi.waitFor(() => expect(transport.error).toBeNull());
+  });
+
+  it('keeps checkpoint failures visible and recovers once the formerly unpersisted input is durably admitted', async () => {
+    updates = [update('/memory')];
+    const write = vi.spyOn(meta, 'setSetting').mockRejectedValue(new Error('disk unavailable'));
+    transport.receive = async () => {
+      throw new Error('admission unavailable');
+    };
+    await transport.connect();
+    await vi.waitFor(() => expect(transport.error).toContain('local queue is unavailable'));
+    await transport.send('telegram:-1001', 'send succeeds but local queue still needs attention');
+    expect(transport.error).toContain('local queue is unavailable');
+    expect(polls.every((value) => Number(value.offset ?? 0) <= 1)).toBe(true);
+    write.mockRestore();
+    const receive = vi.fn(async (_message: PhoneMessage) => undefined);
+    transport.receive = receive;
+    await vi.waitFor(() => expect(receive).toHaveBeenCalledTimes(1), { timeout: 4000 });
+    await vi.waitFor(() => expect(transport.error).toBeNull());
+  });
+
+  it('preserves a command-menu configuration warning across healthy polling', async () => {
+    const api = fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, options?: RequestInit) => {
+        if (String(input).endsWith('/setMyCommands')) throw new Error('menu unavailable');
+        return api(input, options);
+      }),
+    );
+    await transport.connect();
+    await vi.waitFor(() => expect(transport.error).toContain('Typed commands still work'));
+    await vi.waitFor(() => expect(polls.length).toBeGreaterThan(2));
+    expect(transport.error).toContain('command menu');
+  });
+
   it('verifies getMe before protected save, reports numeric identity, and preserves actionable credential errors', async () => {
     await transport.configure({ botToken: TOKEN });
     expect(saved).toHaveBeenCalledExactlyOnceWith({ botToken: TOKEN });

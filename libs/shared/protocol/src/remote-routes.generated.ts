@@ -62,6 +62,7 @@ export const REMOTE_ROUTES: readonly (readonly [method: string, path: string])[]
   ['GET', '/api/rooms/{roomId}/playbook'],
   ['POST', '/api/rooms/{roomId}/playbook/triggers/{triggerId}'],
   ['POST', '/api/rooms/{roomId}/playbook/try'],
+  ['GET', '/api/rooms/{roomId}/protection'],
   ['GET', '/api/rooms/{roomId}/runs'],
   ['POST', '/api/rooms/{roomId}/tasks/{taskId}/answer'],
   ['POST', '/api/rooms/{roomId}/tasks/{taskId}/approve'],

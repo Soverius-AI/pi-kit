@@ -1,6 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { Component, computed, effect, inject, input, linkedSignal, signal } from '@angular/core';
 import { FormField, form, required, maxLength } from '@angular/forms/signals';
+import { PkIcon, PkTip } from '@pi-kit/design-system';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import type { RoomChannel } from '@pi-kit/protocol';
 import { RoomPhoneStore } from '@pi-kit/rooms/data';
@@ -8,7 +9,7 @@ import { toDataURL } from 'qrcode';
 
 @Component({
   selector: 'pk-room-phone',
-  imports: [TranslocoPipe, FormField, NgTemplateOutlet],
+  imports: [TranslocoPipe, FormField, NgTemplateOutlet, PkIcon, PkTip],
   providers: [RoomPhoneStore],
   template: `
     @if (embedded()) {
@@ -169,11 +170,27 @@ import { toDataURL } from 'qrcode';
               {{ 'rooms.phone.test' | transloco }}
             </button>
             <form (submit)="saveUrl($event)">
-              <label
-                >{{ 'rooms.phone.appUrl' | transloco
-                }}<input type="url" [formField]="linkFields.appUrl" data-testid="room-phone-app-url"
-              /></label>
-              <p>{{ 'rooms.phone.appUrlHint' | transloco }}</p>
+              <div class="app-url-label">
+                <label [for]="appUrlInputId">{{ 'rooms.phone.appUrl' | transloco }}</label>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-xs btn-square"
+                  data-testid="room-phone-app-url-help"
+                  [attr.aria-label]="'rooms.phone.appUrlHelp' | transloco"
+                  [attr.aria-expanded]="appUrlHelp()"
+                  [attr.aria-controls]="appUrlHelpId"
+                  [pkTip]="'rooms.phone.appUrlHint' | transloco"
+                  (click)="appUrlHelp.update((open) => !open)"
+                >
+                  <pk-icon name="help-circle" size="15" />
+                </button>
+              </div>
+              <input [id]="appUrlInputId" type="url" [formField]="linkFields.appUrl" data-testid="room-phone-app-url" />
+              @if (appUrlHelp()) {
+                <p [id]="appUrlHelpId" data-testid="room-phone-app-url-explanation">
+                  {{ 'rooms.phone.appUrlHint' | transloco }}
+                </p>
+              }
               <button type="submit" class="btn btn-sm" [disabled]="phone.busy()">
                 {{ 'rooms.phone.saveUrl' | transloco }}
               </button>
@@ -277,6 +294,25 @@ import { toDataURL } from 'qrcode';
       font-size: 12px;
       overflow-wrap: anywhere;
     }
+    .app-url-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .app-url-label label {
+      flex: 1;
+    }
+    .app-url-label button {
+      flex: none;
+      min-height: 32px;
+      min-width: 32px;
+    }
+    @media (max-width: 767px) {
+      .app-url-label button {
+        min-height: 44px;
+        min-width: 44px;
+      }
+    }
     .identity {
       display: block;
       color: var(--pk-muted);
@@ -331,6 +367,14 @@ import { toDataURL } from 'qrcode';
   `,
 })
 export class RoomPhone {
+  private static nextHelpId = 0;
+  protected readonly appUrlHelpId = `room-phone-url-help-${++RoomPhone.nextHelpId}`;
+  protected readonly appUrlInputId = `${this.appUrlHelpId}-input`;
+  protected readonly appUrlHelp = linkedSignal(() => {
+    this.channel();
+    this.phone.context();
+    return false;
+  });
   readonly channel = input<RoomChannel>('whatsapp');
   readonly embedded = input(false);
   readonly hideDestructiveActions = input(false);

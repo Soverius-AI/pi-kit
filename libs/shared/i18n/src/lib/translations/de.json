@@ -4805,8 +4805,8 @@
       "test": "Verbindungstest senden",
       "verified": "Handy-Verbindung bestätigt",
       "unverified": "Antworte auf die Testnachricht, um die Zustellung zu bestätigen.",
-      "appUrl": "Private Adresse der Handy-App",
-      "appUrlHint": "Verwende die HTTPS-Adresse aus den Einstellungen für privaten Zugriff. Raumlinks öffnen diese Adresse.",
+      "appUrl": "Handy-App-URL (optional)",
+      "appUrlHint": "Optional: die HTTPS-Adresse deiner pi-kit-Handy-App aus Einstellungen → Gerät verbinden → Verbindung. Sie ergänzt Nachrichten dieses Kanals um „Raum öffnen“-Links. Chat und Befehle funktionieren auch ohne sie.",
       "saveUrl": "Raumlinks speichern",
       "pendingDelivery": "Nachrichten warten auf Zustellung: {{count}}",
       "delivered": "Zuletzt zugestellt: {{time}}",
@@ -4818,7 +4818,8 @@
       "setupSteps": "Nachrichtenverbindung einrichten",
       "step1": "Assistentenkonto verbinden",
       "step2": "Unterhaltung mit diesem Raum verknüpfen",
-      "step3": "Antwort vom Handy bestätigen"
+      "step3": "Antwort vom Handy bestätigen",
+      "appUrlHelp": "Hilfe zur Handy-App-URL"
     },
     "task": {
       "label": "Aufgabe",
@@ -4905,7 +4906,13 @@
       "archiveLeave": "Weiterlaufen lassen",
       "archiveConfirm": "Archivieren",
       "cancel": "Abbrechen",
-      "usingTool": "nutzt {{value1}}"
+      "usingTool": "nutzt {{value1}}",
+      "readOnly": "Schreibgeschützt",
+      "readOnlyRecovery": "Schreibgeschützt · Wiederherstellung nötig",
+      "readOnlyUnavailable": "Schreibgeschützt · Sandbox nicht verfügbar",
+      "readOnlySetup": "Schreibgeschützt · Einrichtung nötig",
+      "readOnlyStarting": "Schreibgeschützt · Sandbox startet",
+      "readOnlySandboxSelected": "Schreibgeschützt · Sandbox ausgewählt"
     },
     "action": {
       "call": "Entwurf",
@@ -5223,8 +5230,9 @@
           "signal": "Verknüpfe ein Assistentenkonto mit signal-cli.",
           "slack": "Verbinde eine App mit deinem Workspace."
         },
-        "remove": "Aus dem Raum entfernen",
-        "removeHint": "Entfernt die Kanalverknüpfung und die ausstehende Einrichtung dieses Raums. Andere Räume bleiben verbunden. Gespeicherte Zugangsdaten bleiben erhalten.",
+        "remove": "Aus dem Raum löschen",
+        "deleteLabel": "{{provider}}-Kanal löschen",
+        "removeHint": "Löscht diesen Kanal aus diesem Raum, einschließlich Verknüpfung, Nachrichten in der Warteschlange und ausstehender Einrichtung. Andere Räume bleiben verbunden. Gespeicherte Zugangsdaten bleiben erhalten.",
         "disconnect": "Für alle Räume trennen",
         "disconnectHint": "Stoppt diesen Anbieter auf diesem Host für alle Räume. Raumverknüpfungen und gespeicherte Zugangsdaten bleiben erhalten; du kannst später erneut verbinden."
       }

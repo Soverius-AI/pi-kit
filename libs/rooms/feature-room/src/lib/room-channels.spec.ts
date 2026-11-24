@@ -35,6 +35,7 @@ describe('room channel wizard', () => {
   const begin = vi.fn();
   const unlink = vi.fn();
   const disconnect = vi.fn();
+  const forOwner = vi.fn();
   beforeEach(() => {
     vi.resetAllMocks();
     begin.mockResolvedValue({ code: 'a'.repeat(24), expiresAt: Date.now() + 600000 });
@@ -52,7 +53,7 @@ describe('room channel wizard', () => {
       providers: [
         { provide: OpenRoomStore, useValue: { room } },
         ...provideMockApi([
-          [roomChannelStatus, status, (options) => [options.path?.['channel']]],
+          [roomChannelStatus, status, (options) => [options.path?.['channel'], options.path?.['roomId']]],
           [roomChannelSettings, settings, (options) => [options.path?.['channel'], options.body]],
           [roomChannelBegin, begin, (options) => [options.path?.['channel']]],
           [roomChannelUnlink, unlink, (options) => [options.path?.['channel'], options.path?.['roomId']]],
@@ -62,7 +63,8 @@ describe('room channel wizard', () => {
           provide: EntryApiClient,
           useFactory: () => {
             const api = inject(ApiClient);
-            return { forOwner: () => api.client };
+            forOwner.mockReturnValue(api.client);
+            return { forOwner };
           },
         },
       ],
@@ -220,7 +222,7 @@ describe('room channel wizard', () => {
     expect(root.querySelector('img[src^=http], svg[data-provider-logo]')).toBeNull();
   });
 
-  it('offers room removal and host-wide disconnect in the fixed footer, confirms effects, and preserves their distinct API scope', async () => {
+  it('keeps host-wide disconnect separate from deleting this room’s channel', async () => {
     const bound: RoomChannelStatus = {
       ...initial('slack'),
       connection: 'connected',
@@ -230,8 +232,8 @@ describe('room channel wizard', () => {
     status.mockImplementation((channel: RoomChannel) =>
       Promise.resolve(channel === 'slack' ? bound : initial(channel)),
     );
-    unlink.mockResolvedValue({ ...bound, binding: null });
-    disconnect.mockResolvedValue({ ...bound, binding: null, connection: 'disconnected' });
+    unlink.mockResolvedValue({ ...bound, binding: null, removedFromRoom: true });
+    disconnect.mockResolvedValue({ ...bound, connection: 'disconnected' });
     const { fixture, root, click } = setup();
     await fixture.whenStable();
     await vi.waitFor(() => expect(root.querySelector('[data-testid=room-channel-manage-slack]')).not.toBeNull());
@@ -244,6 +246,16 @@ describe('room channel wizard', () => {
         /Unlink|Disconnect/.test(button.textContent ?? ''),
       ),
     ).toBe(false);
+    click('room-channel-disconnect');
+    await fixture.whenStable();
+    expect(disconnect).not.toHaveBeenCalled();
+    expect(root.querySelector('[data-testid=room-channel-action-hint]')?.textContent).toContain('every room');
+    click('room-channel-action-confirm');
+    await fixture.whenStable();
+    expect(disconnect).toHaveBeenCalledExactlyOnceWith('slack', 'room-a');
+    expect(root.querySelector('[data-testid=room-channel-manage-slack]')).not.toBeNull();
+    expect(root.querySelector('pk-room-dialog')).not.toBeNull();
+    expect(root.querySelector('[data-testid=room-channel-disconnect]')).toBeNull();
     click('room-channel-remove');
     await fixture.whenStable();
     expect(unlink).not.toHaveBeenCalled();
@@ -258,32 +270,23 @@ describe('room channel wizard', () => {
     click('room-channel-action-confirm');
     await fixture.whenStable();
     expect(unlink).toHaveBeenCalledExactlyOnceWith('slack', 'room-a');
-    expect(disconnect).not.toHaveBeenCalled();
-    expect(root.querySelector('[data-testid=room-channel-remove]')).toBeNull();
-    click('room-channel-disconnect');
-    await fixture.whenStable();
-    expect(disconnect).not.toHaveBeenCalled();
-    expect(root.querySelector('[data-testid=room-channel-action-hint]')?.textContent).toContain('every room');
-    expect(root.querySelector('[data-testid=room-channel-action-hint]')?.textContent).toContain('saved credentials');
-    click('room-channel-action-confirm');
-    await fixture.whenStable();
-    expect(disconnect).toHaveBeenCalledExactlyOnceWith('slack', 'room-a');
-    expect(root.querySelector('[data-testid=room-channel-action-confirm]')).toBeNull();
-    expect(root.querySelector('[data-testid=room-channel-disconnect]')).toBeNull();
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(root.querySelector('pk-room-dialog')).toBeNull();
+    expect(root.querySelector('[data-testid=room-channel-manage-slack]')).toBeNull();
   });
 
-  it('can remove pending pairing without disconnecting the host account', async () => {
+  it('deletes pending pairing and closes its setup without disconnecting the host account', async () => {
     const connected: RoomChannelStatus = { ...initial('telegram'), connection: 'connected', configured: true };
     status.mockImplementation((channel: RoomChannel) =>
       Promise.resolve(channel === 'telegram' ? connected : initial(channel)),
     );
-    unlink.mockResolvedValue(connected);
+    unlink.mockResolvedValue({ ...connected, removedFromRoom: true });
     const { fixture, root, click } = setup();
     await fixture.whenStable();
     await vi.waitFor(() => expect(root.querySelector('[data-testid=room-channel-manage-telegram]')).not.toBeNull());
     click('room-channel-manage-telegram');
     await fixture.whenStable();
-    expect(root.querySelector('[data-testid=room-channel-remove]')).toBeNull();
+    expect(root.querySelector('[data-testid=room-channel-remove]')).not.toBeNull();
     await TestBed.inject(RoomChannelsStore).selected()?.store.act('begin');
     await fixture.whenStable();
     expect(root.querySelector('[data-testid=room-phone-command]')).not.toBeNull();
@@ -293,8 +296,159 @@ describe('room channel wizard', () => {
     await fixture.whenStable();
     expect(unlink).toHaveBeenCalledExactlyOnceWith('telegram', 'room-a');
     expect(disconnect).not.toHaveBeenCalled();
-    expect(root.querySelector('[data-testid=room-phone-command]')).toBeNull();
-    expect(root.querySelector('[data-testid=room-channel-disconnect]')).not.toBeNull();
+    expect(root.querySelector('pk-room-dialog')).toBeNull();
+    expect(root.querySelector('[data-testid=room-channel-manage-telegram]')).toBeNull();
+    expect(
+      TestBed.inject(RoomChannelsStore)
+        .providers.find(({ channel }) => channel === 'telegram')
+        ?.store.command(),
+    ).toBeUndefined();
+  });
+
+  it.each(['whatsapp', 'telegram', 'signal', 'slack'] as const)(
+    'deletes a configured unbound %s channel from its own accessible row control and keeps it deleted after remount',
+    async (channel) => {
+      let removed = false;
+      status.mockImplementation((provider: RoomChannel) =>
+        Promise.resolve({
+          ...initial(provider),
+          ...(provider === channel
+            ? { configured: true, connection: 'connected', error: 'A host warning', removedFromRoom: removed }
+            : {}),
+        }),
+      );
+      unlink.mockImplementation(async () => {
+        removed = true;
+        return {
+          ...initial(channel),
+          configured: true,
+          connection: 'connected',
+          error: 'A host warning',
+          removedFromRoom: true,
+        };
+      });
+      const { fixture, root, click } = setup();
+      await fixture.whenStable();
+      await vi.waitFor(() => expect(root.querySelector(`[data-testid=room-channel-delete-${channel}]`)).not.toBeNull());
+      const control = root.querySelector<HTMLButtonElement>(`[data-testid=room-channel-delete-${channel}]`)!;
+      const manage = root.querySelector(`[data-testid=room-channel-manage-${channel}]`)!;
+      expect(control.tagName).toBe('BUTTON');
+      expect(control.type).toBe('button');
+      expect(control.tabIndex).toBe(0);
+      expect(control.getAttribute('aria-label')).toMatch(/^Delete .+ channel$/);
+      expect(control.closest('button')).toBe(control);
+      expect(manage.contains(control)).toBe(false);
+      expect(control.parentElement).toBe(manage.parentElement);
+      control.click();
+      await fixture.whenStable();
+      expect(root.querySelector('pk-room-dialog h2')?.textContent?.trim()).toBe(control.getAttribute('aria-label'));
+      expect(root.querySelector('[data-testid=room-channel-action-hint]')?.textContent).toContain('queued messages');
+      expect(unlink).not.toHaveBeenCalled();
+      click('room-channel-action-cancel');
+      await fixture.whenStable();
+      expect(root.querySelector('[data-testid=room-channel-remove]')).not.toBeNull();
+      expect(unlink).not.toHaveBeenCalled();
+      click('room-channel-remove');
+      await fixture.whenStable();
+      click('room-channel-action-confirm');
+      await fixture.whenStable();
+      expect(unlink).toHaveBeenCalledExactlyOnceWith(channel, 'room-a');
+      expect(disconnect).not.toHaveBeenCalled();
+      expect(settings).not.toHaveBeenCalled();
+      expect(root.querySelector(`[data-testid=room-channel-manage-${channel}]`)).toBeNull();
+      expect(root.querySelector('pk-room-dialog')).toBeNull();
+      fixture.destroy();
+      const remount = setup();
+      await remount.fixture.whenStable();
+      await vi.waitFor(() =>
+        expect(
+          TestBed.inject(RoomChannelsStore)
+            .providers.find((provider) => provider.channel === channel)
+            ?.store.status()?.removedFromRoom,
+        ).toBe(true),
+      );
+      expect(remount.root.querySelector(`[data-testid=room-channel-manage-${channel}]`)).toBeNull();
+      expect(remount.root.querySelector('.count')).toBeNull();
+    },
+  );
+
+  it('keeps the card, confirmation and credential draft after a failed delete', async () => {
+    status.mockImplementation((channel: RoomChannel) =>
+      Promise.resolve({ ...initial(channel), configured: channel === 'telegram' }),
+    );
+    unlink.mockRejectedValue(new Error('Could not delete this room channel.'));
+    const { fixture, root, click } = setup();
+    await fixture.whenStable();
+    await vi.waitFor(() => expect(root.querySelector('[data-testid=room-channel-manage-telegram]')).not.toBeNull());
+    click('room-channel-manage-telegram');
+    await fixture.whenStable();
+    const token = root.querySelector<HTMLInputElement>('[data-testid=room-telegram-bot-token]')!;
+    token.value = '123456:unsaved-draft';
+    token.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    click('room-channel-remove');
+    await fixture.whenStable();
+    click('room-channel-action-confirm');
+    await fixture.whenStable();
+    expect(root.querySelector('[role=alert]')?.textContent).toContain('Could not delete');
+    expect(root.querySelector('[data-testid=room-channel-action-confirm]')).not.toBeNull();
+    expect(root.querySelector('[data-testid=room-channel-manage-telegram]')).not.toBeNull();
+    click('room-channel-action-cancel');
+    await fixture.whenStable();
+    expect(root.querySelector<HTMLInputElement>('[data-testid=room-telegram-bot-token]')?.value).toBe(
+      '123456:unsaved-draft',
+    );
+    expect(disconnect).not.toHaveBeenCalled();
+    expect(settings).not.toHaveBeenCalled();
+  });
+
+  it('keeps deletion scoped to the room and host and restores the card only after Add setup succeeds', async () => {
+    const original = room()!;
+    status.mockImplementation((channel: RoomChannel, id: string) =>
+      Promise.resolve({
+        ...initial(channel),
+        configured: channel === 'telegram',
+        connection: channel === 'telegram' ? 'connected' : 'disconnected',
+        removedFromRoom: channel === 'telegram' && id === 'room-a' && room()?.hostInstanceId === 'host-a',
+      }),
+    );
+    const { fixture, root, click } = setup();
+    await fixture.whenStable();
+    await vi.waitFor(() =>
+      expect(
+        TestBed.inject(RoomChannelsStore)
+          .providers.find(({ channel }) => channel === 'telegram')
+          ?.store.status()?.removedFromRoom,
+      ).toBe(true),
+    );
+    expect(root.querySelector('[data-testid=room-channel-manage-telegram]')).toBeNull();
+    room.set({ ...original, id: 'room-b' });
+    await fixture.whenStable();
+    await vi.waitFor(() => expect(root.querySelector('[data-testid=room-channel-manage-telegram]')).not.toBeNull());
+    room.set({ ...original, hostInstanceId: 'host-b' });
+    await fixture.whenStable();
+    await vi.waitFor(() => expect(forOwner).toHaveBeenLastCalledWith('host-b'));
+    await vi.waitFor(() => expect(root.querySelector('[data-testid=room-channel-manage-telegram]')).not.toBeNull());
+    room.set(original);
+    await fixture.whenStable();
+    await vi.waitFor(() =>
+      expect(
+        TestBed.inject(RoomChannelsStore)
+          .providers.find(({ channel }) => channel === 'telegram')
+          ?.store.status()?.removedFromRoom,
+      ).toBe(true),
+    );
+    expect(root.querySelector('[data-testid=room-channel-manage-telegram]')).toBeNull();
+    click('room-channel-add');
+    await fixture.whenStable();
+    click('room-channel-select-telegram');
+    await fixture.whenStable();
+    expect(root.querySelector('[data-testid=room-channel-manage-telegram]')).toBeNull();
+    await TestBed.inject(RoomChannelsStore).selected()?.store.act('begin');
+    await fixture.whenStable();
+    expect(root.querySelector('[data-testid=room-channel-manage-telegram]')).not.toBeNull();
+    expect(root.querySelector('[data-testid=room-phone-command]')?.textContent).toContain('a'.repeat(24));
+    expect(disconnect).not.toHaveBeenCalled();
   });
 
   it('keeps failed destructive operations reviewable and clears confirmation when changing host', async () => {

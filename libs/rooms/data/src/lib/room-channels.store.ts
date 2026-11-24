@@ -24,6 +24,7 @@ export class RoomChannelsStore {
   readonly existing = computed(() =>
     this.providers.filter(({ store }) => {
       const status = store.status();
+      if (status?.removedFromRoom) return false;
       return (
         store.command() ||
         store.busy() ||

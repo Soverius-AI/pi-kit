@@ -22,7 +22,7 @@ export class RoomPhoneStore {
   private readonly links = new Map<string, RoomPhoneLink>();
   readonly command = computed(() => {
     const link = this.pendingLink();
-    if (!link) return;
+    if (!link || this.status()?.removedFromRoom) return;
     const username = this.telegramUsername();
     const command =
       this.channel() === 'telegram'
@@ -39,6 +39,9 @@ export class RoomPhoneStore {
     {
       reset: () => this.restoreCommand(),
       tick: () => this.expireCommand(),
+      read: (status) => {
+        if (status.removedFromRoom) this.clearCommand();
+      },
     },
     () => this.channel(),
   );
@@ -50,26 +53,27 @@ export class RoomPhoneStore {
   readonly groupLink = computed(() => {
     const username = this.telegramUsername();
     const link = this.pendingLink();
-    if (!link || !username) return;
+    if (!link || !username || this.status()?.removedFromRoom) return;
     return `https://t.me/${username}?startgroup=${encodeURIComponent(link.code)}`;
   });
 
   async act(
     action: 'connect' | 'disconnect' | 'begin' | 'confirm' | 'unlink' | 'review' | 'test',
     item?: ReviewRoomPhone,
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (action === 'review') {
       if (item)
-        await this.panel.mutate(
+        return this.panel.mutate(
           (options) => unwrap(roomChannelDismiss({ ...this.options(options), body: item })),
           (status) => this.status.set(status),
         );
-      return;
+      return false;
     }
     if (action === 'begin') {
-      await this.panel.mutate(
+      return this.panel.mutate(
         (options) => unwrap(roomChannelBegin(this.options(options))),
         (link) => {
+          this.status.update((status) => (status ? { ...status, removedFromRoom: false } : status));
           const key = this.contextKey();
           if (key) {
             const oldest = this.links.keys().next().value;
@@ -81,7 +85,6 @@ export class RoomPhoneStore {
           this.expireCommand();
         },
       );
-      return;
     }
     const apply = (status: RoomChannelStatus) => {
       this.status.set(status);
@@ -90,7 +93,7 @@ export class RoomPhoneStore {
     if (action === 'confirm') {
       const candidate = this.status()?.candidate;
       if (candidate)
-        await this.panel.mutate(
+        return this.panel.mutate(
           (options) =>
             unwrap(
               roomChannelConfirm({
@@ -100,7 +103,7 @@ export class RoomPhoneStore {
             ),
           apply,
         );
-      return;
+      return false;
     }
     const operation = {
       connect: roomChannelConnect,
@@ -108,7 +111,7 @@ export class RoomPhoneStore {
       unlink: roomChannelUnlink,
       test: roomChannelTest,
     }[action];
-    await this.panel.mutate((options) => unwrap(operation(this.options(options))), apply);
+    return this.panel.mutate((options) => unwrap(operation(this.options(options))), apply);
   }
 
   async saveUrl(appUrl: string): Promise<void> {

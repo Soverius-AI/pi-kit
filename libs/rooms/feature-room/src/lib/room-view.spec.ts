@@ -1,4 +1,6 @@
 import { Component, computed, input, output, signal } from '@angular/core';
+import { By } from '@angular/platform-browser';
+import { PkTip } from '@pi-kit/design-system';
 import { TestBed } from '@angular/core/testing';
 import type {
   PiDialogAnswer,
@@ -137,6 +139,7 @@ describe('RoomView', () => {
     machineLook: (id: string | null | undefined) =>
       id === 'desk' ? { icon: 'drone', color: 3 } : id === room.hostInstanceId ? { icon: 'oni', color: 7 } : undefined,
     protection: signal<unknown>(undefined),
+    protectionBusy: signal(false),
     setSandboxed: vi.fn(async () => undefined),
     post,
   };
@@ -144,6 +147,9 @@ describe('RoomView', () => {
   beforeEach(() => {
     events.set([]);
     lead.set('idle');
+    store.protection.set(undefined);
+    store.protectionBusy.set(false);
+    store.setSandboxed.mockClear();
     post.mockClear();
     TestBed.overrideComponent(RoomSide, {
       set: {
@@ -442,15 +448,46 @@ describe('RoomView', () => {
     events.set([]);
   });
 
-  it('says the lead is read-only, and sandboxed when its sandbox runs', () => {
+  it('keeps unknown protection neutral and only reports active protection when the sandbox is running', async () => {
     const { fixture, el } = render();
-    const lock = () => el.querySelector('[data-testid=room-lead-lock]') as HTMLElement;
-    expect(lock().textContent?.trim()).toBe('Read-only · this computer');
+    await fixture.whenStable();
+    const lock = () => el.querySelector<HTMLButtonElement>('[data-testid=room-lead-lock]')!;
+    expect(lock().textContent?.trim()).toBe('Read-only');
+    expect(lock().getAttribute('data-mode')).toBe('unknown');
+    expect(lock().disabled).toBe(true);
+    expect(lock().querySelector('pk-protection-badge')).toBeNull();
     store.protection.set({ mode: 'sandboxed', state: 'active' });
-    fixture.detectChanges();
+    await fixture.whenStable();
     expect(lock().textContent?.trim()).toBe('Read-only · sandboxed');
     expect(lock().getAttribute('data-mode')).toBe('sandboxed');
-    store.protection.set(undefined);
+    expect(lock().querySelector('pk-protection-badge pk-icon')?.classList).toContain('active');
+  });
+  it('shows sandbox setup, unavailable and recovery states truthfully instead of claiming host access', async () => {
+    const { fixture, el } = render();
+    store.leadThreadId.set('lead-thread');
+    await fixture.whenStable();
+    const lock = () => el.querySelector<HTMLButtonElement>('[data-testid=room-lead-lock]')!;
+    for (const [state, label] of [
+      ['setup-required', 'Read-only · setup needed'],
+      ['unavailable', 'Read-only · sandbox unavailable'],
+      ['recovery-required', 'Read-only · recovery needed'],
+      ['idle', 'Read-only · sandbox selected'],
+    ] as const) {
+      store.protection.set({ mode: 'sandboxed', state, reason: 'Detailed sandbox reason.' });
+      await fixture.whenStable();
+      expect(lock().getAttribute('data-mode')).toBe('sandboxed');
+      expect(lock().textContent?.trim()).toBe(label);
+      expect(lock().querySelector('pk-protection-badge pk-icon')?.classList).not.toContain('active');
+      const tip = fixture.debugElement.query(By.css('[data-testid=room-lead-lock]')).injector.get(PkTip);
+      expect(tip.text()).toContain('Detailed sandbox reason.');
+      if (state === 'recovery-required') expect(lock().disabled).toBe(true);
+    }
+    store.protection.set({ mode: 'bypass', state: 'bypass' });
+    await fixture.whenStable();
+    expect(lock().textContent?.trim()).toBe('Read-only · this computer');
+    store.protectionBusy.set(true);
+    await fixture.whenStable();
+    expect(lock().disabled).toBe(true);
   });
 
   describe('the playbook picker', () => {

@@ -97,9 +97,9 @@ export class RoomChannelController {
   @Delete()
   @Responds(RoomChannelStatusSchema)
   @ApiOperation({
-    summary: 'Unlink a room conversation',
+    summary: 'Delete a channel from this room',
     description:
-      'Revokes this room’s conversation binding and clears pending channel messages and deliveries without disconnecting the host account.',
+      'Removes the provider from this room and revokes its conversation binding, linking challenge, and pending channel messages and deliveries. Retains the host connection, credentials, other rooms, and room conversation and memory.',
   })
   async unlink(@Param('roomId') room: string, @Param('channel') value: string): Promise<RoomChannelStatus> {
     const channel = RoomChannelSchema.parse(value);

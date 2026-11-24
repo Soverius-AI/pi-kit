@@ -10,6 +10,8 @@ import {
   roomChannelConfig,
   roomChannelTest,
   roomChannelSettings,
+  roomChannelUnlink,
+  roomChannelDisconnect,
 } from '@pi-kit/api';
 import type { Room, RoomChannelStatus } from '@pi-kit/protocol';
 import { OpenRoomStore } from './open-room.store';
@@ -24,6 +26,8 @@ describe('room phone setup', () => {
   const test = vi.fn();
   const begin = vi.fn();
   const settings = vi.fn();
+  const unlink = vi.fn();
+  const disconnect = vi.fn();
   const value: RoomChannelStatus = {
     channel: 'whatsapp',
     connection: 'connected',
@@ -53,6 +57,8 @@ describe('room phone setup', () => {
     config.mockResolvedValue({ ...value, appUrl: 'https://phone.example.test/' });
     test.mockResolvedValue(value);
     settings.mockResolvedValue(value);
+    unlink.mockResolvedValue({ ...value, removedFromRoom: true });
+    disconnect.mockResolvedValue({ ...value, connection: 'disconnected' });
     begin.mockImplementation(async () => ({ code: 'link-code', expiresAt: Date.now() + 600_000 }));
     TestBed.configureTestingModule({
       providers: [
@@ -65,6 +71,8 @@ describe('room phone setup', () => {
           [roomChannelConfig, config, (options) => [options.path, options.body]],
           [roomChannelTest, test, (options) => [options.path]],
           [roomChannelSettings, settings, (options) => [options.path, options.body]],
+          [roomChannelUnlink, unlink, (options) => [options.path]],
+          [roomChannelDisconnect, disconnect, (options) => [options.path]],
         ]),
         {
           provide: EntryApiClient,
@@ -313,5 +321,128 @@ describe('room phone setup', () => {
     expect(store.command()).toBeUndefined();
     expect(store.groupLink()).toBeUndefined();
     expect(store.commandExpired()).toBe(true);
+  });
+  it('deletes the pending command and ignores an older status poll without touching host credentials or connectivity', async () => {
+    const interval = vi.spyOn(globalThis, 'setInterval');
+    const store = TestBed.inject(RoomPhoneStore);
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()).toBeDefined());
+    await store.act('begin');
+    expect(store.command()).toBe('/room-link link-code');
+    let finish!: (status: RoomChannelStatus) => void;
+    status.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const poll = interval.mock.calls.find((call) => call[1] === 2500)?.[0];
+    if (typeof poll !== 'function') throw new Error('Missing status poll.');
+    poll();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    expect(await store.act('unlink')).toBe(true);
+    expect(unlink).toHaveBeenCalledExactlyOnceWith({ roomId: 'room-a', channel: 'whatsapp' });
+    expect(store.status()?.removedFromRoom).toBe(true);
+    expect(store.command()).toBeUndefined();
+    finish(value);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.status()?.removedFromRoom).toBe(true);
+    status.mockResolvedValue({ ...value, removedFromRoom: true });
+    store.visible.set(false);
+    TestBed.tick();
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()?.removedFromRoom).toBe(true));
+    expect(store.command()).toBeUndefined();
+    expect(disconnect).not.toHaveBeenCalled();
+    expect(settings).not.toHaveBeenCalled();
+  });
+
+  it('purges a cached pairing when a current poll reports deletion and re-adds only after begin succeeds', async () => {
+    const interval = vi.spyOn(globalThis, 'setInterval');
+    const store = TestBed.inject(RoomPhoneStore);
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()).toBeDefined());
+    await store.act('begin');
+    status.mockResolvedValue({ ...value, removedFromRoom: true });
+    const poll = interval.mock.calls.find((call) => call[1] === 2500)?.[0];
+    if (typeof poll !== 'function') throw new Error('Missing status poll.');
+    poll();
+    await vi.waitFor(() => expect(store.status()?.removedFromRoom).toBe(true));
+    store.visible.set(false);
+    TestBed.tick();
+    store.visible.set(true);
+    TestBed.tick();
+    expect(store.command()).toBeUndefined();
+    await vi.waitFor(() => expect(store.status()?.removedFromRoom).toBe(true));
+    begin.mockRejectedValueOnce(new Error('Link creation failed.'));
+    expect(await store.act('begin')).toBe(false);
+    expect(store.status()?.removedFromRoom).toBe(true);
+    expect(store.command()).toBeUndefined();
+    begin.mockResolvedValueOnce({ code: 'new-code', expiresAt: Date.now() + 600_000 });
+    expect(await store.act('begin')).toBe(true);
+    expect(store.status()?.removedFromRoom).toBe(false);
+    expect(store.command()).toBe('/room-link new-code');
+  });
+
+  it('retains pending setup after deletion fails and fences a delayed delete response on a different host', async () => {
+    const store = TestBed.inject(RoomPhoneStore);
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()).toBeDefined());
+    await store.act('begin');
+    unlink.mockRejectedValueOnce(new Error('Delete denied.'));
+    expect(await store.act('unlink')).toBe(false);
+    expect(store.command()).toBe('/room-link link-code');
+    expect(store.status()?.removedFromRoom).not.toBe(true);
+    let finish!: (status: RoomChannelStatus) => void;
+    unlink.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const deleting = store.act('unlink');
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    room.set({ ...room()!, hostInstanceId: 'host-b' });
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()).toEqual(value));
+    begin.mockResolvedValueOnce({ code: 'host-b-code', expiresAt: Date.now() + 600_000 });
+    await store.act('begin');
+    finish({ ...value, removedFromRoom: true });
+    expect(await deleting).toBe(false);
+    expect(store.command()).toBe('/room-link host-b-code');
+    expect(store.status()?.removedFromRoom).toBe(false);
+  });
+
+  it('does not let an old host’s removed status purge the current host’s pairing command', async () => {
+    const interval = vi.spyOn(globalThis, 'setInterval');
+    const store = TestBed.inject(RoomPhoneStore);
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()).toBeDefined());
+    let finish!: (status: RoomChannelStatus) => void;
+    status.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const poll = interval.mock.calls.find((call) => call[1] === 2500)?.[0];
+    if (typeof poll !== 'function') throw new Error('Missing status poll.');
+    poll();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    room.set({ ...room()!, hostInstanceId: 'host-b' });
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()).toEqual(value));
+    await store.act('begin');
+    finish({ ...value, removedFromRoom: true });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.command()).toBe('/room-link link-code');
+    expect(store.status()?.removedFromRoom).toBe(false);
   });
 });
