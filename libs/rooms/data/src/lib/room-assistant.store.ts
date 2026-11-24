@@ -30,6 +30,7 @@ export class RoomAssistantStore {
   );
   readonly visible = this.panel.visible;
   readonly roomId = this.panel.roomId;
+  readonly context = this.panel.context;
   readonly status = this.panel.status;
   readonly busy = this.panel.busy;
   readonly error = this.panel.error;

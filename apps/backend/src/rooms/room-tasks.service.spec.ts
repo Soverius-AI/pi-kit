@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { RoomFolders } from './room-folders';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -373,9 +375,20 @@ const make = async (name: string, folder: string): Promise<Instance> => {
     }),
   } as unknown as PeersService;
   instance.bus = new RoomBus(rooms);
+  const credentials = new Map<string, string>();
   instance.outside = new RoomA2aAgents(new A2aAgentsRepository(db), {
-    credentialsEnabled: async () => false,
-    store: { available: () => false },
+    credentialsEnabled: async () => true,
+    store: {
+      kind: 'keychain',
+      available: () => true,
+      set: async (key: string, value: string) => {
+        credentials.set(key, value);
+      },
+      get: async (key: string) => credentials.get(key),
+      delete: async (key: string) => {
+        credentials.delete(key);
+      },
+    },
   } as unknown as SecretsService);
   instance.outside.fetchImpl = outsideFetch;
   instance.tasks = new RoomTasksService(
@@ -420,6 +433,7 @@ const make = async (name: string, folder: string): Promise<Instance> => {
         return 'No secrets found.';
       },
     } as unknown as RoomConsultant,
+    new RoomFolders({ dataDir: join(base, name, 'data') } as BackendConfig),
   );
   instance.a2a = new RoomA2aServer(instance.worker, store, sender, pushes, peers, new InstanceRepository(db));
   instance.restartA2a = () =>
@@ -838,7 +852,7 @@ describe('outside A2A agents', () => {
 
   it('lists an outside agent as a worker, not as a room host, and keeps its token out of the answer', async () => {
     const agent = await addAgent();
-    expect(agent).toMatchObject({ name: 'Outside coder', tokenStorage: 'database' });
+    expect(agent).toMatchObject({ name: 'Outside coder', tokenStorage: 'keychain' });
     expect(Object.keys(agent)).not.toContain('token');
     expect((await host.tasks.candidates(roomId)).find((c) => c.environmentId === agent.id)).toMatchObject({
       name: 'Outside coder',
@@ -1081,6 +1095,47 @@ describe('A2A streaming', () => {
     ]);
   });
 
+  it('accepts an authenticated paired personal-room consultation without a repository clone or a local room', async () => {
+    const personalId = randomUUID();
+    const events = await collect(
+      await desktop.a2a.serve(host.id, '1.0', A2A_ROOM_EXTENSION, {
+        jsonrpc: '2.0',
+        id: 'personal-consult',
+        method: 'SendStreamingMessage',
+        params: {
+          message: {
+            messageId: 'personal-question',
+            contextId: personalId,
+            role: 'ROLE_USER',
+            parts: [{ text: 'Help plan my day.' }],
+            metadata: {
+              [A2A_ROOM_EXTENSION]: {
+                consult: true,
+                roomId: personalId,
+                roomTitle: 'Day planning',
+                repository: '',
+                base: '',
+                role: 'planner',
+                instructions: 'Plan calmly.',
+                question: 'Help plan my day.',
+                settings: { model: 'local/model', thinking: 'low' },
+              },
+            },
+            extensions: [A2A_ROOM_EXTENSION],
+          },
+        },
+      }),
+    );
+    expect(
+      events.some(
+        (event) =>
+          (event['result'] as { statusUpdate?: { status?: { state?: string } } }).statusUpdate?.status?.state ===
+          'TASK_STATE_COMPLETED',
+      ),
+    ).toBe(true);
+    expect(await desktop.rooms.get(personalId)).toBeUndefined();
+  });
+
   it('resubscribes to a task that waits for an answer and ends the stream when it is stopped', async () => {
     asking = true;
     const task = await propose();
@@ -1259,10 +1314,13 @@ describe('an assisted room', () => {
     asking = true;
     const task = await propose();
     await host.tasks.approveTask(roomId, task.id);
-    await vi.waitFor(async () => expect((await host.rooms.task(task.id))?.questions).toHaveLength(1), {
-      timeout: 10_000,
-    });
-    expect((await host.rooms.events(roomId)).at(-1)?.text).toContain('needs you');
+    await vi.waitFor(
+      async () => {
+        expect((await host.rooms.task(task.id))?.questions).toHaveLength(1);
+        expect((await host.rooms.events(roomId)).at(-1)?.text).toContain('needs you');
+      },
+      { timeout: 10_000 },
+    );
     expect(nudges().some((text) => text.includes('stopped to ask'))).toBe(false);
   });
 });

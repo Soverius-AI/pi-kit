@@ -4,6 +4,7 @@ import type { ExtensionAPI, ExtensionFactory, ToolDefinition } from '@earendil-w
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { ROOM_MEMORY_INSTRUCTIONS } from '../rooms/room-memory-instructions';
 import { RoomAssistantCommandSchema, RoomFactInputSchema, type RoomAssistantCommand } from '@pi-kit/protocol';
 
 /** Providers require an object at the tool root. Derive its discoverable fields
@@ -85,7 +86,12 @@ export class RoomTools {
     RoomTools.GUIDE,
     RoomTools.PROPOSE_PLAYBOOK,
   ] as const;
-  private static readonly Role = z.string().trim().min(1).max(40).describe('A participant role the playbook names.');
+  private static readonly Role = z
+    .string()
+    .trim()
+    .min(1)
+    .max(40)
+    .describe('A collaborator role listed in the room briefing.');
   private static readonly CallSchema = z
     .object({
       tool: z.string().trim().min(1).max(80).describe('The tool or safe output, as the playbook names it.'),
@@ -114,7 +120,7 @@ export class RoomTools {
   private static readonly DiscussSchema = z
     .object({
       question: z.string().trim().min(1).max(32000).describe('The question every participant answers, complete.'),
-      roles: z.array(RoomTools.Role).max(8).optional().describe('Whom to ask; all participants when left out.'),
+      roles: z.array(RoomTools.Role).optional().describe('Whom to ask; all participants when left out.'),
     })
     .strict();
   private static readonly NoteSchema = RoomFactInputSchema.extend({
@@ -243,7 +249,8 @@ export class RoomTools {
         tool(
           RoomTools.ASSISTANT,
           'Manage the room assistant',
-          'Read assistant status; remember/forget facts; create a requested commitment (dueAt is Unix milliseconds, timezone is IANA, optional dailyAt HH:mm); complete/cancel/snooze by commitment id; search approved linked folders with query; or write a generated output with a simple filename path and text. Never changes filesystem grants or enables proactive work. Check status before changing an existing commitment.',
+          ROOM_MEMORY_INSTRUCTIONS +
+            ' Read assistant status; remember/forget facts; create a requested commitment (dueAt is Unix milliseconds, timezone is IANA, optional dailyAt HH:mm); complete/cancel/snooze by commitment id; search approved linked folders with query; or write a generated output with a simple filename path and text. Never changes filesystem grants or enables proactive work. Check status before changing an existing commitment.',
           RoomAssistantCommandSchema,
           async (input) => {
             const assistant = hook().assistant;
@@ -318,7 +325,7 @@ export class RoomTools {
         tool(
           RoomTools.CONSULT,
           'Consult a participant',
-          'Ask one participant of the playbook (a role, possibly on another computer) and get its answer. It keeps its own conversation across questions in this room.',
+          'Ask a collaborator listed in the room briefing, including rooms without a playbook. Include relevant room facts and context. It keeps its own conversation while its instructions and model stay the same.',
           RoomTools.ConsultSchema,
           (input) => hook().consult(threadId, input),
         ),

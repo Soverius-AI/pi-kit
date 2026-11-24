@@ -8,7 +8,7 @@
   overscroll-behavior: contain;
   border-left: 1px solid var(--color-base-300);
   background: var(--color-base-100);
-  font-size: 13px;
+  font-size: 12px;
 }
 .panel-head {
   position: sticky;
@@ -27,37 +27,32 @@
   font-size: 13px;
   font-weight: 600;
 }
-@media (max-width: 900px) {
-  .panel-head button {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
 .section {
   border-bottom: 1px solid var(--color-base-300);
+  padding: 10px 14px;
+  min-width: 0;
 }
-.section > summary {
+.section > header {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 14px;
-  cursor: pointer;
+  min-height: 28px;
+}
+h3 {
+  margin: 0;
   font-size: 12px;
   font-weight: 600;
-  list-style: none;
-  user-select: none;
 }
-.section > summary::-webkit-details-marker {
-  display: none;
+.section > header > button {
+  margin-left: auto;
 }
-.section > summary:hover {
-  background: var(--color-base-200);
-}
-.section > summary pk-icon {
+h4 {
+  margin: 8px 0 4px;
+  font-size: 11px;
+  font-weight: 500;
   color: var(--pk-muted);
 }
 .count {
-  margin-left: auto;
   padding: 0 6px;
   border-radius: 999px;
   background: var(--color-base-200);
@@ -65,145 +60,51 @@
   font-weight: 500;
   color: var(--pk-muted);
 }
-.body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin: 0;
-  padding: 0 14px 12px;
-}
-.hint {
-  margin: 0;
-  font-size: 12px;
-  line-height: 17px;
-  color: var(--pk-muted);
+.tasks {
   list-style: none;
-}
-.hint.warn {
-  color: var(--color-warning);
-}
-.row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.pick {
-  position: relative;
-  display: flex;
-  align-items: center;
-  border: 1px solid var(--color-base-300);
-  border-radius: 8px;
-}
-.pick select {
-  appearance: none;
-  flex: 1;
-  min-width: 0;
-  padding: 5px 24px 5px 8px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--color-base-content);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  text-overflow: ellipsis;
-}
-.pick select:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 1px;
-}
-.pick .caret {
-  position: absolute;
-  right: 8px;
-  pointer-events: none;
-  color: var(--pk-muted);
-}
-.stages {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
   padding: 0;
-  list-style: none;
-  color: var(--pk-muted);
-}
-.stages li {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 3px 0;
-}
-.stages li + li::before {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: -8px;
-  height: 14px;
-  border-left: 1px solid var(--color-base-300);
-}
-.stages .dot,
-.tasks .dot {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  border: 1.5px solid currentColor;
-}
-.stages li.done .dot {
-  background: currentColor;
-}
-.stages li[aria-current='step'] {
-  color: var(--color-base-content);
-  font-weight: 500;
-}
-.stages li[aria-current='step'] .dot {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
-}
-h4 {
-  margin: 2px 0 0;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--pk-muted);
-}
-.tasks,
-.triggers,
-.tree,
-.tree ul {
+  margin: 4px 0 0;
   display: flex;
   flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  gap: 2px;
 }
 .tasks button {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   width: 100%;
-  padding: 4px 6px;
-  border-radius: 6px;
-  text-align: left;
-  color: var(--pk-muted);
+  min-width: 0;
+  min-height: 32px;
+  padding: 5px 0;
+  text-align: start;
+  cursor: pointer;
 }
 .tasks button:hover {
-  background: var(--color-base-200);
+  color: var(--color-primary);
 }
-.tasks .title {
+.title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--color-base-content);
 }
-.tasks .state {
+.state {
   flex: none;
   font-size: 11px;
+  color: var(--pk-muted);
 }
-.tasks button[data-state='proposed'] .dot,
-.tasks button[data-state='submitted'] .dot {
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--pk-muted);
+  border-radius: 50%;
+}
+.attention {
+  background: color-mix(in srgb, var(--color-warning) 5%, transparent);
+}
+.attention .dot {
   border-color: var(--color-warning);
   background: var(--color-warning);
 }
@@ -219,79 +120,72 @@ h4 {
   border-color: var(--color-error);
   background: var(--color-error);
 }
-.triggers {
-  gap: 8px;
-}
-.triggers li:not(.hint) {
+.summary-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
-}
-.triggers pk-icon {
-  margin-top: 2px;
-  color: var(--pk-muted);
-}
-.triggers .main {
-  display: flex;
-  flex-direction: column;
   min-width: 0;
+  margin-top: 4px;
 }
-.triggers .when,
-.triggers .next {
+.room-meta {
+  margin: 4px 0 0;
   font-size: 11px;
   color: var(--pk-muted);
   overflow-wrap: anywhere;
 }
-.tree {
+.warn {
+  color: var(--color-warning);
+}
+.dialog-label {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
-.tree ul {
-  margin-left: 6px;
-  padding-left: 10px;
-  border-left: 1px solid var(--color-base-300);
+.stages,
+.triggers,
+.file-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
-.tree .node {
+.stages li,
+.file-list li {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 0;
-  font-weight: 500;
+  gap: 8px;
 }
-.tree .node pk-icon {
-  color: var(--pk-muted);
-}
-.tree .node.leaf {
-  font-weight: 400;
-}
-.tree .node.current {
+.stages [aria-current='step'] {
+  font-weight: 600;
   color: var(--color-primary);
-  font-weight: 500;
 }
-.tree .node.current pk-icon {
-  color: currentColor;
+.stages .done {
+  color: var(--color-success);
 }
-.tree .path {
+.triggers li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.file-download {
+  justify-content: space-between;
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+code {
   display: block;
-  margin: 0 0 2px 19px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  direction: rtl;
-  text-align: left;
-  font-size: 11px;
-  color: var(--pk-muted);
-}
-.notebook dt {
-  font-weight: 500;
-}
-.notebook dt .scope {
-  margin-left: 6px;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--pk-muted);
-}
-.notebook dd {
-  margin: 0 0 6px;
+  overflow-wrap: anywhere;
   white-space: pre-wrap;
-  color: var(--pk-muted);
+  font-size: 12px;
+  margin-top: 6px;
+}
+@media (max-width: 900px) {
+  .panel-head button,
+  .section button {
+    min-height: 44px;
+  }
 }

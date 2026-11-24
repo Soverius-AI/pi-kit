@@ -6,3 +6,5 @@ export * from './lib/room-phone.store';
 export * from './lib/room-assistant.store';
 
 export * from './lib/room-channels.store';
+
+export * from './lib/room-agents.store';

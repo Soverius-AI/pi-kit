@@ -8,6 +8,7 @@ describe('room assistant tool contract', () => {
     const registered: {
       name: string;
       parameters: Record<string, unknown>;
+      description: string;
       execute: (id: string, input: unknown) => Promise<unknown>;
     }[] = [];
     const assistant = vi.fn(async () => 'Saved');
@@ -20,6 +21,18 @@ describe('room assistant tool contract', () => {
     } as unknown as ExtensionAPI);
     const tool = registered.find((tool) => tool.name === RoomTools.ASSISTANT)!;
     expect(tool.parameters).toMatchObject({ type: 'object', required: ['action'], additionalProperties: false });
+    expect(tool.description).toContain('Automatically maintain useful memory during ordinary room conversations');
+    expect(tool.description).toContain('without requiring a remember command, form, or separate request');
+    expect(tool.description).toContain('Do not use playbook scope for automatic personal memory');
+    expect(
+      RoomAssistantCommandSchema.safeParse({
+        action: 'remember',
+        key: 'reply-style',
+        text: 'Concise',
+        roomId: 'another-room',
+        scope: 'playbook',
+      }).success,
+    ).toBe(false);
     expect(tool.parameters).not.toHaveProperty('anyOf');
     expect(tool.parameters).not.toHaveProperty('oneOf');
     await expect(tool.execute('bad', { action: 'snooze' })).rejects.toThrow();

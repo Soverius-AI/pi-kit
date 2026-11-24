@@ -239,7 +239,7 @@ export class RoomsController {
   @ApiOperation({
     summary: 'Add an outside A2A agent',
     description:
-      'Reads the agent card at the given address (the agent’s base address or its agent-card.json), and keeps the agent with its name. A bearer token, when given, goes to the credential store, or to the database where there is none.',
+      'Reads the agent card at the given address (the agent’s base address or its agent-card.json), and keeps the agent with its name. A bearer token, when given, requires the enabled operating system credential store and is never stored in application metadata.',
   })
   @Responds(A2aAgentSchema, { status: 201 })
   @Fails({ 400: 'No A2A agent card at that address, or the agent speaks no binding pi-kit supports.', 404: ROOMS_OFF })

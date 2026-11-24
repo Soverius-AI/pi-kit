@@ -30,24 +30,50 @@ export class RoomPlaybooksRepository {
     return this.database.db;
   }
 
-  async remember(scope: string, key: string, text: string, by: string, now = Date.now()): Promise<void> {
-    await this.db
+  async remember(scope: string, key: string, text: string, by: string, now = Date.now()): Promise<boolean> {
+    const result = await this.db
       .prepare(
         `INSERT INTO room_memory (scope, key, text, updated_by, updated_at) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT (scope, key) DO UPDATE SET text = excluded.text, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+         ON CONFLICT (scope, key) DO UPDATE SET text = excluded.text, updated_by = excluded.updated_by, updated_at = excluded.updated_at
+         WHERE ?=0 OR room_memory.text<>''`,
       )
-      .run(scope, key, redact(text) as string, by, now);
+      .run(scope, key, redact(text) as string, by, now, by === 'lead' && scope.startsWith('room:') ? 1 : 0);
+    return Number(result.changes) > 0;
   }
 
-  async forget(scope: string, key: string): Promise<void> {
-    await this.db.prepare('DELETE FROM room_memory WHERE scope = ? AND key = ?').run(scope, key);
+  async forget(scope: string, key: string, by = 'owner', now = Date.now()): Promise<void> {
+    // Retain only the key and deletion metadata, never the forgotten fact.
+    await this.db
+      .prepare(
+        `INSERT INTO room_memory(scope,key,text,updated_by,updated_at) VALUES (?,?,'',?,?)
+      ON CONFLICT(scope,key) DO UPDATE SET text='',updated_by=excluded.updated_by,updated_at=excluded.updated_at`,
+      )
+      .run(scope, key, by, now);
+  }
+
+  /** Legacy secret-shaped keys cannot be retained even as deletion metadata. */
+  async purge(scope: string, key: string): Promise<void> {
+    await this.db.prepare('DELETE FROM room_memory WHERE scope=? AND key=?').run(scope, key);
+  }
+
+  async forgotten(scopes: readonly string[]): Promise<Pick<RoomMemoryEntry, 'scope' | 'key'>[]> {
+    if (!scopes.length) return [];
+    const rows = await this.db
+      .prepare(
+        `SELECT scope,key FROM room_memory WHERE scope IN (${scopes.map(() => '?').join(',')}) AND text='' ORDER BY updated_at,rowid`,
+      )
+      .all<{ scope: string; key: string }>(...scopes);
+    return rows.map((row) => ({
+      scope: row.scope.startsWith('room:') ? ('room' as const) : ('playbook' as const),
+      key: row.key,
+    }));
   }
 
   async memory(scopes: readonly string[]): Promise<RoomMemoryEntry[]> {
     if (!scopes.length) return [];
     const rows = (await this.db
       .prepare(
-        `SELECT scope, key, text, updated_by, updated_at FROM room_memory WHERE scope IN (${scopes.map(() => '?').join(', ')}) ORDER BY updated_at, rowid`,
+        `SELECT scope, key, text, updated_by, updated_at FROM room_memory WHERE scope IN (${scopes.map(() => '?').join(', ')}) AND text<>'' ORDER BY updated_at, rowid`,
       )
       .all(...scopes)) as { scope: string; key: string; text: string; updated_by: string; updated_at: number }[];
     return rows.map((row) => ({

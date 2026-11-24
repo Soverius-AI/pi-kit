@@ -38,6 +38,7 @@ import { RoomPlaybookFiles, type Playbook } from './room-playbook-files.service'
 import { RoomPlaybookEditor } from './room-playbook-editor.service';
 import { RoomLive } from './room-live';
 import { RoomRuns } from './room-runs';
+import { RoomParticipants } from './room-participants.service';
 
 @Injectable()
 export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown {
@@ -73,6 +74,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     private readonly editor: RoomPlaybookEditor,
     private readonly live: RoomLive,
     private readonly memory: RoomMemory,
+    private readonly participants: RoomParticipants,
     @Optional() private readonly runs?: RoomRuns,
   ) {}
 
@@ -144,7 +146,14 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
 
   async briefing(found: FoundRoom): Promise<string | undefined> {
     const playbook = await this.of(found);
-    if (!playbook) return 'Use room_note to remember or correct room facts. Empty text forgets a note.';
+    const members = await this.participants.members(found);
+    const roster = members.length
+      ? `Current room collaborators (this complete list replaces any earlier roster) you can consult with room_consult or room_discuss:\n${members.map((member) => `- ${member.role}${member.agent.machine ? ` on ${member.agent.machine}` : member.agent.agent ? ` (agent ${member.agent.agent})` : ''}: ${member.instructions.split('\n')[0] ?? ''}`).join('\n')}\nInclude the current room facts and relevant context in each question. Collaborators do not see the room conversation or memory automatically.`
+      : 'Current room collaborators: none. Earlier collaborator roles are no longer available. The owner can add agents in the room.';
+    if (!playbook)
+      return [roster, 'Use room_note to remember or correct room facts. Empty text forgets a note.']
+        .filter(Boolean)
+        .join('\n\n');
     const { config } = playbook;
     const line = (name: string, what: string, description: string) => {
       const needs = this.tools.needs(playbook, name);
@@ -163,9 +172,7 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     return [
       `This room follows the playbook “${playbook.name}”: ${playbook.description}`,
       playbook.instructions,
-      config.participants.length
-        ? `Participants you can consult with room_consult or room_discuss:\n${config.participants.map((participant) => `- ${participant.role}${participant.agent.machine ? ` on ${participant.agent.machine}` : participant.agent.agent ? ` (agent ${participant.agent.agent})` : ''}: ${participant.instructions.split('\n')[0] ?? ''}`).join('\n')}`
-        : '',
+      roster,
       lines.length ? `Tools and safe outputs you call with room_call:\n${lines.join('\n')}` : '',
       config.stages.length
         ? `Stages: ${config.stages.join(' → ')}. The room is at “${found.stage ?? config.stages[0]}”. Move on with room_advance${
@@ -256,18 +263,17 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
   }
 
   async consult(threadId: string, input: { role: string; question: string }): Promise<string> {
-    const { found, playbook } = await this.leadRoom(threadId);
-    return await this.ask(found, playbook, input.role, input.question);
+    const found = await this.consultRoom(threadId);
+    return await this.ask(found, await this.participants.members(found), input.role, input.question);
   }
 
   async discuss(threadId: string, input: { question: string; roles?: string[] }): Promise<string> {
-    const { found, playbook } = await this.leadRoom(threadId);
-    const roles = input.roles?.length
-      ? input.roles
-      : playbook.config.participants.map((participant) => participant.role);
-    if (!roles.length) return 'The playbook names no participants.';
+    const found = await this.consultRoom(threadId);
+    const members = await this.participants.members(found);
+    const roles = input.roles?.length ? [...new Set(input.roles)] : members.map((participant) => participant.role);
+    if (!roles.length) return 'This room has no collaborators. The owner can add agents in the room.';
     const answers = await Promise.all(
-      roles.map(async (role) => `## ${role}\n\n${await this.ask(found, playbook, role, input.question)}`),
+      roles.map(async (role) => `## ${role}\n\n${await this.ask(found, members, role, input.question)}`),
     );
     return `${answers.join('\n\n')}\n\nWeigh these views, decide, and write the decision with room_note.`;
   }
@@ -612,10 +618,10 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     return { text: `Found ${news.length} new; queued every item for the lead.`, items: listed };
   }
 
-  private async ask(found: FoundRoom, playbook: Playbook, role: string, question: string): Promise<string> {
-    const participant = playbook.config.participants.find((candidate) => candidate.role === role);
+  private async ask(found: FoundRoom, members: PlaybookParticipant[], role: string, question: string): Promise<string> {
+    const participant = members.find((candidate) => candidate.role === role);
     if (!participant)
-      return `The playbook has no participant ${role}. Participants: ${playbook.config.participants.map((p) => p.role).join(', ') || 'none'}.`;
+      return `This room has no collaborator ${role}. Participants: ${members.map((p) => p.role).join(', ') || 'none'}.`;
     await this.bus.record(found.room.id, { kind: 'note', actor: 'lead', text: `Asks the ${role}: ${question}`, role });
     const step = await this.runs?.step(found.room.id, { kind: 'consult', name: role, detail: question });
     let answer: { text: string; environmentId: string | null };
@@ -683,7 +689,16 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
             contextId: found.room.id,
             role: 'ROLE_USER',
             parts: [{ text: question, mediaType: 'text/plain' }],
-            metadata: { [A2A_ROOM_EXTENSION]: { consult: true, base: found.room.baseCommit, ...consult } },
+            metadata: {
+              [A2A_ROOM_EXTENSION]: {
+                consult: true,
+                base: found.room.baseCommit,
+                ...consult,
+                ...(participant.model || participant.thinking
+                  ? { settings: { model: participant.model, thinking: participant.thinking } }
+                  : {}),
+              },
+            },
             extensions: [A2A_ROOM_EXTENSION],
           },
           configuration: { acceptedOutputModes: ['text/markdown', 'text/plain'], returnImmediately: true },
@@ -805,10 +820,15 @@ export class RoomPlaybookService implements OnModuleInit, OnApplicationShutdown 
     return { repository: found.room.repository, room: found.room.id };
   }
 
-  private async leadRoom(threadId: string): Promise<{ found: FoundRoom; playbook: Playbook }> {
+  private async consultRoom(threadId: string): Promise<FoundRoom> {
     const roomId = await this.rooms.roomOfLead(threadId);
     const found = roomId ? await this.rooms.get(roomId) : undefined;
     if (!found) throw new Error('This session is not the lead of a room.');
+    return found;
+  }
+
+  private async leadRoom(threadId: string): Promise<{ found: FoundRoom; playbook: Playbook }> {
+    const found = await this.consultRoom(threadId);
     const playbook = await this.of(found);
     if (!playbook) throw new Error('This room follows no playbook.');
     return { found, playbook };

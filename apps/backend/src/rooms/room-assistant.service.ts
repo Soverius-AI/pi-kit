@@ -27,6 +27,7 @@ import { RoomWorkspace } from './room-workspace.service';
 import { RoomTime } from './room-time';
 import { RoomBus } from './room-bus';
 import { RoomMemory } from './room-memory';
+import { ROOM_MEMORY_INSTRUCTIONS } from './room-memory-instructions';
 import { roomMemoryScopes } from './room-memory-scopes';
 
 @Injectable()
@@ -159,7 +160,9 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
     const status = await this.status(found.room.id);
     const execution = await this.workspace.execution(found.room.id, found.leadThreadId ?? undefined);
     const memory = await this.notes.memory(roomMemoryScopes(found));
+    const forgottenMemory = await this.notes.forgotten(roomMemoryScopes(found));
     const fingerprint = JSON.stringify({
+      forgottenMemory,
       policy: status.policy,
       memory,
       commitments: status.commitments,
@@ -169,7 +172,12 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
     const previous = this.contexts.get(found.room.id);
     if (previous?.fingerprint === fingerprint) return undefined;
     const keys = memory.map((row) => `${row.scope}:${row.key}`);
-    const forgotten = previous?.keys.filter((key) => !keys.includes(key)) ?? [];
+    const forgotten = [
+      ...new Set([
+        ...forgottenMemory.map((row) => `${row.scope}:${row.key}`),
+        ...(previous?.keys.filter((key) => !keys.includes(key)) ?? []),
+      ]),
+    ];
     const text = [
       'Current assistant state: this snapshot replaces ALL earlier assistant memory and commitment snapshots. Earlier references are historical. Do not use absent facts as remembered facts, or repeat cancelled, completed or superseded reminders. When a needed fact is absent, query room_assistant status instead of guessing from historical messages.',
       forgotten.length
@@ -178,6 +186,7 @@ export class RoomAssistant implements OnModuleInit, OnApplicationShutdown {
       execution.workspace
         ? `Your stable room working directory is ${execution.cwd}. Keep it as your base.`
         : `Your current project working directory is ${execution.cwd}. Keep it as your base; room-owned outputs are saved through room_assistant.`,
+      ROOM_MEMORY_INSTRUCTIONS,
       'Use room_assistant for status, remember/forget, commitments, completion/snooze, searching linked folders, and writing generated files to outputs. You may write generated room outputs with that tool; other host files remain read-only. Never claim to remember, schedule or save unless the tool confirms it.',
       'Schedule only work the owner requested. Proactive execution is ' +
         (status.policy.enabled ? 'enabled' : 'disabled; explain that saved reminders wait until the owner enables it') +

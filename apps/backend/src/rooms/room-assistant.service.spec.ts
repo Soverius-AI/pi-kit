@@ -122,6 +122,99 @@ describe('personal room assistant persistence', () => {
     expect((await assistant.status(roomId)).memory).toEqual([]);
   });
 
+  it('retains only a forgotten key across restart and refuses automatic restoration from history', async () => {
+    await assistant.command('personal-lead', {
+      action: 'remember',
+      key: 'reply-style',
+      text: 'Use long explanations.',
+    });
+    await assistant.remember(roomId, { key: 'reply-style', text: 'Use concise replies.' });
+    const reviewed = (await assistant.briefing((await rooms.get(roomId))!))!;
+    expect(reviewed).toContain('Use concise replies. [owner,');
+    expect(reviewed).not.toContain('Use long explanations.');
+    await assistant.remember(roomId, { key: 'reply-style', text: '' });
+    await assistant.onApplicationShutdown();
+    await db.onApplicationShutdown();
+    db = await DatabaseService.create({ dataDir: dir });
+    bind();
+    expect((await assistant.status(roomId)).memory).toEqual([]);
+    const context = (await assistant.briefing((await rooms.get(roomId))!))!;
+    expect(context).toContain('Explicitly forgotten memory keys: room:reply-style');
+    expect(context).toContain('Never recreate forgotten facts from history');
+    expect(context).not.toContain('Use concise replies.');
+    await expect(
+      assistant.command('personal-lead', { action: 'remember', key: 'reply-style', text: 'Use long explanations.' }),
+    ).rejects.toThrow('was forgotten');
+    const retained = await db.db.prepare('SELECT key,text FROM room_memory WHERE scope=?').all(`room:${roomId}`);
+    expect(retained).toEqual([{ key: 'reply-style', text: '' }]);
+    // Existing explicit owner APIs and advanced channel commands remain compatible.
+    await assistant.remember(roomId, { key: 'reply-style', text: 'Only the owner reintroduced this.' });
+    expect((await assistant.status(roomId)).memory).toMatchObject([
+      { text: 'Only the owner reintroduced this.', updatedBy: 'owner' },
+    ]);
+  });
+
+  it('preserves explicit playbook-note authoring after a note was removed', async () => {
+    const notes = new RoomPlaybooksRepository(db),
+      memory = new RoomMemory(notes, new RoomBus(rooms));
+    const scope = `room-playbook:${roomId}/workflow`;
+    await memory.change(roomId, { key: 'spec', text: 'Version one.' }, 'lead', scope);
+    await memory.change(roomId, { key: 'spec', text: '' }, 'lead', scope);
+    expect(await notes.memory([scope])).toEqual([]);
+    await memory.change(roomId, { key: 'spec', text: 'Version two.' }, 'lead', scope);
+    expect(await notes.memory([scope])).toMatchObject([{ key: 'spec', text: 'Version two.' }]);
+  });
+
+  it('lets the owner forget a legacy secret-shaped key without retaining it as a tombstone', async () => {
+    const key = 'sk-proj-' + 'x'.repeat(40),
+      notes = new RoomPlaybooksRepository(db),
+      scope = `room:${roomId}`;
+    await notes.remember(scope, key, 'Legacy entry.', 'owner');
+    expect((await assistant.status(roomId)).memory).toMatchObject([{ key }]);
+    const memory = new RoomMemory(notes, new RoomBus(rooms));
+    await expect(memory.change(roomId, { key, text: '' }, 'owner', 'room:another-room')).rejects.toThrow(
+      'current room only',
+    );
+    await assistant.remember(roomId, { key, text: '' });
+    expect((await assistant.status(roomId)).memory).toEqual([]);
+    expect(await db.db.prepare('SELECT key,text FROM room_memory WHERE scope=?').all(scope)).toEqual([]);
+    expect(await notes.forgotten([scope])).toEqual([]);
+    await expect(assistant.remember(roomId, { key, text: 'New entry.' })).rejects.toThrow(
+      'secret values as memory keys',
+    );
+    await assistant.remember(roomId, { key: 'reply-style', text: 'Concise' });
+    await assistant.remember(roomId, { key: 'reply-style', text: '' });
+    expect(await notes.forgotten([scope])).toEqual([{ scope: 'room', key: 'reply-style' }]);
+  });
+
+  it('does not persist secrets or accept another room scope through the automatic memory path', async () => {
+    await expect(
+      assistant.command('personal-lead', { action: 'remember', key: 'api-key', text: 'sk-proj-' + 'x'.repeat(40) }),
+    ).rejects.toThrow('does not store');
+    await expect(
+      assistant.command('personal-lead', {
+        action: 'remember',
+        key: 'account-context',
+        text: '123456:abcdefghijklmnopqrstuvwxyz1234567890',
+      }),
+    ).rejects.toThrow('does not store');
+    await expect(
+      assistant.command('ordinary-thread', { action: 'remember', key: 'reply-style', text: 'Concise' }),
+    ).rejects.toThrow('Only a room lead');
+    await expect(
+      assistant.command('personal-lead', {
+        action: 'remember',
+        key: 'sk-proj-' + 'x'.repeat(40),
+        text: 'Do not retain secret keys.',
+      }),
+    ).rejects.toThrow('secret values as memory keys');
+    const memory = new RoomMemory(new RoomPlaybooksRepository(db), new RoomBus(rooms));
+    await expect(
+      memory.change(roomId, { key: 'reply-style', text: 'Concise' }, 'lead', 'room:another-room'),
+    ).rejects.toThrow('current room only');
+    expect((await assistant.status(roomId)).memory).toEqual([]);
+  });
+
   it('keeps remembered facts scoped to their room', async () => {
     await assistant.remember(roomId, { key: 'private', text: 'Only this room.' });
     const other = await rooms.insert({

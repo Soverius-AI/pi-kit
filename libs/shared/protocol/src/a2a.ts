@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PlaybookAgentSettingsSchema } from './playbooks';
 import { InstanceIdSchema } from './environments';
 import { RoomIdSchema, RoomTaskFileSchema, RoomTaskQuestionSchema } from './rooms';
 
@@ -89,11 +90,12 @@ export const A2aRoomConsultSchema = z
     consult: z.literal(true),
     roomId: RoomIdSchema,
     roomTitle: z.string().max(200),
-    repository: z.string().min(1).max(512),
-    base: z.string().regex(/^[0-9a-f]{40,64}$/),
+    repository: z.string().max(512),
+    base: z.union([z.literal(''), z.string().regex(/^[0-9a-f]{40,64}$/)]),
     role: z.string().min(1).max(40),
     instructions: z.string().max(4000),
     question: z.string().min(1).max(32000),
+    settings: PlaybookAgentSettingsSchema.optional(),
   })
   .strict()
   .meta({ id: 'A2aRoomConsult' });

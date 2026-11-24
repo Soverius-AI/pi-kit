@@ -438,7 +438,12 @@ import { RoomSide } from './room-side';
               }
               @for (action of store.pendingActions(); track action.id) {
                 @let playbook = action.kind === 'playbook';
-                <li class="pk-room-task pk-room-action" data-testid="room-action" [attr.data-kind]="action.kind">
+                <li
+                  class="pk-room-task pk-room-action"
+                  data-testid="room-action"
+                  [attr.data-action]="action.id"
+                  [attr.data-kind]="action.kind"
+                >
                   <div class="head">
                     <pk-icon [name]="playbook ? 'skill' : 'lock'" size="14" />
                     <span class="label">{{
@@ -743,6 +748,7 @@ import { RoomSide } from './room-side';
           (openPlaybook)="openPanel('overview')"
           (openRun)="openPanel('runs', $event)"
           (focusTask)="showTask($event)"
+          (focusAction)="showAction($event)"
         />
       }
       @if (panel()) {
@@ -976,6 +982,13 @@ export class RoomView {
   protected showTask(taskId: string): void {
     if (this.narrowSide()) this.closeSide();
     const card = this.host.nativeElement.querySelector<HTMLElement>(`[data-task="${CSS.escape(taskId)}"]`);
+    card?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    card?.classList.add('flash');
+    setTimeout(() => card?.classList.remove('flash'), 1600);
+  }
+  protected showAction(actionId: string): void {
+    if (this.narrowSide()) this.closeSide();
+    const card = this.host.nativeElement.querySelector<HTMLElement>(`[data-action="${CSS.escape(actionId)}"]`);
     card?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     card?.classList.add('flash');
     setTimeout(() => card?.classList.remove('flash'), 1600);

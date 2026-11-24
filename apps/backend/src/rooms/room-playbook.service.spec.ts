@@ -1,9 +1,11 @@
+import { RoomParticipantsRepository } from '../db/room-participants.repository';
+import { RoomParticipants } from './room-participants.service';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SendMessageRequest, StreamResponse, Task } from '@a2a-js/sdk';
+import { Message, SendMessageRequest, StreamResponse, Task } from '@a2a-js/sdk';
 import { A2A_ROOM_EXTENSION, A2aRoomConsultSchema, type RoomStreamLine } from '@pi-kit/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseService } from '../db/database.service';
@@ -218,6 +220,17 @@ beforeEach(async () => {
     editor,
     new RoomLive(bus),
     new RoomMemory(store, bus),
+    new RoomParticipants(
+      rooms,
+      new RoomParticipantsRepository(db),
+      files,
+      agents,
+      { list: async () => [] } as unknown as RoomEnvironments,
+      { get: async () => undefined, list: async () => [] } as unknown as RoomA2aAgents,
+      { manager: async () => ({ self: { name: 'Here' }, peers: paired }) } as unknown as PeersService,
+      new InstanceRepository(db),
+      lead,
+    ),
     (runs = new RoomRuns(new RoomRunsRepository(db), bus)),
   );
   const room = await new RoomsService(
@@ -721,6 +734,22 @@ describe('room playbooks', () => {
     expect(new RoomPlaybookFiles().list({ project })[0]?.error).toContain('lead.model');
   });
 
+  it('omits optional consultation settings when using defaults so strict older peers can accept the request', async () => {
+    paired = [{ peerId: 'peer-1', name: 'Desktop', state: 'active' }];
+    writeFileSync(
+      join(project, '.pi', 'skills', 'pr-review', 'room.yaml'),
+      'participants:\n  - { role: security, agent: { machine: Desktop } }\n',
+    );
+    a2a.sendMessage.mockResolvedValue(
+      Message.fromJSON({ messageId: 'reply', role: 'ROLE_AGENT', parts: [{ text: 'Looks fine.' }] }),
+    );
+    expect(await service.consult('lead', { role: 'security', question: 'Any secrets?' })).toBe('Looks fine.');
+    const sent = SendMessageRequest.toJSON(a2a.sendMessage.mock.calls[0]?.[1] as SendMessageRequest) as {
+      message: { metadata: Record<string, unknown> };
+    };
+    expect(sent.message.metadata[A2A_ROOM_EXTENSION]).not.toHaveProperty('settings');
+  });
+
   it('asks a participant on a paired computer with a message its pi-kit accepts, and shows what it writes meanwhile', async () => {
     paired = [{ peerId: 'peer-1', name: 'Desktop', state: 'active' }];
     writeFileSync(
@@ -954,5 +983,61 @@ describe('room playbooks', () => {
     expect(new RoomPlaybookFiles().load(place, 'triage').config.stages).toEqual(['sort']);
     await rooms.setPlaybook(roomId, 'triage', 'sort');
     expect(await editor.detail(roomId)).toMatchObject({ origin: 'room', folder: join('playbooks', 'triage') });
+  });
+});
+
+describe('collaborators without a playbook', () => {
+  it('briefs and consults room-local roles in a personal room, then stops dispatching removed roles', async () => {
+    await db.db.prepare("UPDATE rooms SET playbook=NULL, repository='', base_commit='' WHERE id=?").run(roomId);
+    const members = new RoomParticipantsRepository(db);
+    await members.update(roomId, () => ({
+      members: [
+        {
+          role: 'planner',
+          agent: { local: true },
+          instructions: 'Help plan my week.',
+          model: 'local/gemma',
+          thinking: 'low',
+        },
+      ],
+      excluded: [],
+    }));
+    expect(await service.briefing((await rooms.get(roomId))!)).toContain('planner');
+    expect(
+      await service.consult('lead', { role: 'planner', question: 'Relevant fact: Fridays are free. Plan my week.' }),
+    ).toContain('planner says fine');
+    expect(ask).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        role: 'planner',
+        repository: '',
+        instructions: 'Help plan my week.',
+        settings: { model: 'local/gemma', thinking: 'low' },
+      }),
+    );
+    await members.update(roomId, () => ({ members: [], excluded: [] }));
+    ask.mockClear();
+    expect(await service.consult('lead', { role: 'planner', question: 'Again?' })).toContain('no collaborator');
+    expect(ask).not.toHaveBeenCalled();
+  });
+  it('dispatches a room-local external role through the existing A2A client without creating a playbook', async () => {
+    await db.db.prepare("UPDATE rooms SET playbook=NULL, repository='', base_commit='' WHERE id=?").run(roomId);
+    await new RoomParticipantsRepository(db).update(roomId, () => ({
+      members: [{ role: 'researcher', agent: { agent: 'registered' }, instructions: 'Research carefully.' }],
+      excluded: [],
+    }));
+    const outside = service['outside'];
+    vi.spyOn(outside, 'list').mockResolvedValue([
+      { id: 'registered', name: 'Research', url: 'https://example.test', tokenStorage: 'none', createdAt: 1 },
+    ]);
+    const send = vi.fn(async () =>
+      Message.fromJSON({ messageId: 'reply', role: 'ROLE_AGENT', parts: [{ text: 'Research complete.' }] }),
+    );
+    Object.assign(outside, { sendMessage: send });
+    expect(await service.consult('lead', { role: 'researcher', question: 'Find suitable options.' })).toBe(
+      'Research complete.',
+    );
+    expect(send).toHaveBeenCalledWith('registered', expect.anything());
+    expect((await rooms.get(roomId))?.playbook).toBeNull();
+    expect(ask).not.toHaveBeenCalled();
   });
 });

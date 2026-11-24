@@ -2,7 +2,7 @@ import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Message, TaskArtifactUpdateEvent, TaskState, type Task } from '@a2a-js/sdk';
 import { AgentEvent, type AgentExecutor, type ExecutionEventBus, type RequestContext } from '@a2a-js/sdk/server';
 import {
@@ -24,6 +24,7 @@ import { RoomA2a } from './room-a2a';
 import { RoomA2aPushSender } from './room-a2a.push-sender';
 import { RoomA2aTaskStore } from './room-a2a.task-store';
 import { RoomConsultant } from './room-consultant.service';
+import { RoomFolders } from './room-folders';
 import { LiveFeed } from './room-live';
 import { RoomOutbox } from './room-outbox';
 import { RoomQuestions } from './room-questions';
@@ -68,6 +69,7 @@ export class RoomWorkerService implements AgentExecutor, OnModuleInit {
     private readonly sender: RoomA2aPushSender,
     private readonly outbox: RoomOutbox,
     private readonly consultant: RoomConsultant,
+    private readonly folders: RoomFolders,
   ) {}
 
   onModuleInit(): void {
@@ -175,7 +177,10 @@ export class RoomWorkerService implements AgentExecutor, OnModuleInit {
         ),
       );
     if (!caller) return end(TaskState.TASK_STATE_REJECTED, NOT_THE_HOST);
-    const project = await RepositoryIdentity.findClone(this.meta, consult.repository, consult.base);
+    const personal = !consult.base && !consult.repository;
+    const project = personal
+      ? this.folders.workspace(`consult-${createHash('sha256').update(`${caller}:${consult.roomId}`).digest('hex')}`)
+      : await RepositoryIdentity.findClone(this.meta, consult.repository, consult.base);
     if (!project)
       return end(
         TaskState.TASK_STATE_REJECTED,
@@ -201,6 +206,8 @@ export class RoomWorkerService implements AgentExecutor, OnModuleInit {
           role: consult.role,
           instructions: consult.instructions,
           question: consult.question,
+          settings: consult.settings,
+          detached: true,
           observe: feed.observe,
         });
       } catch (error) {

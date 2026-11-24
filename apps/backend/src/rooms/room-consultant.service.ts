@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { BaseEvent } from '@ag-ui/core';
 import type { PlaybookAgentSettings } from '@pi-kit/protocol';
 import { Injectable, Optional } from '@nestjs/common';
@@ -19,6 +20,7 @@ export interface ConsultRequest {
   instructions: string;
   question: string;
   settings?: PlaybookAgentSettings;
+  detached?: boolean;
   observe?: (event: BaseEvent) => void;
 }
 
@@ -50,9 +52,12 @@ export class RoomConsultant {
   }
 
   private async turn(request: ConsultRequest): Promise<string> {
-    const existing = await this.playbooks.consultThread(request.roomId, request.role);
+    // A changed persona/model gets a fresh conversation, including after a process restart.
+    const sessionRole = this.sessionRole(request);
+    const existing = await this.playbooks.consultThread(request.roomId, sessionRole);
     const threadId = existing && (await this.threadRows.get(existing)) ? existing : await this.create(request);
-    if (this.workspace) request = { ...request, folder: await this.workspace.prepare(request.roomId, threadId) };
+    if (this.workspace && !request.detached)
+      request = { ...request, folder: await this.workspace.prepare(request.roomId, threadId) };
     const prompt = existing === threadId ? request.question : this.firstPrompt(request);
     await this.agents.configure(threadId, request.settings);
     const speaking = this.live.turn({ roomId: request.roomId, actor: 'consultant', role: request.role });
@@ -75,7 +80,7 @@ export class RoomConsultant {
   }
 
   private async create(request: ConsultRequest): Promise<string> {
-    const policy = await this.workspace?.execution(request.roomId);
+    const policy = request.detached ? undefined : await this.workspace?.execution(request.roomId);
     const cwd = policy?.workspace
       ? (this.workspace?.ensure(request.roomId) ?? request.folder)
       : (policy?.cwd ?? request.folder);
@@ -86,17 +91,25 @@ export class RoomConsultant {
       undefined,
       {
         internal: true,
-        onId: async (threadId) => await this.playbooks.addConsultThread(threadId, request.roomId, request.role),
+        onId: async (threadId) =>
+          await this.playbooks.addConsultThread(threadId, request.roomId, this.sessionRole(request)),
       },
     );
     return detail.id;
   }
 
+  private sessionRole(request: ConsultRequest): string {
+    return `${request.role}:${createHash('sha256')
+      .update(JSON.stringify([request.instructions, request.settings ?? {}]))
+      .digest('hex')
+      .slice(0, 24)}`;
+  }
+
   private firstPrompt(request: ConsultRequest): string {
     return [
-      `You are the ${request.role} in the pi-kit room “${request.roomTitle}” for the repository ${request.repository}.`,
+      `You are the ${request.role} in the pi-kit room “${request.roomTitle}”${request.repository ? ` for the repository ${request.repository}` : ' as a personal assistant collaborator'}.`,
       request.instructions || `Give the room your view as ${request.role}.`,
-      'The room’s lead asks you questions; answer the lead directly. You are read-only: read the repository to back your answer, but change nothing. Do not ask questions back: say what you assume instead.',
+      'The room’s lead asks you questions; answer the lead directly. You are read-only: use the supplied room context and available reference files to back your answer, but change nothing. You do not see the room conversation or its memory unless the lead includes them in its question. Do not ask questions back: say what you assume instead.',
       'Keep it short: findings first, one line each, with file paths and lines where they help. At most 300 words.',
       `The lead asks:\n\n${request.question}`,
     ].join('\n\n');

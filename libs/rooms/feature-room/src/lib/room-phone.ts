@@ -184,9 +184,11 @@ import { toDataURL } from 'qrcode';
             @if (status.lastDelivery?.deliveredAt; as at) {
               <p>{{ 'rooms.phone.delivered' | transloco: { time: when(at) } }}</p>
             }
-            <button type="button" class="btn btn-sm" [disabled]="phone.busy()" (click)="phone.act('unlink')">
-              {{ 'rooms.phone.unlink' | transloco }}
-            </button>
+            @if (!hideDestructiveActions()) {
+              <button type="button" class="btn btn-sm" [disabled]="phone.busy()" (click)="phone.act('unlink')">
+                {{ 'rooms.phone.unlink' | transloco }}
+              </button>
+            }
           } @else if (status.connection === 'connected') {
             <p>{{ profile() + '.groupHint' | transloco }}</p>
             <button type="button" class="btn btn-sm" [disabled]="phone.busy()" (click)="phone.act('begin')">
@@ -240,7 +242,7 @@ import { toDataURL } from 'qrcode';
               </button>
             }
           }
-          @if (status.connection !== 'disconnected') {
+          @if (!hideDestructiveActions() && status.connection !== 'disconnected') {
             <button type="button" class="btn btn-sm" [disabled]="phone.busy()" (click)="phone.act('disconnect')">
               {{ profile() + '.disconnect' | transloco }}
             </button>
@@ -331,6 +333,7 @@ import { toDataURL } from 'qrcode';
 export class RoomPhone {
   readonly channel = input<RoomChannel>('whatsapp');
   readonly embedded = input(false);
+  readonly hideDestructiveActions = input(false);
   readonly externalStore = input<RoomPhoneStore>();
   protected readonly profile = computed(() => `rooms.channels.${this.channel()}`);
   protected readonly credentialSetupUrl = computed(() =>

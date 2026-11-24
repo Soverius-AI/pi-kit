@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type {
   AgentCard,
@@ -49,12 +49,31 @@ export class RoomA2aAgents {
 
   async add(input: AddA2aAgent): Promise<A2aAgent> {
     const token = input.token?.trim() || undefined;
+    let url: URL;
+    try {
+      url = new URL(input.url);
+    } catch {
+      throw new BadRequestException('Give a valid HTTP(S) agent address.');
+    }
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash || url.search)
+      throw new BadRequestException(
+        'Use an HTTP(S) agent address without embedded credentials, query parameters, or fragments. Supply a bearer token separately.',
+      );
+    if (
+      token &&
+      (!(await this.secrets.credentialsEnabled()) ||
+        this.secrets.store.kind !== 'keychain' ||
+        !this.secrets.store.available())
+    )
+      throw new ConflictException(
+        'Enable the operating system credential store in Settings before saving an external agent token.',
+      );
     let card: AgentCard;
     try {
-      card = await this.resolver(token).resolve(...RoomA2aAgents.cardAddress(input.url));
-    } catch (error) {
+      card = await this.resolver(token, input.url).resolve(...RoomA2aAgents.cardAddress(input.url));
+    } catch {
       throw new BadRequestException(
-        `No A2A agent card at ${input.url}: ${error instanceof Error ? error.message : String(error)}`,
+        'Could not read a supported A2A agent card at that address. Check the address and credentials.',
       );
     }
     if (
@@ -64,15 +83,16 @@ export class RoomA2aAgents {
     )
       throw new BadRequestException('The agent offers neither JSON-RPC nor HTTP+JSON, which pi-kit speaks.');
     const id = randomUUID();
-    let tokenStorage: A2aAgentRow['tokenStorage'] = 'none';
-    let stored: string | null = null;
+    const tokenStorage: A2aAgentRow['tokenStorage'] = token ? 'keychain' : 'none';
     if (token) {
-      if ((await this.secrets.credentialsEnabled()) && this.secrets.store.available()) {
+      try {
         await this.secrets.store.set(this.account(id), token);
-        tokenStorage = 'keychain';
-      } else {
-        tokenStorage = 'database';
-        stored = token;
+        if ((await this.secrets.store.get(this.account(id))) !== token) throw new Error('verification failed');
+      } catch {
+        await Promise.resolve(this.secrets.store.delete(this.account(id))).catch(() => undefined);
+        throw new ConflictException(
+          'The external agent token could not be saved in the operating system credential store.',
+        );
       }
     }
     const row: A2aAgentRow = {
@@ -80,10 +100,15 @@ export class RoomA2aAgents {
       url: input.url,
       name: (card.name || input.url).slice(0, 200),
       tokenStorage,
-      token: stored,
+      token: null,
       createdAt: Date.now(),
     };
-    await this.agents.insert(row);
+    try {
+      await this.agents.insert(row);
+    } catch (error) {
+      if (token) await Promise.resolve(this.secrets.store.delete(this.account(id))).catch(() => undefined);
+      throw error;
+    }
     this.tokens.set(id, token);
     return this.visible(row);
   }
@@ -181,7 +206,7 @@ export class RoomA2aAgents {
         const row = await this.agents.get(id);
         if (!row) throw new NotFoundException(NO_AGENT);
         const token = await this.token(row);
-        const fetchImpl = this.authorized(token);
+        const fetchImpl = this.authorized(token, row.url);
         const card = await new DefaultAgentCardResolver({ fetchImpl }).resolve(...RoomA2aAgents.cardAddress(row.url));
         if (card.name && card.name !== row.name) await this.agents.rename(id, card.name.slice(0, 200));
         const factory = new ClientFactory(
@@ -198,18 +223,26 @@ export class RoomA2aAgents {
     return pending;
   }
 
-  private resolver(token: string | undefined): DefaultAgentCardResolver {
-    return new DefaultAgentCardResolver({ fetchImpl: this.authorized(token) });
+  private resolver(token: string | undefined, url: string): DefaultAgentCardResolver {
+    return new DefaultAgentCardResolver({ fetchImpl: this.authorized(token, url) });
   }
 
-  private authorized(token: string | undefined): typeof fetch {
+  private authorized(token: string | undefined, url: string): typeof fetch {
     return async (input, init = {}) => {
+      const destination = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+      if (token && destination.origin !== new URL(url).origin)
+        throw new A2aOffline('An external agent cannot forward stored credentials to a different origin.');
       const headers = new Headers(init.headers);
       if (token && !headers.has('authorization')) headers.set('authorization', `Bearer ${token}`);
       try {
-        return await this.fetchImpl(input, { ...init, headers });
-      } catch (error) {
-        throw new A2aOffline(error instanceof Error ? error.message : String(error), { cause: error });
+        return await this.fetchImpl(input, {
+          ...init,
+          headers,
+          signal: init.signal ?? AbortSignal.timeout(10_000),
+          redirect: token ? 'error' : init.redirect,
+        });
+      } catch {
+        throw new A2aOffline('The external agent could not be reached.');
       }
     };
   }

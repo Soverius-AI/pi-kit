@@ -4,7 +4,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConflictException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RoomStreamLine } from '@pi-kit/protocol';
+import { ROOMS_SETTING_KEY, type RoomStreamLine } from '@pi-kit/protocol';
+import { RoomAssistant } from './room-assistant.service';
+import { RoomAssistantRepository } from '../db/room-assistant.repository';
+import { RoomMemory } from './room-memory';
+import type { RoomWorkspace } from './room-workspace.service';
+import { RoomPhoneService } from './room-phone.service';
+import { RoomPhoneRepository } from '../db/room-phone.repository';
+import type { RoomMessagingTransport } from './room-messaging.transport';
+import type { TranscribeService } from '../transcribe/transcribe.service';
+import type { RoomPlaybookService } from './room-playbook.service';
 import type { AguiService, HeadlessRun } from '../agui/agui.service';
 import { DatabaseService } from '../db/database.service';
 import { InstanceRepository } from '../db/instance.repository';
@@ -222,6 +231,100 @@ describe('the room lead', () => {
     expect(await readOnly?.(leadId)).toBe('ask-owner');
     expect(await readOnly?.('source')).toBeUndefined();
   });
+
+  it.each(['room chat', 'messaging channel'] as const)(
+    'makes automatic room memory available in normal %s without a remember command',
+    async (source) => {
+      const notes = new RoomPlaybooksRepository(db),
+        policy = new RoomAssistantRepository(db),
+        meta = new MetaRepository(db);
+      await meta.setSetting(ROOMS_SETTING_KEY, true);
+      const workspace = {
+        prepare: async () => project,
+        execution: async () => ({ cwd: project, workspace: false, sandbox: false }),
+        path: () => project,
+        list: async () => [],
+        files: async () => [],
+      } as unknown as RoomWorkspace;
+      const assistant = new RoomAssistant(policy, notes, rooms, lead, workspace, bus, new RoomMemory(notes, bus));
+      lead.setAssistant(assistant);
+      const preference = 'I prefer concise replies with practical examples.';
+      runHeadless.mockImplementationOnce(async () => {
+        const [thread, prompt] = runHeadless.mock.calls[0] as unknown as [string, string];
+        expect(prompt).toContain(preference);
+        expect(prompt).toContain('Automatically maintain useful memory during ordinary room conversations');
+        expect(prompt).toContain('without requiring a remember command, form, or separate request');
+        expect(prompt).toContain('never overwrite a correction with older conversation history');
+        // Simulate the normal model choosing its registered memory tool, without an extra model pass.
+        await assistant.command(thread, {
+          action: 'remember',
+          key: 'reply-style',
+          text: 'Prefer concise replies with practical examples.',
+        });
+        return { status: 'finished' };
+      });
+      let phone: RoomPhoneService | undefined;
+      try {
+        if (source === 'room chat') await lead.post(roomId, { text: preference, route: 'lead' });
+        else {
+          const store = new RoomPhoneRepository(db);
+          const wire: RoomMessagingTransport = {
+            phase: 'connected',
+            qr: null,
+            error: null,
+            account: 'assistant-account',
+            input: { lastGroupAt: null, lastOwnGroupAt: null, lastAcceptedAt: null, ignoredHistory: 0 },
+            receive: async () => undefined,
+            receipt: async () => undefined,
+            connect: async () => undefined,
+            disconnect: async () => undefined,
+            createMessageId: () => crypto.randomUUID(),
+            send: async () => 'sent',
+            media: async () => new Uint8Array(),
+          };
+          const group = 'baileys:personal@g.us',
+            owner = 'phone-owner',
+            code = 'a'.repeat(24);
+          await store.begin(roomId, code, Date.now() + 600000);
+          await store.candidate(code, group, owner, 'Owner', 'Personal', Date.now());
+          await store.confirm(roomId, group, owner, 'assistant-account', Date.now());
+          phone = new RoomPhoneService(
+            store,
+            rooms,
+            lead,
+            wire,
+            meta,
+            assistant,
+            policy,
+            workspace,
+            {} as TranscribeService,
+            notes,
+            {} as RoomPlaybookService,
+          );
+          await phone.onModuleInit();
+          await wire.receive({
+            id: 'ordinary-owner-message',
+            group,
+            sender: owner,
+            senderName: 'Owner',
+            groupName: 'Personal',
+            text: preference,
+          });
+          await phone.flush();
+        }
+        await vi.waitFor(() => expect(runHeadless).toHaveBeenCalledTimes(1));
+        await settle();
+        expect((await assistant.status(roomId)).memory).toMatchObject([
+          { key: 'reply-style', text: 'Prefer concise replies with practical examples.', updatedBy: 'lead' },
+        ]);
+        expect((await rooms.events(roomId)).filter((event) => event.actor === 'owner')).toHaveLength(1);
+        expect(await notes.memory(['room:unrelated'])).toEqual([]);
+      } finally {
+        await phone?.onApplicationShutdown();
+        await assistant.onApplicationShutdown();
+      }
+    },
+  );
 
   it('creates the lead on the first message, seeds it with the summary, and posts its answer', async () => {
     const lines: RoomStreamLine[] = [];

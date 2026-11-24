@@ -32,6 +32,7 @@ import { RoomPlaybookFiles } from './room-playbook-files.service';
 import { RoomQuestions, type WorkerAnswers } from './room-questions';
 import { RoomLive } from './room-live';
 import { RoomRuns, type RunCause } from './room-runs';
+import { ROOM_MEMORY_INSTRUCTIONS } from './room-memory-instructions';
 
 export const NO_ROOM = 'No room with this id.';
 export const LEAD_BUSY = 'The lead is still answering. Send again when it is done, or post without prompting it.';
@@ -369,10 +370,12 @@ export class RoomLeadService implements OnModuleInit, OnApplicationShutdown {
       runId = await this.runs?.start(roomId, cause, found);
       const leadId = found.leadThreadId ?? (await this.prepare(roomId));
       const cwd = this.assistant ? await this.assistant.prepare(found, leadId) : await this.agents.projectFolder(found);
-      const first =
-        !this.briefed.has(roomId) && !(await this.rooms.events(roomId)).some((event) => event.actor === 'lead');
+      const known = this.briefed.has(roomId);
+      const first = !known && !(await this.rooms.events(roomId)).some((event) => event.actor === 'lead');
       this.briefed.add(roomId);
-      const rebrief = this.rebrief.delete(roomId) && !first;
+      // Reload the canonical roster after restart, including membership edits saved before a turn.
+      const changed = this.rebrief.delete(roomId);
+      const rebrief = (changed || !known) && !first;
       const briefing = first || rebrief ? await this.playbooks?.briefing(found) : undefined;
       if (first || rebrief) await this.agents.configure(leadId, await this.playbooks?.settings(found, 'lead'));
       const prompt = first
@@ -554,6 +557,7 @@ export class RoomLeadService implements OnModuleInit, OnApplicationShutdown {
       'Playbooks are optional. To write or change one, read room_playbook_guide, then send both whole files with room_playbook_propose; the owner applies them.',
       'You can use the owner’s connected apps: find their MCP tools with tool_search. Tools that only read run at once; one that may change something (signing an app in, running an action) first asks the owner. A tool with an MCP App shows that app to the owner in the room.',
       composio ?? '',
+      ROOM_MEMORY_INSTRUCTIONS,
       briefing ?? '',
       summary ? `The owner shared this purpose and context:\n\n${summary}` : 'The owner shared no summary yet.',
       `The owner says:\n\n${text}`,

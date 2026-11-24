@@ -2653,6 +2653,52 @@ export type RoomMemoryEntry = {
 
 export type RoomMode = 'supervised' | 'assisted';
 
+export type RoomParticipant = {
+    /**
+     * A short role name, such as security or skeptic.
+     */
+    role: string;
+    agent: {
+        local?: boolean;
+        machine?: string;
+        agent?: string;
+    };
+    instructions: string;
+    /**
+     * The model as provider/id, such as anthropic/claude-opus-5-5; the host’s default when left out.
+     */
+    model?: string;
+    thinking?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+    source: 'room' | 'playbook';
+};
+
+export type RoomParticipantInput = {
+    /**
+     * A short role name, such as security or skeptic.
+     */
+    role: string;
+    agent?: {
+        local?: boolean;
+        machine?: string;
+        agent?: string;
+    };
+    instructions?: string;
+    /**
+     * The model as provider/id, such as anthropic/claude-opus-5-5; the host’s default when left out.
+     */
+    model?: string;
+    thinking?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+};
+
+export type RoomParticipants = {
+    members: Array<RoomParticipant>;
+};
+
+export type RoomParticipantTargets = {
+    machines: Array<RoomWorkerCandidate>;
+    agents: Array<A2aAgent>;
+};
+
 export type RoomPhoneConfig = {
     appUrl: string;
 };
@@ -14341,6 +14387,176 @@ export type RoomsEventsResponses = {
 };
 
 export type RoomsEventsResponse = RoomsEventsResponses[keyof RoomsEventsResponses];
+
+export type RoomParticipantsListData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/participants';
+};
+
+export type RoomParticipantsListErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+    /**
+     * No room with this id.
+     */
+    404: Problem;
+};
+
+export type RoomParticipantsListError = RoomParticipantsListErrors[keyof RoomParticipantsListErrors];
+
+export type RoomParticipantsListResponses = {
+    /**
+     * OK
+     */
+    200: RoomParticipants;
+};
+
+export type RoomParticipantsListResponse = RoomParticipantsListResponses[keyof RoomParticipantsListResponses];
+
+export type RoomParticipantsAddData = {
+    body: RoomParticipantInput;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/participants';
+};
+
+export type RoomParticipantsAddErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomParticipantsAddError = RoomParticipantsAddErrors[keyof RoomParticipantsAddErrors];
+
+export type RoomParticipantsAddResponses = {
+    /**
+     * Created
+     */
+    201: RoomParticipants;
+};
+
+export type RoomParticipantsAddResponse = RoomParticipantsAddResponses[keyof RoomParticipantsAddResponses];
+
+export type RoomParticipantsTargetsData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/participants/targets';
+};
+
+export type RoomParticipantsTargetsErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomParticipantsTargetsError = RoomParticipantsTargetsErrors[keyof RoomParticipantsTargetsErrors];
+
+export type RoomParticipantsTargetsResponses = {
+    /**
+     * OK
+     */
+    200: RoomParticipantTargets;
+};
+
+export type RoomParticipantsTargetsResponse = RoomParticipantsTargetsResponses[keyof RoomParticipantsTargetsResponses];
+
+export type RoomParticipantsRemoveData = {
+    body?: never;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        /**
+         * The collaborator role to remove from this room.
+         */
+        role: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/participants/{role}';
+};
+
+export type RoomParticipantsRemoveErrors = {
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomParticipantsRemoveError = RoomParticipantsRemoveErrors[keyof RoomParticipantsRemoveErrors];
+
+export type RoomParticipantsRemoveResponses = {
+    /**
+     * OK
+     */
+    200: RoomParticipants;
+};
+
+export type RoomParticipantsRemoveResponse = RoomParticipantsRemoveResponses[keyof RoomParticipantsRemoveResponses];
+
+export type RoomParticipantsUpdateData = {
+    body: RoomParticipantInput;
+    path: {
+        /**
+         * The hosted room id.
+         */
+        roomId: string;
+        /**
+         * The current collaborator role.
+         */
+        role: string;
+    };
+    query?: never;
+    url: '/api/rooms/{roomId}/participants/{role}';
+};
+
+export type RoomParticipantsUpdateErrors = {
+    /**
+     * The request is not valid. `message` lists each problem as `path: reason`.
+     */
+    400: Problem;
+    /**
+     * The bearer token is missing or wrong.
+     */
+    401: Problem;
+};
+
+export type RoomParticipantsUpdateError = RoomParticipantsUpdateErrors[keyof RoomParticipantsUpdateErrors];
+
+export type RoomParticipantsUpdateResponses = {
+    /**
+     * OK
+     */
+    200: RoomParticipants;
+};
+
+export type RoomParticipantsUpdateResponse = RoomParticipantsUpdateResponses[keyof RoomParticipantsUpdateResponses];
 
 export type RoomPhoneConfigData = {
     body: RoomPhoneConfig;

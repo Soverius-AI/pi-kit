@@ -1,3 +1,5 @@
+import { RoomParticipants } from './room-participants.service';
+import { RoomParticipantsController } from './room-participants.controller';
 import { Module } from '@nestjs/common';
 import { AguiModule } from '../agui/agui.module';
 import { DbModule } from '../db/db.module';
@@ -88,9 +90,11 @@ import { TranscribeModule } from '../transcribe/transcribe.module';
     RoomWorkspace,
     RoomAssistant,
     RoomMemory,
+    RoomParticipants,
   ],
   controllers: [
     RoomsController,
+    RoomParticipantsController,
     RoomPhoneController,
     RoomChannelController,
     RoomAssistantController,

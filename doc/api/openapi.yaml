@@ -10768,7 +10768,7 @@ paths:
       tags:
         - rooms
     post:
-      description: Reads the agent card at the given address (the agent’s base address or its agent-card.json), and keeps the agent with its name. A bearer token, when given, goes to the credential store, or to the database where there is none.
+      description: Reads the agent card at the given address (the agent’s base address or its agent-card.json), and keeps the agent with its name. A bearer token, when given, requires the enabled operating system credential store and is never stored in application metadata.
       operationId: Rooms_addAgent
       parameters: []
       requestBody:
@@ -11684,6 +11684,188 @@ paths:
               schema:
                 $ref: '#/components/schemas/Problem'
       summary: Stream a room
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/participants:
+    get:
+      description: Returns all room-local and inherited playbook collaborators. Room roles override matching inherited roles without truncating the roster. Does not create a lead thread.
+      operationId: RoomParticipants_list
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomParticipants'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '404':
+          description: No room with this id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: List effective room collaborators
+      tags:
+        - rooms
+      x-remote: true
+    post:
+      description: Adds a unique room-local role targeting a local model, paired computer, or registered external agent.
+      operationId: RoomParticipants_add
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomParticipantInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomParticipants'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Add a room collaborator without requiring a playbook
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/participants/targets:
+    get:
+      description: Lists this host, paired computers with readiness, and registered external A2A agents. Credentials are never returned.
+      operationId: RoomParticipants_targets
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomParticipantTargets'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: List collaborator targets on this room’s host
+      tags:
+        - rooms
+      x-remote: true
+  /api/rooms/{roomId}/participants/{role}:
+    put:
+      description: Updates or renames a role in this room, retaining the shared playbook unchanged. Future consultations use the new settings.
+      operationId: RoomParticipants_update
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: role
+          required: true
+          in: path
+          description: The current collaborator role.
+          schema:
+            type: string
+            pattern: ^[a-z][a-z0-9-]{0,39}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoomParticipantInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomParticipants'
+        '400':
+          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Edit a room collaborator or override an inherited role
+      tags:
+        - rooms
+      x-remote: true
+    delete:
+      description: Removes the room-local role or hides an inherited playbook role in this room. External agent registration is retained.
+      operationId: RoomParticipants_remove
+      parameters:
+        - name: roomId
+          required: true
+          in: path
+          description: The hosted room id.
+          schema:
+            type: string
+        - name: role
+          required: true
+          in: path
+          description: The collaborator role to remove from this room.
+          schema:
+            type: string
+            pattern: ^[a-z][a-z0-9-]{0,39}$
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomParticipants'
+        '401':
+          description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+      summary: Remove a collaborator from this room without unregistering its external service
       tags:
         - rooms
       x-remote: true
@@ -19345,7 +19527,6 @@ components:
           $ref: '#/components/schemas/PlaybookAgentSettings'
         participants:
           default: []
-          maxItems: 8
           type: array
           items:
             $ref: '#/components/schemas/PlaybookParticipant'
@@ -21496,6 +21677,129 @@ components:
       enum:
         - supervised
         - assisted
+    RoomParticipant:
+      type: object
+      properties:
+        role:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,39}$
+          description: A short role name, such as security or skeptic.
+        agent:
+          default:
+            local: true
+          type: object
+          properties:
+            local:
+              type: boolean
+            machine:
+              type: string
+              minLength: 1
+              maxLength: 200
+            agent:
+              type: string
+              minLength: 1
+              maxLength: 200
+          additionalProperties: false
+        instructions:
+          default: ''
+          type: string
+          maxLength: 4000
+        model:
+          type: string
+          maxLength: 200
+          pattern: ^[^\s/]+\/\S+$
+          description: The model as provider/id, such as anthropic/claude-opus-5-5; the host’s default when left out.
+        thinking:
+          type: string
+          enum:
+            - off
+            - minimal
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
+        source:
+          type: string
+          enum:
+            - room
+            - playbook
+      required:
+        - role
+        - agent
+        - instructions
+        - source
+      additionalProperties: false
+    RoomParticipantInput:
+      type: object
+      properties:
+        role:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{0,39}$
+          description: A short role name, such as security or skeptic.
+        agent:
+          default:
+            local: true
+          type: object
+          properties:
+            local:
+              type: boolean
+            machine:
+              type: string
+              minLength: 1
+              maxLength: 200
+            agent:
+              type: string
+              minLength: 1
+              maxLength: 200
+          additionalProperties: false
+        instructions:
+          default: ''
+          type: string
+          maxLength: 4000
+        model:
+          type: string
+          maxLength: 200
+          pattern: ^[^\s/]+\/\S+$
+          description: The model as provider/id, such as anthropic/claude-opus-5-5; the host’s default when left out.
+        thinking:
+          type: string
+          enum:
+            - off
+            - minimal
+            - low
+            - medium
+            - high
+            - xhigh
+            - max
+      required:
+        - role
+      additionalProperties: false
+    RoomParticipants:
+      type: object
+      properties:
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomParticipant'
+      required:
+        - members
+      additionalProperties: false
+    RoomParticipantTargets:
+      type: object
+      properties:
+        machines:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoomWorkerCandidate'
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/A2aAgent'
+      required:
+        - machines
+        - agents
+      additionalProperties: false
     RoomPhoneConfig:
       type: object
       properties:

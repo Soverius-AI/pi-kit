@@ -42,3 +42,5 @@ export * from './lib/tabs';
 export * from './lib/scroll-area';
 export * from './lib/avatar';
 export * from './lib/env-look';
+
+export * from './lib/folder-tree';

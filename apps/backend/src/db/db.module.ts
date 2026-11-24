@@ -1,3 +1,4 @@
+import { RoomParticipantsRepository } from './room-participants.repository';
 import { Module } from '@nestjs/common';
 import type { BackendConfig } from '../app/config';
 import { CONFIG } from '../app/config.token';
@@ -64,6 +65,7 @@ import { RoomAssistantRepository } from './room-assistant.repository';
     A2aAgentsRepository,
     RoomPhoneRepository,
     RoomAssistantRepository,
+    RoomParticipantsRepository,
   ],
   exports: [
     DatabaseService,
@@ -91,6 +93,7 @@ import { RoomAssistantRepository } from './room-assistant.repository';
     A2aAgentsRepository,
     RoomPhoneRepository,
     RoomAssistantRepository,
+    RoomParticipantsRepository,
   ],
 })
 export class DbModule {}

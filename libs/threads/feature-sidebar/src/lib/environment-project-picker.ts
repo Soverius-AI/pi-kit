@@ -1,35 +1,15 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
-import { NgTemplateOutlet } from '@angular/common';
-import {
-  Component,
-  ElementRef,
-  Injector,
-  afterNextRender,
-  computed,
-  inject,
-  linkedSignal,
-  resource,
-  signal,
-} from '@angular/core';
+import { Component, computed, inject, linkedSignal, resource, signal } from '@angular/core';
 import { TranslocoPipe } from '@pi-kit/i18n';
 import { EnvironmentsStore } from '@pi-kit/data-access';
-import { PkFileIcon, PkIcon } from '@pi-kit/design-system';
+import { PkFileIcon, PkFolderTree, PkIcon, type PkFolderNode } from '@pi-kit/design-system';
 import { errorMessage, projectFoldersList, unwrap, workspacesAddWorkspace } from '@pi-kit/api';
-
-interface Folder {
-  name: string;
-  path: string;
-}
-interface FolderRow {
-  folder: Folder;
-  parent: string;
-}
 
 /** One project choice owns the environment; there is no second, contradictory chat destination. */
 @Component({
   selector: 'pk-environment-project-picker',
   host: { style: 'display: contents' },
-  imports: [CdkTrapFocus, NgTemplateOutlet, PkFileIcon, PkIcon, TranslocoPipe],
+  imports: [CdkTrapFocus, PkFileIcon, PkFolderTree, PkIcon, TranslocoPipe],
   template: `
     @if (environments.picker()) {
       <dialog
@@ -107,24 +87,26 @@ interface FolderRow {
             </button>
           </div>
           <div class="browser">
-            <div
-              class="tree"
-              role="tree"
-              tabindex="-1"
-              [attr.aria-label]="'environments.projects.folders' | transloco"
-              [attr.aria-busy]="folders.isLoading()"
-              (keydown)="onKey($event)"
-              data-testid="project-folders"
-            >
+            <div class="tree" [attr.aria-busy]="folders.isLoading()">
               @if (folders.isLoading()) {
                 <p class="note" role="status">{{ 'environments.projects.loadingFolders' | transloco }}</p>
               } @else if (folders.error()) {
                 <p class="note err" role="alert">{{ 'environments.projects.unavailable' | transloco }}</p>
               } @else {
-                <ng-container *ngTemplateOutlet="level; context: { $implicit: rootFolders() }" />
-                @if (!rootFolders().length) {
-                  <p class="note">{{ 'environments.projects.empty' | transloco }}</p>
-                }
+                <pk-folder-tree
+                  data-testid="project-folders"
+                  [folders]="folders.value()?.folders ?? []"
+                  [scope]="treeScope()"
+                  [showHidden]="showHidden()"
+                  [disabled]="busy()"
+                  [label]="'environments.projects.folders' | transloco"
+                  [emptyLabel]="'environments.projects.empty' | transloco"
+                  [loadingLabel]="'environments.projects.loadingFolders' | transloco"
+                  [errorLabel]="'environments.projects.unavailable' | transloco"
+                  [loadChildren]="loadFolderChildren"
+                  [(selected)]="selected"
+                  (navigated)="browse($event)"
+                />
               }
             </div>
             <div class="foot">
@@ -142,45 +124,6 @@ interface FolderRow {
               </label>
             </div>
           </div>
-          <ng-template #level let-list>
-            @for (folder of list; track folder.path) {
-              @let open = expanded().has(folder.path);
-              <div
-                class="pk-node"
-                role="treeitem"
-                [attr.data-path]="folder.path"
-                [attr.aria-expanded]="open"
-                [attr.aria-selected]="selected() === folder.path"
-                [tabindex]="tabIndexOf(folder.path)"
-                (click)="pick(folder)"
-                (keydown.enter)="$event.preventDefault(); pick(folder)"
-                (dblclick)="browse(folder.path)"
-                (focus)="selected.set(folder.path)"
-              >
-                <pk-icon class="tw" name="chevron-right" size="14" [class.open]="open" />
-                <pk-file-icon [kind]="open ? 'folder-open' : 'folder'" />
-                <span class="nm" [title]="folder.path">{{ folder.name }}</span>
-              </div>
-              @if (open) {
-                <div class="pk-nest" role="group">
-                  @if (children().get(folder.path); as nested) {
-                    <ng-container *ngTemplateOutlet="level; context: { $implicit: visible(nested) }" />
-                    @if (!visible(nested).length) {
-                      <div class="pk-node">
-                        <span class="tw"></span
-                        ><span class="nm muted">{{ 'environments.projects.empty' | transloco }}</span>
-                      </div>
-                    }
-                  } @else {
-                    <div class="pk-node">
-                      <span class="tw"></span
-                      ><span class="nm muted">{{ 'environments.projects.loadingFolders' | transloco }}</span>
-                    </div>
-                  }
-                </div>
-              }
-            }
-          </ng-template>
           @if (error()) {
             <p role="alert">{{ error() }}</p>
           }
@@ -283,22 +226,6 @@ interface FolderRow {
       border-radius: var(--radius-field, 0.5rem);
       background: var(--color-base-200);
     }
-    .tree .pk-node {
-      cursor: pointer;
-    }
-    .tree .tw {
-      transition: transform 120ms ease;
-    }
-    .tree .tw.open {
-      transform: rotate(90deg);
-    }
-    .tree .pk-node:hover,
-    .tree .pk-node:focus-visible {
-      background: var(--color-base-300);
-    }
-    .tree .pk-node[aria-selected='true'] {
-      background: color-mix(in srgb, var(--color-primary) 22%, transparent);
-    }
     .note {
       padding: 0.75rem;
       color: var(--pk-muted);
@@ -336,8 +263,6 @@ interface FolderRow {
 })
 export class EnvironmentProjectPicker {
   protected readonly environments = inject(EnvironmentsStore);
-  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
-  private readonly injector = inject(Injector);
   protected readonly owner = linkedSignal(
     () => this.environments.picker()?.initialOwner ?? this.environments.manager()?.self.instanceId ?? '',
   );
@@ -358,81 +283,19 @@ export class EnvironmentProjectPicker {
       this.environments.picker() && this.owner() ? { owner: this.owner(), directory: this.directory() } : undefined,
     loader: async ({ params, abortSignal }) => this.list(params.owner, params.directory, abortSignal),
   });
-  protected readonly children = linkedSignal<unknown, ReadonlyMap<string, Folder[]>>({
-    source: () => this.folders.value(),
-    computation: () => new Map(),
-  });
-  protected readonly expanded = linkedSignal<unknown, ReadonlySet<string>>({
-    source: () => this.folders.value(),
-    computation: () => new Set(),
-  });
   protected readonly selected = linkedSignal<unknown, string>({
     source: () => this.folders.value(),
     computation: () => '',
   });
-  protected readonly rootFolders = computed(() => this.visible(this.folders.value()?.folders ?? []));
+  protected readonly treeScope = computed(() => JSON.stringify([this.owner(), this.folders.value()?.directory ?? '']));
+  protected readonly loadFolderChildren = async (path: string, signal: AbortSignal): Promise<readonly PkFolderNode[]> =>
+    (await this.list(this.owner(), path, signal)).folders;
   protected readonly target = computed(() => this.selected() || this.folders.value()?.directory || '');
-  private readonly rows = computed(() => this.rowsOf(this.rootFolders(), ''));
 
-  protected visible(folders: Folder[]): Folder[] {
-    return this.showHidden() ? folders : folders.filter((folder) => !folder.name.startsWith('.'));
-  }
-  protected tabIndexOf(path: string): number {
-    const selected = this.selected();
-    return path ===
-      (selected && this.rows().some((row) => row.folder.path === selected) ? selected : this.rows()[0]?.folder.path)
-      ? 0
-      : -1;
-  }
   protected browse(path: string): void {
     this.typed.set(path);
     this.directory.set(path);
     this.error.set('');
-  }
-  protected pick(folder: Folder): void {
-    this.selected.set(folder.path);
-    this.toggle(folder.path);
-  }
-  protected onKey(event: KeyboardEvent): void {
-    const rows = this.rows();
-    const at = rows.findIndex((row) => row.folder.path === this.selected());
-    const row = rows[at];
-    const open = row && this.expanded().has(row.folder.path);
-    const move = (index: number) => {
-      const next = rows[index];
-      if (!next) return;
-      event.preventDefault();
-      this.selected.set(next.folder.path);
-      afterNextRender(
-        () =>
-          this.host.nativeElement
-            .querySelector<HTMLElement>(`[role="treeitem"][data-path="${CSS.escape(next.folder.path)}"]`)
-            ?.focus(),
-        { injector: this.injector },
-      );
-    };
-    switch (event.key) {
-      case 'ArrowDown':
-        return move(at + 1);
-      case 'ArrowUp':
-        return move(Math.max(0, at - 1));
-      case 'Home':
-        return move(0);
-      case 'End':
-        return move(rows.length - 1);
-      case 'ArrowRight':
-        if (!row) return;
-        event.preventDefault();
-        if (!open) this.toggle(row.folder.path);
-        else if (rows[at + 1]?.parent === row.folder.path) move(at + 1);
-        return;
-      case 'ArrowLeft':
-        if (!row) return;
-        event.preventDefault();
-        if (open) this.toggle(row.folder.path);
-        else if (row.parent) move(rows.findIndex((value) => value.folder.path === row.parent));
-        return;
-    }
   }
   protected close(): void {
     if (!this.busy()) this.environments.picker.set(undefined);
@@ -454,27 +317,6 @@ export class EnvironmentProjectPicker {
       this.busy.set(false);
     }
   }
-  private toggle(path: string): void {
-    const expanded = new Set(this.expanded());
-    if (expanded.delete(path)) return this.expanded.set(expanded);
-    this.expanded.set(expanded.add(path));
-    if (!this.children().has(path)) void this.loadChildren(path);
-  }
-  private async loadChildren(path: string): Promise<void> {
-    const owner = this.owner(),
-      root = this.folders.value();
-    try {
-      const result = await this.list(owner, path);
-      if (this.owner() === owner && this.folders.value() === root)
-        this.children.update((children) => new Map(children).set(path, result.folders));
-    } catch (error) {
-      if (this.owner() !== owner || this.folders.value() !== root) return;
-      const expanded = new Set(this.expanded());
-      expanded.delete(path);
-      this.expanded.set(expanded);
-      this.error.set(errorMessage(error));
-    }
-  }
   private async list(owner: string, directory: string, signal?: AbortSignal) {
     const result = await unwrap(
       projectFoldersList({
@@ -485,13 +327,5 @@ export class EnvironmentProjectPicker {
     );
     if (result.instanceId !== owner) throw new Error('Folder owner mismatch.');
     return result;
-  }
-  private rowsOf(folders: Folder[], parent: string): FolderRow[] {
-    return folders.flatMap((folder) => [
-      { folder, parent },
-      ...(this.expanded().has(folder.path)
-        ? this.rowsOf(this.visible(this.children().get(folder.path) ?? []), folder.path)
-        : []),
-    ]);
   }
 }

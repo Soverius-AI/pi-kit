@@ -140,7 +140,7 @@ export const PlaybookConfigSchema = z
   .object({
     lead: PlaybookAgentSettingsSchema.optional(),
     workers: PlaybookAgentSettingsSchema.optional(),
-    participants: z.array(PlaybookParticipantSchema).max(8).default([]),
+    participants: z.array(PlaybookParticipantSchema).default([]),
     tools: z.record(ToolName, PlaybookToolSchema).default({}),
     'safe-outputs': z.record(ToolName, PlaybookSafeOutputSchema).default({}),
     vars: z.record(z.string(), z.string()).default({}),
