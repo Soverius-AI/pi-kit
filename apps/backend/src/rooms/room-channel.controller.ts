@@ -126,6 +126,12 @@ export class RoomChannelController {
   @Remote()
   @Put('settings')
   @Responds(RoomChannelStatusSchema)
+  @Fails({
+    400: 'The provider rejected the supplied credentials or settings.',
+    409: 'The operating system credential store is unavailable or could not save the credentials.',
+    429: 'The provider rate limited credential verification. Wait for the stated retry delay.',
+    503: 'The provider could not be reached to verify the credentials.',
+  })
   @ApiOperation({
     summary: 'Configure provider credentials or local dependencies',
     description:

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, HttpException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TelegramMessage, TelegramUpdate } from '@chat-adapter/telegram';
 import { DatabaseService } from '../db/database.service';
@@ -145,8 +145,65 @@ describe('Telegram Rooms with the real official SDK', () => {
     saved.mockRejectedValueOnce(new ConflictException('Enable the operating system credential store'));
     await expect(transport.configure({ botToken: TOKEN })).rejects.toThrow('Enable the operating system');
     failure = true;
-    await expect(transport.configure({ botToken: TOKEN })).rejects.toThrow('could not be verified');
+    await expect(transport.configure({ botToken: TOKEN })).rejects.toThrow('could not be reached');
     expect(transport.error ?? '').not.toContain(TOKEN);
+  });
+  it.each([
+    { status: 401, expected: 400, message: 'Telegram rejected this bot token' },
+    { status: 404, expected: 400, message: 'Telegram rejected this bot token' },
+    { status: 429, expected: 429, message: 'Try again in 19 seconds' },
+    { status: 502, expected: 503, message: 'Telegram could not be reached' },
+  ])(
+    'reports safe actionable token verification errors for HTTP $status without saving',
+    async ({ status, expected, message }) => {
+      vi.mocked(fetch).mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ok: false,
+            error_code: status,
+            description: `unsafe provider message ${TOKEN}`,
+            parameters: { retry_after: 19 },
+          }),
+          { status, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      const error = await transport.configure({ botToken: TOKEN }).catch((error) => error as HttpException);
+      expect(error).toBeInstanceOf(HttpException);
+      expect((error as HttpException).getStatus()).toBe(expected);
+      expect(String(error)).toContain(message);
+      expect(String(error)).not.toContain(TOKEN);
+      expect(JSON.stringify(error)).not.toContain(TOKEN);
+      expect(saved).not.toHaveBeenCalled();
+      expect(transport.phase).toBe('disconnected');
+    },
+  );
+  it('trims copied BotFather whitespace before verification and protected storage', async () => {
+    await transport.configure({ botToken: ` \n${TOKEN}\n ` });
+    expect(saved).toHaveBeenCalledExactlyOnceWith({ botToken: TOKEN });
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe(`https://api.telegram.org/bot${TOKEN}/getMe`);
+  });
+  it('honors the provider retry delay before making another token verification request', async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          ok: false,
+          error_code: 429,
+          parameters: { retry_after: 19 },
+        }),
+        { status: 429 },
+      ),
+    );
+    await expect(transport.configure({ botToken: TOKEN })).rejects.toThrow('19 seconds');
+    const requests = vi.mocked(fetch).mock.calls.length;
+    clock.mockReturnValue(now + 4000);
+    await expect(transport.configure({ botToken: TOKEN })).rejects.toThrow('15 seconds');
+    expect(fetch).toHaveBeenCalledTimes(requests);
+    expect(saved).not.toHaveBeenCalled();
+    clock.mockReturnValue(now + 19000);
+    await transport.configure({ botToken: TOKEN });
+    expect(saved).toHaveBeenCalledExactlyOnceWith({ botToken: TOKEN });
   });
   it('uses polling without deleting an existing webhook and requires BotFather group access', async () => {
     webhook = 'https://existing.example/hook';

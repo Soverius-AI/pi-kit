@@ -8,6 +8,7 @@ export const RoomTelegramCredentialsSchema = z
   .object({
     botToken: z
       .string()
+      .trim()
       .max(256)
       .regex(/^\d{5,20}:[A-Za-z0-9_-]{20,200}$/),
   })

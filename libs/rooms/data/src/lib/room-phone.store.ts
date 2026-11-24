@@ -19,6 +19,7 @@ import { RoomPanelState, type RoomPanelOptions } from './room-panel-state';
 export class RoomPhoneStore {
   readonly channel = signal<RoomChannel>('whatsapp');
   private readonly pendingLink = signal<RoomPhoneLink | undefined>(undefined);
+  private readonly links = new Map<string, RoomPhoneLink>();
   readonly command = computed(() => {
     const link = this.pendingLink();
     if (!link) return;
@@ -36,7 +37,7 @@ export class RoomPhoneStore {
     (options) => unwrap(roomChannelStatus(this.options(options))),
     2500,
     {
-      reset: () => this.clearCommand(),
+      reset: () => this.restoreCommand(),
       tick: () => this.expireCommand(),
     },
     () => this.channel(),
@@ -69,6 +70,12 @@ export class RoomPhoneStore {
       await this.panel.mutate(
         (options) => unwrap(roomChannelBegin(this.options(options))),
         (link) => {
+          const key = this.contextKey();
+          if (key) {
+            const oldest = this.links.keys().next().value;
+            if (this.links.size >= 32 && oldest) this.links.delete(oldest);
+            this.links.set(key, link);
+          }
           this.pendingLink.set(link);
           this.commandExpired.set(false);
           this.expireCommand();
@@ -123,13 +130,27 @@ export class RoomPhoneStore {
     const username = this.status()?.identity?.username;
     return this.channel() === 'telegram' && username && /^[A-Za-z0-9_]{1,64}$/.test(username) ? username : undefined;
   }
+  private contextKey(): string | undefined {
+    const context = this.context();
+    return context ? JSON.stringify([context.host, context.id, context.key]) : undefined;
+  }
+  private restoreCommand(): void {
+    const key = this.contextKey();
+    this.pendingLink.set(key ? this.links.get(key) : undefined);
+    this.commandExpired.set(false);
+    this.expireCommand();
+  }
   private clearCommand(): void {
+    const key = this.contextKey();
+    if (key) this.links.delete(key);
     this.pendingLink.set(undefined);
     this.commandExpired.set(false);
   }
   private expireCommand(): void {
     const link = this.pendingLink();
     if (link && Date.now() >= link.expiresAt) {
+      const key = this.contextKey();
+      if (key) this.links.delete(key);
       this.pendingLink.set(undefined);
       this.commandExpired.set(true);
     }

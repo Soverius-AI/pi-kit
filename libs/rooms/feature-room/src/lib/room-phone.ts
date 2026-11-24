@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { FormField, form, required, maxLength } from '@angular/forms/signals';
 import { TranslocoPipe } from '@pi-kit/i18n';
@@ -7,15 +8,22 @@ import { toDataURL } from 'qrcode';
 
 @Component({
   selector: 'pk-room-phone',
-  imports: [TranslocoPipe, FormField],
+  imports: [TranslocoPipe, FormField, NgTemplateOutlet],
   providers: [RoomPhoneStore],
   template: `
-    <details
-      (toggle)="phone.visible.set($any($event.target).open)"
-      data-testid="room-phone"
-      [attr.data-channel]="channel()"
-    >
-      <summary>{{ profile() + '.title' | transloco }}</summary>
+    @if (embedded()) {
+      <div data-testid="room-phone" [attr.data-channel]="channel()"><ng-container [ngTemplateOutlet]="setup" /></div>
+    } @else {
+      <details
+        (toggle)="phone.visible.set($any($event.target).open)"
+        data-testid="room-phone"
+        [attr.data-channel]="channel()"
+      >
+        <summary>{{ profile() + '.title' | transloco }}</summary>
+        <ng-container [ngTemplateOutlet]="setup" />
+      </details>
+    }
+    <ng-template #setup>
       <div class="body">
         <p>{{ profile() + '.intro' | transloco }}</p>
         @if (phone.error(); as error) {
@@ -241,7 +249,7 @@ import { toDataURL } from 'qrcode';
           <p>{{ 'rooms.phone.loading' | transloco }}</p>
         }
       </div>
-    </details>
+    </ng-template>
   `,
   styles: `
     :host {
@@ -322,6 +330,8 @@ import { toDataURL } from 'qrcode';
 })
 export class RoomPhone {
   readonly channel = input<RoomChannel>('whatsapp');
+  readonly embedded = input(false);
+  readonly externalStore = input<RoomPhoneStore>();
   protected readonly profile = computed(() => `rooms.channels.${this.channel()}`);
   protected readonly credentialSetupUrl = computed(() =>
     this.channel() === 'telegram' ? 'https://t.me/BotFather' : 'https://api.slack.com/apps',
@@ -335,7 +345,10 @@ export class RoomPhone {
   });
   protected readonly signalSettings = signal({ binaryPath: '' });
   protected readonly signalFields = form(this.signalSettings, (path) => maxLength(path.binaryPath, 4096));
-  protected readonly phone = inject(RoomPhoneStore);
+  private readonly localPhone = inject(RoomPhoneStore);
+  protected get phone(): RoomPhoneStore {
+    return this.externalStore() ?? this.localPhone;
+  }
   protected readonly setupStep = computed(() => {
     const status = this.phone.status();
     if (status?.connection !== 'connected') return 1;

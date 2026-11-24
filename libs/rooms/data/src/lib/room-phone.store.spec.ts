@@ -118,6 +118,33 @@ describe('room phone setup', () => {
     expect(store.command()).toBe('/room-link link-code');
   });
 
+  it('restores a live pairing challenge after closing the sidebar and returning to the same host and room', async () => {
+    const store = TestBed.inject(RoomPhoneStore);
+    store.visible.set(true);
+    TestBed.tick();
+    await vi.waitFor(() => expect(store.status()).toBeDefined());
+    await store.act('begin');
+    const original = room()!;
+    store.visible.set(false);
+    TestBed.tick();
+    store.visible.set(true);
+    TestBed.tick();
+    expect(store.command()).toBe('/room-link link-code');
+    room.set({ ...original, hostInstanceId: 'different-host' });
+    TestBed.tick();
+    expect(store.command()).toBeUndefined();
+    room.set(original);
+    TestBed.tick();
+    expect(store.command()).toBe('/room-link link-code');
+    await vi.waitFor(() => expect(store.status()).toBeDefined());
+    await store.act('test');
+    store.visible.set(false);
+    TestBed.tick();
+    store.visible.set(true);
+    TestBed.tick();
+    expect(store.command()).toBeUndefined();
+  });
+
   it('removes an expired command and tells the owner to request a new code', async () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1000);
     const interval = vi.spyOn(globalThis, 'setInterval');

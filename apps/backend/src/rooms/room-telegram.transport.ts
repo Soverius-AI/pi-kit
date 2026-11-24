@@ -1,8 +1,14 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  HttpException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Chat, type Logger as ChatLogger } from 'chat';
 import { MemoryStateAdapter } from '@chat-adapter/state-memory';
-import { AdapterRateLimitError } from '@chat-adapter/shared';
+import { AdapterRateLimitError, AuthenticationError, ResourceNotFoundError } from '@chat-adapter/shared';
 import {
   TelegramAdapter,
   type TelegramAdapterConfig,
@@ -20,6 +26,13 @@ import type { PhoneMessage } from './room-phone.types';
 const API = 'https://api.telegram.org';
 const MAX_FILE = 16 * 1024 * 1024;
 const MAX_CHECKPOINT = 8 * 1024 * 1024;
+function rateLimitMessage(error: AdapterRateLimitError): string {
+  const delay =
+    typeof error.retryAfter === 'number' && Number.isFinite(error.retryAfter)
+      ? Math.max(1, Math.ceil(error.retryAfter))
+      : undefined;
+  return `Telegram is rate limiting requests. ${delay ? `Try again in ${delay} seconds.` : 'Wait a moment and try again.'}`;
+}
 type Identity = NonNullable<RoomChannelStatus['identity']>;
 type Incoming = TelegramMessage & {
   sender_chat?: unknown;
@@ -90,7 +103,7 @@ export class RoomTelegramAdapter extends TelegramAdapter {
   async identity(): Promise<Identity> {
     const me = await this.telegramFetch<TelegramUser & { can_join_groups?: boolean }>('getMe');
     if (me.can_join_groups === false)
-      throw new Error('Enable group access with BotFather /setjoingroups before connecting this bot.');
+      throw new BadRequestException('Enable group access with BotFather /setjoingroups before connecting this bot.');
     if (
       !Number.isSafeInteger(me.id) ||
       me.id <= 0 ||
@@ -98,7 +111,7 @@ export class RoomTelegramAdapter extends TelegramAdapter {
       !me.username ||
       !/^[A-Za-z0-9_]{5,32}$/.test(me.username)
     )
-      throw new Error('Telegram did not verify a valid bot identity.');
+      throw new BadRequestException('Telegram did not verify a valid bot identity.');
     return {
       id: String(me.id),
       username: me.username,
@@ -108,7 +121,9 @@ export class RoomTelegramAdapter extends TelegramAdapter {
   async checkPolling(): Promise<void> {
     const info = await this.telegramFetch<TelegramWebhookInfo>('getWebhookInfo');
     if (info.url)
-      throw new Error('This Telegram bot already has a webhook. Remove that deployment before connecting it to Rooms.');
+      throw new ConflictException(
+        'This Telegram bot already has a webhook. Remove that deployment before connecting it to Rooms.',
+      );
   }
   async installCommands(): Promise<void> {
     const descriptions: Record<string, string> = {
@@ -170,8 +185,14 @@ export class RoomTelegramAdapter extends TelegramAdapter {
       if (this.lifecycle.aborted || request?.signal?.aborted)
         throw new DOMException('Telegram connection cancelled.', 'AbortError');
       if (error instanceof AdapterRateLimitError) throw new AdapterRateLimitError('telegram', error.retryAfter);
-      // eslint-disable-next-line preserve-caught-error -- SDK causes can contain token-bearing URLs.
-      throw new Error('Telegram request failed. Check the bot token or connection and try again.');
+      if (error instanceof AuthenticationError || (method === 'getMe' && error instanceof ResourceNotFoundError))
+        throw new BadRequestException(
+          'Telegram rejected this bot token. Copy the current token from BotFather and try again.',
+        );
+      // SDK causes can contain token-bearing URLs; expose only this safe message.
+      throw new ServiceUnavailableException(
+        'Telegram could not be reached. Check the internet connection or proxy, then try again.',
+      );
     }
   }
   async sendPlain(group: string, text: string, quoteId?: string): Promise<string> {
@@ -246,6 +267,7 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
   private chat: Chat | undefined;
   private abort: AbortController | undefined;
   private generation = 0;
+  private verificationRetryAt = 0;
   private connectCancel: { generation: number; cancel: () => void } | undefined;
   constructor(
     private readonly credentials: RoomTelegramCredentials,
@@ -304,6 +326,11 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
   async configure(values: Record<string, string>): Promise<void> {
     const parsed = RoomTelegramCredentialsSchema.safeParse(values);
     if (!parsed.success) throw new BadRequestException('Enter a valid Telegram bot token from BotFather.');
+    if (this.verificationRetryAt > Date.now())
+      throw new HttpException(
+        rateLimitMessage(new AdapterRateLimitError('telegram', (this.verificationRetryAt - Date.now()) / 1000)),
+        429,
+      );
     const input = parsed.data;
     await this.disconnect();
     const generation = ++this.generation;
@@ -319,8 +346,15 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
         this.error = null;
       }
     } catch (error) {
-      if (error instanceof ConflictException) throw error;
-      if (error instanceof Error && error.message.startsWith('Enable group access with BotFather')) throw error;
+      if (error instanceof HttpException) throw error;
+      if (error instanceof AdapterRateLimitError) {
+        const delay =
+          typeof error.retryAfter === 'number' && Number.isFinite(error.retryAfter)
+            ? Math.min(86400, Math.max(1, error.retryAfter))
+            : 1;
+        this.verificationRetryAt = Date.now() + delay * 1000;
+        throw new HttpException(rateLimitMessage(error), 429);
+      }
       throw new BadRequestException(
         'Telegram token could not be verified or saved. Check BotFather and the operating system credential store.',
       );
@@ -409,14 +443,15 @@ export class RoomTelegramTransport implements RoomMessagingTransport {
       await chat?.shutdown().catch(() => undefined);
       if (generation !== this.generation) return;
       this.phase = 'error';
-      this.error =
-        error instanceof Error &&
-        (error.message.includes('already has a webhook') ||
-          error.message.startsWith('Enable group access with BotFather'))
-          ? error.message
-          : 'Telegram could not connect. Check its saved bot token and network connection.';
-      // eslint-disable-next-line preserve-caught-error -- Keep provider credentials and token URLs out of API error causes.
-      throw new Error(this.error);
+      // Keep provider credentials and token URLs out of API error causes.
+      const failure =
+        error instanceof HttpException
+          ? error
+          : error instanceof AdapterRateLimitError
+            ? new HttpException(rateLimitMessage(error), 429)
+            : new BadRequestException('Telegram could not connect. Check its saved bot token and network connection.');
+      this.error = failure.message;
+      throw failure;
     }
   }
   async disconnect(): Promise<void> {

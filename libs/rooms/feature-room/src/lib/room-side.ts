@@ -4,14 +4,14 @@ import { Language, TranslocoPipe } from '@pi-kit/i18n';
 import type { PlaybookSummary, PlaybookTriggerState, RoomTask } from '@pi-kit/protocol';
 import { OpenRoomStore } from '@pi-kit/rooms/data';
 import { RoomFormat } from './room-format';
-import { RoomPhone } from './room-phone';
+import { RoomChannels } from './room-channels';
 import { RoomAssistant } from './room-assistant';
 
 type TaskGroup = { key: 'needsYou' | 'running' | 'done'; tasks: RoomTask[] };
 
 @Component({
   selector: 'pk-room-side',
-  imports: [PkIcon, PkRunStatus, TranslocoPipe, RoomPhone, RoomAssistant],
+  imports: [PkIcon, PkRunStatus, TranslocoPipe, RoomChannels, RoomAssistant],
   styleUrl: './room-side.css',
   host: { class: 'pk-room-side', 'data-testid': 'room-side' },
   template: `
@@ -27,10 +27,7 @@ type TaskGroup = { key: 'needsYou' | 'running' | 'done'; tasks: RoomTask[] };
         <pk-icon name="close" size="16" />
       </button>
     </header>
-    <pk-room-phone channel="telegram" />
-    <pk-room-phone />
-    <pk-room-phone channel="signal" />
-    <pk-room-phone channel="slack" />
+    <pk-room-channels />
     <pk-room-assistant />
     <details class="section" open data-testid="room-playbook">
       <summary><pk-icon name="skill" size="14" />{{ 'rooms.view.playbookPick' | transloco }}</summary>

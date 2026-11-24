@@ -14916,13 +14916,25 @@ export type RoomChannelSettingsData = {
 
 export type RoomChannelSettingsErrors = {
     /**
-     * The request is not valid. `message` lists each problem as `path: reason`.
+     * The provider rejected the supplied credentials or settings.
      */
     400: Problem;
     /**
      * The bearer token is missing or wrong.
      */
     401: Problem;
+    /**
+     * The operating system credential store is unavailable or could not save the credentials.
+     */
+    409: Problem;
+    /**
+     * The provider rate limited credential verification. Wait for the stated retry delay.
+     */
+    429: Problem;
+    /**
+     * The provider could not be reached to verify the credentials.
+     */
+    503: Problem;
 };
 
 export type RoomChannelSettingsError = RoomChannelSettingsErrors[keyof RoomChannelSettingsErrors];

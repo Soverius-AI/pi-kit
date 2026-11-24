@@ -5161,6 +5161,24 @@
         "save": "Telegram-Bot-Token speichern",
         "addGroup": "Bot zu Gruppe hinzufügen",
         "talk": "Antworte nach dem Verknüpfen auf den Bot oder sende /room@{{username}} DEINE_FRAGE. Eine einfache Erwähnung erreicht den Bot in Telegrams Datenschutzmodus möglicherweise nicht."
+      },
+      "wizard": {
+        "title": "Kanäle",
+        "add": "Kanal hinzufügen",
+        "back": "Kanäle",
+        "done": "Fertig",
+        "choose": "Wähle, wo du mit diesem Raum sprechen möchtest.",
+        "cancel": "Abbrechen",
+        "empty": "Verbinde einen Nachrichtenkanal, um vom Handy aus mit diesem Raum zu sprechen.",
+        "needsTest": "Antworttest erforderlich",
+        "continue": "Einrichtung fortsetzen",
+        "manage": "Verwalten",
+        "provider": {
+          "telegram": "Erstelle mit BotFather einen Assistenten-Bot.",
+          "whatsapp": "Verknüpfe ein eigenes Konto für den Assistenten.",
+          "signal": "Verknüpfe ein Assistentenkonto mit signal-cli.",
+          "slack": "Verbinde eine App mit deinem Workspace."
+        }
       }
     }
   },

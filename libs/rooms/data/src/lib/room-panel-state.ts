@@ -20,6 +20,7 @@ export class RoomPanelState<T> {
     { equal: (a, b) => a?.id === b?.id && a?.host === b?.host && a?.key === b?.key },
   );
   private generation = 0;
+  private mutationFailed = false;
   private activeContext: ReturnType<typeof this.context>;
   private destroyed = false;
   private reading: { abort: AbortController; promise: Promise<void> } | undefined;
@@ -46,6 +47,7 @@ export class RoomPanelState<T> {
       this.invalidate();
       this.activeContext = visible ? scope : undefined;
       this.status.set(undefined);
+      this.mutationFailed = false;
       this.error.set(undefined);
       untracked(() => hooks.reset?.());
       if (!scope || !visible) return;
@@ -70,10 +72,10 @@ export class RoomPanelState<T> {
         const value = await this.fetch(options);
         if (this.current(generation)) {
           this.status.set(value);
-          this.error.set(undefined);
+          if (!this.mutationFailed) this.error.set(undefined);
         }
       } catch (error) {
-        if (this.current(generation)) this.error.set(message(error));
+        if (this.current(generation) && !this.mutationFailed) this.error.set(message(error));
       } finally {
         if (this.reading === request) this.reading = undefined;
       }
@@ -94,6 +96,7 @@ export class RoomPanelState<T> {
     const generation = this.generation;
     this.mutation = operation;
     this.busy.set(true);
+    this.mutationFailed = false;
     this.error.set(undefined);
     try {
       const result = await action(options);
@@ -102,7 +105,10 @@ export class RoomPanelState<T> {
       if (refresh) await this.refresh();
       return this.current(generation);
     } catch (error) {
-      if (this.current(generation)) this.error.set(message(error));
+      if (this.current(generation)) {
+        this.mutationFailed = true;
+        this.error.set(message(error));
+      }
       return false;
     } finally {
       if (this.mutation === operation) {

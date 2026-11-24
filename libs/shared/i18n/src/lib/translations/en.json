@@ -5161,6 +5161,24 @@
         "save": "Save Telegram bot token",
         "addGroup": "Add bot to group",
         "talk": "Once linked, reply to the bot or send /room@{{username}} YOUR_QUESTION. A plain mention may not reach the bot in Telegram’s privacy mode."
+      },
+      "wizard": {
+        "title": "Channels",
+        "add": "Add channel",
+        "back": "Channels",
+        "done": "Done",
+        "choose": "Choose where you want to talk to this room.",
+        "cancel": "Cancel",
+        "empty": "Connect a messaging channel to talk to this room from your phone.",
+        "needsTest": "Reply test needed",
+        "continue": "Continue setup",
+        "manage": "Manage",
+        "provider": {
+          "telegram": "Create an assistant bot with BotFather.",
+          "whatsapp": "Link a dedicated assistant account.",
+          "signal": "Link an assistant account with signal-cli.",
+          "slack": "Connect an app to your workspace."
+        }
       }
     }
   },

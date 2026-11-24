@@ -12376,13 +12376,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/RoomChannelStatus'
         '400':
-          description: 'The request is not valid. `message` lists each problem as `path: reason`.'
+          description: The provider rejected the supplied credentials or settings.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Problem'
         '401':
           description: The bearer token is missing or wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '409':
+          description: The operating system credential store is unavailable or could not save the credentials.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          description: The provider rate limited credential verification. Wait for the stated retry delay.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '503':
+          description: The provider could not be reached to verify the credentials.
           content:
             application/json:
               schema:
