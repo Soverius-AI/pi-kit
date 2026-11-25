@@ -53,6 +53,14 @@ minimumReleaseAgeExclude:
   - '@earendil-works/pi-schema@1.6.0'
   - '@earendil-works/pi-telemetry@1.6.0'
   - '@earendil-works/pi-tui@1.6.0'
+  # Allow the 0.95.2 release before these verified Cua artifacts clear the 24-hour age gate.
+  - '@trycua/cua-driver@0.62.1'
+  - '@trycua/cua-driver-darwin-arm64@0.62.1'
+  - '@trycua/cua-driver-darwin-x64@0.62.1'
+  - '@trycua/cua-driver-linux-arm64-gnu@0.62.1'
+  - '@trycua/cua-driver-linux-x64-gnu@0.62.1'
+  - '@trycua/cua-driver-win32-arm64-msvc@0.62.1'
+  - '@trycua/cua-driver-win32-x64-msvc@0.62.1'
 patchedDependencies:
   '@stibbons/chat-adapter-signal@0.1.0': patches/@stibbons__chat-adapter-signal@0.1.0.patch
   '@a2ui/web_core@0.15.0': patches/@a2ui__web_core@0.15.0.patch
